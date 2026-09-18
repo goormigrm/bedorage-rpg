@@ -90,6 +90,8 @@ export class Lobby {
   private waitTimer = 0
   /** 이번 입장에서 통로를 다시 연 횟수 (피어가 안 붙으면 2번까지 다시 연다) */
   private joinTries = 0
+  /** 20초 동안 안 붙으면 "처음부터 다시 참가" 를 스스로 한 번 더 한다 (2026-09-19 여러 탭 시험: 첫 참가는 자주 실패하고, 다시 누르면 곧 붙었다) */
+  private joinRestarts = 0
   private rooms: RoomInfo[] = []
   private starting = false
   private disposed = false
@@ -684,8 +686,9 @@ export class Lobby {
    * - 대기실 호스트는 joinAsk 를 무시하고 room 을 보낸다 → 대기실. 게임 중인 호스트는 joinAt/resume 을 보낸다 → 난입.
    *   그래서 초대 링크로 게임 중인 방에 들어와도 그대로 난입이 된다.
    */
-  private join(code: string, barge = false): void {
+  private join(code: string, barge = false, auto = false): void {
     if (!this.requireNick()) return
+    if (!auto) this.joinRestarts = 0
     // 같은 방에 이미 들어가는 중이면 그대로 둔다. 버튼을 두 번 누르면 전에는 나갔다 다시 들어갔는데,
     // 같은 피어 id 로 0.3초 안에 나갔다 들어오면 시그널링이 새 연결을 잘 못 만들어 20초를 헛기다렸다
     if (this.link && this.role === 'guest' && this.link.code === code) return
@@ -729,6 +732,15 @@ export class Lobby {
         this.wireLink()
         if (barge) this.showJoining(1)
         this.armJoinWait(code, barge)
+        return
+      }
+      // 통로를 두 번 다시 열어도 안 되면, 사람이 "참가" 를 다시 누르는 것과 똑같이 처음부터 한 번 더 (링크를 닫고 잠깐 쉬었다가)
+      if (this.joinRestarts < 1) {
+        this.joinRestarts++
+        console.warn(`[lobby] ${code}: 처음부터 다시 참가한다`)
+        this.closeLink()
+        this.status('연결이 늦어 다시 시도하는 중…')
+        window.setTimeout(() => this.join(code, barge, true), 1500)
         return
       }
       this.status(

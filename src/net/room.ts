@@ -14,6 +14,13 @@ export const APP_ID = 'bedorage-rpg-v1'
 const LOBBY_ID = 'lobby'
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
+/**
+ * Nostr 중계 수. Trystero 는 기본 18곳 중 앱 ID 로 섞은 앞 5곳을 쓰는데, 이 앱에 뽑힌 5곳 중 3곳이 죽어 있었다
+ * (2026-09-19: nostr.vulpem.com · relay.nostrdice.com 접속 실패 · relay.nostromo.social "not on white-list").
+ * 실제로 두 곳으로만 신호를 주고받아 방 참가가 20~40초씩 걸렸다 → 10곳. 앞 5곳은 그대로라 옛 버전 손님과도 만난다
+ */
+const RELAYS = { relayRedundancy: 10 }
+
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
 }
@@ -68,7 +75,7 @@ export interface LobbyLink {
 }
 
 export function openLobby(): LobbyLink {
-  const room: Room = joinRoom({ appId: APP_ID, rtcConfig: RTC_CONFIG }, LOBBY_ID)
+  const room: Room = joinRoom({ appId: APP_ID, rtcConfig: RTC_CONFIG, ...RELAYS }, LOBBY_ID)
   const [sendRoom, onRoom] = room.makeAction<RoomAnnounce | null>('room')
   const rooms = new Map<string, RoomInfo>()
   let mine: RoomAnnounce | null = null
@@ -236,7 +243,7 @@ export const ROOM_MAX = MAX_PLAYERS
 const leftRooms = new WeakSet<Room>()
 
 export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
-  const room: Room = joinRoom({ appId: APP_ID, rtcConfig: RTC_CONFIG }, `room-${code}`)
+  const room: Room = joinRoom({ appId: APP_ID, rtcConfig: RTC_CONFIG, ...RELAYS }, `room-${code}`)
   if (leftRooms.has(room)) {
     // 나간 방을 다시 받았다: 릴레이 구독·방송은 살아 있고 피어 연결은 아래 leave 가 끊어 두었으므로, 상대가 다시 제안하면 이 객체로도 붙는다.
     // (2026-09-06 사용자 제보: 나갔다가 같은 방에 난입하면 "연결되지 않았습니다" — 새로고침 전까지 재현. 원인 후보라 기록만 남긴다)
