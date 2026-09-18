@@ -10,6 +10,9 @@ import { createState, dropPlayer, hashState, joinPlayer, snapshot, step, syncSan
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
+import { Sheet, emptySheet, sanitizeSheet } from '../core/items'
+import { commitSheet } from './save'
+import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
@@ -35,6 +38,8 @@ export interface SessionConfig {
   deathRule?: DeathRule
   /** 판 종류: 던전(협동) · 투기장(PvP — 덕의 대전 규칙). 기본 던전 */
   kind?: GameMode
+  /** 자리별 캐릭터 기록 (레벨·장비·가방). 내 것은 세이브에서, 남의 것은 방 메시지로 온다 */
+  sheets?: (Sheet | undefined)[]
   seed: number
   localPlayer: number
   mapId?: MapId
@@ -131,6 +136,7 @@ export class Session {
     char: CharacterId
     team: number
     name: string
+    sheet?: Sheet
     /** 판(resume)을 보냈는가 */
     sent: boolean
     /** 난입자가 "모두와 연결됐다" 고 했는가 */
@@ -146,8 +152,11 @@ export class Session {
   /** joinLive 를 방송하고 실제로 자리를 채우기까지의 여유 (메시지가 모두에게 닿을 시간) */
   private static readonly JOIN_LEAD_TICKS = 40
   /** 정해진 틱에 자리를 채울 사람들 (난입) */
-  private pendingJoins: { p: number; tick: number; char: CharacterId; team: number; name: string }[] = []
+  private pendingJoins: { p: number; tick: number; char: CharacterId; team: number; name: string; sheet?: Sheet }[] = []
   private syncMute: () => void = () => {}
+  private inventory!: Inventory
+  /** 마지막 자동 저장 시각 */
+  private lastSave = performance.now()
   private ticker: Ticker
   private lastTick = performance.now()
   private lobbyBeacon = 0
@@ -218,6 +227,15 @@ export class Session {
       void enterLandscape()
     }
     this.input.attach(this.stage, this.touch)
+    this.inventory = new Inventory(
+      this.stage.querySelector('.game-ui') as HTMLElement,
+      () => this.state.players[this.cfg.localPlayer],
+      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (open) => {
+        this.input.uiOpen = open
+        this.sfx.blip()
+      },
+    )
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.exit()
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
@@ -350,6 +368,7 @@ export class Session {
   private matchCfg(seed: number): Parameters<typeof createState>[0] {
     return {
       seed,
+      sheets: this.sheetsFor(),
       chars: this.cfg.chars,
       absent: this.cfg.absent,
       deathRule: this.cfg.deathRule,
@@ -357,6 +376,32 @@ export class Session {
       teams: this.arena ? this.cfg.teams : undefined,
       targetKills: this.cfg.targetKills,
     }
+  }
+
+  /**
+   * 자리별 기록. 사람은 받은 것(내 것은 세이브), 봇은 내 레벨에 맞춘 맨몸 — 동료 봇이 너무 약하거나 세지 않게.
+   */
+  private sheetsFor(): (Sheet | undefined)[] {
+    const mine = this.cfg.sheets?.[this.cfg.localPlayer]
+    const lvl = mine?.level ?? 1
+    return this.cfg.chars.map((_, i) => {
+      const s = this.cfg.sheets?.[i]
+      if (s) return s
+      const botSeat = this.cfg.mode === 'solo' || this.cfg.bots?.[i]
+      return botSeat ? { ...emptySheet(), level: lvl } : undefined
+    })
+  }
+
+  /**
+   * 내 캐릭터를 세이브에 적는다. **하드코어는 원정이 끝날 때 한 번만** — 도중에 적으면 탈락해도 얻은 것이 남는다(결정 7).
+   * 탈락했으면 적지 않는다(이번 원정에서 얻은 것을 잃는다).
+   */
+  private saveMine(final: boolean): void {
+    const me = this.state.players[this.cfg.localPlayer]
+    if (!me || me.vacant || this.joiningIn) return
+    if (this.state.mode === 'dungeon' && this.state.deathRule === 2 && (!final || me.out)) return
+    commitSheet(me)
+    this.lastSave = performance.now()
   }
 
   private makeBots(seed: number): void {
@@ -400,6 +445,17 @@ export class Session {
     }
     // 관전 중 대상 바꾸기 (A/D 와 좌우 화살표 둘 다)
     const k = e.key.toLowerCase()
+    // 가방 창: I 또는 Tab (Esc 로도 닫힌다)
+    if (k === 'i' || e.key === 'Tab') {
+      if (this.overlay.hidden) this.inventory.toggle()
+      e.preventDefault()
+      return
+    }
+    if (e.key === 'Escape' && this.inventory.open) {
+      this.inventory.toggle(false)
+      e.preventDefault()
+      return
+    }
     if (this.spectate >= 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || k === 'a' || k === 'd')) {
       const next = this.nextAlive(e.key === 'ArrowLeft' || k === 'a' ? this.spectate - 2 : this.spectate)
       if (next >= 0) this.spectate = next
@@ -731,7 +787,7 @@ export class Session {
       }
       case 'joinAsk': {
         if (!this.isHost) break
-        this.onJoinAsk(m.char as CharacterId, m.name, from)
+        this.onJoinAsk(m.char as CharacterId, m.name, from, m.sheet)
         break
       }
       case 'joinReady': {
@@ -749,7 +805,7 @@ export class Session {
           this.peerIndex.set(m.id, m.p)
           if (this.cfg.peerIds) this.cfg.peerIds[m.p] = m.id
         }
-        this.pendingJoins.push({ p: m.p, tick: m.tick, char: m.char as CharacterId, team: m.team, name: m.name })
+        this.pendingJoins.push({ p: m.p, tick: m.tick, char: m.char as CharacterId, team: m.team, name: m.name, sheet: m.sheet })
         if (m.id === this.cfg.link?.selfId) this.message = '들어갑니다…'
         break
       }
@@ -790,6 +846,9 @@ export class Session {
   }
 
   private restart(seed: number): void {
+    // 다시 하기: 이번 판에서 키운 것을 들고 간다 (내 것은 세이브에도 적는다)
+    this.saveMine(true)
+    this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.map = buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), seed)
     this.renderer.setMap(this.map)
@@ -889,7 +948,10 @@ export class Session {
       this.applyJoins()
       if (this.isHost) this.serveJoin()
       for (const e of this.state.events) {
-        if (e.type === 'over') this.onOver()
+        if (e.type === 'over') {
+          this.saveMine(true)
+          this.onOver()
+        } else if (e.type === 'levelup' && e.p === this.cfg.localPlayer) this.saveMine(false)
         // 내가 죽으면: 투기장 개인전은 나를 죽인 사람, 아니면 살아 있는 동료를 본다
         else if (e.type === 'death' && e.p === this.cfg.localPlayer) {
           this.spectate = this.arena && !isTeamMatch(this.state) && e.by >= 0 && e.by !== e.p ? e.by : this.nextAlive(-1)
@@ -906,6 +968,8 @@ export class Session {
       steps++
     }
     if (this.acc > TICK_MS * 8) this.acc = TICK_MS * 8
+    // 30초마다 자동 저장 (탭이 갑자기 닫혀도 잃는 게 작게)
+    if (now - this.lastSave > 30000) this.saveMine(false)
   }
 
   private frame = (now: number): void => {
@@ -1112,7 +1176,7 @@ export class Session {
    * 비어 있는 자리를 찾아 **앞선 틱 T** 를 정해 모두에게 알리고, T 에 그 자리를 채운다.
    * 그 사람에게는 T 시점의 판 전체를 보내 준다(재입장과 같은 길).
    */
-  private onJoinAsk(char: CharacterId, name: string, peerId: string): void {
+  private onJoinAsk(char: CharacterId, name: string, peerId: string, sheet?: Sheet): void {
     if (this.state.phase === 'over') {
       this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '이미 끝난 판입니다' }, peerId)
       return
@@ -1152,6 +1216,7 @@ export class Session {
       char,
       team: slot,
       name,
+      sheet,
       sent: false,
       ready: false,
       deadline: performance.now() + Session.JOIN_TIMEOUT_MS,
@@ -1191,9 +1256,9 @@ export class Session {
     const caughtUp = (this.lockstep?.latestFrom(r.p) ?? -1) >= this.state.tick - 10
     if (r.ready && caughtUp && this.lockstep?.heardFrom(r.p)) {
       const tick = this.state.tick + Session.JOIN_LEAD_TICKS
-      const live = { t: 'joinLive' as const, p: r.p, tick, char: r.char, team: r.team, name: r.name, id: r.peerId }
+      const live = { t: 'joinLive' as const, p: r.p, tick, char: r.char, team: r.team, name: r.name, id: r.peerId, sheet: r.sheet }
       this.cfg.link?.sendCtl(live)
-      this.pendingJoins.push({ p: r.p, tick, char: r.char, team: r.team, name: r.name })
+      this.pendingJoins.push({ p: r.p, tick, char: r.char, team: r.team, name: r.name, sheet: r.sheet })
       this.pendingRejoin = null
       return
     }
@@ -1255,7 +1320,7 @@ export class Session {
     const keep: typeof this.pendingJoins = []
     for (const j of this.pendingJoins) {
       if (j.tick <= t) {
-        joinPlayer(this.state, this.map, j.p, j.char, j.team)
+        joinPlayer(this.state, this.map, j.p, j.char, j.team, j.sheet ? sanitizeSheet(j.sheet) : undefined)
         this.cfg.chars[j.p] = j.char
         if (this.cfg.names) this.cfg.names[j.p] = j.name
         if (this.cfg.teams) this.cfg.teams[j.p] = j.team
@@ -1348,6 +1413,7 @@ export class Session {
   }
 
   private exit(): void {
+    this.saveMine(true)
     if (this.cfg.link) this.cfg.link.sendCtl({ t: 'leave' })
     this.dispose()
     this.cfg.onExit()
@@ -1364,6 +1430,7 @@ export class Session {
     cancelAnimationFrame(this.raf)
     this.ticker.stop()
     this.input.dispose()
+    this.inventory.dispose()
     this.touch?.dispose()
     this.sfx.dispose()
     window.removeEventListener('keydown', this.onKey)

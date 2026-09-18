@@ -1,4 +1,5 @@
 import { CharacterId } from './characters'
+import type { Item, Sheet } from './items'
 import { Rng } from './rng'
 import { WeaponId } from './weapons'
 
@@ -170,6 +171,20 @@ export interface PlayerState {
   empowerShots: number
   /** 돌진 중 한 번씩만 맞히려고 쓰는 효과 번호 */
   chargeTag: number
+  /** RPG 성장 (세이브에서 온다 — 투기장에도 그대로 실린다) */
+  level: number
+  xp: number
+  gold: number
+  /** 장비 5칸 · 가방 (상태 안에 있어야 장착이 모두의 화면에서 같다) */
+  equip: (Item | null)[]
+  bag: Item[]
+  /** 장비 + 레벨로 낸 능력치 (items.ts ST_*) */
+  st: number[]
+  /** 탄창 크기 (탄창 옵션 반영) */
+  magSize: number
+  /** 이번 판에서 얻은 경험치·골드 (결과표) */
+  xpGain: number
+  goldGain: number
 }
 
 export interface Bullet {
@@ -256,6 +271,8 @@ export interface Monster {
   taunt: number
   /** 마지막으로 맞은 효과 번호 (돌진처럼 한 번만 맞아야 하는 효과) */
   tag: number
+  /** 공격력 배율 ×100 (파티 레벨로 세진다) */
+  pow: number
 }
 
 /** 몬스터 상태 */
@@ -288,6 +305,20 @@ export interface Globe {
   heal: number
   /** 가까운 동료에게도 나눠 주는가 (던전 구슬만) */
   share: boolean
+}
+
+/**
+ * 바닥의 전리품. owner = 주인 플레이어(개인 전리품 — 주인에게만 보이고 주인만 줍는다), -1 = 누구나(버린 것).
+ * lock = 버린 직후 다시 줍지 않게 막는 틱
+ */
+export interface Drop {
+  id: number
+  owner: number
+  x: number
+  y: number
+  item: Item
+  ttl: number
+  lock: number
 }
 
 /** 땅에 깔리는 효과 (스포트라이트 무대) */
@@ -329,6 +360,13 @@ export type SimEvent =
   | { type: 'hit'; p: number; by: number; x: number; y: number; part: number; dmg: number }
   /** 스킬 사용 (slot 0=Q 1=E 2=X). tx·ty = 커서 지점 스킬의 목표 */
   | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number }
+  /** 전리품이 떨어짐 (owner 에게만 보인다) */
+  | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
+  /** 주웠다 */
+  | { type: 'pickup'; p: number; rarity: number; uid: number }
+  | { type: 'levelup'; p: number; level: number }
+  /** 장비를 바꿨다 */
+  | { type: 'equip'; p: number; slot: number }
   /** 스킬 범위 효과가 터짐 (렌더 링·소리) */
   | { type: 'aoe'; p: number; id: string; x: number; y: number; r: number }
   | { type: 'respawn'; p: number; x: number; y: number }
@@ -379,6 +417,8 @@ export interface MatchConfig {
   deathRule?: DeathRule
   /** 몬스터 배치를 끈다 (시험용) */
   noMonsters?: boolean
+  /** 자리별 캐릭터 기록 (레벨·장비·가방·골드). 없으면 1레벨 맨몸 */
+  sheets?: (Sheet | undefined)[]
 }
 
 export interface GameState {
@@ -401,6 +441,10 @@ export interface GameState {
   nextGlobeId: number
   zones: Zone[]
   throws: Throw[]
+  drops: Drop[]
+  nextDropId: number
+  /** 새 아이템 번호 (판마다 시드에서 시작 — 세이브의 번호와 겹치지 않게 크게) */
+  nextItemUid: number
   /** 효과 번호 (구역·던진 것·돌진 태그) */
   nextFxId: number
   /** 층 입구 (px) — 죽은 사람이 여기서 일어난다 */

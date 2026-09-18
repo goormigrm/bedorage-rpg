@@ -6,6 +6,7 @@
 
 import { joinRoom, selfId, type Room } from 'trystero'
 import { MAX_PLAYERS } from '../core/state'
+import type { Sheet } from '../core/items'
 
 /** 프로토콜이 바뀌면 올린다 (다른 버전 클라이언트와 섞이지 않게) */
 // 배도라지 덕('bedorage-duck-v3')과 다른 값이어야 로비 방송·방이 섞이지 않는다 (같은 릴레이를 쓴다)
@@ -131,11 +132,13 @@ export type Member = {
   name: string
   /** 봇 자리 (호스트가 빈 자리를 봇으로 채웠다). 호스트가 입력을 대신 만들어 보낸다 */
   bot?: boolean
+  /** 캐릭터 기록 (레벨·장비·가방) — 시작할 때 모두가 같은 기록으로 판을 만든다 */
+  sheet?: Sheet
 }
 
 export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
-  | { t: 'hello'; char: string; ready: boolean; team: number; name: string }
+  | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet }
   /** 호스트 → 모두: 방 상태 정본 */
   | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; kind?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
@@ -162,7 +165,7 @@ export type CtlMessage =
    *   준비가 늦으면(8초) 호스트가 joinCancel 로 자리를 되돌리고 그 사람을 돌려보낸다(rejoinNo).
    * 기존 사람들은 3·4 사이에도 그 자리를 기다리지 않으므로 **난입 때문에 멈추는 일이 없다.**
    */
-  | { t: 'joinAsk'; char: string; name: string }
+  | { t: 'joinAsk'; char: string; name: string; sheet?: Sheet }
   /** 난입자 → 호스트: 모두와 연결됐다 (호스트가 준 피어 목록 기준) */
   | { t: 'joinReady' }
   /**
@@ -170,7 +173,7 @@ export type CtlMessage =
    * 이게 없으면 호스트가 아닌 사람은 난입자의 입력이 누구 것인지 몰라서 통째로 버리고,
    * 그 자리 입력을 영원히 기다리다 모두가 멈춘다(2026-09-06 제보).
    */
-  | { t: 'joinLive'; p: number; tick: number; char: string; team: number; name: string; id: string }
+  | { t: 'joinLive'; p: number; tick: number; char: string; team: number; name: string; id: string; sheet?: Sheet }
   /**
    * 호스트 → 모두: 자리 p 에 들어오기로 한 사람(id)의 배정을 물린다 (앉기 전에 나갔거나 준비가 늦었다).
    * 이게 없으면 그 자리에 유령이 소환되고 모두가 그 입력을 기다리다 멈춘다.

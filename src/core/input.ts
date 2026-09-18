@@ -33,20 +33,31 @@ export interface Input {
   buttons: number
   /** 캐릭터 선택 확정: 0 = 없음, n = CHARACTER_LIST[n-1] */
   char: number
+  /** 가방·장비 명령 (CMD_*, 0 = 없음) — UI 는 상태를 직접 바꾸지 않고 이것만 보낸다 (DESIGN 2장 3) */
+  cmd?: number
+  /** 명령 대상 (가방 칸 · 장비 칸) */
+  arg?: number
 }
 
-export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 }
+/** 가방 arg 칸을 낀다 (그 칸 종류의 장비와 자리를 바꾼다) */
+export const CMD_EQUIP = 1
+/** 장비 arg 칸을 벗어 가방에 */
+export const CMD_UNEQUIP = 2
+/** 가방 arg 칸을 바닥에 버린다 (모두에게 보인다 — 선물) */
+export const CMD_DROP = 3
+
+export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 
 export function cloneInput(i: Input): Input {
-  return { mx: i.mx, my: i.my, aim: i.aim, buttons: i.buttons, char: i.char, aimDist: i.aimDist ?? 0 }
+  return { mx: i.mx, my: i.my, aim: i.aim, buttons: i.buttons, char: i.char, aimDist: i.aimDist ?? 0, cmd: i.cmd ?? 0, arg: i.arg ?? 0 }
 }
 
 export function inputEquals(a: Input, b: Input): boolean {
-  return a.mx === b.mx && a.my === b.my && a.aim === b.aim && a.buttons === b.buttons && a.char === b.char && (a.aimDist ?? 0) === (b.aimDist ?? 0)
+  return a.mx === b.mx && a.my === b.my && a.aim === b.aim && a.buttons === b.buttons && a.char === b.char && (a.aimDist ?? 0) === (b.aimDist ?? 0) && (a.cmd ?? 0) === (b.cmd ?? 0) && (a.arg ?? 0) === (b.arg ?? 0)
 }
 
-/** 8바이트 직렬화 (2026-09-18: 버튼 16비트 — 스킬 셋 · APP_ID bedorage-rpg-v1) */
-export const INPUT_BYTES = 8
+/** 10바이트 직렬화 (2026-09-18: 버튼 16비트 — 스킬 셋, + 명령 2바이트 — 장비 · APP_ID bedorage-rpg-v1) */
+export const INPUT_BYTES = 10
 
 export function writeInput(view: DataView, offset: number, i: Input): void {
   view.setInt8(offset, i.mx)
@@ -55,6 +66,8 @@ export function writeInput(view: DataView, offset: number, i: Input): void {
   view.setUint16(offset + 4, i.buttons & 0xffff)
   view.setUint8(offset + 6, i.char & 255)
   view.setUint8(offset + 7, (i.aimDist ?? 0) & 255)
+  view.setUint8(offset + 8, (i.cmd ?? 0) & 255)
+  view.setUint8(offset + 9, (i.arg ?? 0) & 255)
 }
 
 export function readInput(view: DataView, offset: number): Input {
@@ -65,5 +78,7 @@ export function readInput(view: DataView, offset: number): Input {
     buttons: view.getUint16(offset + 4),
     char: view.getUint8(offset + 6),
     aimDist: view.getUint8(offset + 7),
+    cmd: view.getUint8(offset + 8),
+    arg: view.getUint8(offset + 9),
   }
 }

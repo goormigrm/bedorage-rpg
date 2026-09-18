@@ -16,6 +16,7 @@ import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './chara
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
+import { RARITY_COLORS, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
 export type { RenderOptions }
@@ -147,6 +148,9 @@ export class Renderer3D {
   private auras: THREE.Mesh[] = []
   /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
   private lastKiller = -1
+  /** 바닥 전리품 (id → 빛기둥). 내 것과 버려진 것만 보인다 (개인 전리품) */
+  private dropMeshes = new Map<number, THREE.Group>()
+  private localForDrops = -1
   private bulletPool: THREE.Group[] = []
   /** 명중·벽 섬광 (카메라를 보는 스프라이트, 커지며 사라진다) */
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
@@ -423,6 +427,32 @@ export class Renderer3D {
         case 'skill':
           this.onSkill(e, state, localPlayer)
           break
+        case 'loot': {
+          // 내 것(또는 버려진 것)만 보인다. 등급이 높을수록 크게 번쩍 — 전설은 주황 기둥이 솟는다
+          if (e.owner !== localPlayer && e.owner !== -1) break
+          const col = new THREE.Color(RARITY_COLORS[e.rarity]).getHex()
+          this.spawnRing(e.x * U, e.y * U, 0.2, 0.6 + e.rarity * 0.4, 0.5, col)
+          if (e.rarity >= 2) this.spawnImpact(e.x * U, 0.6, e.y * U, col, 1.5 + e.rarity)
+          break
+        }
+        case 'pickup': {
+          if (e.p !== localPlayer) break
+          const it = state.players[e.p].bag.find((b) => b.uid === e.uid)
+          if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
+          break
+        }
+        case 'levelup': {
+          const p = state.players[e.p]
+          if (!p) break
+          this.spawnRing(p.x * U, p.y * U, 0.3, 3, 0.8, 0xffd86a)
+          this.spawnImpact(p.x * U, 1.2, p.y * U, 0xffd86a, 4)
+          for (let k = 0; k < 24; k++) {
+            const a = (k / 24) * Math.PI * 2
+            this.spawnParticle(p.x * U, 0.4, p.y * U, Math.cos(a) * 0.06, 0.14 + Math.random() * 0.06, Math.sin(a) * 0.06, 1.1, k % 2 ? 0xffd86a : 0xfff3c0, 0.6)
+          }
+          this.hud.notice(e.p === localPlayer ? `레벨 ${e.level}!` : `${nm[e.p]} 레벨 ${e.level}`, '#ffd86a')
+          break
+        }
         case 'aoe':
           this.onAoe(e)
           break
@@ -726,6 +756,7 @@ export class Renderer3D {
     this.updateBullets(prev, curr, alpha)
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
+    this.updateDrops(curr, opts.localPlayer)
     this.updateZones(curr)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
@@ -743,6 +774,7 @@ export class Renderer3D {
       return { x: p.x, y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
     this.drawMonsterBars(curr)
+    this.drawDropLabels(curr, opts.localPlayer)
     this.hud.drawTexts(st)
     this.drawPings()
     this.drawMarkArrows()
@@ -1384,6 +1416,72 @@ export class Renderer3D {
         ;(rig.shield.material as THREE.MeshBasicMaterial).opacity = 0.28 + 0.1 * Math.sin(this.t * 9)
       }
     }
+  }
+
+  // ---------- 전리품 ----------
+  /** 바닥 전리품: 등급 색 빛기둥 + 작은 상자. 내 것·버려진 것만 (디아블로 개인 전리품) */
+  private updateDrops(curr: GameState, lp: number): void {
+    if (lp !== this.localForDrops) {
+      for (const g of this.dropMeshes.values()) this.scene.remove(g)
+      this.dropMeshes.clear()
+      this.localForDrops = lp
+    }
+    const live = new Set<number>()
+    for (const d of curr.drops) {
+      if (d.owner !== lp && d.owner !== -1) continue
+      live.add(d.id)
+      let g = this.dropMeshes.get(d.id)
+      if (!g) {
+        g = new THREE.Group()
+        const col = new THREE.Color(RARITY_COLORS[d.item.rarity])
+        const h = 0.8 + d.item.rarity * 0.7
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04 + d.item.rarity * 0.02, 0.1 + d.item.rarity * 0.03, h, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+        beam.position.y = h / 2
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.3), new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 }))
+        box.position.y = 0.08
+        box.castShadow = true
+        g.add(beam, box)
+        this.scene.add(g)
+        this.dropMeshes.set(d.id, g)
+      }
+      g.position.set(d.x * U, 0, d.y * U)
+      ;(g.children[1] as THREE.Mesh).rotation.y = this.t * 1.5 + d.id
+      ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.15 * Math.sin(this.t * 3 + d.id)
+    }
+    for (const [id, g] of this.dropMeshes) {
+      if (live.has(id)) continue
+      this.scene.remove(g)
+      this.dropMeshes.delete(id)
+    }
+  }
+
+  /** 가까운 전리품 이름표 (디아블로 4 처럼 바닥에 이름) */
+  private drawDropLabels(curr: GameState, lp: number): void {
+    if (lp < 0) return
+    const me = curr.players[lp]
+    const ctx = this.hud.ctx
+    ctx.save()
+    ctx.font = '700 12px "IBM Plex Sans KR", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    let n = 0
+    for (const d of curr.drops) {
+      if ((d.owner !== lp && d.owner !== -1) || n > 24) continue
+      if (Math.hypot(d.x - me.x, d.y - me.y) > 10 * 32) continue
+      const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
+      const name = itemName(d.item)
+      const w = ctx.measureText(name).width + 12
+      ctx.fillStyle = 'rgba(8,7,6,0.78)'
+      ctx.fillRect(s.x - w / 2, s.y - 9, w, 18)
+      ctx.strokeStyle = RARITY_COLORS[d.item.rarity]
+      ctx.globalAlpha = 0.6
+      ctx.strokeRect(s.x - w / 2 + 0.5, s.y - 8.5, w - 1, 17)
+      ctx.globalAlpha = 1
+      ctx.fillStyle = RARITY_COLORS[d.item.rarity]
+      ctx.fillText(name, s.x, s.y + 0.5)
+      n++
+    }
+    ctx.restore()
   }
 
   // ---------- 스킬 연출 ----------

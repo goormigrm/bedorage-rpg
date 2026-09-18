@@ -10,6 +10,8 @@ import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
 import { DEATH_RULE_LABEL, DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
 import { CHAR_SKILLS, SKILLS } from '../core/skills'
+import { sanitizeSheet } from '../core/items'
+import { exportSave, importSave, levelOf, sheetOf } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
@@ -95,6 +97,9 @@ export class Lobby {
     try {
       // 닉네임은 배도라지 덕과 **같은 키**다(같은 출처 goormigrm.github.io) — 두 게임을 오가도 닉네임이 그대로다
       this.nick = (localStorage.getItem('bd.nick') ?? '').slice(0, 8)
+      // 마지막으로 고른 캐릭터 (캐릭터 = 세이브 칸이라 다음에도 그 캐릭터로 이어 하게)
+      const last = localStorage.getItem('brpg.char') as CharacterId | null
+      if (last && last in CHARACTERS && isPlayable(last)) this.char = last
     } catch {
       /* 저장소 없음 */
     }
@@ -145,7 +150,9 @@ export class Lobby {
           <p class="hintline dim">게임 중인 방도 자리가 있으면 <b>난입</b>할 수 있습니다 (투기장 팀전은 난입 없음).</p>
         </div>
 
-        <div class="section-t">캐릭터 <small>1차 6명 · 무기가 모두 다르다. 원정 중에는 바꿀 수 없다</small></div>
+        <div class="section-t">캐릭터 <small>1차 6명 · 캐릭터마다 레벨·장비가 따로 큰다 (이 브라우저에 저장)</small>
+          <span class="savebtns"><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
+          <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></span></div>
         <div class="chars" id="chars"></div>
 
         <div class="dlg" id="dlg-host" hidden>
@@ -249,7 +256,7 @@ export class Lobby {
       // 한 줄에 한 명. 설명이 카드 안에서 세 줄로 접히면 읽히지 않아 행으로 편다 (2026-09-06 요청)
       el.innerHTML = `
         <canvas></canvas>
-        <div class="ct"><b>${c.name}</b><small>${c.basedOn} · ${WEAPONS[c.weapon].name} · HP ${c.maxHp}</small></div>
+        <div class="ct"><b>${c.name} <em class="lv">Lv ${levelOf(c.id)}</em></b><small>${c.basedOn} · ${WEAPONS[c.weapon].name} · HP ${c.maxHp}</small></div>
         <div class="pv"><b>${c.passiveName}</b> ${c.passiveDesc}
           <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div></div>`
       el.onclick = () => this.selectChar(c.id)
@@ -334,6 +341,19 @@ export class Lobby {
     nickEl.addEventListener('input', () => applyNick(false))
     nickEl.addEventListener('change', () => applyNick(true))
     ;(h.querySelector('#btn-refresh') as HTMLButtonElement).onclick = () => this.refreshRooms()
+    ;(h.querySelector('#btn-export') as HTMLButtonElement).onclick = () => exportSave()
+    const fileEl = h.querySelector('#file-import') as HTMLInputElement
+    fileEl.onchange = async () => {
+      const f = fileEl.files?.[0]
+      if (!f) return
+      try {
+        const n = await importSave(f)
+        this.status(`세이브를 불러왔습니다 — 캐릭터 ${n}명`, 'ok')
+        this.render()
+      } catch (e) {
+        this.status(`세이브를 불러오지 못했습니다: ${(e as Error).message}`, 'bad')
+      }
+    }
     ;(h.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => this.openDlg('#dlg-solo')
     ;(h.querySelector('#my-char') as HTMLButtonElement).onclick = () => h.querySelector('#chars')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     this.drawMyChar()
@@ -428,7 +448,7 @@ export class Lobby {
     const def = CHARACTER_LIST.find((c) => c.id === this.char)
     const el = this.host.querySelector('#my-char') as HTMLElement | null
     if (!def || !el) return
-    ;(el.querySelector('#my-char-name') as HTMLElement).textContent = def.name
+    ;(el.querySelector('#my-char-name') as HTMLElement).textContent = `${def.name} · Lv ${levelOf(def.id)}`
     el.style.setProperty('--c', '#' + def.bodyColor.toString(16).padStart(6, '0'))
     const cv = el.querySelector('canvas') as HTMLCanvasElement
     requestAnimationFrame(() => drawPortrait(cv, def))
@@ -436,6 +456,11 @@ export class Lobby {
 
   private selectChar(id: CharacterId): void {
     this.char = id
+    try {
+      localStorage.setItem('brpg.char', id)
+    } catch {
+      /* 저장 못 해도 이번엔 반영된다 */
+    }
     this.host.querySelectorAll('.char').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.id === id))
     this.drawMyChar()
     this.myReady = false
@@ -642,6 +667,8 @@ export class Lobby {
     this.handlers.onStart({
       mode: 'solo',
       kind: this.kind,
+      // 내 캐릭터 기록(레벨·장비)을 세이브에서 — 봇 자리는 세션이 내 레벨에 맞춰 만든다
+      sheets: [sheetOf(this.char)],
       chars,
       names: chars.map((_, i) => (i === 0 ? this.nick : '')),
       seed: (Math.random() * 0xffffffff) >>> 0,
@@ -679,7 +706,7 @@ export class Lobby {
     this.hostId = this.link.selfId
     this.myReady = false
     this.myTeam = 0
-    this.members = [{ id: this.link.selfId, char: this.char, ready: false, team: 0, name: this.nick }]
+    this.members = [{ id: this.link.selfId, char: this.char, ready: false, team: 0, name: this.nick, sheet: sheetOf(this.char) }]
     this.wireLink()
     this.announce()
     this.renderRoom()
@@ -760,7 +787,7 @@ export class Lobby {
     link.onPeerJoin((id) => {
       if (this.link !== link) return
       // 연결되는 피어마다 자리를 묻는다 (게스트는 무시하고, 호스트만 답한다)
-      link.sendCtl({ t: 'joinAsk', char: this.char, name: this.nick }, id)
+      link.sendCtl({ t: 'joinAsk', char: this.char, name: this.nick, sheet: sheetOf(this.char) }, id)
       if (!this.bargeSent) {
         this.bargeSent = true
         if (this.barging) this.showJoining(2)
@@ -918,13 +945,14 @@ export class Lobby {
       existing.char = m.char
       existing.ready = m.ready
       existing.name = name
+      existing.sheet = m.sheet ? sanitizeSheet(m.sheet) : undefined
       if (this.roomMode === 'teams') existing.team = m.team === 1 ? 1 : 0
     } else {
       if (this.members.length >= this.roomSize || this.starting) {
         this.link.sendCtl({ t: 'full' }, from)
         return
       }
-      this.members.push({ id: from, char: m.char, ready: false, team: this.autoTeam(), name })
+      this.members.push({ id: from, char: m.char, ready: false, team: this.autoTeam(), name, sheet: m.sheet ? sanitizeSheet(m.sheet) : undefined })
     }
     this.broadcastRoom()
     this.announce()
@@ -947,7 +975,7 @@ export class Lobby {
 
   private sendHello(to?: string): void {
     if (!this.link) return
-    this.link.sendCtl({ t: 'hello', char: this.char, ready: this.myReady, team: this.myTeam, name: this.nick }, to)
+    this.link.sendCtl({ t: 'hello', char: this.char, ready: this.myReady, team: this.myTeam, name: this.nick, sheet: sheetOf(this.char) }, to)
   }
 
   /** 내 캐릭터·준비·팀이 바뀌었다: 호스트면 정본 갱신 후 방송, 게스트면 hello */
@@ -960,6 +988,7 @@ export class Lobby {
         me.ready = this.myReady
         me.team = this.roomMode === 'teams' ? this.myTeam : 0
         me.name = this.nick
+        me.sheet = sheetOf(this.char)
       }
       this.broadcastRoom()
       this.announce()
@@ -1063,6 +1092,8 @@ export class Lobby {
       link,
       delay,
       peerIds: players.map((p) => p.id),
+      // 모두가 같은 기록으로 판을 만든다 (내 것은 세이브의 최신)
+      sheets: players.map((p) => (p.id === link.selfId ? sheetOf(p.char as CharacterId) : p.sheet ? sanitizeSheet(p.sheet) : undefined)),
       names: players.map((p) => p.name ?? ''),
       // id 가 빈 자리는 아직 아무도 없다 → 판에 나오지 않다가 난입으로 채워진다. 봇 자리는 처음부터 있다
       absent: players.map((p) => p.id === '' && !p.bot),

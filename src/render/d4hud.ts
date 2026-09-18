@@ -12,6 +12,7 @@ import { CHARACTERS, CharacterDef } from '../core/characters'
 import { CHAR_SKILLS, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { WEAPONS } from '../core/weapons'
+import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
@@ -304,14 +305,21 @@ export class D4Hud {
       drawWeaponGlyph(c, slotX(4) + S / 2, by + S / 2, me.weapon)
       c.restore()
     })
-    // 경험치 (아래 가는 막대 — 레벨은 M3)
+    // 경험치 (아래 가는 막대)
+    const xpK = Math.min(1, me.xp / xpNeed(me.level))
     c.fillStyle = 'rgba(255,255,255,0.06)'
     c.fillRect(bx + 20, by + S + 16, barW - 40, 3)
+    c.fillStyle = '#c9a24a'
+    c.fillRect(bx + 20, by + S + 16, (barW - 40) * xpK, 3)
     c.font = `700 11px ${SERIF}`
     c.fillStyle = GOLD
     c.textAlign = 'left'
     c.textBaseline = 'middle'
-    c.fillText('Lv 1', bx + 20, by + S + 26)
+    c.fillText(`Lv ${me.level}`, bx + 20, by + S + 26)
+    c.textAlign = 'right'
+    c.font = `600 10px ${SANS}`
+    c.fillStyle = '#8d8170'
+    c.fillText(`◈ ${me.gold}  ·  가방 ${me.bag.length} (I)`, bx + barW - 20, by + S + 26)
 
     // ---- 체력 오브 (왼쪽)
     const hpK = me.maxHp > 0 ? me.hp / me.maxHp : 0

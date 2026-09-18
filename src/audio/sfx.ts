@@ -231,6 +231,32 @@ export class Sfx {
         case 'bash':
           this.gun('pan', sp(e.x, e.y), e.p === localPlayer) // 개머리판 휘두르기 = 후라이팬 소리
           break
+        case 'pickup': {
+          if (e.p !== localPlayer) break
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5 + e.rarity * 0.15)
+          // 등급이 높을수록 높고 긴 음 — 전설은 세 음 화음
+          const f = [520, 660, 880, 990][e.rarity]
+          this.tone(b.node, b.t0, 0.12, 'triangle', f, f * 1.02, 0.35, 0.004)
+          if (e.rarity >= 2) this.tone(b.node, b.t0 + 0.08, 0.2, 'sine', f * 1.5, f * 1.5, 0.3, 0.004)
+          if (e.rarity >= 3) this.tone(b.node, b.t0 + 0.16, 0.4, 'sine', f * 2, f * 2, 0.3, 0.004)
+          break
+        }
+        case 'loot': {
+          // 전설이 떨어지면 따로 공들인 소리 (PLAN 6장)
+          if (e.rarity < 3 || (e.owner !== localPlayer && e.owner !== -1)) break
+          const b = this.bus(sp(e.x, e.y), 1)
+          for (const [i, f] of [392, 523, 659, 784, 1047].entries()) this.tone(b.node, b.t0 + i * 0.07, 0.6, 'sine', f, f, 0.25, 0.01)
+          break
+        }
+        case 'levelup': {
+          if (e.p !== localPlayer) break
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)
+          for (const [i, f] of [523, 659, 784, 1047, 1319].entries()) this.tone(b.node, b.t0 + i * 0.09, 0.5, 'triangle', f, f, 0.3, 0.01)
+          break
+        }
+        case 'equip':
+          if (e.p === localPlayer) this.blip()
+          break
         case 'hit':
           // 투기장: 플레이어가 플레이어를 맞힘 (덕 그대로)
           this.hit(sp(e.x, e.y), e.part === 0)

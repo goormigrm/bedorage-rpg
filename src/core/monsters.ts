@@ -45,8 +45,10 @@ export interface MonsterDef {
   knockRes: number
   /** 쓰러뜨리면 떨어지는 회복 구슬 확률 */
   globe: number
-  /** 경험치 (M3) */
+  /** 경험치 */
   xp: number
+  /** 쓰러뜨렸을 때 파티원마다 전리품이 떨어질 확률 (개인 전리품 — 각자 굴린다) */
+  loot: number
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -61,7 +63,7 @@ export const MONSTER_LIST: MonsterDef[] = [
     id: 'ghoul', idx: 0, name: '구울',
     hp: 70, speed: 2.7, r: 13,
     attack: 'melee', dmg: 16, range: 14, windup: 14, recover: 22, cooldown: 36, arc: deg(70),
-    knockRes: 0, globe: 0.05, xp: 6,
+    knockRes: 0, globe: 0.05, xp: 6, loot: 0.07,
   },
   {
     // 해골 궁수: 멀리서 느린 화살. 예고(조준선) 동안 옆으로 비키면 빗나간다
@@ -69,14 +71,14 @@ export const MONSTER_LIST: MonsterDef[] = [
     hp: 50, speed: 1.7, r: 12,
     attack: 'ranged', dmg: 15, range: 330, windup: 30, recover: 26, cooldown: 80,
     shotSpeed: 5.8, shotLife: 72, shotR: 7, keepDist: 210,
-    knockRes: 0.2, globe: 0.06, xp: 8,
+    knockRes: 0.2, globe: 0.06, xp: 8, loot: 0.09,
   },
   {
     // 부푼 시체: 느리게 다가와 붙으면 부풀었다가 터진다. 쓰러뜨려도 터진다(약하게) — 멀리서 잡거나, 몬스터 무리 속에서 터뜨린다
     id: 'bloater', idx: 2, name: '부푼 시체',
     hp: 130, speed: 1.5, r: 16,
     attack: 'explode', dmg: 55, range: 62, windup: 45, recover: 0, cooldown: 0, blast: 88,
-    knockRes: 0.6, globe: 0.12, xp: 10,
+    knockRes: 0.6, globe: 0.12, xp: 10, loot: 0.14,
   },
 ]
 

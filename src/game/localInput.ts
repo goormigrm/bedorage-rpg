@@ -52,6 +52,14 @@ export class LocalInput {
   pickerOpen = false
   /** 모바일 터치 조작 (없으면 null) */
   touch: TouchControls | null = null
+  /** 가방 창 같은 UI 가 열려 있다 — 클릭이 사격·스킬이 되지 않게 막는다 */
+  uiOpen = false
+  /** 가방·장비 명령 대기열 (한 틱에 하나씩 Input.cmd 로 나간다) */
+  private cmds: { cmd: number; arg: number }[] = []
+
+  queueCmd(cmd: number, arg: number): void {
+    if (this.cmds.length < 8) this.cmds.push({ cmd, arg })
+  }
 
   attach(stage: HTMLElement, touch: TouchControls | null = null): void {
     this.touch = touch
@@ -207,6 +215,9 @@ export class LocalInput {
     t?.takeSwap()
     const char = this.pendingChar
     this.pendingChar = 0
-    return { mx, my, aim: this.lastAim, buttons, char, aimDist: Math.min(255, Math.round(this.lastDist / 4)) }
+    // 창이 열려 있으면 사격·정조준·스킬은 막는다 (움직이고 구르는 것은 그대로 — 판은 멈추지 않는다)
+    if (this.uiOpen) buttons &= ~(BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT)
+    const c = this.cmds.shift()
+    return { mx, my, aim: this.lastAim, buttons, char, aimDist: Math.min(255, Math.round(this.lastDist / 4)), cmd: c?.cmd ?? 0, arg: c?.arg ?? 0 }
   }
 }

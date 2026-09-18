@@ -19,7 +19,7 @@ export function entryOf(map: GameMap): { x: number; y: number } {
   return map.spawns[0] ?? { x: map.pw / 2, y: map.ph / 2 }
 }
 
-export function makeMonster(state: GameState, kind: number, x: number, y: number, pack: number, hpMul: number): Monster {
+export function makeMonster(state: GameState, kind: number, x: number, y: number, pack: number, hpMul: number, pow = 100): Monster {
   const def = MONSTER_LIST[kind]
   const hp = Math.round(def.hp * hpMul)
   return {
@@ -50,6 +50,7 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     mark: 0,
     taunt: 0,
     tag: 0,
+    pow,
   }
 }
 
@@ -80,7 +81,7 @@ function packMembers(rng: Rng): number[] {
  * 층에 몬스터를 채운다. state.monsters 에 넣고 monstersTotal 을 정한다.
  * players = 자리 수 (인원 보정용).
  */
-export function populate(state: GameState, map: GameMap, seed: number, players: number): void {
+export function populate(state: GameState, map: GameMap, seed: number, players: number, level = 1): void {
   const rng = makeRng((seed ^ 0x51ed27) >>> 0)
   const entry = entryOf(map)
   const et = Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE)
@@ -130,7 +131,9 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
     }
     if (ok) centers.push(c)
   }
-  const hpMul = hpScaleFor(players)
+  // 파티 레벨만큼 몬스터도 세진다 (디아블로 3 처럼 내 레벨에 맞춘 세계): 레벨마다 체력 +10% · 피해 +6%
+  const hpMul = hpScaleFor(players) * (1 + 0.1 * (level - 1))
+  const pow = Math.round(100 * (1 + 0.06 * (level - 1)))
   centers.forEach((c, pack) => {
     const cx = (c % map.w) * TILE + TILE / 2
     const cy = ((c / map.w) | 0) * TILE + TILE / 2
@@ -167,7 +170,7 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
           }
         }
         if (clash) continue
-        const m = makeMonster(state, kind, x, y, pack, hpMul)
+        const m = makeMonster(state, kind, x, y, pack, hpMul, pow)
         m.aim = randInt(rng, 0, 1024)
         placed.push(m)
         break
