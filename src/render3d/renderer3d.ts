@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { MONSTER_LIST } from '../core/monsters'
+import { MONSTER_LIST, affixNames } from '../core/monsters'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
@@ -1588,14 +1588,15 @@ export class Renderer3D {
     for (const zn of curr.zones) {
       live.add(zn.id)
       let g = this.zoneMeshes.get(zn.id)
+      const fuse = zn.kind === ZONE_FUSE
       if (!g) {
         g = new THREE.Group()
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: fuse ? 0xff3a1a : 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: fuse ? 0xff5a2a : 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        const beam = new THREE.PointLight(0xfff0c0, 10, zn.r * U * 2.5, 1.4)
+        const beam = new THREE.PointLight(fuse ? 0xff4a20 : 0xfff0c0, fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
         beam.position.y = 3
         g.add(beam)
         this.scene.add(g)
@@ -1603,6 +1604,14 @@ export class Renderer3D {
       }
       g.position.set(zn.x * U, 0.04, zn.y * U)
       g.scale.set(zn.r * U, 1, zn.r * U)
+      if (fuse) {
+        // 폭발 예고: 안쪽 원이 바깥 테두리까지 차오르면 터진다
+        const k = 1 - zn.t / zn.max
+        ;(g.children[0] as THREE.Mesh).scale.setScalar(Math.max(0.05, k))
+        ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.25 + 0.35 * k
+        ;((g.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.4 * Math.sin(this.t * 18)
+        continue
+      }
       const fade = Math.min(1, zn.t / 60)
       ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.16 * fade + 0.04 * Math.sin(this.t * 4)
       ;((g.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.8 * fade
@@ -1780,6 +1789,12 @@ export class Renderer3D {
         ctx.textAlign = 'center'
         ctx.fillStyle = '#ffd86a'
         ctx.fillText(`정예 ${def.name}`, s0.x, s0.y - 4)
+        const af = affixNames(m.elite)
+        if (af) {
+          ctx.font = '600 9px system-ui, sans-serif'
+          ctx.fillStyle = '#e8b0ff'
+          ctx.fillText(af, s0.x, s0.y - 15)
+        }
       }
       ctx.globalAlpha = 1
     }

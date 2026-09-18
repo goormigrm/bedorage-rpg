@@ -102,6 +102,42 @@ export const CHARGE = { windup: 48, speed: 10, ticks: 30, dmg: 55, every: 60 * 7
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 
 /**
+ * 정예 접두 능력 (디아블로의 "빠른 · 불타는 …"). Monster.elite 는 비트 묶음 — 1 = 정예, 나머지 비트 = 능력.
+ * 1~2층은 하나, 3층부터 둘. 무리 rng 로 고르므로 결정론.
+ */
+export const EA_FAST = 2
+export const EA_STOUT = 4
+export const EA_VOLATILE = 8
+export const EA_SPLIT = 16
+export const EA_VAMP = 32
+export const ELITE_AFFIXES: { bit: number; name: string; desc: string }[] = [
+  { bit: EA_FAST, name: '빠름', desc: '이동 1.35배' },
+  { bit: EA_STOUT, name: '단단함', desc: '받는 피해 0.6배' },
+  { bit: EA_VOLATILE, name: '폭발', desc: '죽은 자리가 1초 뒤 터진다' },
+  { bit: EA_SPLIT, name: '분열', desc: '죽으면 구울 셋이 기어 나온다' },
+  { bit: EA_VAMP, name: '흡혈', desc: '때린 피해의 절반만큼 회복' },
+]
+export const AFFIX_TUNE = {
+  fast: 1.35,
+  stout: 0.6,
+  /** 폭발: 예고 틱 · 반경 · 피해(정예 pow 를 곱한다) */
+  fuseTicks: 60,
+  fuseR: 84,
+  fuseDmg: 40,
+  /** 분열: 나오는 구울 수 · 체력 비율(층 보정 곱한 뒤) */
+  splitN: 3,
+  splitHp: 0.6,
+  vamp: 0.5,
+}
+
+/** 정예 능력 이름들 ("빠름 · 폭발") */
+export function affixNames(elite: number): string {
+  return ELITE_AFFIXES.filter((a) => elite & a.bit)
+    .map((a) => a.name)
+    .join(' · ')
+}
+
+/**
  * 인원 보정: 몬스터 체력 배율. 4인이면 2.8배 (PLAN 5.9).
  * 전리품이 개인별이라 사람이 늘어도 나눠 먹지 않는다 — 몬스터만 단단해진다.
  */

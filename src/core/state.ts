@@ -295,6 +295,8 @@ export interface MShot {
   id: number
   /** 쏜 몬스터 종류 (렌더 색) */
   kind: number
+  /** 쏜 몬스터 id (흡혈 정예) */
+  by: number
   x: number
   y: number
   vx: number
@@ -340,8 +342,12 @@ export interface Zone {
   r: number
   t: number
   max: number
+  /** 폭발 예고(ZONE_FUSE)가 터질 때의 피해 */
+  dmg: number
 }
 export const ZONE_SPOTLIGHT = 0
+/** 폭발 정예가 죽은 자리: t 가 0 이 되면 터진다 (몬스터 편 — 플레이어만 다친다) */
+export const ZONE_FUSE = 1
 
 /** 던진 것 (수류탄) — t 가 0 이 되면 터진다 */
 export interface Throw {

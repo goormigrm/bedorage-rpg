@@ -15,7 +15,7 @@ import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSand
 import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
-import { CHARGE, DEATH_BLAST_MULT, ELITE, MONSTER_LIST, MonsterDef } from './monsters'
+import { AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef } from './monsters'
 import { entryOf, farPoint, floorSeed, makeMonster, populate } from './dungeon'
 import { Grid, flowField, flowStep } from './flow'
 import {
@@ -28,7 +28,7 @@ import {
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
-  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills,
+  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -52,6 +52,8 @@ const CHARGE_SPEED = 12
 
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
 const booms: { x: number; y: number; r: number; dmg: number; by: number }[] = []
+/** 분열 정예가 낳을 구울 (이번 틱 끝에 넣는다 — 몬스터 배열을 도는 중에 늘리지 않게) */
+const spawns: { x: number; y: number; pack: number; hpMul: number; pow: number }[] = []
 const grids = new WeakMap<GameMap, Grid>()
 
 function gridFor(map: GameMap): Grid {
@@ -404,6 +406,7 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
   stepBullets(state, map, grid)
   stepShots(state, map)
   runBooms(state, map, grid)
+  flushSpawns(state, map)
   // 쓰러진 몬스터를 뺀다 (순서 유지)
   if (state.monsters.some((m) => m.hp <= 0)) state.monsters = state.monsters.filter((m) => m.hp > 0)
   stepGlobes(state)
@@ -783,6 +786,11 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
   p.dmgTaken += dmg
   p.lastHitTick = state.tick
   state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg })
+  // 흡혈 정예: 때린 만큼 회복 (by = 몬스터 id)
+  if (by >= 0) {
+    const m = state.monsters.find((q) => q.id === by)
+    if (m && m.hp > 0 && m.elite & EA_VAMP) m.hp = Math.min(m.maxHp, m.hp + Math.round(dmg * AFFIX_TUNE.vamp))
+  }
   if (p.hp <= 0) {
     p.hp = 0
     p.downed = true
@@ -1190,7 +1198,7 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
       break
     }
     case 'spotlight':
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480 })
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480, dmg: 0 })
       break
     // ---- 매직덕
     case 'firstaid': {
@@ -1267,7 +1275,11 @@ function stepZones(state: GameState): void {
   let write = 0
   for (const z of state.zones) {
     z.t--
-    if (z.t <= 0) continue
+    if (z.t <= 0) {
+      // 몬스터 편 폭발: 대기열에 넣으면 이번 틱 runBooms 가 터뜨린다 (by -2 = 몬스터는 안 다친다)
+      if (z.kind === ZONE_FUSE) booms.push({ x: z.x, y: z.y, r: z.r, dmg: z.dmg, by: -2 })
+      continue
+    }
     if (z.kind === ZONE_SPOTLIGHT) {
       for (const m of state.monsters) {
         if (m.hp <= 0 || len(m.x - z.x, m.y - z.y) > z.r) continue
@@ -1491,6 +1503,7 @@ function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit
   if (m.hp <= 0 || dmg <= 0) return
   // 약화(생중계·스포트라이트): 받는 피해 증가
   if (m.vuln > 0 && m.vulnPct > 0) dmg = Math.round(dmg * (1 + m.vulnPct / 100))
+  if (m.elite & EA_STOUT) dmg = Math.max(1, Math.round(dmg * AFFIX_TUNE.stout))
   const shooter = by >= 0 ? state.players[by] : null
   if (shooter) {
     shooter.hits++
@@ -1526,6 +1539,33 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
     // 쓰러뜨려도 터진다 — 약하게
     if (def.attack === 'explode') booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round(def.dmg * DEATH_BLAST_MULT), by })
   }
+  if (m.elite & EA_VOLATILE) {
+    const t = AFFIX_TUNE.fuseTicks
+    state.zones.push({ id: state.nextFxId++, kind: ZONE_FUSE, owner: -1, x: m.x, y: m.y, r: AFFIX_TUNE.fuseR, t, max: t, dmg: Math.round((AFFIX_TUNE.fuseDmg * m.pow) / 100) })
+  }
+  if (m.elite & EA_SPLIT) {
+    // 정예 배율을 걷어 낸 층 보정만 물려준다
+    const hpMul = m.maxHp / (def.hp * ELITE.hp)
+    for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow) })
+  }
+}
+
+/** 분열로 나온 구울을 넣는다: 깨어 있고, 죽은 자리 둘레에 조금씩 벌려 놓는다 */
+function flushSpawns(state: GameState, map: GameMap): void {
+  if (spawns.length === 0) return
+  const ring = [[0, -1], [0.87, 0.5], [-0.87, 0.5], [0.87, -0.5], [-0.87, -0.5], [0, 1]]
+  for (let i = 0; i < spawns.length; i++) {
+    const s = spawns[i]
+    const d = ring[i % ring.length]
+    const r = moveCircle(map, s.x, s.y, MONSTER_LIST[0].r, d[0] * 14, d[1] * 14)
+    const g = makeMonster(state, 0, r.x, r.y, s.pack, s.hpMul, s.pow)
+    g.st = MS_CHASE
+    g.cd = 20 + i * 6
+    g.aim = (i * 341) & 1023
+    state.monsters.push(g)
+    state.monstersTotal++
+  }
+  spawns.length = 0
 }
 
 /** 괴물이 쓰러지면 가까운 파티원 **모두**에게 경험치·골드, 그리고 각자 몫의 전리품을 굴린다 (디아블로 3·4 개인 전리품) */
@@ -1641,6 +1681,7 @@ function runBooms(state: GameState, map: GameMap, grid: Grid): void {
       if (rayBlocked(map, b.x, b.y, p.x, p.y)) continue
       hurtPlayer(state, p, b.dmg, -1, b.x, b.y)
     }
+    if (b.by === -2) continue
     const hit: Monster[] = []
     grid.query(b.x - b.r - 20, b.y - b.r - 20, b.x + b.r + 20, b.y + b.r + 20, (i) => {
       const m = state.monsters[i]
@@ -1835,6 +1876,7 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
     dirY = (gy - m.y) / gd
   }
   let speed = away ? def.speed * 0.8 : def.speed
+  if (m.elite & EA_FAST) speed *= AFFIX_TUNE.fast
   if (m.slow > 0) speed *= 0.5
   const r = moveCircle(map, m.x, m.y, def.r, dirX * speed, dirY * speed)
   m.x = r.x
@@ -1862,7 +1904,7 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
     const sp = def.shotSpeed ?? 5
     const sx = m.x + cosA(a) * (def.r + 4)
     const sy = m.y + sinA(a) * (def.r + 4)
-    state.mshots.push({ id: state.nextShotId++, kind: m.kind, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
+    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
     state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: sx, y: sy })
     m.st = MS_RECOVER
     m.t = def.recover
@@ -1946,7 +1988,7 @@ function stepShots(state: GameState, map: GameMap): void {
       for (const p of state.players) {
         if (!isActive(p)) continue
         if (!segmentHitsCircle(px, py, s.x, s.y, p.x, p.y, PLAYER_RADIUS + s.r)) continue
-        if (hurtPlayer(state, p, s.dmg, -1, px, py)) {
+        if (hurtPlayer(state, p, s.dmg, s.by, px, py)) {
           dead = true
           break
         }

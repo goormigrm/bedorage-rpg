@@ -3,7 +3,7 @@
 // 모든 추첨은 시드로 만든 전용 Rng 로 한다(같은 시드 = 모든 브라우저에서 같은 배치).
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
-import { ELITE, MONSTER_LIST, hpScaleFor } from './monsters'
+import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor } from './monsters'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
 
@@ -206,6 +206,14 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
           m.elite = 1
           m.maxHp = m.hp = Math.round(m.hp * ELITE.hp)
           m.pow = Math.round(m.pow * ELITE.pow)
+          // 접두 능력: 1~2층은 하나, 3층부터 둘 (겹치지 않게)
+          const want = state.floor >= 3 ? 2 : 1
+          for (let n = 0; n < want; ) {
+            const a = ELITE_AFFIXES[randInt(rng, 0, ELITE_AFFIXES.length)]
+            if (m.elite & a.bit) continue
+            m.elite |= a.bit
+            n++
+          }
         }
         placed.push(m)
         break
