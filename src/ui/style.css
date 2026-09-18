@@ -1,0 +1,450 @@
+/* 배도라지RPG (배도라지 덕에서 가져옴) — 로비·대기실·게임 화면 스타일.
+   톤: 깊은 남색 바탕 + 유리질 패널 + 금선 헤더 + 초록 유리 진행 버튼 (개리그 매니저 팀 선택 화면 계열) */
+:root {
+  --bg: #0d1117;
+  --bg-2: #11161d;
+  --panel: #161b22;
+  --panel-2: #1c232c;
+  --panel-3: #21262d;
+  --ink: #e6edf3;
+  --ink-2: #a9b4c0;
+  --ink-3: #7d8896;
+  --line: #30363d;
+  --line-2: #232c37;
+  --duck: #ffd84a;
+  --duck-ink: #1e2219;
+  --gold: #e3b341;
+  --acc: #2ea8ff;
+  --ok: #3fb950;
+  --risk: #f85149;
+  --team-a: #5aa9ff;
+  --team-b: #ff6a5a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overscroll-behavior: none; }
+body { font-family: "IBM Plex Sans KR", "Malgun Gothic", "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+#app { min-height: 100%; }
+button { font-family: inherit; }
+
+/* ---- 로비 ---- */
+.lobby { max-width: 1040px; margin: 0 auto; padding: 36px 24px 80px; position: relative; }
+/* 상단 무대 조명: 금빛·푸른빛 광원 두 개 */
+.lobby::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 360px; pointer-events: none;
+  background:
+    radial-gradient(520px 200px at 18% -40px, rgba(227,179,65,.13), transparent 70%),
+    radial-gradient(680px 240px at 82% -70px, rgba(47,129,247,.10), transparent 70%);
+}
+.lobby > * { position: relative; }
+.lobby .season {
+  display: inline-block; font: 800 11px "IBM Plex Mono", monospace; letter-spacing: 2.5px; color: #e3b341cc;
+  border: 1px solid #e3b34144; border-radius: 20px; padding: 3px 12px; margin-bottom: 10px;
+  background: linear-gradient(180deg, #e3b3411a, #e3b34108); text-transform: uppercase;
+}
+.lobby h1 { font-family: "Black Han Sans", sans-serif; font-weight: 400; font-size: 60px; line-height: 1.05; margin: 0 0 6px; letter-spacing: -.01em; }
+.lobby h1 .t1 {
+  background: linear-gradient(115deg, #f6f2e4 0%, #e9e2c9 40%, #fff 55%, #d9d2b8 74%, #f6f2e4 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.lobby h1 .t2 {
+  background: linear-gradient(115deg, #f6d47c 0%, #ffd84a 34%, #fff2cd 52%, #d99c20 74%, #f6d47c 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 10px rgba(227,179,65,.22));
+}
+.lobby .tag { color: var(--ink-2); margin: 0 0 12px; font-size: 14.5px; }
+.lobby .tag b { color: var(--ink); font-weight: 600; }
+.lobby .tag a { color: var(--ink-2); }
+.feats { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
+.feats span { font-size: 11.5px; color: #c9d4e0; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 20px; padding: 3.5px 11px; white-space: nowrap; }
+
+/* 구분 머리말: 배지 + 가는 금선 */
+.section-t { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; font: 800 12.5px "IBM Plex Sans KR", sans-serif; color: #f0f6fc; letter-spacing: .02em; }
+.section-t::before { content: ""; width: 4px; height: 14px; border-radius: 2px; background: linear-gradient(180deg, #f0c860, #d99c20); box-shadow: 0 0 8px rgba(227,179,65,.35); }
+.section-t::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(227,179,65,.35), rgba(227,179,65,.06) 60%, transparent); }
+.section-t small { font-weight: 500; color: var(--ink-3); font-size: 11.5px; }
+.section-t input.nick { margin-left: auto; font: 600 13px "IBM Plex Sans KR", sans-serif; background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; width: 150px; }
+.section-t input.nick:focus { outline: 2px solid var(--duck); border-color: transparent; }
+.section-t input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,73,.25); }
+
+/* 캐릭터: 한 줄에 한 명 (초상 · 이름 · 패시브 설명). 카드에 세 줄로 접히면 설명이 안 읽힌다 */
+.chars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.char {
+  position: relative; overflow: hidden; background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 7px 12px 7px 8px; cursor: pointer; text-align: left; color: var(--ink);
+  display: grid; grid-template-columns: 46px 168px minmax(0, 1fr); align-items: center; column-gap: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 4px 12px rgba(0,0,0,.22);
+  transition: transform .12s, border-color .12s, box-shadow .12s;
+}
+.char::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c, #888); opacity: .85; }
+.char:hover { transform: translateX(2px); border-color: #46525f; }
+.char.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset, 0 6px 18px rgba(227,179,65,.18); }
+.char canvas { width: 46px; height: 46px; }
+.char .ct { min-width: 0; }
+.char .ct b { display: block; font-size: 15px; line-height: 1.2; }
+.char .ct small { display: block; color: var(--ink-3); font-size: 11px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char .pv { color: #c9d4e0; font-size: 12.5px; line-height: 1.45; min-width: 0; white-space: pre-line; }
+.char .pv b { display: inline; font-size: 12.5px; color: var(--gold); margin-right: 4px; }
+@media (max-width: 700px) {
+  .char { grid-template-columns: 40px minmax(0, 1fr); row-gap: 2px; }
+  .char canvas { width: 40px; height: 40px; }
+  .char .pv { grid-column: 1 / -1; }
+}
+
+/* 모드 패널 */
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 8px; }
+@media (max-width: 860px) { .modes { grid-template-columns: minmax(0,1fr); } }
+.mode {
+  position: relative; background: linear-gradient(180deg, #131922, var(--panel) 46%); border: 1px solid #2c3644; border-radius: 14px; padding: 18px 18px 16px;
+  display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 12px 30px rgba(0,0,0,.35);
+}
+.mode h2 { font-family: "Black Han Sans", sans-serif; font-weight: 400; font-size: 23px; margin: 0; display: flex; align-items: center; gap: 8px; }
+.mode h2 .k { font: 800 10.5px "IBM Plex Mono", monospace; color: var(--gold); border: 1px solid #e3b34155; border-radius: 999px; padding: 1px 8px; letter-spacing: .08em; background: #e3b34112; }
+.mode p { margin: 0; color: var(--ink-2); font-size: 13px; min-height: 40px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row label { font: 700 10.5px "IBM Plex Mono", monospace; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; min-width: 100%; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg-2); }
+.seg button { background: transparent; border: 0; color: var(--ink-2); padding: 6px 12px; font: 500 13px "IBM Plex Sans KR", sans-serif; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: linear-gradient(180deg, #ffe27a, #e6b52e); color: var(--duck-ink); font-weight: 700; }
+.seg button:focus-visible { outline: 2px solid var(--duck); outline-offset: -2px; }
+.maprow { display: grid; grid-template-columns: minmax(0,1fr) 260px; gap: 16px; align-items: start; margin-bottom: 22px; }
+@media (max-width: 760px) { .maprow { grid-template-columns: minmax(0,1fr); } }
+.maprow p { margin: 8px 0 0; }
+.hintline.dim { color: #5f6a76; }
+canvas.mappv { width: 260px; height: 150px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-2); display: block; }
+select.sel { background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: 500 13px "IBM Plex Sans KR", sans-serif; cursor: pointer; }
+select.sel:focus { outline: 2px solid var(--duck); border-color: transparent; }
+input.code { font: 600 18px "IBM Plex Mono", monospace; letter-spacing: .2em; text-transform: uppercase; background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; width: 100%; }
+input.code:focus { outline: 2px solid var(--duck); border-color: transparent; }
+
+/* 버튼: 기본은 노란 채움, main 은 초록 유리 + 지나가는 빛, secondary 는 테두리 */
+.btn { position: relative; background: linear-gradient(180deg, #ffe27a, #e6b52e); color: var(--duck-ink); border: 1px solid #b98c1a; border-radius: 9px; padding: 9px 16px; font: 700 14px "IBM Plex Sans KR", sans-serif; cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255,255,255,.35) inset, 0 3px 10px rgba(0,0,0,.3); transition: filter .14s, transform .08s; }
+.btn:hover:not(:disabled) { filter: brightness(1.06); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn.secondary { background: transparent; color: var(--ink-2); border: 1px solid var(--line); box-shadow: none; }
+.btn.secondary:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: #4a545f; }
+.btn.main {
+  overflow: hidden; padding: 12px 22px; font-size: 15px; font-weight: 900; letter-spacing: -.2px; color: #eafff0; border-radius: 11px;
+  background: linear-gradient(160deg, #1f7c37 0%, #166529 46%, #0e4d1e 100%); border: 1px solid #3fae5c66; text-shadow: 0 1px 2px rgba(0,0,0,.35);
+  box-shadow: 0 1px 0 rgba(255,255,255,.13) inset, 0 -10px 22px rgba(0,0,0,.20) inset, 0 4px 14px rgba(46,160,67,.24), 0 2px 5px rgba(0,0,0,.30);
+}
+.btn.main::after { content: ""; position: absolute; top: -40%; bottom: -40%; width: 42px; left: -64px; background: linear-gradient(100deg, transparent, rgba(255,255,255,.16), transparent); transform: skewX(-18deg); animation: sheen 5.2s ease-in-out infinite; pointer-events: none; }
+@keyframes sheen { 0%, 62% { left: -70px; opacity: 0; } 68% { opacity: 1; } 84%, 100% { left: calc(100% + 40px); opacity: 0; } }
+.btn.main:hover:not(:disabled) { filter: brightness(1.12); border-color: #4ec96299; }
+.btn:disabled { opacity: .45; cursor: default; filter: none; }
+.btn:disabled::after { display: none; }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.hintline { color: var(--ink-3); font-size: 12.5px; }
+
+/* 방 목록 */
+.rooms { display: flex; flex-direction: column; gap: 6px; min-height: 60px; max-height: 220px; overflow-y: auto; }
+.rooms .empty { color: var(--ink-3); font-size: 13px; padding: 8px 0; }
+.room { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px; font-size: 13.5px; }
+.room small { color: var(--ink-3); }
+.room .btn { padding: 6px 12px; font-size: 13px; }
+.pill { font: 700 10px "IBM Plex Mono", monospace; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; color: var(--ink-3); margin-right: 4px; background: var(--panel-3); }
+.pill.ok { color: #7ee787; border-color: #2ea04355; background: #2ea04322; }
+
+/* ---- 최근 전적 (브라우저에만 남는 기록) ---- */
+.section-t .lnk { margin-left: auto; }
+.lnk {
+  background: none; border: 0; color: var(--ink-3); font: 600 11.5px "IBM Plex Sans KR", sans-serif;
+  cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.lnk:hover { color: var(--duck); background: #ffd84a12; }
+/* ---- 대기실 (방 화면) ---- */
+.status {
+  position: relative; overflow: hidden; background: linear-gradient(180deg, #131922, #0d1117 46%); border: 1px solid #2c3644; border-radius: 16px; padding: 20px 22px; margin-top: 18px; display: none;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.05) inset; animation: pop .22s cubic-bezier(.2,.9,.3,1.15);
+}
+.status::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 120px; pointer-events: none;
+  background: radial-gradient(150% 130% at 12% -30%, rgba(47,129,247,.22), transparent 58%), radial-gradient(130% 120% at 95% -40%, rgba(227,179,65,.16), transparent 55%); }
+.status::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2.5px; background: linear-gradient(90deg, var(--gold), var(--acc) 60%, transparent); }
+.status > * { position: relative; }
+@keyframes pop { from { transform: translateY(10px) scale(.985); opacity: 0; } to { transform: none; opacity: 1; } }
+.status.show { display: block; }
+.status .link { font: 500 13px "IBM Plex Mono", monospace; color: var(--ink-2); word-break: break-all; margin: 6px 0 2px; }
+.status .st { color: var(--ink); margin-top: 14px; font-size: 15px; font-weight: 600; line-height: 1.5; }
+.status .st.ok { color: #7ee787; }
+.status .st.bad { color: #ff9d95; }
+.room-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.room-head .section-t { margin: 0; }
+.room-head .section-t::after { display: none; }
+.slots { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; align-items: stretch; margin-top: 12px; }
+@media (max-width: 760px) { .slots { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.slot { position: relative; overflow: hidden; background: linear-gradient(180deg, #161d27, #11161d); border: 1px solid #2a3441; border-radius: 12px; padding: 13px 15px 14px; min-height: 108px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; transition: border-color .14s, box-shadow .14s; }
+.slot::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2.5px; background: linear-gradient(90deg, #4a545f, transparent); }
+.slot.mine { border-color: #e3b34166; }
+.slot.mine::before { background: linear-gradient(90deg, var(--gold), transparent); }
+.slot.ready { border-color: #3fb95088; box-shadow: 0 0 0 1px #3fb95044 inset, 0 6px 18px rgba(63,185,80,.14); }
+.slot.ready::before { background: linear-gradient(90deg, var(--ok), transparent); }
+.slot.empty { opacity: .45; border-style: dashed; background: transparent; box-shadow: none; }
+.slot .who { font: 700 11px "IBM Plex Mono", monospace; color: var(--ink-2); letter-spacing: .06em; display: flex; align-items: center; gap: 6px; }
+.slot .cname { font-family: "Black Han Sans", sans-serif; font-size: 25px; line-height: 1.25; margin: 6px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f0f6fc; text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.slot .rd { font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.slot.empty .cname { font-family: "IBM Plex Sans KR", sans-serif; font-size: 16px; font-weight: 600; color: var(--ink-2); }
+.slot.ready .rd { color: #7ee787; }
+.slot .team { font: 800 10px "IBM Plex Mono", monospace; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; letter-spacing: .04em; }
+.slot .team-a { color: var(--team-a); background: #5aa9ff14; }
+.slot .team-b { color: var(--team-b); background: #ff6a5a14; }
+.room-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.room-actions .btn { padding: 10px 22px; font-size: 15px; }
+/* 방 설정 한 줄: 항목마다 작은 라벨 + 값. 한 문장으로 붙여 쓰면 눈에 안 들어온다 */
+.setrow { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 10px 0 2px; }
+.setrow span { display: inline-flex; align-items: baseline; gap: 6px; font-size: 14px; color: var(--ink);
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 5px 11px; }
+.setrow b { font: 700 10.5px "IBM Plex Mono", monospace; color: var(--ink-3); letter-spacing: .08em; }
+.roomhint { margin: 12px 0 0; font-size: 13.5px; color: var(--ink-3); }
+.foot { margin-top: 32px; color: var(--ink-3); font-size: 12px; font-family: "IBM Plex Mono", monospace; line-height: 1.7; }
+.foot a { color: var(--ink-2); }
+
+/* ---- 게임 화면 ---- */
+.game-root { position: fixed; inset: 0; background: var(--bg); overflow: hidden; cursor: none; }
+/* 화면보다 큰 요소를 flex 로 가운데 두면 한쪽으로 쏠린다(폰에서 오른쪽으로 붙던 원인).
+   절반씩 되돌리는 translate 로 정확히 가운데. 크기·배율은 session.fit() 이 넣는다. */
+.game-stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px;
+  transform: translate(-50%, -50%); transform-origin: center; }
+.game-stage > canvas { position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; }
+.game-stage > canvas.hud { pointer-events: none; }
+.game-ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.game-ui .top-right { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; pointer-events: auto; cursor: default; }
+.game-ui .btn { padding: 6px 12px; font-size: 13px; }
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; background: rgba(4,7,11,.45); }
+.overlay[hidden] { display: none; }
+.overlay .box { background: linear-gradient(180deg, #131922, #0d1117 46%); border: 1px solid #2c3644; border-radius: 16px; padding: 24px 28px; min-width: 360px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.05) inset; animation: pop .22s cubic-bezier(.2,.9,.3,1.15); }
+.overlay h2 { font-family: "Black Han Sans", sans-serif; font-weight: 400; font-size: 34px; margin: 0 0 8px; }
+.overlay p { color: var(--ink-2); margin: 0 0 16px; }
+.overlay p b { color: var(--gold); }
+.overlay .row { justify-content: center; }
+.keys { position: absolute; left: 0; right: 0; bottom: 0; height: 34px; display: flex; align-items: center; justify-content: center;
+  font: 500 11px "IBM Plex Mono", monospace; color: var(--ink-3); background: linear-gradient(180deg, rgba(13,17,23,0), rgba(13,17,23,.85) 55%); white-space: nowrap; }
+.keys b { color: var(--duck); font-weight: 600; }
+
+/* ---- 캐릭터 교체 창 (리스폰 대기 중) ---- */
+.overlay .box.picker { min-width: 900px; max-width: 1100px; }
+.picker .pick-grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px; margin: 8px 0 12px; }
+.pick { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 8px; cursor: pointer; color: var(--ink); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform .12s, border-color .12s; }
+.pick:hover { border-color: var(--gold); transform: translateY(-2px); }
+.pick.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.pick canvas { width: 60px; height: 60px; }
+.pick b { font-size: 14px; }
+.pick small { color: var(--ink-3); font-size: 11px; line-height: 1.3; }
+.pick .key { font: 700 10px "IBM Plex Mono", monospace; color: var(--gold); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; }
+
+/* ---- 모바일: 가로 화면 전용 안내 ---- */
+#rotate { display: none; position: fixed; inset: 0; z-index: 100; background: var(--bg); color: var(--ink);
+  align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 24px; }
+#rotate .icon { font-size: 54px; animation: rot 2.2s ease-in-out infinite; }
+#rotate b { font-family: "Black Han Sans", sans-serif; font-weight: 400; font-size: 26px; }
+#rotate p { color: var(--ink-2); margin: 0; font-size: 14px; }
+@keyframes rot { 0%, 40% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+@media (pointer: coarse) and (orientation: portrait) {
+  #rotate { display: flex; }
+}
+/* 터치 조작 중에는 키보드 안내를 감춘다 (버튼으로 대체) */
+.game-root.touching .keys { display: none; }
+@media (pointer: coarse) {
+  .keys { display: none; }
+  .lobby { padding: 20px 14px 60px; }
+  .lobby h1 { font-size: 44px; }
+}
+
+/* ---- 모바일 터치 조작 ---- */
+/* 루트는 이벤트를 받지 않는다. 조작 요소만 받는다 → 위에 뜬 창(로비로 등)이 정상적으로 눌린다 */
+.touch-ui { position: fixed; inset: 0; z-index: 4; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+.touch-ui[hidden] { display: none; }
+.tzone { position: fixed; top: 64px; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; }
+.tzone.move { left: 0; }
+.tzone.fire { right: 0; }
+.tzone.fire span { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); white-space: nowrap;
+  font: 600 11px "IBM Plex Sans KR", sans-serif; color: rgba(230,237,243,.3); pointer-events: none; }
+.tzone.fire.on { background: radial-gradient(circle at 70% 60%, rgba(255,216,74,.10), transparent 60%); }
+.tstick { position: fixed; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%;
+  border: 2px solid rgba(230,237,243,.22); background: rgba(13,17,23,.3); pointer-events: none; }
+.tstick i { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%;
+  background: rgba(230,237,243,.3); border: 2px solid rgba(255,255,255,.4); display: block; }
+.tbtns { position: fixed; right: 12px; bottom: 12px; display: grid; grid-template-columns: auto auto;
+  grid-template-areas: "reload ads" "swap dash" "sprint mark" "emote emote" "fire fire"; gap: 9px; justify-items: end; }
+.tbtn { width: 62px; height: 62px; border-radius: 50%; border: 1px solid var(--line); background: rgba(22,27,34,.72);
+  color: var(--ink-2); font: 600 12px "IBM Plex Sans KR", sans-serif; cursor: pointer; padding: 0; pointer-events: auto;
+  -webkit-tap-highlight-color: transparent; touch-action: none; }
+.tbtn[data-a="reload"] { grid-area: reload; }
+.tbtn[data-a="swap"] { grid-area: swap; }
+.tbtn[data-a="ads"] { grid-area: ads; }
+.tbtn[data-a="dash"] { grid-area: dash; }
+.tbtn[data-a="mark"] { grid-area: mark; }
+.tbtn[data-a="sprint"] { grid-area: sprint; }
+.tbtn[data-a="emote"] { grid-area: emote; width: 62px; height: 44px; border-radius: 22px; font-size: 13px; }
+.tbtn.big { grid-area: fire; width: 100%; height: 62px; border-radius: 34px; font-size: 15px; font-weight: 700;
+  color: var(--duck); border-color: rgba(255,216,74,.45); background: rgba(255,216,74,.14); }
+.tbtn.on { background: linear-gradient(180deg, #ffe27a, #e6b52e); color: var(--duck-ink); border-color: #b98c1a; }
+.tbtn.menu { position: fixed; right: calc(env(safe-area-inset-right, 0px) + 12px);
+  top: calc(env(safe-area-inset-top, 0px) + 10px); width: 46px; height: 46px; font-size: 20px; }
+@media (max-height: 420px) {
+  .tstick { width: 112px; height: 112px; margin: -56px 0 0 -56px; }
+  .tstick i { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+  .tbtn { width: 54px; height: 54px; font-size: 11px; }
+  .tbtn.big { height: 50px; font-size: 14px; }
+  .tbtns { gap: 7px; }
+}
+
+/* ---- 모바일 상단: 점수판(캔버스 중앙)과 버튼이 겹치지 않게 ---- */
+/* stage 안에 두면 축소돼서 누르기 어렵고, 4인 점수판이 넓어지면 겹친다.
+   터치 기기에서는 실제 화면 우상단에 고정하고 크기를 손가락에 맞춘다. */
+/* 터치 조작 중에는 소리·로비로가 ≡ 메뉴 안으로 들어간다. 상단에는 ≡ 하나만 둔다.
+   미디어 쿼리가 아니라 클래스로 판단해야 ?touch=1 로 PC 에서 시험할 때도 같게 보인다 */
+.game-root.touching .game-ui .top-right { display: none; }
+
+/* ---- 결과 화면 통계표 ---- */
+.overlay .box .stats { margin: 4px 0 14px; }
+.stats table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.stats th { font: 600 11px "IBM Plex Mono", monospace; color: var(--ink-3); letter-spacing: .04em;
+  padding: 4px 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; text-align: left; }
+.stats td { padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.stats td.n { text-align: right; font-variant-numeric: tabular-nums; font-family: "IBM Plex Mono", monospace; }
+.stats td.nick { color: var(--ink); font-weight: 600; }
+.stats tr.me td { background: rgba(255,216,74,.07); color: var(--ink); }
+.stats tr.me td.nick { color: var(--gold); }
+.statsnote { font-size: 11.5px; color: var(--ink-3); margin: 8px 0 0; }
+
+/* ---- 로비 2열 배치 (PC: 방 목록·내 방이 왼쪽 / 모바일: 맨 위) ---- */
+.lobby-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
+.side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 16px; }
+.mainpane { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+@media (max-width: 980px) {
+  /* 좁은 화면·모바일: 방 목록과 내 방이 맨 위로 온다 */
+  .lobby-grid { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; }
+}
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 13px;
+  display: flex; flex-direction: column; gap: 9px; }
+.card h2 { font-family: "Black Han Sans", sans-serif; font-weight: 400; font-size: 21px; margin: 0;
+  display: flex; align-items: center; gap: 8px; }
+.card h2 .k { font: 500 10px "IBM Plex Mono", monospace; color: var(--gold); border: 1px solid currentColor;
+  border-radius: 999px; padding: 1px 7px; letter-spacing: .06em; }
+.card .cardp { margin: 0; color: var(--ink-2); font-size: 13px; }
+.rooms-card .rooms { max-height: 260px; }
+/* 사이드가 좁으므로 대기실 자리 카드는 세로로 쌓는다 */
+.side .slots { grid-template-columns: minmax(0, 1fr); }
+.side .slots .vs { display: none; }
+.side .status { margin-top: 0; }
+
+/* ---- 닉네임 카드 (사이드 맨 위) ---- */
+.nick-card { border-color: #3a4457; }
+/* 아직 안 정했으면 눈에 띄게 — 참가를 누르고 나서야 알게 되면 늦다 */
+.nick-card.empty { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(255,216,74,.25) inset, 0 8px 30px rgba(255,216,74,.07); }
+.nick-card.empty h2 .k { background: var(--gold); color: #17202b; border-color: transparent; }
+input.nick.big { font: 700 20px "IBM Plex Sans KR", sans-serif; letter-spacing: .02em; background: var(--bg);
+  color: var(--ink); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 14px; width: 100%; }
+input.nick.big::placeholder { color: var(--ink-3); font-weight: 500; }
+input.nick.big:focus { outline: 2px solid var(--gold); border-color: transparent; }
+input.nick.big.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,73,.25); }
+
+/* 방 목록 새로고침 */
+.card h2 .lnk.refresh { margin-left: auto; font: 600 11px "IBM Plex Sans KR", sans-serif; color: var(--ink-2);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; cursor: pointer; }
+.card h2 .lnk.refresh:hover { color: var(--ink); border-color: var(--line-2); }
+.card h2 .lnk.refresh:disabled { opacity: .5; cursor: default; }
+
+/* 난입 진행 화면 — 로비를 덮어 "들어가는 중" 을 확실히 보여 준다 (2026-09-05) */
+.joining { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: rgba(6, 9, 14, .82); backdrop-filter: blur(3px); }
+/* display:grid 가 기본 [hidden] 을 덮으므로 명시한다 (안 하면 로비 첫 화면에 그대로 떠 있다) */
+.joining[hidden] { display: none; }
+.joining .jbox { width: min(420px, 88vw); background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--gold); border-radius: 16px; padding: 26px 24px 20px; text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,216,74,.15) inset; }
+.joining h3 { margin: 14px 0 4px; font: 800 20px "IBM Plex Sans KR", sans-serif; color: var(--ink); }
+.joining .jspin { width: 46px; height: 46px; margin: 0 auto; border-radius: 50%;
+  border: 4px solid rgba(255,216,74,.18); border-top-color: var(--duck); animation: jspin .8s linear infinite; }
+@keyframes jspin { to { transform: rotate(360deg); } }
+.joining .jsteps { list-style: none; margin: 14px auto 8px; padding: 0; display: flex; flex-direction: column; gap: 6px;
+  width: fit-content; text-align: left; }
+.joining .jsteps li { font-size: 13.5px; color: var(--ink-3); padding-left: 24px; position: relative; }
+.joining .jsteps li::before { content: "○"; position: absolute; left: 4px; }
+.joining .jsteps li.now { color: var(--duck); font-weight: 700; }
+.joining .jsteps li.now::before { content: "▸"; }
+.joining .jsteps li.done { color: var(--ok); }
+.joining .jsteps li.done::before { content: "✓"; }
+.joining .jhint { color: var(--ink-3); font-size: 12.5px; margin: 6px 0 14px; }
+.joining .btn { min-width: 96px; }
+
+/* ===== 로비 재구성 (2026-09-05): 상단 바 · 가로 방 목록 · 설정은 창으로 ===== */
+.topbar { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin: 8px 0 14px; }
+.topbar .nickwrap { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; max-width: 420px; }
+.topbar .nickwrap label { font: 700 13px "IBM Plex Sans KR", sans-serif; color: var(--gold); letter-spacing: .02em; }
+.topbar .nickwrap.empty label::after { content: " · 먼저 정하세요"; color: var(--risk); font-weight: 600; }
+.topbar .topacts { display: flex; gap: 10px; flex: 0 0 auto; }
+.btn.lg { padding: 14px 26px; font-size: 16px; border-radius: 12px; }
+.card.wide { width: 100%; }
+/* 방 목록: 한 줄에 한 방, 열이 맞아야 맵·모드·목표가 한눈에 읽힌다 */
+.rhead, .rooms .room { display: grid; grid-template-columns: minmax(120px, 1.3fr) 1fr .8fr .7fr .7fr 1fr auto; align-items: center; column-gap: 10px; }
+.rhead { padding: 4px 12px 8px; font: 700 11.5px "IBM Plex Sans KR", sans-serif; color: var(--ink-3); letter-spacing: .04em; border-bottom: 1px solid var(--line-2); margin-bottom: 6px; }
+.rhead[hidden] { display: none; }
+.rooms { max-height: none; overflow: visible; }
+.rooms .room { padding: 10px 12px; font-size: 13.5px; }
+.rooms .room .rhost b { color: var(--ink); }
+.rooms .room .rmap, .rooms .room .rmode, .rooms .room .rkill, .rooms .room .rcount { color: var(--ink-2); }
+.rooms .room .ract { text-align: right; }
+.rooms .room .ract .btn { padding: 8px 16px; }
+.pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 10px 0 4px; font: 600 12.5px "IBM Plex Mono", monospace; color: var(--ink-2); }
+.pager[hidden] { display: none; }
+.btn.sm { padding: 6px 12px; font-size: 12px; }
+@media (max-width: 760px) {
+  .rhead { display: none; }
+  .rooms .room { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .rooms .room .rhost { grid-column: 1 / 2; }
+  .rooms .room .ract { grid-column: 2 / 3; grid-row: 1 / 3; }
+  .rooms .room .rmap::before { content: "맵 "; color: var(--ink-3); }
+  .rooms .room .rmode, .rooms .room .rkill, .rooms .room .rcount, .rooms .room .rstate { display: inline; }
+}
+/* 설정 창 (방 만들기 · 혼자 하기) */
+.dlg { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; background: rgba(6, 9, 14, .78); backdrop-filter: blur(3px); }
+.dlg[hidden] { display: none; }
+.dlg .dbox { width: min(560px, 92vw); max-height: 92vh; overflow-y: auto; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--gold); border-radius: 16px; padding: 22px 24px 18px; box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,216,74,.15) inset; }
+.dlg h3 { margin: 0 0 6px; font: 800 20px "IBM Plex Sans KR", sans-serif; color: var(--ink); }
+.dlg .maprow { display: grid; grid-template-columns: 1fr 200px; gap: 14px; align-items: start; margin-top: 4px; }
+.dlg .maprow .mappv { width: 200px; height: auto; }
+@media (max-width: 560px) { .dlg .maprow { grid-template-columns: 1fr; } .dlg .maprow .mappv { width: 100%; } }
+.dlg .dacts { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
+/* 네트워크 주의 문구 (P2P 라 방장 연결이 곧 방) */
+.notice { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.55; color: var(--ink-2);
+  background: rgba(255, 216, 74, .07); border: 1px solid rgba(255, 216, 74, .28); }
+.notice b { color: var(--ink); }
+.notice.strong { background: rgba(248, 81, 73, .08); border-color: rgba(248, 81, 73, .4); }
+.dlg .warn { margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.5; color: #ffd9a8;
+  background: rgba(255, 170, 60, .08); border: 1px solid rgba(255, 170, 60, .3); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 조작 안내 띠: hidden 속성이 display:flex 에 지지 않게 */
+.keys[hidden] { display: none; }
+
+/* 결과표 한 줄 요약 (MVP) */
+.overlay .box .statsmvp { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
+.overlay .box .statsmvp b { color: var(--gold); }
+
+/* 로비 상단 "내 캐릭터" */
+.topbar .mychar { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; background: var(--bg-2); border: 1px solid var(--line-2); border-left: 4px solid var(--c, var(--gold)); border-radius: 12px; cursor: pointer; color: var(--ink); font: inherit; text-align: left; }
+.topbar .mychar:hover { border-color: var(--gold); }
+.topbar .mychar canvas { width: 44px; height: 44px; }
+.topbar .mychar small { display: block; font-size: 11px; color: var(--ink-2); }
+.topbar .mychar b { font-size: 15px; }
+
+/* 대기실: 빈 자리를 봇으로 */
+.setrow.botrow { align-items: center; }
+.setrow.botrow .chk { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.setrow.botrow .chk input { width: 16px; height: 16px; accent-color: var(--gold); }
+.seg.small button { padding: 4px 10px; font-size: 12px; }
+.seg[hidden] { display: none; }
+.setrow.botrow .hintline { font-size: 12px; }
+
+/* 터치 기기 로비: 세로 375px 안팎의 가로 화면에서도 방 목록이 첫 화면에 들어오게 (2026-09-06) */
+.lobby.touch { padding-top: 12px; }
+.lobby.touch .season, .lobby.touch .feats, .lobby.touch .tag { display: none; }
+.lobby.touch h1 { font-size: 34px; margin: 0 0 6px; }
+.lobby.touch .topbar { margin: 4px 0 10px; }
+.lobby.touch .notice { margin-top: 14px; }

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+.frames/
+# 공지용 사진·GIF 는 로컬에만 둔다 (84MB — 이력에 쌓이지 않게, 2026-09-05 사용자)
+docs/img/
+# 방 지키기 운영 로그 (로컬)
+tools/rooms.log

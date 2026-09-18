@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- 배도라지 덕 파비콘: 남색 판 + 금테 (로비 톤), 그 위에 철면덕 (빨간 얼굴 · 검은 뾰족머리 · 금색 별) -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0d1117" stroke="#e3b341" stroke-width="3"/>
+  <!-- 금색 별 (철면덕의 왕관) -->
+  <polygon points="32,5.5 34.3,11.2 40.4,11.6 35.7,15.5 37.2,21.4 32,18.2 26.8,21.4 28.3,15.5 23.6,11.6 29.7,11.2" fill="#ffd84a"/>
+  <!-- 머리 -->
+  <ellipse cx="32" cy="39" rx="19" ry="17" fill="#ff5a36"/>
+  <ellipse cx="32" cy="46" rx="14" ry="8" fill="#e04a2c" opacity="0.55"/>
+  <!-- 검은 뾰족머리 -->
+  <path d="M14 34 Q17 22 32 21 Q47 22 50 34 Q46 30 42 31 L41 26 L38 30 L35 25 L32 30 L29 25 L26 30 L23 26 L22 31 Q18 30 14 34 Z" fill="#161413"/>
+  <!-- 옆머리 회색 띠 -->
+  <path d="M14 34 Q17 31 20 32 L19 36 Q16 36 14 34 Z" fill="#9c9c9c"/>
+  <path d="M50 34 Q47 31 44 32 L45 36 Q48 36 50 34 Z" fill="#9c9c9c"/>
+  <!-- 부리 -->
+  <path d="M29 42 Q43 38 52 44 Q43 52 29 47 Z" fill="#ffb54a"/>
+  <path d="M31 45.6 Q42 45.2 50 44.6" stroke="#c97a22" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+  <!-- 눈 -->
+  <circle cx="38.5" cy="36" r="5" fill="#ffffff"/>
+  <circle cx="40" cy="36.4" r="2.7" fill="#161413"/>
+  <circle cx="41.1" cy="35.2" r="1" fill="#ffffff"/>
+  <!-- 눈썹 (굵고 진지하게) -->
+  <path d="M33 30.5 Q38.5 28.5 44 30.5" stroke="#161413" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+</svg>
