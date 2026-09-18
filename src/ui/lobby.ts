@@ -5,7 +5,7 @@
 // (2026-09-18 사용자: "덕 링크가 아니라 덕의 방식을 RPG 안에 이식"). 방 만들기·혼자 하기 창에서 '종류' 로 고른다.
 
 import { DIFFICULTY_LABEL, Difficulty } from '../core/bot'
-import { CHARACTERS, CHARACTER_LIST, CharacterId, PLAYABLE, isPlayable } from '../core/characters'
+import { CHARACTERS, CharacterId, PLAYABLE, isPlayable } from '../core/characters'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
 import { DEATH_RULE_LABEL, DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
@@ -18,6 +18,7 @@ import {
   makeRoomCode, openLobby, openRoom,
 } from '../net/room'
 import { drawPortrait } from '../render/character'
+import { BonfireScene } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { SessionConfig } from '../game/session'
@@ -55,14 +56,9 @@ export class Lobby {
   private kind: GameMode = 'dungeon'
   /** 투기장 맵 (덕의 맵 셋 중) */
   private arenaMap: MapId = 'studio'
-  /** 혼자 하기 투기장 모드 (봇 상대) */
-  private soloMode: RoomMode = 'ffa'
   /** 죽음 규칙 (혼자 하기·방 만들기 공용, 게스트는 방 정보로 받는다) */
   private deathRule: DeathRule = 0
   private previewTimer = 0
-  private difficulty: Difficulty = 'normal'
-  /** 혼자 하기 동료 봇 수 (0~3) */
-  private bots = 0
   private roomMode: RoomMode = 'ffa'
   /** 방 정원 (호스트가 방 만들 때 정한다). 2명만 모여도 시작할 수 있고, 나머지 자리는 난입으로 채운다 */
   private roomSize = 4
@@ -86,6 +82,7 @@ export class Lobby {
   private rooms: RoomInfo[] = []
   private starting = false
   private disposed = false
+  private bonfire: BonfireScene | null = null
 
   /** 난입 요청 타임아웃 */
   private rejoinTimer = 0
@@ -112,54 +109,50 @@ export class Lobby {
   private render(): void {
     const h = this.host
     h.innerHTML = `
-      <div class="lobby">
-        <div class="season">BEDORAGE RPG · CO-OP · PVP · 1~${MAX_PLAYERS} PLAYERS</div>
-        <h1><span class="t1">배도라지</span> <span class="t2">RPG</span></h1>
-        <p class="tag"><b>최대 ${MAX_PLAYERS}인 쿼터뷰 슈팅 RPG</b> · 던전 협동 · 투기장 대전 · 서버 없는 P2P · 비공식 팬게임</p>
-        <div class="feats"><span>어두운 지하 묘지</span><span>캐릭터마다 스킬 2 + 궁극기</span><span>투기장 — 키운 캐릭터끼리 PvP</span><span>게임 중 난입</span><span>설치 없음 · 서버 없음</span></div>
-
-        <div class="topbar">
-          <div class="nickwrap" id="nick-card">
-            <label for="nick">닉네임</label>
-            <input class="nick big" id="nick" maxlength="8" placeholder="닉네임 (8자)" value="${this.nick.replace(/"/g, '&quot;')}" autocomplete="off" spellcheck="false">
+      <div class="lobby d2">
+        <canvas class="bonfire" id="bonfire"></canvas>
+        <div class="d2-title">
+          <h1><span class="t1">배도라지</span><span class="t2">RPG</span></h1>
+          <p class="tag">성당 종이 멈춘 밤 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
+        </div>
+        <div class="d2-char" id="my-char">
+          <button class="arrow" id="char-prev" title="이전 캐릭터">◀</button>
+          <div class="ci" id="char-info"></div>
+          <button class="arrow" id="char-next" title="다음 캐릭터">▶</button>
+        </div>
+        <div class="d2-side">
+          <div class="panel">
+            <div class="nickwrap" id="nick-card">
+              <label for="nick">닉네임</label>
+              <input class="nick big" id="nick" maxlength="8" placeholder="닉네임 (비우면 캐릭터 이름)" value="${this.nick.replace(/"/g, '&quot;')}" autocomplete="off" spellcheck="false">
+            </div>
+            <button class="btn main lg" id="btn-host">게임 만들기</button>
+            <p class="hintline">혼자 시작해도 되고, 친구는 아래 <b>게임 목록</b>에서 들어온다 (최대 ${MAX_PLAYERS}명 · 게임 중에도).</p>
+            <div class="status" id="status"></div>
           </div>
-          <button class="mychar" id="my-char" title="캐릭터 목록으로">
-            <canvas></canvas>
-            <span><small>내 캐릭터</small><b id="my-char-name"></b></span>
-          </button>
-          <div class="topacts">
-            <button class="btn main lg" id="btn-host">방 만들기</button>
-            <button class="btn lg" id="btn-solo">혼자 하기</button>
+          <div class="panel rooms-card">
+            <h2>게임 목록 <span class="k" id="rooms-count"></span><span class="k" id="online">접속 확인 중</span><button class="lnk refresh" id="btn-refresh" title="목록을 다시 받아옵니다">새로고침</button></h2>
+            <div class="rhead"><span>게임</span><span>종류</span><span>규칙</span><span>맵</span><span>인원</span><span>상태</span><span></span></div>
+            <div class="rooms" id="rooms"><div class="empty">열린 게임이 없습니다. 게임을 만들거나 잠시 기다려 보세요.</div></div>
+            <div class="pager" id="pager" hidden>
+              <button class="btn secondary sm" id="pg-prev">이전</button>
+              <span id="pg-label">1 / 1</span>
+              <button class="btn secondary sm" id="pg-next">다음</button>
+            </div>
+          </div>
+          <div class="panel small">
+            <div class="savebtns"><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
+            <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></div>
+            <div class="notice" id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</div>
+            <div class="notice">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a></div>
           </div>
         </div>
-        <div class="notice" id="net-notice">
-          <b>서버가 없는 게임입니다.</b> 방을 만든 사람의 컴퓨터가 곧 방이라, <b>방장의 인터넷이 끊기면 방도 함께 사라집니다.</b><br>
-          와이파이·폰 회선처럼 흔들리는 연결로 방을 만들면 판이 터질 수 있으니, 방은 가능하면 <b>유선(랜선) PC</b>에서 만들어 주세요.
-        </div>
-
-        <div class="status" id="status"></div>
-
-        <div class="card rooms-card wide">
-          <h2>방 목록 <span class="k" id="rooms-count"></span><span class="k" id="online">접속 확인 중</span><button class="lnk refresh" id="btn-refresh" title="목록을 다시 받아옵니다">새로고침</button></h2>
-          <div class="rhead"><span>방</span><span>종류</span><span>규칙</span><span>맵</span><span>인원</span><span>상태</span><span></span></div>
-          <div class="rooms" id="rooms"><div class="empty">열린 방이 없습니다. 방을 만들거나 잠시 기다려 보세요.</div></div>
-          <div class="pager" id="pager" hidden>
-            <button class="btn secondary sm" id="pg-prev">이전</button>
-            <span id="pg-label">1 / 1</span>
-            <button class="btn secondary sm" id="pg-next">다음</button>
-          </div>
-          <p class="hintline dim">게임 중인 방도 자리가 있으면 <b>난입</b>할 수 있습니다 (투기장 팀전은 난입 없음).</p>
-        </div>
-
-        <div class="section-t">캐릭터 <small>1차 6명 · 캐릭터마다 레벨·장비가 따로 큰다 (이 브라우저에 저장)</small>
-          <span class="savebtns"><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
-          <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></span></div>
-        <div class="chars" id="chars"></div>
+        <div class="chars" id="chars" hidden></div>
 
         <div class="dlg" id="dlg-host" hidden>
           <div class="dbox">
-            <h3>방 만들기</h3>
-            <p class="cardp">던전(협동)이나 투기장(PvP)을 엽니다.<br><b>둘만 모여도 시작</b>할 수 있고, 남은 자리는 <b>게임 중에도 난입</b>으로 채워집니다.</p>
+            <h3>게임 만들기</h3>
+            <p class="cardp"><b>던전</b>: 1막 순례자 야영지에서 시작 — 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채운다.<br><b>투기장</b>: 키운 캐릭터끼리 배도라지 덕의 대전(PvP) — 둘 이상, 빈 자리는 봇으로도 채울 수 있다.</p>
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>
@@ -188,45 +181,7 @@ export class Lobby {
               <canvas id="map-preview" class="mappv"></canvas>
             </div>
             <div class="warn">방장의 연결이 곧 방입니다.<br>와이파이나 폰 회선이면 중간에 방이 터질 수 있어요.<br>랜선을 꽂은 PC가 가장 안전합니다.</div>
-            <div class="dacts"><button class="btn secondary" data-close>취소</button><button class="btn main" id="btn-host-go">방 만들기</button></div>
-          </div>
-        </div>
-
-        <div class="dlg" id="dlg-solo" hidden>
-          <div class="dbox">
-            <h3>혼자 하기</h3>
-            <p class="cardp"><b>던전</b>: 1막 <b>순례자 야영지</b>에서 시작한다. 성문 밖으로 걸어 나가 들판 · 묘지 · 성당 아래로 — 웨이포인트(F)와 타운 포털(T)로 오간다. 동료 봇은 나를 따라다니며 쓰러진 나를 일으켜 준다.<br><b>투기장</b>: 봇을 상대로 배도라지 덕의 대전 — 목표 킬을 먼저 채우면 승리.</p>
-            <div class="row"><label>종류</label><div class="seg" id="seg-kind2">
-              <button data-v="dungeon" class="on">던전 (협동)</button><button data-v="arena">투기장 (PvP)</button>
-            </div></div>
-            <div class="row"><label>난이도</label><div class="seg" id="seg-diff">
-              <button data-v="easy">쉬움</button><button data-v="normal" class="on">보통</button><button data-v="hard">어려움</button>
-            </div></div>
-            <div class="row"><label id="bots-label">동료 봇</label><div class="seg" id="seg-bots">
-              <button data-v="0" class="on">없음</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
-            </div></div>
-            <div class="dungeon-only">
-              <div class="row"><label>죽음 규칙</label><div class="seg" id="seg-death2">
-                ${DEATH_RULE_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
-              </div></div>
-              <p class="hintline" id="death-desc2">${DEATH_RULE_DESC[0]}</p>
-            </div>
-            <div class="arena-only" hidden>
-              <div class="row"><label>모드</label><div class="seg" id="seg-solo-mode">
-                <button data-v="ffa" class="on">개인전</button><button data-v="teams">2v2 팀전</button>
-              </div></div>
-              <div class="row"><label>목표 킬</label><div class="seg" id="seg-kills2">
-                ${KILL_OPTIONS.map((k) => `<button data-v="${k}" class="${k === 10 ? 'on' : ''}">${k}</button>`).join('')}
-              </div></div>
-              <div class="row"><label>맵</label><div class="seg" id="seg-amap2">
-                ${ARENA_MAPS.map((m) => `<button data-v="${m.id}" class="${m.id === 'studio' ? 'on' : ''}" title="${m.desc}">${m.name}</button>`).join('')}
-              </div></div>
-            </div>
-            <div class="maprow">
-              <p class="hintline" id="map-desc2">${MAPS[this.mapId].name} — ${MAPS[this.mapId].desc}</p>
-              <canvas id="map-preview2" class="mappv"></canvas>
-            </div>
-            <div class="dacts"><button class="btn secondary" data-close>취소</button><button class="btn main" id="btn-solo-go">▶ 시작</button></div>
+            <div class="dacts"><button class="btn secondary" data-close>취소</button><button class="btn main" id="btn-host-go">만들기</button></div>
           </div>
         </div>
 
@@ -244,7 +199,7 @@ export class Lobby {
           </div>
         </div>
 
-        <div class="foot">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · <b>문제·제안은 철면수심 다음 카페 게시글로</b> · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a></div>
+        <div class="foot d2foot">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · <b>문제·제안은 철면수심 다음 카페 게시글로</b> · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a></div>
       </div>`
 
     const chars = h.querySelector('#chars') as HTMLElement
@@ -280,7 +235,6 @@ export class Lobby {
       this.hostChanged()
     }
     this.seg('#seg-death', onDeath)
-    this.seg('#seg-death2', onDeath)
     // 종류: 던전 / 투기장 — 두 창이 같은 값을 쓰고, 해당 줄만 보인다
     const onKind = (v: string) => {
       this.kind = v === 'arena' ? 'arena' : 'dungeon'
@@ -288,33 +242,24 @@ export class Lobby {
       this.hostChanged()
     }
     this.seg('#seg-kind', onKind)
-    this.seg('#seg-kind2', onKind)
     const onKills = (v: string) => {
       this.killsRoom = Number(v) || 10
       this.hostChanged()
     }
     this.seg('#seg-kills', onKills)
-    this.seg('#seg-kills2', onKills)
     const onAMap = (v: string) => {
       if (isMapId(v)) this.arenaMap = v
       this.drawPreview()
       this.hostChanged()
     }
     this.seg('#seg-amap', onAMap)
-    this.seg('#seg-amap2', onAMap)
     this.seg('#seg-room-mode', (v) => {
       this.roomMode = v === 'teams' ? 'teams' : 'ffa'
       if (this.roomMode === 'teams' && this.roomSize % 2 !== 0) this.roomSize = 4
       if (this.role === 'host') this.members.forEach((m, i) => (m.team = this.roomMode === 'teams' ? i % 2 : 0))
       this.hostChanged()
     })
-    this.seg('#seg-solo-mode', (v) => (this.soloMode = v === 'teams' ? 'teams' : 'ffa'))
     this.syncKind()
-    this.seg('#seg-diff', (v) => (this.difficulty = v as Difficulty))
-    this.seg('#seg-bots', (v) => {
-      this.bots = Math.max(0, Math.min(3, Number(v)))
-      this.drawPreview()
-    })
     this.seg('#seg-size', (v) => {
       this.roomSize = Math.max(2, Math.min(MAX_PLAYERS, Number(v)))
       this.announce()
@@ -355,8 +300,16 @@ export class Lobby {
         this.status(`세이브를 불러오지 못했습니다: ${(e as Error).message}`, 'bad')
       }
     }
-    ;(h.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => this.openDlg('#dlg-solo')
-    ;(h.querySelector('#my-char') as HTMLButtonElement).onclick = () => h.querySelector('#chars')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // 모닥불 장면: 캐릭터를 누르거나 ◀ ▶ 로 고른다
+    this.bonfire?.dispose()
+    this.bonfire = new BonfireScene(h.querySelector('#bonfire') as HTMLCanvasElement, PLAYABLE, (id) => this.selectChar(id))
+    this.bonfire.select(this.char)
+    const step = (d: number) => {
+      const i = PLAYABLE.indexOf(this.char)
+      this.selectChar(PLAYABLE[(i + d + PLAYABLE.length) % PLAYABLE.length])
+    }
+    ;(h.querySelector('#char-prev') as HTMLButtonElement).onclick = () => step(-1)
+    ;(h.querySelector('#char-next') as HTMLButtonElement).onclick = () => step(1)
     this.drawMyChar()
     ;(h.querySelector('#btn-host') as HTMLButtonElement).onclick = () => this.openDlg('#dlg-host')
     if (isTouchDevice()) {
@@ -374,10 +327,6 @@ export class Lobby {
       h.querySelector('.lobby')?.classList.add('touch')
       const charsHead = h.querySelector('#chars')?.previousElementSibling
       if (charsHead) charsHead.before(nn)
-    }
-    ;(h.querySelector('#btn-solo-go') as HTMLButtonElement).onclick = () => {
-      this.closeDlg()
-      this.startSolo()
     }
     ;(h.querySelector('#btn-host-go') as HTMLButtonElement).onclick = () => {
       this.closeDlg()
@@ -420,13 +369,13 @@ export class Lobby {
 
   private drawPreview(): void {
     // 두 창(방 만들기·혼자 하기)에 미리보기가 하나씩 있다. 열려 있는 쪽만 그린다 (숨긴 캔버스는 폭이 0)
-    const cvs = ['#map-preview', '#map-preview2']
+    const cvs = ['#map-preview']
       .map((id) => this.host.querySelector(id) as HTMLCanvasElement | null)
       .filter((c): c is HTMLCanvasElement => !!c && c.clientWidth > 0)
     if (cvs.length === 0) return
     clearTimeout(this.previewTimer)
     this.previewTimer = window.setTimeout(() => {
-      const players = this.role ? Math.max(2, this.members.length) : 1 + this.bots
+      const players = this.role ? Math.max(2, this.members.length) : 1
       const id = this.kind === 'arena' ? this.arenaMap : this.mapId
       const map = buildMap(id, MAPS[id].fixedScale ? 1 : scaleForPlayers(players), PREVIEW_SEED)
       for (const cv of cvs) drawMapPreview(cv, map)
@@ -446,13 +395,13 @@ export class Lobby {
   /** 상단 바의 "내 캐릭터" 초상·이름. 캐릭터 목록이 아래라 위에서는 누굴 골랐는지 안 보였다 (2026-09-05) */
   private drawMyChar(): void {
     if (!isPlayable(this.char)) this.char = PLAYABLE[0]
-    const def = CHARACTER_LIST.find((c) => c.id === this.char)
-    const el = this.host.querySelector('#my-char') as HTMLElement | null
-    if (!def || !el) return
-    ;(el.querySelector('#my-char-name') as HTMLElement).textContent = `${def.name} · Lv ${levelOf(def.id)}`
-    el.style.setProperty('--c', '#' + def.bodyColor.toString(16).padStart(6, '0'))
-    const cv = el.querySelector('canvas') as HTMLCanvasElement
-    requestAnimationFrame(() => drawPortrait(cv, def))
+    const c = CHARACTERS[this.char]
+    const el = this.host.querySelector('#char-info') as HTMLElement | null
+    if (!el) return
+    el.innerHTML = `<b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}</span>
+      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div>
+      <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div>`
+    this.bonfire?.select(this.char)
   }
 
   private selectChar(id: CharacterId): void {
@@ -649,45 +598,14 @@ export class Lobby {
     })
   }
 
-  // ---------- 혼자 하기 ----------
-  private startSolo(): void {
-    // 동료 봇은 나와 다른 캐릭터를 우선 (1차 6명 안에서)
-    const chars: CharacterId[] = [this.char]
-    const pool = [...PLAYABLE]
-    while (chars.length < 1 + this.bots) {
-      const rest = pool.filter((id) => !chars.includes(id))
-      const pick = rest.length > 0 ? rest : pool
-      chars.push(pick[Math.floor(Math.random() * pick.length)])
-    }
-    const arena = this.kind === 'arena'
-    // 투기장 팀전은 짝수여야 한다 (나 + 봇 3 = 2:2). 봇이 모자라면 채운다
-    if (arena && this.soloMode === 'teams') {
-      while (chars.length < 4) chars.push(PLAYABLE[(chars.length * 2) % PLAYABLE.length])
-    }
-    if (arena && chars.length < 2) chars.push(PLAYABLE.find((id) => id !== this.char) ?? PLAYABLE[1])
-    this.handlers.onStart({
-      mode: 'solo',
-      kind: this.kind,
-      // 내 캐릭터 기록(레벨·장비)을 세이브에서 — 봇 자리는 세션이 내 레벨에 맞춰 만든다
-      sheets: [sheetOf(this.char)],
-      chars,
-      names: chars.map((_, i) => (i === 0 ? this.nick : '')),
-      seed: (Math.random() * 0xffffffff) >>> 0,
-      localPlayer: 0,
-      mapId: arena ? this.arenaMap : this.mapId,
-      difficulty: this.difficulty,
-      deathRule: this.deathRule,
-      teams: arena && this.soloMode === 'teams' ? chars.map((_, i) => i % 2) : undefined,
-      targetKills: this.killsRoom,
-    })
-  }
-
   // ---------- 방 만들기 / 참가 ----------
   /** 방에 들어가기 전 닉네임 확인. 비어 있으면 입력칸으로 보낸다 */
   private syncNickCard: () => void = () => {}
 
   private requireNick(): boolean {
     if (this.nick.trim().length > 0) return true
+    this.nick = CHARACTERS[this.char].name.slice(0, 8)
+    if (this.nick) return true
     const el = this.host.querySelector('#nick') as HTMLInputElement | null
     el?.focus()
     el?.classList.add('need')
@@ -1129,7 +1047,7 @@ export class Lobby {
     if (!link) return
     const connected = this.role === 'host' || !!this.hostId
     // 방 코드는 안 보여 준다 — 코드로 들어갈 길이 없으니 쓸 일이 없다(방 목록에서 뺀 것과 같은 이유, 2026-09-05)
-    const title = this.role === 'host' ? '내 방' : `${this.hostName()}의 방`
+    const title = this.role === 'host' ? '내 게임' : `${this.hostName()}의 게임`
     const teams = this.kind === 'arena' && this.roomMode === 'teams'
     const slots: string[] = []
     for (let i = 0; i < this.roomSize; i++) {
@@ -1175,10 +1093,10 @@ export class Lobby {
             : ''
       }
       <div class="room-actions">
-        <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : '준비'}</button>
+        <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : this.role === 'host' ? '▶ 게임 시작' : '준비'}</button>
         ${teams ? `<button class="btn secondary" id="btn-team" ${connected ? '' : 'disabled'}>팀 바꾸기</button>` : ''}
       </div>
-      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 자동으로 시작합니다.' : '모두 준비를 누르면 시작합니다 — 혼자 시작해도 남은 자리는 게임 중 난입으로 채워집니다.'}</p>`
+      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 시작합니다 (빈 자리는 봇으로 채울 수 있다).' : '"게임 시작" 을 누르면 바로 시작합니다 — 들어온 사람이 있으면 모두 준비한 뒤. 남은 자리는 게임 중에도 들어올 수 있다.'}</p>`
     const readyCount = this.members.filter((m) => m.ready).length
     const st = !connected
       ? '연결 중… (최대 20초)'
@@ -1279,6 +1197,8 @@ export class Lobby {
 
   dispose(): void {
     this.disposed = true
+    this.bonfire?.dispose()
+    this.bonfire = null
     clearInterval(this.onlineTimer)
     this.closeLink()
     if (this.lobbyLink) {

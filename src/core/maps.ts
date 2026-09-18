@@ -25,7 +25,13 @@ export interface MapTheme {
    * lantern = 플레이어마다 드는 등불 세기 (디아블로의 '빛 반경' — 시야 제한과 겹쳐 분위기를 만든다)
    */
   dark?: { sun: number; hemi: number; fogAlpha: number; lantern: number }
+  /**
+   * 3D 모습 (render3d/world3d.ts): 돌벽·바위·목책/천막, 장애물·소품·횃불의 종류. 없으면 덕의 상자 모습(투기장 맵)
+   */
+  style?: WorldStyle
 }
+
+export type WorldStyle = 'crypt' | 'cathedral' | 'butchery' | 'fields' | 'cave' | 'town'
 
 /**
  * 안쪽 구조물 생성 규칙.
@@ -56,6 +62,8 @@ export interface MapDef {
   rows: string[]
   /** 인원과 상관없이 이 크기 그대로 (던전 층은 거울로 늘리지 않는다 — 대칭이면 던전 같지 않다) */
   fixedScale?: boolean
+  /** 모닥불 자리 (2×2 장애물의 왼쪽 위 타일) — 마을 */
+  fire?: [number, number]
   gen: MapGen
   theme: MapTheme
 }
@@ -143,6 +151,7 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4b463f, wallTop: 0x5d574e, crate: 0x77706a, outside: 0x040405,
       sunColor: 0x8aa0c8, ambientColor: 0x4a4868, fog: 0x050507,
       dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+      style: 'crypt',
     },
   },
   // ---------------- 1막 무너진 성당 (GUIDE 5.1) ----------------
@@ -152,12 +161,14 @@ export const MAPS: Record<MapId, MapDef> = {
     desc: '성당 아래에서 도망쳐 나온 사람들의 야영지. 모닥불만이 밤을 버틴다.',
     rows: town1Rows(),
     fixedScale: true,
+    fire: [22, 16],
     gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
     theme: {
       floor: 0x3b352c, floorAlt: 0x363027, floorLine: 0x2b2620,
       wall: 0x4a3a2a, wallTop: 0x6a5238, crate: 0x6e5236, outside: 0x040403,
       sunColor: 0x8aa0c8, ambientColor: 0x4a4458, fog: 0x050505,
-      dark: { sun: 0.7, hemi: 0.6, fogAlpha: 0.85, lantern: 2.8 },
+      dark: { sun: 1.1, hemi: 0.95, fogAlpha: 0.8, lantern: 2.8 },
+      style: 'town',
     },
   },
   fields: {
@@ -172,7 +183,8 @@ export const MAPS: Record<MapId, MapDef> = {
       floor: 0x3a3428, floorAlt: 0x353024, floorLine: 0x2a261d,
       wall: 0x49443c, wallTop: 0x5b554b, crate: 0x5a534a, outside: 0x030303,
       sunColor: 0x9aa8c8, ambientColor: 0x464a5a, fog: 0x050506,
-      dark: { sun: 0.62, hemi: 0.52, fogAlpha: 0.9, lantern: 2.6 },
+      dark: { sun: 1.0, hemi: 0.85, fogAlpha: 0.86, lantern: 2.6 },
+      style: 'fields',
     },
   },
   cave: {
@@ -187,6 +199,7 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4a3b2c, wallTop: 0x5c4a38, crate: 0x6a5a48, outside: 0x030202,
       sunColor: 0x8a90a8, ambientColor: 0x4a3e38, fog: 0x050403,
       dark: { sun: 0.5, hemi: 0.45, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'cave',
     },
   },
   cathedral: {
@@ -201,6 +214,7 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4e4a55, wallTop: 0x625d6a, crate: 0x6b6470, outside: 0x040405,
       sunColor: 0x9aa0d0, ambientColor: 0x4a4868, fog: 0x050507,
       dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+      style: 'cathedral',
     },
   },
   butchery: {
@@ -215,6 +229,7 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4b3530, wallTop: 0x5e433c, crate: 0x6a4a40, outside: 0x040202,
       sunColor: 0xa08880, ambientColor: 0x503838, fog: 0x060303,
       dark: { sun: 0.5, hemi: 0.45, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'butchery',
     },
   },
   garage: {

@@ -528,3 +528,88 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .wpp-act button[disabled] { opacity: 0.4; cursor: default; }
 .wpp-act button.here { opacity: 0.85; border-color: #c9a24a; color: #f1d58a; }
 .wpp-act button small { font: 500 10px "IBM Plex Sans KR", sans-serif; color: #8d8170; }
+
+/* ================================================================
+   D2 "첫인상" (GUIDE 11장): 덕의 노란 버튼·남색 유리 패널을 걷어 내고 **돌과 쇠, 바랜 금, 명조체**로 통일한다.
+   아래 규칙이 위의 덕 스타일을 덮는다 (같은 선택자 — 뒤에 오는 것이 이긴다).
+   ================================================================ */
+:root {
+  --bg: #090807; --bg-2: #100e0c; --panel: #15120f; --panel-2: #1d1914; --panel-3: #241f18;
+  --ink: #e8dcc4; --ink-2: #b8aa90; --ink-3: #7e7260; --line: #3a3024; --line-2: #2a241c;
+  --duck: #c9a24a; --duck-ink: #1a140c; --gold: #d4af5a; --acc: #7ab8ff;
+}
+body { background: var(--bg); }
+.btn { background: linear-gradient(180deg, #3a2e20, #241c13); color: #f1d58a; border: 1px solid #8a6a2a; border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(255,220,150,.12) inset, 0 3px 10px rgba(0,0,0,.5); font-family: "Nanum Myeongjo", serif; font-weight: 800; }
+.btn.secondary { background: transparent; color: var(--ink-2); border: 1px solid var(--line); }
+.btn.secondary:hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: #6a5430; }
+.btn.main { color: #ffe6a8; border-radius: 4px; border: 1px solid #c9a24a; text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  background: linear-gradient(180deg, #6a1a12 0%, #4a100b 55%, #300907 100%);
+  box-shadow: 0 1px 0 rgba(255,200,150,.18) inset, 0 -10px 22px rgba(0,0,0,.3) inset, 0 4px 18px rgba(160,40,20,.25), 0 2px 5px rgba(0,0,0,.5); }
+.btn.main:hover:not(:disabled) { filter: brightness(1.18); border-color: #f1d58a; }
+.seg { border: 1px solid var(--line); border-radius: 3px; background: #0e0c0a; }
+.seg button { color: var(--ink-2); font-family: "IBM Plex Sans KR", sans-serif; }
+.seg button.on { background: linear-gradient(180deg, #5a4420, #3a2c14); color: #ffe6a8; box-shadow: inset 0 0 0 1px #c9a24a; }
+.overlay { background: rgba(0,0,0,.55); }
+.overlay .box { background: linear-gradient(180deg, rgba(28,24,21,.98), rgba(10,9,8,.98)); border: 1.5px solid rgba(201,162,74,.6); border-radius: 6px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.8), inset 0 0 0 4px rgba(0,0,0,.35); }
+.overlay h2 { font-family: "Nanum Myeongjo", serif; font-weight: 800; color: #f1d58a; }
+.dlg .dbox { background: linear-gradient(180deg, rgba(28,24,21,.98), rgba(10,9,8,.98)); border: 1.5px solid rgba(201,162,74,.6); border-radius: 6px; }
+.dlg .dbox h3 { font-family: "Nanum Myeongjo", serif; color: #f1d58a; }
+.status { background: rgba(10,9,8,.6); border: 1px solid var(--line); border-radius: 4px; }
+.status::after { background: linear-gradient(90deg, #c9a24a, transparent); }
+.slot { background: linear-gradient(180deg, #1a1612, #100e0b); border: 1px solid #3a3024; border-radius: 4px; }
+.room { background: rgba(14,12,10,.8); border: 1px solid var(--line-2); border-radius: 3px; }
+
+/* ---- 첫 화면: 모닥불 앞 캐릭터 선택 + 오른쪽 돌 패널 ---- */
+.lobby.d2 { max-width: none; margin: 0; padding: 0; min-height: 100vh; overflow: hidden; }
+.lobby.d2 .bonfire { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; cursor: pointer; }
+.lobby.d2 > *:not(.bonfire) { position: relative; z-index: 1; }
+.d2-title { position: fixed !important; left: 34px; top: 26px; pointer-events: none; }
+.d2-title h1 { font-family: "Nanum Myeongjo", serif !important; font-weight: 800 !important; font-size: 64px !important; margin: 0; letter-spacing: .02em;
+  background: linear-gradient(180deg, #ffe6a8, #c9a24a 55%, #6a4a1a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
+.d2-title h1 .t1, .d2-title h1 .t2 { background: none !important; -webkit-text-fill-color: transparent; }
+.d2-title h1 .t2 { font-size: 30px; margin-left: 10px; letter-spacing: .3em; }
+.d2-title .tag { color: #9a8a70 !important; font: 500 13px "Nanum Myeongjo", serif !important; margin: 4px 0 0 !important; }
+.d2-char { position: fixed !important; left: calc((100vw - 450px) / 2); bottom: 26px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: 560px; }
+.d2-char .arrow { width: 38px; height: 38px; border-radius: 50%; border: 1px solid #8a6a2a; background: rgba(20,16,12,.85); color: #f1d58a; font-size: 14px; cursor: pointer; }
+.d2-char .arrow:hover { border-color: #f1d58a; }
+.d2-char .ci { background: linear-gradient(180deg, rgba(20,17,14,.9), rgba(8,7,6,.92)); border: 1.5px solid rgba(201,162,74,.55); border-radius: 5px;
+  padding: 12px 16px; min-width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.35); }
+.d2-char .cn { display: block; font: 800 24px "Nanum Myeongjo", serif; color: #f1d58a; }
+.d2-char .cl { font-size: 12px; color: #9a8a70; }
+.d2-char .cp { font-size: 12px; color: #d8cfbf; margin-top: 6px; line-height: 1.5; }
+.d2-char .cp i { font-style: normal; color: #e8c46a; font-weight: 700; margin-right: 4px; }
+.d2-char .sk { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.d2-char .sk span { font-size: 11px; color: #d8cfbf; border: 1px solid #4a3c28; border-radius: 3px; padding: 2px 7px; background: rgba(0,0,0,.35); }
+.d2-char .sk span.ult { border-color: #c9a24a; color: #ffe6a8; }
+.d2-char .sk i { font-style: normal; color: #c9a24a; margin-right: 4px; font-weight: 800; }
+.d2-side { position: fixed !important; right: 20px; top: 20px; bottom: 20px; width: 430px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
+.d2-side .panel { background: linear-gradient(180deg, rgba(24,20,16,.94), rgba(10,9,8,.95)); border: 1.5px solid rgba(201,162,74,.5); border-radius: 5px;
+  padding: 14px 16px; box-shadow: 0 10px 40px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.35); }
+.d2-side .panel.small { font-size: 12px; color: #9a8a70; }
+.d2-side h2 { font: 800 17px "Nanum Myeongjo", serif; color: #f1d58a; margin: 0 0 8px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.d2-side .nickwrap { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.d2-side .nickwrap label { font: 700 12px "Nanum Myeongjo", serif; color: #b8a67e; }
+.d2-side .nick { background: #0c0a08; border: 1px solid #4a3c28; color: #e8dcc4; border-radius: 3px; padding: 8px 10px; font-size: 15px; }
+.d2-side #btn-host { width: 100%; font-size: 18px; padding: 14px; }
+.d2-side .hintline { font-size: 12px; color: #9a8a70; margin: 8px 0 0; }
+.d2-side .status:empty { display: none; }
+.d2-side .status { margin-top: 10px; }
+.d2-side .rhead { display: none; }
+.d2-side .rooms .room { flex-wrap: wrap; }
+.d2-side .savebtns { display: flex; gap: 14px; margin-bottom: 8px; }
+.d2-side .notice { background: none; border: 0; padding: 0; color: #7e7260; font-size: 11.5px; }
+.lobby.d2 .foot.d2foot { display: none; }
+.lobby.d2 .foot.d2foot a { color: #7e7260; }
+@media (max-width: 1000px) {
+  .lobby.d2 { overflow: auto; }
+  .lobby.d2 .bonfire { position: absolute; height: 58vh; }
+  .d2-title { position: absolute !important; left: 16px; top: 14px; }
+  .d2-title h1 { font-size: 40px !important; }
+  .d2-char { position: absolute !important; top: calc(58vh - 110px); bottom: auto; left: 50%; transform: translateX(-50%); }
+  .d2-char .ci { min-width: 0; }
+  .d2-side { position: relative !important; top: 58vh; right: auto; bottom: auto; width: auto; margin: 16px; overflow: visible; }
+  .d2-char { left: 50%; }
+}
+.chars[hidden] { display: none !important; }

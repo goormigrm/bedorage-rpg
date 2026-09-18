@@ -803,6 +803,7 @@ export class Renderer3D {
     this.updateAuras(curr, pos)
     this.updateLanterns(curr, pos)
     this.updateCamera(curr, pos, dt, opts)
+    this.world.update(this.t, this.camTarget.x, this.camTarget.z)
 
     this.gl.render(this.scene, this.camera)
 

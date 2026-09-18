@@ -61,6 +61,9 @@ interface MVis extends Anim {
 }
 
 const CAP = 220
+/** 시체가 바닥에 남는 시간 (초) — 디아블로 2 처럼 싸운 자리에 시체가 쌓인다. 끝 1초 동안 가라앉는다 */
+const CORPSE_LIFE = 24
+const CORPSE_MAX = 90
 const lambert = (color: number) => new THREE.MeshLambertMaterial({ color })
 const glow = (color: number) => new THREE.MeshBasicMaterial({ color })
 
@@ -301,7 +304,7 @@ export class MonsterView {
     const v = this.vis.get(m.m)
     const s = this.shown.get(m.m)
     this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw: v ? v.yaw : 0, t: 0 })
-    if (this.corpses.length > 60) this.corpses.shift()
+    if (this.corpses.length > CORPSE_MAX) this.corpses.shift()
   }
 
   /** 휘두름(공격 직후) */
@@ -352,16 +355,16 @@ export class MonsterView {
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
     for (const id of this.vis.keys()) if (!live.has(id)) this.vis.delete(id)
-    // 시체: 뒤로 넘어지며 가라앉는다 (1.1초)
+    // 시체: 뒤로 넘어져 한동안 누워 있다가 가라앉는다
     const still: Corpse[] = []
     const dead: Anim = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }
     for (const c of this.corpses) {
       c.t += dt
-      if (c.t > 1.1) continue
+      if (c.t > CORPSE_LIFE) continue
       still.push(c)
       dead.dead = Math.min(1, c.t / 0.35)
       dead.flash = Math.max(0, 1 - c.t * 6)
-      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, c.t)
+      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)))
     }
     this.corpses = still
     this.kinds.forEach((parts, k) => {
