@@ -298,6 +298,11 @@ export class Session {
       stalls: () => ({ count: this.stallCount, ms: Math.round(this.stallMs), now: this.stallSince >= 0 ? Math.round(performance.now() - this.stallSince) : 0 }),
       // P2P 확인용: 60틱마다의 상태 해시(틱 → 해시)와 받은 리싱크 수 — 탭끼리 같은 틱의 해시가 같으면 어긋나지 않은 것
       hashes: () => Object.fromEntries(this.hashes),
+      // 난입 진행 (호스트): 판 보냄 · 준비 · 그 자리 입력을 받았나 · 가장 앞선 입력 틱 vs 지금 틱
+      join: () => {
+        const r = this.pendingRejoin
+        return r ? { p: r.p, sent: r.sent, ready: r.ready, heard: this.lockstep?.heardFrom(r.p), latest: this.lockstep?.latestFrom(r.p), tick: this.state.tick, left: Math.round(r.deadline - performance.now()) } : null
+      },
       resyncs: () => this.resyncs,
     }
   }
@@ -746,7 +751,9 @@ export class Session {
    * 방은 계속 방송되고 있으므로 목록에서 "게임 중 · 난입 가능" 으로 보인다.
    */
   private checkAlone(): void {
-    if (this.cfg.mode !== 'p2p' || this.state.phase === 'over') return
+    // 던전은 혼자여도 판을 이어 간다 — 혼자 시작한 방에 친구가 난입하는 것이 기본 흐름이다(2026-09-18: 30초 뒤 방이 닫혀 난입이 막혔다).
+    // "혼자 남으면 닫기" 는 상대가 없으면 의미가 없는 투기장(덕 규칙)에만 둔다
+    if (this.cfg.mode !== 'p2p' || this.state.phase === 'over' || !this.arena) return
     // **사람**만 센다. 봇 자리는 남아 있어도 혼자다 — 전에는 봇을 세서 봇으로 채운 방은 사람이 다 나가도 영영 "게임 중" 으로
     // 남았다(2026-09-06 사용자 제보: 판이 끝난 뒤에도 방 지키기 방이 목록에 그대로). 방 지키기는 이 안내의 "로비로" 를 눌러 방을 새로 연다
     const remaining = this.state.players.filter((p, i) => !p.left && !this.cfg.bots?.[i]).length
@@ -927,7 +934,10 @@ export class Session {
     // 한 번에 최대 4틱만 따라잡는다(나머지는 다음 호출에서). 렌더 쪽 스무딩과 짝이다.
     // 난입해서 관전 중일 때는 아무도 나를 기다리지 않으니 빨리 따라잡는다 (그래야 빨리 자리에 앉는다)
     const maxSteps = this.joiningIn ? 16 : 4
-    while (this.acc >= TICK_MS && steps < maxSteps) {
+    // 난입 중(관전)에는 **받은 입력이 있는 만큼** 시간과 상관없이 따라잡는다. 시간(acc)으로만 돌리면 실시간 속도라
+    // 판을 받고 맵·3D 를 준비하는 동안 벌어진 간격(던전은 20~25틱)을 영영 못 좁혀 호스트의 "10틱 안" 조건에 걸렸다(2026-09-18)
+    const catchUp = () => this.joiningIn && this.lockstep !== null && this.lockstep.hasAll(this.state.tick)
+    while ((this.acc >= TICK_MS || catchUp()) && steps < maxSteps) {
       const t = this.state.tick
       const localIn = this.autopilot
         ? this.botFor(lp, 'normal')
@@ -1007,6 +1017,7 @@ export class Session {
       steps++
     }
     if (this.acc > TICK_MS * 8) this.acc = TICK_MS * 8
+    if (this.acc < 0) this.acc = 0
     // 30초마다 자동 저장 (탭이 갑자기 닫혀도 잃는 게 작게)
     if (now - this.lastSave > 30000) this.saveMine(false)
   }
