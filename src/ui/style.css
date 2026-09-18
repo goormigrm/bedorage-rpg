@@ -512,3 +512,13 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .inv-tip .cmp { margin-top: 8px; border-top: 1px solid rgba(201,162,74,0.25); padding-top: 6px; }
 .inv-tip .up { color: #7ee0a0; }
 .inv-tip .down { color: #ff7a6a; }
+
+/* 캠페인 원정 고르기 (막마다 한 줄) */
+.stagerow { align-items: flex-start; }
+.stages { display: flex; flex-direction: column; gap: 6px; }
+.stages .actrow { display: flex; flex-direction: column; gap: 3px; }
+.stages .actn { font: 700 11px "Nanum Myeongjo", serif; color: #b8a67e; letter-spacing: 0.04em; }
+.stages .seg { flex-wrap: wrap; }
+.stages .seg button[disabled] { opacity: 0.35; cursor: not-allowed; }
+.stages .seg button.done:not(.on) { color: #cdbb8a; }
+.stagedesc { margin-top: 2px; }

@@ -7,7 +7,8 @@ import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { MONSTER_LIST, affixNames } from '../core/monsters'
+import { MONSTER_LIST, affixNames, isBossLike } from '../core/monsters'
+import { stageDef } from '../core/campaign'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
@@ -265,6 +266,7 @@ export class Renderer3D {
   /** 새 판(새 맵)으로 교체 */
   setMap(map: GameMap): void {
     this.emotes.clear()
+    this.hud.clearNotices()
     this.scene.remove(this.world.group)
     this.world.dispose()
     this.scene.remove(this.vision.group)
@@ -447,7 +449,11 @@ export class Renderer3D {
           this.hud.notice(`${nm[e.p]} — 5초 뒤 모두 아래층으로`, '#6ab0ff')
           break
         case 'floor':
-          this.hud.notice(e.n >= state.floorMax ? `${e.n}층 — 도살자의 방` : `${e.n}층`, e.n >= state.floorMax ? '#ff5a4a' : '#e6d6b0')
+          {
+            const sd = stageDef(state.stage)
+            const lastName = sd.boss !== undefined ? `${MONSTER_LIST[sd.boss].name}의 방` : `우두머리 ${sd.unique?.name ?? ''}`
+            this.hud.notice(e.n >= state.floorMax ? `${e.n}층 — ${lastName}` : `${e.n}층`, e.n >= state.floorMax ? '#ff5a4a' : '#e6d6b0')
+          }
           break
         case 'levelup': {
           const p = state.players[e.p]
@@ -1775,7 +1781,7 @@ export class Renderer3D {
         ctx.restore()
       }
       // 정예는 늘, 나머지는 맞은 뒤 3초만 (보스는 화면 위 큰 막대가 따로 있다)
-      if (def.boss || (!m.elite && curr.tick - m.hitTick > 180)) continue
+      if (isBossLike(m) || (!m.elite && curr.tick - m.hitTick > 180)) continue
       const s0 = this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.15, at.z)
       const w = 30
       const k = Math.max(0, m.hp / m.maxHp)

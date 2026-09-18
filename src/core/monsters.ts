@@ -110,6 +110,10 @@ export const EA_STOUT = 4
 export const EA_VOLATILE = 8
 export const EA_SPLIT = 16
 export const EA_VAMP = 32
+/** 접두 능력이 아니라 표시: 원정 끝의 **우두머리** (이름은 campaign 의 원정 표에서) */
+export const EA_UNIQUE = 64
+/** 우두머리: 체력·공격·경험치 배율 · 접두 능력 수 · 전리품 등급 보너스 · 전리품 수 */
+export const UNIQUE = { hp: 9, pow: 1.5, xp: 12, affixes: 3, lootBonus: 0.3, drops: 2 }
 export const ELITE_AFFIXES: { bit: number; name: string; desc: string }[] = [
   { bit: EA_FAST, name: '빠름', desc: '이동 1.35배' },
   { bit: EA_STOUT, name: '단단함', desc: '받는 피해 0.6배' },
@@ -128,6 +132,21 @@ export const AFFIX_TUNE = {
   splitN: 3,
   splitHp: 0.6,
   vamp: 0.5,
+}
+
+/**
+ * 몬스터 레벨마다 경험치 +20% (tools/xpcurve.ts 로 맞춘 값 — 원정마다 지역 레벨 안팎으로 도착하고,
+ * 캠페인 끝에 27 안팎이 되게 — 만렙 30 은 다시 돌며 채운다). 정예 ×4 · 우두머리 ×12.
+ */
+export const XP_PER_MLEVEL = 0.2
+export function xpFor(m: { kind: number; elite: number; lvl: number }): number {
+  const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1
+  return MONSTER_LIST[m.kind].xp * k * (1 + XP_PER_MLEVEL * (Math.max(1, m.lvl) - 1))
+}
+
+/** 보스처럼 다룬다 (큰 체력 막대 · 쓰러뜨리면 원정 완료) */
+export function isBossLike(m: { kind: number; elite: number }): boolean {
+  return !!MONSTER_LIST[m.kind].boss || (m.elite & EA_UNIQUE) !== 0
 }
 
 /** 정예 능력 이름들 ("빠름 · 폭발") */

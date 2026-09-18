@@ -192,6 +192,11 @@ export class Hud {
   }
 
   /** 가운데 알림 한 줄 (쓰러짐·부활·사망) */
+  /** 새 판·새 층: 지난 알림을 지운다 (다음 원정의 시작 화면 위에 남지 않게) */
+  clearNotices(): void {
+    this.notices = []
+  }
+
   notice(text: string, color: string): void {
     this.notices.push({ text, color, life: 2.2, max: 2.2 })
     if (this.notices.length > 3) this.notices.shift()
@@ -258,7 +263,10 @@ export class Hud {
     const lp = opts.localPlayer
     if (lp !== -1) this.d4.drawLowHealth(h, s.players[lp])
     this.d4.drawTracker(h, s, opts)
-    if (s.mode === 'dungeon') this.d4.drawBoss(h, s)
+    if (s.mode === 'dungeon') {
+      this.d4.drawBoss(h, s)
+      this.d4.drawIntro(h, s)
+    }
     this.d4.drawParty(h, s, opts)
     if (lp !== -1) this.d4.drawBottom(h, s.players[lp], opts.cursor, this.lastDt)
     if (lp !== -1) this.drawMyStatus(s.players[lp], s)

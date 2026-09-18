@@ -51,8 +51,24 @@ export function sheetOf(char: CharacterId): Sheet {
 /** 판의 플레이어 상태를 세이브에 적는다 */
 export function commitSheet(p: PlayerState): void {
   const d = loadSave()
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag })
+  // 캠페인 진행은 판 밖의 기록이라 세이브에 있던 것을 그대로 둔다
+  const prog = d.chars[p.char]?.prog ?? 0
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, prog })
   write(d)
+}
+
+/** 원정을 깼다: 그 캐릭터의 다음 원정을 연다 (이미 더 멀리 갔으면 그대로) */
+export function commitProgress(char: CharacterId, cleared: number): void {
+  const d = loadSave()
+  const s = sanitizeSheet(d.chars[char] ?? emptySheet())
+  s.prog = Math.max(s.prog ?? 0, cleared + 1)
+  d.chars[char] = s
+  write(d)
+}
+
+/** 캐릭터가 깬 원정 수 */
+export function progOf(char: CharacterId): number {
+  return sheetOf(char).prog ?? 0
 }
 
 /** 로비 표시용: 캐릭터별 레벨 */

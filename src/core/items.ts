@@ -146,9 +146,12 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
 
 export const LEVEL_CAP = 30
 
-/** 다음 레벨까지 필요한 경험치 */
+/**
+ * 다음 레벨까지 필요한 경험치. 캠페인(12원정 · 36층)을 85% 잡으며 한 번 돌면 27 안팎 (tools/xpcurve.ts).
+ * 몬스터 경험치가 레벨마다 20% 오르므로 곡선은 완만하다(1레벨 360 · 10레벨 4530 · 29레벨 14600)
+ */
 export function xpNeed(level: number): number {
-  return Math.round(80 * Math.pow(level, 1.6))
+  return Math.round(360 * Math.pow(level, 1.1))
 }
 
 /** 레벨마다 최대 체력 +6, 피해 +1.5% */
@@ -181,10 +184,12 @@ export type Sheet = {
   gold: number
   equip: (Item | null)[]
   bag: Item[]
+  /** 캠페인: 깬 원정 수 (다음에 열리는 원정 번호). 옛 세이브에는 없다 */
+  prog?: number
 }
 
 export function emptySheet(): Sheet {
-  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }
+  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], prog: 0 }
 }
 
 /** 받은 기록이 말이 되는가 (깨진 데이터로 판이 어긋나지 않게 — 치트 방지가 아니라 사고 방지, PLAN 4.5) */
@@ -202,5 +207,6 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.gold = Math.max(0, Math.floor(Number(o.gold) || 0))
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
   if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
+  e.prog = Math.max(0, Math.min(99, Math.floor(Number(o.prog) || 0)))
   return e
 }

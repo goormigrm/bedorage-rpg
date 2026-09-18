@@ -15,8 +15,11 @@ import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSand
 import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
-import { AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef } from './monsters'
-import { entryOf, farPoint, floorSeed, makeMonster, populate } from './dungeon'
+import {
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+} from './monsters'
+import { entryOf, farPoint, floorSeed, makeMonster, populate, rollAffixes } from './dungeon'
+import { ACTS, areaLevel, stageDef } from './campaign'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
@@ -53,7 +56,7 @@ const CHARGE_SPEED = 12
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
 const booms: { x: number; y: number; r: number; dmg: number; by: number }[] = []
 /** 분열 정예가 낳을 구울 (이번 틱 끝에 넣는다 — 몬스터 배열을 도는 중에 늘리지 않게) */
-const spawns: { x: number; y: number; pack: number; hpMul: number; pow: number }[] = []
+const spawns: { x: number; y: number; pack: number; hpMul: number; pow: number; lvl: number }[] = []
 const grids = new WeakMap<GameMap, Grid>()
 
 function gridFor(map: GameMap): Grid {
@@ -79,23 +82,40 @@ function buildGrid(state: GameState, map: GameMap): Grid {
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
 
-/** 원정 = 층 넷 (마지막 층에 보스). PLAN 은 4~6 — 처음엔 짧게 */
-export const FLOORS = 4
 /** 계단에서 F 를 누르면 이만큼 뒤 모두 내려간다 */
 const DESCEND_TICKS = 60 * 5
 
-/** 층 채우기: 무리 + 계단(마지막 층은 계단 대신 보스). 층이 깊을수록 몬스터 레벨이 오른다 */
+/**
+ * 층 채우기: 무리 + 계단. 마지막 층은 계단 대신 **막 보스**(3번째 원정) 또는 **우두머리**(1·2번째 원정)가 가장 깊은 곳에 있다.
+ * 몬스터 레벨 = 원정의 지역 레벨 + (층 − 1) (파티가 훨씬 높으면 조금 따라 올라온다)
+ */
 function fillFloor(state: GameState, map: GameMap, seed: number, seats: number, partyLevel: number): void {
+  const sd = stageDef(state.stage)
   const last = state.floor >= state.floorMax
-  const lvl = partyLevel + (state.floor - 1)
-  populate(state, map, seed, seats, lvl, last)
+  const lvl = areaLevel(state.stage, state.floor, partyLevel)
+  populate(state, map, seed, seats, lvl, last && sd.boss !== undefined, ACTS[sd.act].packs)
   const far = farPoint(map)
   if (last) {
-    // 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
     const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
-    const boss = makeMonster(state, 3, far.x, far.y, 9999, hpMul, Math.round(100 * (1 + 0.06 * (lvl - 1))))
-    state.monsters.push(boss)
-    state.monstersTotal++
+    const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
+    if (sd.boss !== undefined) {
+      // 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
+      state.monsters.push(makeMonster(state, sd.boss, far.x, far.y, 9999, hpMul, pow, lvl))
+      state.monstersTotal++
+    } else if (sd.unique) {
+      // 우두머리: 평범한 원형을 크게 키우고 접두 능력 셋. 같은 원형 셋이 지킨다
+      const rng = makeRng((seed ^ 0x7a11e) >>> 0)
+      const u = makeMonster(state, sd.unique.kind, far.x, far.y, 9998, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
+      u.elite = rollAffixes(rng, 1 | EA_UNIQUE, UNIQUE.affixes)
+      state.monsters.push(u)
+      const r = MONSTER_LIST[sd.unique.kind].r
+      for (let i = 0; i < 3; i++) {
+        const a = (i * 341 + 100) & 1023
+        const at = moveCircle(map, far.x, far.y, r, cosA(a) * 40, sinA(a) * 40)
+        state.monsters.push(makeMonster(state, sd.unique.kind, at.x, at.y, 9998, hpMul, pow, lvl))
+      }
+      state.monstersTotal += 4
+    }
     state.stairX = -1
     state.stairY = -1
   } else {
@@ -194,12 +214,13 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     entryX: entry.x,
     entryY: entry.y,
     floor: 1,
-    floorMax: cfg.floors ?? FLOORS,
+    floorMax: cfg.floors ?? stageDef(cfg.stage ?? 0).floors,
     stairX: -1,
     stairY: -1,
     descend: -1,
     pendingFloor: 0,
     monstersTotal: 0,
+    stage: Math.max(0, cfg.stage ?? 0),
     winner: -1,
     sandbags: {},
     events: [],
@@ -433,9 +454,9 @@ function stepStairs(state: GameState, inputs: Input[]): void {
 
 function checkOver(state: GameState): void {
   if (state.phase !== 'playing' || state.mode !== 'dungeon') return
-  // 원정 완료: 마지막 층에서 보스가 쓰러지면 (또는 그 층의 몬스터를 다 잡으면)
+  // 원정 완료: 마지막 층에서 보스(또는 우두머리)가 쓰러지면 (또는 그 층의 몬스터를 다 잡으면)
   const last = state.floor >= state.floorMax
-  const bossAlive = state.monsters.some((m) => MONSTER_LIST[m.kind].boss)
+  const bossAlive = state.monsters.some((m) => m.hp > 0 && isBossLike(m))
   if (last && state.monstersTotal > 0 && (!bossAlive || state.monsters.length === 0)) {
     state.phase = 'over'
     state.winner = 0
@@ -1546,7 +1567,7 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
   if (m.elite & EA_SPLIT) {
     // 정예 배율을 걷어 낸 층 보정만 물려준다
     const hpMul = m.maxHp / (def.hp * ELITE.hp)
-    for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow) })
+    for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow), lvl: m.lvl })
   }
 }
 
@@ -1558,7 +1579,7 @@ function flushSpawns(state: GameState, map: GameMap): void {
     const s = spawns[i]
     const d = ring[i % ring.length]
     const r = moveCircle(map, s.x, s.y, MONSTER_LIST[0].r, d[0] * 14, d[1] * 14)
-    const g = makeMonster(state, 0, r.x, r.y, s.pack, s.hpMul, s.pow)
+    const g = makeMonster(state, 0, r.x, r.y, s.pack, s.hpMul, s.pow, s.lvl)
     g.st = MS_CHASE
     g.cd = 20 + i * 6
     g.aim = (i * 341) & 1023
@@ -1575,16 +1596,18 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
   for (const p of state.players) {
     if (!p.alive || p.left || p.out) continue
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
-    const eliteK = m.elite ? ELITE.xp : 1
-    gainXp(state, p, Math.round(def.xp * eliteK * (m.pow / 100) * (1 + p.st[ST_XP] / 100)))
-    const g = Math.max(1, Math.round(def.xp * 0.4 * eliteK))
+    const unique = (m.elite & EA_UNIQUE) !== 0
+    const eliteK = unique ? UNIQUE.xp : m.elite ? ELITE.xp : 1
+    gainXp(state, p, Math.round(xpFor(m) * (1 + p.st[ST_XP] / 100)))
+    const g = Math.max(1, Math.round(def.xp * 0.4 * eliteK * (m.pow / 100)))
     p.gold += g
     p.goldGain += g
     // 전리품: 사람마다 따로 굴린다. 주인에게만 보이고 주인만 줍는다
-    // 정예·보스는 확정 + 등급이 오른다 (보스는 둘)
-    const drops = def.boss ? 2 : m.elite || rand(state.rng) < def.loot ? 1 : 0
+    // 정예·우두머리·보스는 확정 + 등급이 오른다 (우두머리·보스는 둘). 아이템 레벨 = 이 층의 지역 레벨
+    const drops = def.boss ? 2 : unique ? UNIQUE.drops : m.elite || rand(state.rng) < def.loot ? 1 : 0
+    const ilvl = Math.max(1, areaLevel(state.stage, state.floor, p.level))
     for (let k = 0; k < drops; k++) {
-      const item = rollItem(state.rng, state.nextItemUid++, Math.max(1, p.level + (state.floor - 1)), p.weapon, def.boss ? 0.3 : m.elite ? ELITE.lootBonus : 0)
+      const item = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, def.boss ? 0.3 : unique ? UNIQUE.lootBonus : m.elite ? ELITE.lootBonus : 0)
       const ox = (rand(state.rng) - 0.5) * 36
       const oy = (rand(state.rng) - 0.5) * 36
       state.drops.push({ id: state.nextDropId++, owner: p.id, x: m.x + ox, y: m.y + oy, item, ttl: 60 * 240, lock: 20 })

@@ -34,6 +34,8 @@ interface Anim {
   yaw: number
   /** 정예 (크게 · 금빛으로 달아오른다) */
   elite?: boolean
+  /** 우두머리 (더 크게) */
+  unique?: boolean
 }
 
 interface Part {
@@ -345,6 +347,7 @@ export class MonsterView {
       while (d < -Math.PI) d += Math.PI * 2
       v.yaw += d * Math.min(1, dt * 14)
       v.elite = m.elite > 0
+      v.unique = (m.elite & 64) !== 0
       if (hidden(m)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
@@ -375,7 +378,7 @@ export class MonsterView {
     if (i >= CAP) return
     counts[kind]++
     const def = MONSTER_LIST[kind]
-    const size = (def.r / 13) * (a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예는 더 크게
+    const size = (def.r / 13) * (a.unique ? 1.7 : a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
     this.o.position.set(x, -Math.max(0, corpseT - 0.5) * 0.9, z)
     this.o.rotation.set(0, Math.PI / 2 - yaw, 0)

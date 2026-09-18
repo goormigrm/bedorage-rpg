@@ -12,7 +12,8 @@ import { angleToRad } from '../core/fixedmath'
 import { DEATH_RULE_LABEL, DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { RARITY_COLORS, RARITY_NAMES, Sheet, emptySheet, sanitizeSheet } from '../core/items'
-import { commitSheet } from './save'
+import { commitProgress, commitSheet } from './save'
+import { ACTS, STAGE_COUNT, stageDef, stageLabel } from '../core/campaign'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
@@ -41,6 +42,8 @@ export interface SessionConfig {
   kind?: GameMode
   /** 자리별 캐릭터 기록 (레벨·장비·가방). 내 것은 세이브에서, 남의 것은 방 메시지로 온다 */
   sheets?: (Sheet | undefined)[]
+  /** 캠페인 원정 번호 (던전). 방장이 고른다 */
+  stage?: number
   seed: number
   localPlayer: number
   mapId?: MapId
@@ -63,7 +66,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; kind?: string }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; kind?: string; stage?: number }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -327,6 +330,7 @@ export class Session {
         targetKills: info.targetKills,
         deathRule: info.deathRule,
         kind: info.kind,
+        stage: this.cfg.stage ?? 0,
         count,
         max: info.size,
         state: this.state.phase === 'over' || count >= info.size ? 'full' : 'playing',
@@ -394,13 +398,13 @@ export class Session {
     return this.cfg.kind === 'arena'
   }
 
-  /** 던전은 지하 묘지, 투기장은 방장이 고른 덕의 맵 */
+  /** 던전은 원정이 속한 막의 지역, 투기장은 방장이 고른 덕의 맵 */
   private mapIdFor(): MapId {
     if (this.arena) {
-      const m = this.cfg.mapId && this.cfg.mapId !== 'crypt' ? this.cfg.mapId : 'studio'
+      const m = this.cfg.mapId && !MAPS[this.cfg.mapId]?.fixedScale ? this.cfg.mapId : 'studio'
       return m
     }
-    return this.cfg.mapId && MAPS[this.cfg.mapId]?.fixedScale ? this.cfg.mapId : DEFAULT_MAP
+    return ACTS[stageDef(this.cfg.stage ?? 0).act].map ?? DEFAULT_MAP
   }
 
   private matchCfg(seed: number): Parameters<typeof createState>[0] {
@@ -413,6 +417,7 @@ export class Session {
       mode: this.arena ? 'arena' : 'dungeon',
       teams: this.arena ? this.cfg.teams : undefined,
       targetKills: this.cfg.targetKills,
+      stage: this.arena ? 0 : (this.cfg.stage ?? 0),
     }
   }
 
@@ -878,7 +883,7 @@ export class Session {
         break
       }
       case 'rematch':
-        if (this.peerIndex.get(from) === 0) this.restart(m.seed)
+        if (this.peerIndex.get(from) === 0) this.restart(m.seed, m.stage)
         break
       case 'leave':
         this.onPeerGone(from)
@@ -888,9 +893,11 @@ export class Session {
     }
   }
 
-  private restart(seed: number): void {
+  private restart(seed: number, stage?: number): void {
     // 다시 하기: 이번 판에서 키운 것을 들고 간다 (내 것은 세이브에도 적는다)
     this.saveMine(true)
+    // 다음 원정으로 (방장이 정해 보낸다)
+    if (stage !== undefined && !this.arena) this.cfg.stage = Math.max(0, Math.min(STAGE_COUNT - 1, stage | 0))
     this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.map = buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), seed)
@@ -1064,7 +1071,7 @@ export class Session {
       message,
       cursor: this.aimCursor(),
       touch: this.touch !== null,
-      floorName: this.arena ? `투기장 · ${this.map.name}` : `${this.map.name} ${this.state.floor}층${this.state.floor >= this.state.floorMax ? ' · 도살자' : ''}`,
+      floorName: this.arena ? `투기장 · ${this.map.name}` : `${stageLabel(this.state.stage)} · ${this.state.floor}/${this.state.floorMax}층`,
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }
@@ -1291,6 +1298,7 @@ export class Session {
         targetKills: this.cfg.targetKills ?? 0,
         deathRule: this.cfg.deathRule ?? 0,
         kind: this.cfg.kind ?? 'dungeon',
+        stage: this.cfg.stage ?? 0,
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
         scale: this.map.scale,
@@ -1424,40 +1432,37 @@ export class Session {
     const w = this.state.winner
     const lp = this.cfg.localPlayer
     const cleared = this.arena ? this.state.players[lp].team === w : w === 0
-    const title = this.arena ? (cleared ? '승리!' : '패배') : cleared ? '원정 완료!' : '전멸'
+    const title = this.arena ? (cleared ? '승리!' : '패배') : cleared ? `${stageLabel(this.state.stage)} 완료!` : '전멸'
+    // 캠페인 진행: 원정을 깼으면 내 캐릭터의 다음 원정이 열린다 (하드코어 탈락은 빼고)
+    const meP = this.state.players[lp]
+    if (!this.arena && cleared && meP && !meP.vacant && !meP.out && !this.joiningIn) commitProgress(meP.char, this.state.stage)
+    const nextStage = !this.arena && cleared && this.state.stage + 1 < STAGE_COUNT ? this.state.stage + 1 : -1
     const kills = this.state.players.reduce((a, p) => a + p.kills, 0)
     const secs = Math.round(this.state.tick / 60)
     const desc = this.arena
       ? isTeamMatch(this.state)
         ? `${w === 0 ? 'A팀' : 'B팀'} 승리 · A팀 ${teamKills(this.state, 0)} : ${teamKills(this.state, 1)} B팀`
         : this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
-      : `${this.map.name} ${this.state.floor}층${cleared ? '' : ` / ${this.state.floorMax}층`} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초 · 죽음 규칙 ${DEATH_RULE_LABEL[this.state.deathRule]}`
+      : `${stageLabel(this.state.stage)} ${this.state.floor}층${cleared ? '' : ` / ${this.state.floorMax}층`} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초 · 죽음 규칙 ${DEATH_RULE_LABEL[this.state.deathRule]}${
+          cleared && nextStage < 0 ? ' · 캠페인의 마지막 원정입니다' : ''
+        }`
     const stats = this.statsTable()
     setTimeout(() => {
       if (this.disposed) return
+      const again = (stage: number) => {
+        const seed = (Math.random() * 0xffffffff) >>> 0
+        if (this.isHost) this.cfg.link?.sendCtl({ t: 'rematch', seed, stage })
+        this.restart(seed, stage)
+      }
+      const btns = [
+        ...(nextStage >= 0 ? [{ label: `다음 원정 · ${stageLabel(nextStage)}`, primary: true, onClick: () => again(nextStage) }] : []),
+        { label: cleared && !this.arena ? '이 원정 다시' : '다시 하기', primary: nextStage < 0, onClick: () => again(this.state.stage) },
+        { label: '로비로', primary: false, onClick: () => this.exit() },
+      ]
       if (this.cfg.mode === 'solo') {
-        this.showOverlay(
-          title,
-          desc,
-          [
-            { label: '다시 하기', primary: true, onClick: () => this.restart((Math.random() * 0xffffffff) >>> 0) },
-            { label: '로비로', primary: false, onClick: () => this.exit() },
-          ],
-          stats,
-        )
+        this.showOverlay(title, desc, btns, stats)
       } else if (this.isHost) {
-        this.showOverlayWithStats(title, desc, stats, [
-          {
-            label: '다시 하기',
-            primary: true,
-            onClick: () => {
-              const seed = (Math.random() * 0xffffffff) >>> 0
-              this.cfg.link?.sendCtl({ t: 'rematch', seed })
-              this.restart(seed)
-            },
-          },
-          { label: '로비로', primary: false, onClick: () => this.exit() },
-        ])
+        this.showOverlayWithStats(title, desc, stats, btns)
       } else {
         this.showOverlay(title, desc + ' · 방장이 다시 시작하길 기다리는 중', [{ label: '로비로', primary: false, onClick: () => this.exit() }], stats)
       }

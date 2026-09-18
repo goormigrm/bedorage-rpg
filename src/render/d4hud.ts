@@ -11,7 +11,8 @@
 import { CHARACTERS, CharacterDef } from '../core/characters'
 import { CHAR_SKILLS, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
-import { MONSTER_LIST } from '../core/monsters'
+import { EA_UNIQUE, MONSTER_LIST, isBossLike } from '../core/monsters'
+import { ACTS, stageDef } from '../core/campaign'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -419,7 +420,9 @@ export class D4Hud {
       c.font = `600 12px ${SANS}`
       c.fillStyle = '#d8cfbf'
       const last = s.floor >= s.floorMax
-      c.fillText(last ? '◆ 도살자를 쓰러뜨려라' : s.descend > 0 ? `◆ 내려가는 중… ${Math.ceil(s.descend / 60)}` : '◆ 계단(지도의 파란 원)에서 F', x + 12, y + 46)
+      const sd = stageDef(s.stage)
+      const goal = sd.boss !== undefined ? `◆ ${MONSTER_LIST[sd.boss].name}을(를) 쓰러뜨려라` : `◆ 우두머리 ${sd.unique?.name ?? ''} 처치`
+      c.fillText(last ? goal : s.descend > 0 ? `◆ 내려가는 중… ${Math.ceil(s.descend / 60)}` : '◆ 계단(지도의 파란 원)에서 F', x + 12, y + 46)
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53, W - 24, 4)
       c.fillStyle = GOLD
@@ -462,8 +465,9 @@ export class D4Hud {
 
   /** 위 가운데: 보스 체력 (깨어 있을 때만) — 디아블로식 긴 막대 */
   drawBoss(h: HudCtx, s: GameState): void {
-    const boss = s.monsters.find((m) => MONSTER_LIST[m.kind].boss && m.st !== 0)
+    const boss = s.monsters.find((m) => m.hp > 0 && isBossLike(m) && m.st !== 0)
     if (!boss) return
+    const unique = (boss.elite & EA_UNIQUE) !== 0
     const c = h.ctx
     const W = Math.min(560, h.W - 480)
     const x = h.W / 2 - W / 2
@@ -480,8 +484,44 @@ export class D4Hud {
     c.font = `800 15px ${SERIF}`
     c.textAlign = 'center'
     c.textBaseline = 'alphabetic'
-    c.fillStyle = '#f1d58a'
-    c.fillText(MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
+    c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
+    c.fillText(unique ? `${stageDef(s.stage).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
+  }
+
+  /**
+   * 원정 시작 화면: 막 이름 · 원정 이름 · 소개 두 줄. 첫 층 카운트다운부터 약 6초 동안 떠 있다가 사라진다.
+   * (판 안의 tick 만 보므로 난입·리싱크해도 같은 때 사라진다)
+   */
+  drawIntro(h: HudCtx, s: GameState): void {
+    if (s.mode !== 'dungeon' || s.floor !== 1 || s.tick > 420) return
+    const sd = stageDef(s.stage)
+    const k = s.tick < 30 ? s.tick / 30 : s.tick > 330 ? Math.max(0, (420 - s.tick) / 90) : 1
+    const c = h.ctx
+    c.save()
+    c.globalAlpha = k
+    const cy = h.H * 0.19
+    const g = c.createLinearGradient(0, cy - 70, 0, cy + 80)
+    g.addColorStop(0, 'rgba(0,0,0,0)')
+    g.addColorStop(0.3, 'rgba(0,0,0,0.62)')
+    g.addColorStop(0.7, 'rgba(0,0,0,0.62)')
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    c.fillStyle = g
+    c.fillRect(0, cy - 70, h.W, 150)
+    c.textAlign = 'center'
+    c.textBaseline = 'alphabetic'
+    c.font = `700 13px ${SERIF}`
+    c.fillStyle = '#b8a67e'
+    c.fillText(`${sd.act + 1}막 · ${ACTS[sd.act].name}`, h.W / 2, cy - 30)
+    c.font = `800 30px ${SERIF}`
+    c.fillStyle = GOLD_HI
+    c.fillText(`${sd.act + 1}-${sd.n + 1}  ${sd.name}`, h.W / 2, cy + 6)
+    c.font = `500 13px ${SERIF}`
+    c.fillStyle = '#d8cfbf'
+    sd.intro.split('\n').forEach((line, i) => c.fillText(line, h.W / 2, cy + 32 + i * 19))
+    c.font = `600 11px ${SANS}`
+    c.fillStyle = '#8d8170'
+    c.fillText(`지역 레벨 ${sd.level} · ${sd.floors}층`, h.W / 2, cy + 32 + sd.intro.split('\n').length * 19 + 4)
+    c.restore()
   }
 
   /** 왼쪽 위: 파티 (던전은 모두, 투기장은 같은 팀만 — 상대 정보는 숨긴다) */

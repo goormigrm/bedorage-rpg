@@ -2,16 +2,18 @@
 import { describe, expect, it } from 'vitest'
 import { Input } from '../src/core/input'
 import { buildMap, GameMap } from '../src/core/map'
-import { floorSeed, makeMonster } from '../src/core/dungeon'
-import { AFFIX_TUNE, EA_SPLIT, EA_STOUT, EA_VAMP, EA_VOLATILE } from '../src/core/monsters'
-import { createState, enterFloor, step } from '../src/core/sim'
+import { affixCount, makeMonster } from '../src/core/dungeon'
+import { emptySheet } from '../src/core/items'
+import { AFFIX_TUNE, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE } from '../src/core/monsters'
+import { createState, step } from '../src/core/sim'
 import { COUNTDOWN_TICKS, GameState, MS_CHASE, SimEvent, ZONE_FUSE } from '../src/core/state'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const fire = (): Input => ({ ...idle(), buttons: 1, aim: 0, aimDist: 15 })
+/** 접두 능력 수 (1 = 정예 표시, 64 = 우두머리 표시는 빼고) */
 const bits = (e: number) => {
   let n = 0
-  for (let b = e >> 1; b; b >>= 1) n += b & 1
+  for (let b = (e & ~EA_UNIQUE) >> 1; b; b >>= 1) n += b & 1
   return n
 }
 
@@ -46,18 +48,18 @@ function run(s: GameState, map: GameMap, input: Input, ticks: number, until?: (e
 }
 
 describe('정예 접두 능력', () => {
-  it('1~2층 정예는 능력 하나, 3층부터 둘', () => {
+  it('지역 레벨이 낮으면 능력 하나, 12 부터 둘, 22 부터 셋', () => {
+    expect([1, 11, 12, 21, 22, 30].map(affixCount)).toEqual([1, 1, 2, 2, 3, 3])
     const seed = 42
-    const map = { m: buildMap('crypt', 1, seed) }
-    const s = createState({ seed, chars: ['chim'], floors: 4 }, map.m)
-    const e1 = s.monsters.filter((m) => m.elite)
+    const map = buildMap('crypt', 1, seed)
+    const low = createState({ seed, chars: ['chim'] }, map)
+    const e1 = low.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
     expect(e1.length).toBeGreaterThan(2)
     for (const m of e1) expect(bits(m.elite)).toBe(1)
-    map.m = buildMap('crypt', 1, floorSeed(seed, 3))
-    enterFloor(s, map.m, 3, seed)
-    const e3 = s.monsters.filter((m) => m.elite)
-    expect(e3.length).toBeGreaterThan(2)
-    for (const m of e3) expect(bits(m.elite)).toBe(2)
+    // 레벨 15 파티는 1막에서도 지역 레벨이 12 로 따라 올라온다 → 둘
+    const high = createState({ seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 15 }] }, map)
+    const e2 = high.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
+    for (const m of e2) expect(bits(m.elite)).toBe(2)
   })
 
   it('단단함: 같은 한 발에 받는 피해가 0.6배', () => {

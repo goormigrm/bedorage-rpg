@@ -276,6 +276,8 @@ export interface Monster {
   tag: number
   /** 공격력 배율 ×100 (파티 레벨로 세진다) */
   pow: number
+  /** 몬스터 레벨 (지역 레벨) — 경험치가 이것으로 오른다 */
+  lvl: number
   /** 정예 (무리의 우두머리) */
   elite: number
   /** 보스 공격 방식: 0 보통 · 1 돌진 (예고 중 · 돌진 중) */
@@ -437,8 +439,10 @@ export interface MatchConfig {
   noMonsters?: boolean
   /** 자리별 캐릭터 기록 (레벨·장비·가방·골드). 없으면 1레벨 맨몸 */
   sheets?: (Sheet | undefined)[]
-  /** 원정 층 수 (기본 FLOORS). 시험용으로 줄일 수 있다 */
+  /** 원정 층 수 (기본 = 원정 표의 층 수). 시험용으로 줄일 수 있다 */
   floors?: number
+  /** 캠페인 원정 번호 (campaign.ts STAGES, 기본 0) */
+  stage?: number
 }
 
 export interface GameState {
@@ -482,6 +486,8 @@ export interface GameState {
   pendingFloor: number
   /** 이 층의 처음 몬스터 수 (진행 표시) */
   monstersTotal: number
+  /** 캠페인 원정 번호 — 몬스터 구성·지역 레벨·맵·끝의 보스가 여기서 나온다 */
+  stage: number
   /** 0 = 층 정리, 1 = 전멸. -1 = 아직 */
   winner: number
   /** 살아있는 모래주머니: 타일 인덱스 → 남은 내구도 (던전에는 없다 — 덕 코드 호환) */

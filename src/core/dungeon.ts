@@ -4,6 +4,7 @@
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
 import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor } from './monsters'
+import { PackDef } from './campaign'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
 
@@ -19,7 +20,7 @@ export function entryOf(map: GameMap): { x: number; y: number } {
   return map.spawns[0] ?? { x: map.pw / 2, y: map.ph / 2 }
 }
 
-export function makeMonster(state: GameState, kind: number, x: number, y: number, pack: number, hpMul: number, pow = 100): Monster {
+export function makeMonster(state: GameState, kind: number, x: number, y: number, pack: number, hpMul: number, pow = 100, lvl = 1): Monster {
   const def = MONSTER_LIST[kind]
   const hp = Math.round(def.hp * hpMul)
   return {
@@ -51,32 +52,46 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     taunt: 0,
     tag: 0,
     pow,
+    lvl,
     elite: 0,
     mode: 0,
   }
 }
 
-/** 무리 구성: 이끄는 원형 하나를 뽑고 그 둘레를 채운다. 반환은 kind 번호 목록 */
-function packMembers(rng: Rng): number[] {
+/** 무리 구성: 막의 무리 틀 중 하나를 비중대로 뽑아 채운다. 반환은 kind 번호 목록 */
+function packMembers(rng: Rng, packs: PackDef[]): number[] {
   const roll = rand(rng)
+  let acc = 0
+  let pick = packs[packs.length - 1]
+  for (const p of packs) {
+    acc += p.w
+    if (roll < acc) {
+      pick = p
+      break
+    }
+  }
   const out: number[] = []
-  const add = (kind: number, n: number) => {
+  for (const [kind, lo, hi] of pick.groups) {
+    const n = randInt(rng, lo, hi + 1)
     for (let i = 0; i < n; i++) out.push(kind)
   }
-  if (roll < 0.55) {
-    // 구울 떼 + 궁수 한둘
-    add(0, randInt(rng, 5, 10))
-    add(1, randInt(rng, 0, 3))
-  } else if (roll < 0.8) {
-    // 궁수 무리를 구울이 지킨다
-    add(1, randInt(rng, 3, 5))
-    add(0, randInt(rng, 1, 3))
-  } else {
-    // 부푼 시체 떼 — 구울 사이에서 터지면 구울도 날아간다
-    add(2, randInt(rng, 2, 4))
-    add(0, randInt(rng, 2, 4))
-  }
   return out
+}
+
+/** 정예 접두 능력 수: 지역 레벨 12 부터 둘, 22 부터 셋 */
+export function affixCount(level: number): number {
+  return 1 + (level >= 12 ? 1 : 0) + (level >= 22 ? 1 : 0)
+}
+
+/** 겹치지 않게 접두 능력 n 개를 더한다 */
+export function rollAffixes(rng: Rng, elite: number, n: number): number {
+  for (let k = 0; k < n; ) {
+    const a = ELITE_AFFIXES[randInt(rng, 0, ELITE_AFFIXES.length)]
+    if (elite & a.bit) continue
+    elite |= a.bit
+    k++
+  }
+  return elite
 }
 
 /**
@@ -109,7 +124,7 @@ export function farPoint(map: GameMap): { x: number; y: number } {
   return { x: (best % map.w) * TILE + TILE / 2, y: ((best / map.w) | 0) * TILE + TILE / 2 }
 }
 
-export function populate(state: GameState, map: GameMap, seed: number, players: number, level = 1, fewer = false): void {
+export function populate(state: GameState, map: GameMap, seed: number, players: number, level: number, fewer: boolean, packs: PackDef[]): void {
   const rng = makeRng((seed ^ 0x51ed27) >>> 0)
   const entry = entryOf(map)
   const et = Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE)
@@ -166,7 +181,7 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
   centers.forEach((c, pack) => {
     const cx = (c % map.w) * TILE + TILE / 2
     const cy = ((c / map.w) | 0) * TILE + TILE / 2
-    const kinds = packMembers(rng)
+    const kinds = packMembers(rng, packs)
     const placed: Monster[] = []
     for (const kind of kinds) {
       const def = MONSTER_LIST[kind]
@@ -199,21 +214,15 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
           }
         }
         if (clash) continue
-        const m = makeMonster(state, kind, x, y, pack, hpMul, pow)
+        const m = makeMonster(state, kind, x, y, pack, hpMul, pow, level)
         m.aim = randInt(rng, 0, 1024)
         // 다섯 무리에 하나는 첫 놈이 정예 (무리 번호로 정하므로 결정론)
         if (placed.length === 0 && pack % 5 === 2) {
           m.elite = 1
           m.maxHp = m.hp = Math.round(m.hp * ELITE.hp)
           m.pow = Math.round(m.pow * ELITE.pow)
-          // 접두 능력: 1~2층은 하나, 3층부터 둘 (겹치지 않게)
-          const want = state.floor >= 3 ? 2 : 1
-          for (let n = 0; n < want; ) {
-            const a = ELITE_AFFIXES[randInt(rng, 0, ELITE_AFFIXES.length)]
-            if (m.elite & a.bit) continue
-            m.elite |= a.bit
-            n++
-          }
+          // 접두 능력: 지역 레벨이 오를수록 많아진다 (겹치지 않게)
+          m.elite = rollAffixes(rng, m.elite, affixCount(level))
         }
         placed.push(m)
         break
