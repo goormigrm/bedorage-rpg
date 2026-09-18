@@ -387,8 +387,9 @@ function buildDark(map: GameMap, style: WorldStyle): World3D {
       }
       for (let k = 0; k < lights.length; k++) {
         const big = lights[k].userData.fire
-        lights[k].intensity = (big ? 22 : 7) * (1 + Math.sin(time * 13 + k * 2.1) * 0.08 + Math.sin(time * 7.7 + k) * 0.06)
-        lights[k].distance = big ? 14 : 9
+        // 모닥불은 마을 한가운데를 넓게 밝힌다 (2026-09-19 — 마을이 어둡다는 점검)
+        lights[k].intensity = (big ? 32 : 7) * (1 + Math.sin(time * 13 + k * 2.1) * 0.08 + Math.sin(time * 7.7 + k) * 0.06)
+        lights[k].distance = big ? 20 : 9
       }
     },
     dispose() {
