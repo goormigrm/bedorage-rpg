@@ -1,9 +1,10 @@
 // HUD 오버레이 (2D 캔버스). 3D 씬 위에 투명하게 겹친다. sim 을 바꾸지 않는다.
 // 협동: 위 가운데 층 목표(남은 몬스터), 왼쪽 아래 내 카드, 오른쪽 아래 파티(동료 체력은 늘 보인다), 가운데 알림.
 
-import { CHARACTERS, CharacterDef } from '../core/characters'
-import { BLEED_TICKS, DEATH_RULE_LABEL, GameState, PlayerState } from '../core/state'
-import { WEAPONS, WeaponId } from '../core/weapons'
+import { CHARACTERS } from '../core/characters'
+import { GameState, PlayerState } from '../core/state'
+import { WeaponId } from '../core/weapons'
+import { D4Hud, HudCtx, setWeaponIconPainter } from './d4hud'
 
 /** 기준 논리 해상도. 카메라 시야 보정의 기준점이기도 하다 */
 export const BASE_W = 1280
@@ -92,15 +93,15 @@ interface Notice {
   max: number
 }
 
-/** 나간 자리 표시. 한 번도 사람이 앉지 않은 자리는 "나감" 이 아니라 "빈 자리" */
-function leftLabel(p: PlayerState): string {
-  return p.vacant ? '빈 자리' : '나감'
-}
 
 export class Hud {
   readonly ctx: CanvasRenderingContext2D
   /** 가운데 알림. 최대 3개 */
   private notices: Notice[] = []
+  /** 디아블로 4 풍 패널 (오브·스킬 바·추적·파티) */
+  private d4 = new D4Hud()
+  private t = 0
+  private lastDt = 0.016
   private hitDirs: HitDir[] = []
   /** 조준점 히트마커: 내 탄이 맞으면 조준점 네 귀퉁이가 잠깐 벌어진다 (헤드샷은 금색) */
   private hitMarkT = 0
@@ -202,6 +203,8 @@ export class Hud {
 
   /** 프레임 시작: 변환 초기화 + 지우기 */
   begin(dt: number): void {
+    this.t += dt
+    this.lastDt = dt
     if (this.hitMarkT > 0) this.hitMarkT = Math.max(0, this.hitMarkT - dt)
     const ctx = this.ctx
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
@@ -251,12 +254,12 @@ export class Hud {
 
   private drawPanels(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    this.drawObjective(s, opts)
-
-    // 아래: 내 카드(체력·기력·탄약) + 파티 목록 (동료 체력은 늘 보인다)
+    const h: HudCtx = { ctx, W: VIEW_W, H: VIEW_H, t: this.t }
     const lp = opts.localPlayer
-    if (lp !== -1) this.drawPlayerCard(s.players[lp], CHARACTERS[s.players[lp].char], opts.names[lp], 24, VIEW_H - 46, 'left', true)
-    if (s.players.length > 1) this.drawOthersList(s, opts)
+    if (lp !== -1) this.d4.drawLowHealth(h, s.players[lp])
+    this.d4.drawTracker(h, s, opts)
+    this.d4.drawParty(h, s, opts)
+    if (lp !== -1) this.d4.drawBottom(h, s.players[lp], opts.cursor, this.lastDt)
     if (lp !== -1) this.drawMyStatus(s.players[lp], s)
 
     if (s.phase === 'countdown') {
@@ -314,36 +317,6 @@ export class Hud {
     }
   }
 
-  /** 위 가운데: 층 이름 · 남은 몬스터 · 진행 막대 · 죽음 규칙 */
-  private drawObjective(s: GameState, opts: RenderOptions): void {
-    const ctx = this.ctx
-    const pw = 360
-    const px = VIEW_W / 2 - pw / 2
-    this.panel(px, 14, pw, 58)
-    const left = s.monsters.length
-    const total = Math.max(1, s.monstersTotal)
-    ctx.textBaseline = 'middle'
-    ctx.textAlign = 'center'
-    ctx.font = '400 20px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = '#e6d6b0'
-    ctx.fillText(opts.floorName ?? '던전', VIEW_W / 2, 32)
-    ctx.font = '600 12px "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = '#a9b4c0'
-    ctx.textAlign = 'left'
-    ctx.fillText(s.monstersTotal > 0 ? `남은 괴물 ${left} / ${s.monstersTotal}` : '괴물 없음', px + 14, 58)
-    ctx.textAlign = 'right'
-    ctx.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#7d8896'
-    ctx.fillText(`죽음 규칙: ${DEATH_RULE_LABEL[s.deathRule]}`, px + pw - 14, 58)
-    // 정리한 비율 막대
-    const k = 1 - left / total
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'
-    roundRect(ctx, px + 14, 44, pw - 28, 5, 2)
-    ctx.fill()
-    ctx.fillStyle = '#c9a24a'
-    roundRect(ctx, px + 14, 44, (pw - 28) * k, 5, 2)
-    ctx.fill()
-  }
-
   /** 가운데: 내가 쓰러졌거나 죽었을 때 무엇을 기다리는지 */
   private drawMyStatus(me: PlayerState, s: GameState): void {
     if (me.left || s.phase !== 'playing') return
@@ -353,13 +326,12 @@ export class Hud {
       const others = s.players.some((p) => p.id !== me.id && p.alive && !p.downed && !p.left)
       title = '쓰러졌습니다'
       sub = others ? `동료가 곁에서 F 를 누르고 있으면 일어납니다 · ${Math.ceil(me.downTimer / 60)}초` : `${Math.ceil(me.downTimer / 60)}초 뒤 숨이 끊깁니다`
-      void BLEED_TICKS
     } else if (!me.alive && me.out) {
       title = '탈락'
       sub = '하드코어 — 이번 원정은 관전만 할 수 있습니다'
     } else if (!me.alive) {
       title = '사망'
-      sub = `${Math.ceil(me.respawnTimer / 60)}초 뒤 층 입구에서 다시 일어납니다`
+      sub = s.mode === 'arena' ? `${Math.ceil(me.respawnTimer / 60)}초 뒤 다시 나갑니다` : `${Math.ceil(me.respawnTimer / 60)}초 뒤 층 입구에서 다시 일어납니다`
     } else return
     const ctx = this.ctx
     ctx.save()
@@ -377,138 +349,6 @@ export class Hud {
     ctx.fillStyle = '#e6edf3'
     ctx.fillText(sub, VIEW_W / 2, VIEW_H / 2 - 74)
     ctx.restore()
-  }
-
-  private panel(x: number, y: number, w: number, h: number): void {
-    const ctx = this.ctx
-    ctx.fillStyle = 'rgba(13,17,23,0.8)'
-    roundRect(ctx, x, y, w, h, 8)
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)'
-    ctx.lineWidth = 1
-    roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 8)
-    ctx.stroke()
-  }
-
-  /** 3~4명: 오른쪽 아래에 나 이외 사람들의 간단 상태 */
-  private drawOthersList(s: GameState, opts: RenderOptions): void {
-    const ctx = this.ctx
-    const others = s.players.map((p, i) => ({ p, i })).filter((m) => m.i !== opts.localPlayer)
-    const rowH = 30
-    const w = 280
-    const h = others.length * rowH + 14
-    // 터치 조작이면 오른쪽 아래가 버튼 자리라 미니맵 밑으로 내린다
-    const x = opts.touch ? 24 : VIEW_W - 24 - w
-    const y = opts.touch ? 224 : VIEW_H - 46 - h // 미니맵(190 + 여백) 아래
-    this.panel(x, y, w, h)
-    others.forEach((m, r) => {
-      const c = CHARACTERS[m.p.char]
-      const ry = y + 8 + r * rowH
-      ctx.fillStyle = m.p.left ? '#555' : hex(c.bodyColor)
-      roundRect(ctx, x + 10, ry + 4, 4, rowH - 10, 2)
-      ctx.fill()
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      ctx.font = '600 13px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
-      ctx.fillStyle = m.p.left ? '#777' : '#e6edf3'
-      ctx.fillText(opts.names[m.i], x + 22, ry + rowH / 2 - 1)
-      // 협동이라 동료 체력은 늘 보인다
-      {
-        const hpK = m.p.left ? 0 : Math.max(0, m.p.hp / m.p.maxHp)
-        ctx.fillStyle = 'rgba(255,255,255,0.1)'
-        roundRect(ctx, x + 150, ry + rowH / 2 - 4, 70, 8, 3)
-        ctx.fill()
-        ctx.fillStyle = !m.p.alive || m.p.downed ? '#555' : hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
-        roundRect(ctx, x + 150, ry + rowH / 2 - 4, 70 * hpK, 8, 3)
-        ctx.fill()
-      }
-      ctx.font = '600 12px "IBM Plex Mono", monospace'
-      ctx.textAlign = 'right'
-      ctx.fillStyle = '#a9b4c0'
-      const status = m.p.left ? leftLabel(m.p) : m.p.downed ? `쓰러짐 ${Math.ceil(m.p.downTimer / 60)}` : m.p.out ? '탈락' : !m.p.alive ? `사망 ${Math.ceil(m.p.respawnTimer / 60)}` : `${m.p.kills}처치`
-      if (m.p.downed) ctx.fillStyle = '#ff8a7a'
-      ctx.fillText(status, x + w - 12, ry + rowH / 2 - 1)
-    })
-  }
-
-  private drawPlayerCard(p: PlayerState, c: CharacterDef, name: string, x: number, y: number, side: 'left' | 'right', isLocal: boolean): void {
-    const ctx = this.ctx
-    const w = WEAPONS[p.weapon]
-    const cw = 300
-    const ch = 92
-    const bx = side === 'left' ? x : x - cw
-    const by = y - ch
-    ctx.fillStyle = 'rgba(13,17,23,0.8)'
-    roundRect(ctx, bx, by, cw, ch, 8)
-    ctx.fill()
-    if (isLocal) {
-      ctx.strokeStyle = 'rgba(227,179,65,0.7)'
-      ctx.lineWidth = 1.5
-      roundRect(ctx, bx + 0.5, by + 0.5, cw - 1, ch - 1, 8)
-      ctx.stroke()
-    }
-    ctx.fillStyle = hex(c.bodyColor)
-    roundRect(ctx, side === 'left' ? bx : bx + cw - 6, by, 6, ch, 3)
-    ctx.fill()
-    const ix = bx + 18
-    ctx.textBaseline = 'alphabetic'
-    ctx.textAlign = 'left'
-    ctx.font = '600 16px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
-    ctx.fillStyle = '#e6edf3'
-    ctx.fillText(name, ix, by + 24)
-    ctx.font = '400 11px "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = '#7d8896'
-    ctx.fillText(`${c.passiveName} · ${c.basedOn}`, ix + ctx.measureText(name).width + 60, by + 24)
-    const hpK = Math.max(0, p.hp / p.maxHp)
-    ctx.fillStyle = 'rgba(255,255,255,0.1)'
-    roundRect(ctx, ix, by + 34, 200, 12, 4)
-    ctx.fill()
-    ctx.fillStyle = !p.alive ? '#555' : hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
-    roundRect(ctx, ix, by + 34, 200 * hpK, 12, 4)
-    ctx.fill()
-    ctx.font = '600 12px "IBM Plex Mono", monospace'
-    ctx.fillStyle = '#e6edf3'
-    ctx.fillText(p.downed ? '쓰러짐' : p.alive ? `${Math.ceil(p.hp)} / ${p.maxHp}` : p.left ? leftLabel(p) : p.out ? '탈락' : `사망 ${Math.ceil(p.respawnTimer / 60)}`, ix + 208, by + 45)
-    ctx.font = '500 12px "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = '#a9b4c0'
-    ctx.fillText(w.name, ix, by + 70)
-    const infinite = w.magSize === 0
-    // 탄 부족: 탄창의 20% 이하면 숫자가 빨갛게 깜빡인다 (재장전이 시작돼야 알던 것을 미리 — 2026-09-05)
-    const low = lowAmmo(p, w)
-    ctx.font = '400 30px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = p.reloadTimer > 0 ? '#f2c94c' : low ? (Math.floor(performance.now() / 260) % 2 === 0 ? '#f25c4c' : '#ffb3a8') : '#e6edf3'
-    ctx.fillText(infinite ? '∞' : p.reloadTimer > 0 ? '재장전' : `${p.ammo}`, ix + 60, by + 78)
-    if (infinite) {
-      ctx.font = '500 12px "IBM Plex Sans KR", sans-serif'
-      ctx.fillStyle = '#7d8896'
-      ctx.fillText('근접', ix + 88, by + 76)
-    } else if (p.reloadTimer === 0) {
-      ctx.font = '500 13px "IBM Plex Mono", monospace'
-      ctx.fillStyle = '#7d8896'
-      ctx.fillText(`/ ${w.magSize}`, ix + 60 + ctx.measureText(`${p.ammo}`).width + 26, by + 76)
-    } else {
-      const k = 1 - p.reloadTimer / w.reloadTicks
-      ctx.fillStyle = 'rgba(255,255,255,0.1)'
-      roundRect(ctx, ix + 140, by + 66, 100, 6, 3)
-      ctx.fill()
-      ctx.fillStyle = '#f2c94c'
-      roundRect(ctx, ix + 140, by + 66, 100 * k, 6, 3)
-      ctx.fill()
-    }
-    const sk = Math.max(0, Math.min(1, p.stamina / p.staminaMax))
-    ctx.fillStyle = 'rgba(255,255,255,0.1)'
-    roundRect(ctx, ix + 208, by + 58, 60, 6, 3)
-    ctx.fill()
-    ctx.fillStyle = sk > 0.34 ? '#9fe0ff' : '#e08a5a'
-    roundRect(ctx, ix + 208, by + 58, 60 * sk, 6, 3)
-    ctx.fill()
-    ctx.font = '400 10px "IBM Plex Sans KR", sans-serif'
-    ctx.fillStyle = '#7d8896'
-    ctx.fillText('기력', ix + 208, by + 78)
-    if (p.legInjury > 0) {
-      ctx.fillStyle = '#f2c94c'
-      ctx.fillText('다리 부상', ix + 236, by + 78)
-    }
   }
 
   private drawBanner(s: GameState, opts: RenderOptions): void {
@@ -534,8 +374,10 @@ export class Hud {
       ctx.globalAlpha = 1
     }
     if (s.phase === 'over' && s.winner !== -1) {
-      const cleared = s.winner === 0
-      const title = cleared ? '층 정리!' : '전멸'
+      const arena = s.mode === 'arena'
+      const cleared = arena ? opts.localPlayer >= 0 && s.players[opts.localPlayer].team === s.winner : s.winner === 0
+      const winName = arena ? (s.players.some((p, i) => p.team === s.winner && i !== s.winner) ? (s.winner === 0 ? 'A팀' : 'B팀') : opts.names[s.winner] ?? CHARACTERS[s.players[s.winner].char].name) : ''
+      const title = arena ? `${winName} 승리` : cleared ? '층 정리!' : '전멸'
       const color = cleared ? '#e8c46a' : '#ff5a4a'
       const k = Math.min(1, this.overT * 1.5)
       ctx.fillStyle = `rgba(6,6,8,${0.6 * k})`
@@ -559,7 +401,7 @@ export class Hud {
       ctx.fillStyle = '#e6edf3'
       ctx.textAlign = 'center'
       const kills = s.players.reduce((a, p) => a + p.kills, 0)
-      ctx.fillText(cleared ? `괴물 ${kills}마리를 쓰러뜨렸습니다` : '모두 쓰러졌습니다', VIEW_W / 2, VIEW_H / 2 + 44)
+      ctx.fillText(arena ? `목표 ${s.targetKills}킬 달성` : cleared ? `괴물 ${kills}마리를 쓰러뜨렸습니다` : '모두 쓰러졌습니다', VIEW_W / 2, VIEW_H / 2 + 44)
       ctx.globalAlpha = 1
     }
     void opts
@@ -723,3 +565,6 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 export function hex(c: number): string {
   return '#' + c.toString(16).padStart(6, '0')
 }
+
+// 스킬 바의 무기 칸이 덕의 무기 그림을 쓴다 (d4hud 가 hud 를 import 하면 순환이라 주입한다)
+setWeaponIconPainter(drawWeaponIcon)

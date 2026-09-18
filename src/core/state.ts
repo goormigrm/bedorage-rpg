@@ -77,6 +77,19 @@ export const DEATH_RULE_LABEL = ['없음', '소실', '하드코어'] as const
 
 export type Phase = 'countdown' | 'playing' | 'over'
 
+/**
+ * 판의 종류. dungeon = 협동 던전(PvE) · arena = 투기장(PvP — 배도라지 덕의 대전 규칙을 이식,
+ * RPG 에서 키운 캐릭터끼리 싸운다. 2026-09-18 사용자: "배도라지덕의 방식을 RPG 안에 이식")
+ */
+export type GameMode = 'dungeon' | 'arena'
+
+/** 투기장: 죽은 자리에 떨어지는 힐팩 (덕 그대로). 회복 구슬과 같은 배열을 쓰고 heal 로 구분한다 */
+export const MEDKIT_HEAL_FRAC = 0.35
+export const MEDKIT_TTL = 60 * 20
+export const MEDKIT_RADIUS = 26
+/** 투기장: 리스폰 후 이 틱 안에는 무적 (덕의 스폰 보호) */
+export const ARENA_RESPAWN_TICKS = 180
+
 export interface PlayerState {
   /** 플레이어 인덱스 0..MAX_PLAYERS-1 */
   id: number
@@ -145,6 +158,18 @@ export interface PlayerState {
   killStreak: number
   /** 동료를 일으킨 횟수 */
   revives: number
+  /** 스킬 재사용 대기 [Q, E, X] (틱) */
+  cd: number[]
+  /** 버프 남은 틱 (skills.ts 의 FX_* 번호) */
+  fx: number[]
+  /** FX_RATE 동안의 연사 배율 (가장 큰 것) */
+  rateMul: number
+  /** 관통탄이 남은 발 수 (침착덕 Q) */
+  pierceShots: number
+  /** 다음 발 피해 배율이 남은 발 수 (옥냥덕 Q) */
+  empowerShots: number
+  /** 돌진 중 한 번씩만 맞히려고 쓰는 효과 번호 */
+  chargeTag: number
 }
 
 export interface Bullet {
@@ -163,10 +188,21 @@ export interface Bullet {
   oy: number
   weapon: WeaponId
   hitSomeone: boolean
+  /** 모래주머니를 끝까지 넘어가는 탄 (투기장 — 머리를 정확히 겨눈 탄) */
   over: boolean
-  /** 쏠 때 커서가 약점 위에 있던 몬스터 id (-1 = 없음). 이 몬스터를 맞히면 치명타 */
+  /** 투기장: 쏠 때 커서가 올라가 있던 적 플레이어 (-1 = 없음). 이 사람을 맞히면 헤드샷 (덕 규칙) */
   headTarget: number
+  /** 던전: 쏠 때 커서가 약점 위에 있던 몬스터 id (-1 = 없음). 이 몬스터를 맞히면 치명타 */
+  critMon: number
   overR: number
+  /** 더 꿰뚫을 수 있는 수 (관통탄·관통 저격) */
+  pierce: number
+  /** 방금 맞힌 것 (꿰뚫는 탄이 같은 몸을 두 틱 연속 맞히지 않게) — 몬스터 id, 플레이어는 -(번호+1) */
+  lastHit: number
+  /** 피해 배율 (스킬) */
+  mul: number
+  /** 맞히면 무조건 치명타 (침착 모드) */
+  forceCrit: boolean
 }
 
 /**
@@ -209,6 +245,17 @@ export interface Monster {
   los: number
   /** 이번 틱에 움직였나 (렌더 걷기) */
   moving: number
+  /** 둔화 남은 틱 (절반 속도) */
+  slow: number
+  /** 받는 피해 증가 남은 틱 · 배율(%) — 생중계 25 · 스포트라이트 50, 큰 쪽 */
+  vuln: number
+  vulnPct: number
+  /** 드러남 남은 틱 (생중계 — 시야 밖이어도 보인다) */
+  mark: number
+  /** 도발 남은 틱 (target 을 바꾸지 않는다) */
+  taunt: number
+  /** 마지막으로 맞은 효과 번호 (돌진처럼 한 번만 맞아야 하는 효과) */
+  tag: number
 }
 
 /** 몬스터 상태 */
@@ -231,12 +278,41 @@ export interface MShot {
   r: number
 }
 
-/** 회복 구슬 */
+/** 회복 구슬 (던전) · 힐팩 (투기장) */
 export interface Globe {
   id: number
   x: number
   y: number
   ttl: number
+  /** 회복량 (최대 체력 비율 × 100). 던전 구슬 25 · 투기장 힐팩 35 */
+  heal: number
+  /** 가까운 동료에게도 나눠 주는가 (던전 구슬만) */
+  share: boolean
+}
+
+/** 땅에 깔리는 효과 (스포트라이트 무대) */
+export interface Zone {
+  id: number
+  kind: number
+  owner: number
+  x: number
+  y: number
+  r: number
+  t: number
+  max: number
+}
+export const ZONE_SPOTLIGHT = 0
+
+/** 던진 것 (수류탄) — t 가 0 이 되면 터진다 */
+export interface Throw {
+  id: number
+  owner: number
+  x0: number
+  y0: number
+  x: number
+  y: number
+  t: number
+  max: number
 }
 
 export type SimEvent =
@@ -247,7 +323,14 @@ export type SimEvent =
   | { type: 'hurt'; p: number; by: number; x: number; y: number; dmg: number }
   | { type: 'down'; p: number; x: number; y: number }
   | { type: 'revive'; p: number; by: number; x: number; y: number }
-  | { type: 'death'; p: number; x: number; y: number; out: boolean }
+  /** 죽음. by = 죽인 플레이어 (투기장), 던전은 -1 */
+  | { type: 'death'; p: number; by: number; x: number; y: number; out: boolean }
+  /** 투기장: 플레이어가 플레이어에게 맞음 (덕의 'hit') */
+  | { type: 'hit'; p: number; by: number; x: number; y: number; part: number; dmg: number }
+  /** 스킬 사용 (slot 0=Q 1=E 2=X). tx·ty = 커서 지점 스킬의 목표 */
+  | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number }
+  /** 스킬 범위 효과가 터짐 (렌더 링·소리) */
+  | { type: 'aoe'; p: number; id: string; x: number; y: number; r: number }
   | { type: 'respawn'; p: number; x: number; y: number }
   | { type: 'dash'; p: number }
   | { type: 'reload'; p: number }
@@ -277,11 +360,17 @@ export type SimEvent =
   | { type: 'drop'; x: number; y: number }
   | { type: 'heal'; p: number; x: number; y: number; amount: number }
   | { type: 'start' }
-  /** 끝: winner 0 = 층 정리, 1 = 전멸 */
+  /** 끝: 던전 winner 0 = 층 정리 · 1 = 전멸 / 투기장 winner = 이긴 팀 */
   | { type: 'over'; winner: number }
 
 export interface MatchConfig {
   seed: number
+  /** 판 종류 (기본 dungeon) */
+  mode?: GameMode
+  /** 투기장: 팀 배정 (없으면 개인전 — 각자 자기 번호가 팀) */
+  teams?: number[]
+  /** 투기장: 목표 킬 */
+  targetKills?: number
   /** 자리 수 = 길이 (1..MAX_PLAYERS). 아직 아무도 안 들어온 자리도 포함한다 */
   chars: CharacterId[]
   /** 아직 사람이 없는 자리 (true 면 `left` 로 시작) — 자리를 처음부터 잡아 두어 배열을 늘리지 않는다 */
@@ -297,6 +386,9 @@ export interface GameState {
   rng: Rng
   phase: Phase
   phaseTimer: number
+  mode: GameMode
+  /** 투기장 목표 킬 (던전은 0) */
+  targetKills: number
   deathRule: DeathRule
   players: PlayerState[]
   bullets: Bullet[]
@@ -307,6 +399,10 @@ export interface GameState {
   nextShotId: number
   globes: Globe[]
   nextGlobeId: number
+  zones: Zone[]
+  throws: Throw[]
+  /** 효과 번호 (구역·던진 것·돌진 태그) */
+  nextFxId: number
   /** 층 입구 (px) — 죽은 사람이 여기서 일어난다 */
   entryX: number
   entryY: number
@@ -323,4 +419,27 @@ export interface GameState {
 /** 판에서 움직일 수 있는 사람 (쓰러지지 않고 살아 있음) */
 export function isActive(p: PlayerState): boolean {
   return p.alive && !p.downed && !p.left
+}
+
+/** 서로 적인가 (던전은 모두 0팀이라 언제나 false) */
+export function isEnemy(a: PlayerState, b: PlayerState): boolean {
+  return a.id !== b.id && a.team !== b.team
+}
+
+/** 팀 킬 합계 (투기장) */
+export function teamKills(state: GameState, team: number): number {
+  let k = 0
+  for (const p of state.players) if (p.team === team) k += p.kills
+  return k
+}
+
+/** 팀전인가 (같은 팀이 둘 이상 — 투기장 2v2) */
+export function isTeamMatch(state: GameState): boolean {
+  if (state.mode !== 'arena') return false
+  const seen = new Set<number>()
+  for (const p of state.players) {
+    if (seen.has(p.team)) return true
+    seen.add(p.team)
+  }
+  return false
 }

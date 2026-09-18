@@ -452,3 +452,12 @@ input.nick.big.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,
 /* PvP 대전 → 배도라지 덕 (링크를 버튼처럼) */
 a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .topacts .pvp { font-size: 14px; }
+
+/* 캐릭터 카드: 스킬 셋 (Q · E · X 궁극기) */
+.char .pv .sk { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.char .pv .sk span { font-size: 11px; color: #d8cfbf; background: rgba(255,255,255,0.05); border: 1px solid rgba(201,162,74,0.35); border-radius: 5px; padding: 1px 7px 1px 4px; }
+.char .pv .sk span.ult { border-color: rgba(241,213,138,0.8); color: #f1d58a; }
+.char .pv .sk i { font-style: normal; font-weight: 700; color: #c9a24a; margin-right: 4px; }
+/* 디아블로 4 풍 HUD: 아래는 스킬 바 자리라 조작 안내 띠를 위로, 소리·로비 버튼은 왼쪽 위 */
+.keys { top: 0; bottom: auto !important; }
+.game-ui .top-right { right: auto !important; left: 16px; top: 16px; }

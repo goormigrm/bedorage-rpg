@@ -1,61 +1,32 @@
-// 결정론 시뮬레이션: 플레이어(덕에서 물려받은 이동·사격·구르기) + 몬스터(AI·공격) + 쓰러짐·부활 + 회복 구슬.
+// 결정론 시뮬레이션. 두 가지 판을 한 코드로 돈다:
+//  - dungeon: 협동 던전 (몬스터 AI · 쓰러짐/부활 · 회복 구슬 · 죽음 규칙)
+//  - arena:   투기장 PvP (배도라지 덕의 대전 규칙 이식 — 헤드샷 · 모래주머니 · 힐팩 · 목표 킬, RPG 에서 키운 캐릭터끼리)
+// 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·X)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
-import { CHARACTERS, CharacterId } from './characters'
+import { CHARACTERS, CharacterId, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_USE, Input } from './input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_USE, Input, SKILL_BTNS } from './input'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
-import { BashDef } from './weapons'
+import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
-import { makeRng, rand } from './rng'
+import { makeRng, rand, randInt } from './rng'
 import { DEATH_BLAST_MULT, MONSTER_LIST, MonsterDef } from './monsters'
 import { entryOf, populate } from './dungeon'
 import { Grid, flowField, flowStep } from './flow'
 import {
-  BLEED_TICKS,
-  BLOCK_CHANCE,
-  BLOCK_COST,
-  BLOCK_LOCK_TICKS,
-  Bullet,
-  COUNTDOWN_TICKS,
-  CHIM,
-  DASH_COST,
-  DASH_SPEED,
-  DASH_TICKS,
-  GIYEOL,
-  GLOBE_HEAL_FRAC,
-  GLOBE_RADIUS,
-  GLOBE_SHARE_FRAC,
-  GLOBE_SHARE_RANGE,
-  GLOBE_TTL,
-  GameState,
-  JUPEOL,
-  MAX_PLAYERS,
-  MIN_PLAYERS,
-  MS_CHASE,
-  MS_RECOVER,
-  MS_SLEEP,
-  MS_WINDUP,
-  MatchConfig,
-  Monster,
-  PLAYER_RADIUS,
-  PUNGWOL,
-  PlayerState,
-  RESPAWN_TICKS,
-  REVIVE_HP_FRAC,
-  REVIVE_RANGE,
-  REVIVE_TICKS,
-  SOLO_BLEED_TICKS,
-  SPAWN_PROTECT_TICKS,
-  SPRINT_COST,
-  SPRINT_MIN,
-  SPRINT_MUL,
-  STAMINA_MAX,
-  STAMINA_REGEN,
-  UWON,
-  isActive,
+  CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
+  SKILLS, SkillId, ULT_START_FRAC,
+} from './skills'
+import {
+  BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
+  COUNTDOWN_TICKS, CHIM, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
+  GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
+  MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
+  REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
+  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills,
 } from './state'
-import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, falloff, headMult, partForOffset } from './weapons'
+import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
 const MAX_RECOIL_MUL = 3
 /** 잠든 무리가 깨는 거리 (시야 반경 13칸보다 조금 짧다 — 보이고 나서 깬다) */
@@ -70,6 +41,10 @@ const DIRECT_RANGE = 6 * TILE
 /** 몬스터가 한 틱에 돌 수 있는 각도 (1024 단위) */
 const TURN = 40
 const TURN_WINDUP = 8
+/** 엄폐 사격이 모래주머니를 넘기는 거리 (투기장 — 덕 그대로) */
+const COVER_REACH = COVER_DIST + TILE * 3
+/** 돌진·도약 속도 (px/틱) */
+const CHARGE_SPEED = 12
 
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
 const booms: { x: number; y: number; r: number; dmg: number; by: number }[] = []
@@ -96,14 +71,17 @@ function buildGrid(state: GameState, map: GameMap): Grid {
   return g
 }
 
-// ---------------------------------------------------------------- 만들기
+const deg = (d: number) => Math.round((d / 360) * 1024)
+
+// ================================================================ 만들기
 
 export function createState(cfg: MatchConfig, map: GameMap): GameState {
   const rng = makeRng(cfg.seed)
+  const mode = cfg.mode ?? 'dungeon'
   const n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, cfg.chars.length))
   const players: PlayerState[] = []
   for (let i = 0; i < n; i++) {
-    const p = makePlayer(i, cfg.chars[i])
+    const p = makePlayer(i, cfg.chars[i], mode === 'arena' ? (cfg.teams?.[i] ?? i) : 0)
     // 아직 아무도 안 들어온 자리는 판에 나오지 않는다 (난입하면 그때 채운다)
     if (cfg.absent?.[i]) {
       p.left = true
@@ -119,6 +97,8 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     rng,
     phase: 'countdown',
     phaseTimer: COUNTDOWN_TICKS,
+    mode,
+    targetKills: mode === 'arena' ? Math.max(1, cfg.targetKills ?? 10) : 0,
     deathRule: cfg.deathRule ?? 0,
     players,
     bullets: [],
@@ -129,6 +109,9 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     nextShotId: 1,
     globes: [],
     nextGlobeId: 1,
+    zones: [],
+    throws: [],
+    nextFxId: 1,
     entryX: entry.x,
     entryY: entry.y,
     monstersTotal: 0,
@@ -142,24 +125,37 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     state.sandbags[i] = SANDBAG_HP
   }
   map.version++
-  // 모두 입구에 모여서 시작한다 (협동)
-  for (const p of players) {
-    if (p.left) continue
-    const s = spotNear(state, map, entry.x, entry.y, p.id)
-    p.x = s.x
-    p.y = s.y
-    p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
+  if (mode === 'arena') {
+    // 투기장: 덕 그대로 — 첫 사람은 무작위, 다음 사람은 이미 놓인 모두에게서 가장 먼 곳
+    const used: { x: number; y: number }[] = []
+    for (const p of players) {
+      if (p.left) continue
+      const s = used.length === 0 ? map.spawns[randInt(rng, 0, map.spawns.length)] : farthestSpawn(map, used, rng, 1)
+      p.x = s.x
+      p.y = s.y
+      used.push(s)
+    }
+  } else {
+    // 던전: 모두 입구에 모여서 시작한다 (협동)
+    for (const p of players) {
+      if (p.left) continue
+      const s = spotNear(state, map, entry.x, entry.y, p.id)
+      p.x = s.x
+      p.y = s.y
+    }
+    if (!cfg.noMonsters) populate(state, map, cfg.seed, n)
   }
-  if (!cfg.noMonsters) populate(state, map, cfg.seed, n)
+  for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
   return state
 }
 
-function makePlayer(id: number, char: CharacterId): PlayerState {
+function makePlayer(id: number, char: CharacterId, team: number): PlayerState {
   const c = CHARACTERS[char]
   const w = WEAPONS[c.weapon]
+  const ult = SKILLS[CHAR_SKILLS[char][2]]
   return {
     id,
-    team: 0,
+    team,
     char,
     x: 0,
     y: 0,
@@ -207,6 +203,12 @@ function makePlayer(id: number, char: CharacterId): PlayerState {
     bestStreak: 0,
     killStreak: 0,
     revives: 0,
+    cd: [0, 0, Math.round(ult.cd * ULT_START_FRAC)],
+    fx: new Array(FX_COUNT).fill(0),
+    rateMul: 1,
+    pierceShots: 0,
+    empowerShots: 0,
+    chargeTag: 0,
   }
 }
 
@@ -238,7 +240,20 @@ function spotNear(state: GameState, map: GameMap, x: number, y: number, seat: nu
   return { x, y }
 }
 
-// ---------------------------------------------------------------- 틱
+/** 기준점들로부터의 최소 거리가 가장 먼 스폰 상위 topN 개 중 무작위 (덕 그대로) */
+function farthestSpawn(map: GameMap, from: { x: number; y: number }[], rng: GameState['rng'], topN: number): { x: number; y: number } {
+  if (from.length === 0) return map.spawns[randInt(rng, 0, map.spawns.length)]
+  const scored = map.spawns.map((s, i) => {
+    let d = Infinity
+    for (const f of from) d = Math.min(d, len(s.x - f.x, s.y - f.y))
+    return { s, i, d }
+  })
+  scored.sort((a, b) => b.d - a.d || a.i - b.i)
+  const top = scored.slice(0, Math.min(topN, scored.length))
+  return top[randInt(rng, 0, top.length)].s
+}
+
+// ================================================================ 틱
 
 export function step(state: GameState, map: GameMap, inputs: Input[]): void {
   const ev = state.events
@@ -252,13 +267,15 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
     }
   }
 
-  // 근접 휘두르기·조준 판정이 쓸 격자 (몬스터가 움직이기 전 위치)
+  // 근접 휘두르기·조준 판정·스킬이 쓸 격자 (몬스터가 움직이기 전 위치)
   buildGrid(state, map)
   for (let i = 0; i < state.players.length; i++) stepPlayer(state, map, state.players[i], inputs[i])
-  stepDowned(state, inputs)
-  if (state.phase === 'playing') stepMonsters(state, map)
+  if (state.mode === 'dungeon') stepDowned(state, inputs)
+  if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)
+  stepZones(state)
+  stepThrows(state, map, grid)
   stepBullets(state, map, grid)
   stepShots(state, map)
   runBooms(state, map, grid)
@@ -270,7 +287,7 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
 }
 
 function checkOver(state: GameState): void {
-  if (state.phase !== 'playing') return
+  if (state.phase !== 'playing' || state.mode !== 'dungeon') return
   if (state.monstersTotal > 0 && state.monsters.length === 0) {
     state.phase = 'over'
     state.winner = 0
@@ -286,20 +303,24 @@ function checkOver(state: GameState): void {
   }
 }
 
-// ---------------------------------------------------------------- 플레이어
+// ================================================================ 플레이어
 
 /**
  * 빈 자리에 사람을 넣는다 (난입). 호스트가 정한 틱에 **모두가 같이** 호출해야 결정론이 유지된다.
- * 협동이라 동료 곁에 내려 준다(아무도 없으면 입구).
+ * 던전은 동료 곁에, 투기장은 적에게서 먼 곳에.
  */
-export function joinPlayer(state: GameState, map: GameMap, idx: number, char: CharacterId, _team = 0): void {
+export function joinPlayer(state: GameState, map: GameMap, idx: number, char: CharacterId, team = 0): void {
   const p = state.players[idx]
   if (!p) return
-  Object.assign(p, makePlayer(idx, char))
-  const buddy = state.players.find((o) => o.id !== idx && isActive(o))
-  const s = spotNear(state, map, buddy ? buddy.x : state.entryX, buddy ? buddy.y : state.entryY, idx)
-  p.x = s.x
-  p.y = s.y
+  Object.assign(p, makePlayer(idx, char, state.mode === 'arena' ? team : 0))
+  if (state.mode === 'arena') {
+    respawn(state, map, p)
+  } else {
+    const buddy = state.players.find((o) => o.id !== idx && isActive(o))
+    const s = spotNear(state, map, buddy ? buddy.x : state.entryX, buddy ? buddy.y : state.entryY, idx)
+    p.x = s.x
+    p.y = s.y
+  }
   state.events.push({ type: 'join', p: idx, char })
 }
 
@@ -341,6 +362,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (p.fireCooldown > 0) p.fireCooldown--
   if (p.dashCooldown > 0) p.dashCooldown--
   if (p.blockLock > 0) p.blockLock--
+  for (let k = 0; k < 3; k++) if (p.cd[k] > 0) p.cd[k]--
+  for (let k = 0; k < FX_COUNT; k++) if (p.fx[k] > 0) p.fx[k]--
+  if (p.fx[FX_RATE] === 0) p.rateMul = 1
   // 달리기: 회복보다 먼저 계산해야 달리는 동안 기력이 차지 않는다 (덕 그대로)
   p.sprinting =
     playing &&
@@ -357,11 +381,13 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (p.invuln > 0) p.invuln--
   if (p.legInjury > 0) p.legInjury--
   if (p.reloadTimer > 0) {
+    // 아홉 목숨: 재장전 즉시
+    if (p.fx[FX_SNIPE] > 0) p.reloadTimer = 1
     p.reloadTimer--
     if (p.reloadTimer === 0) p.ammo = w.magSize
   }
   const recover = c.id === 'chim' ? w.recoilRecover * CHIM.recoverMul : w.recoilRecover
-  p.recoil = Math.max(0, p.recoil - recover)
+  p.recoil = p.fx[FX_CRIT] > 0 ? 0 : Math.max(0, p.recoil - recover)
 
   // 매직덕 패시브(진료): 3초 안 맞으면 초당 6 회복
   if (c.id === 'magic' && state.tick - p.lastHitTick > 180 && p.hp < p.maxHp) {
@@ -371,6 +397,17 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   p.aim = input.aim & 1023
   p.aimDist = (input.aimDist ?? 0) * 4
   p.ads = playing && (input.buttons & BTN_ADS) !== 0 && p.dashTimer === 0
+
+  // 돌진·도약 (승빠덕 Q · 옥냥덕 Q): 정해진 방향으로 빠르게, 그동안 무적. 조작은 받지 않는다
+  if (p.fx[FX_CHARGE] > 0) {
+    const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, p.dashDx * CHARGE_SPEED, p.dashDy * CHARGE_SPEED)
+    p.x = r.x
+    p.y = r.y
+    p.moving = true
+    p.invuln = Math.max(p.invuln, 2)
+    if (p.chargeTag > 0) chargeHit(state, map, p)
+    return
+  }
 
   // 이동
   let mx = input.mx
@@ -391,6 +428,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     if (p.sprinting) speed *= SPRINT_MUL
     if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥덕 패시브: 정조준해도 느려지지 않음
     if (p.legInjury > 0) speed *= 0.7
+    if (p.fx[FX_WHIRL] > 0) speed *= 1.3
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, mx * inv * speed, my * inv * speed)
     p.x = r.x
     p.y = r.y
@@ -411,6 +449,20 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     state.events.push({ type: 'dash', p: p.id })
   }
 
+  // 스킬 Q · E · X (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼)
+  if (playing && p.dashTimer === 0) {
+    for (let k = 0; k < 3; k++) {
+      if ((input.buttons & SKILL_BTNS[k]) === 0 || p.cd[k] > 0) continue
+      castSkill(state, map, p, k)
+      break
+    }
+  }
+
+  // 회전 공격(주방 대참사): 0.25초마다 주변을 친다
+  if (p.fx[FX_WHIRL] > 0 && p.fx[FX_WHIRL] % 15 === 0) {
+    aoe(state, map, p, p.x, p.y, 2.4 * TILE, 35, { knock: 3, id: 'kitchen', quiet: true })
+  }
+
   // 재장전
   if (playing && input.buttons & BTN_RELOAD && p.reloadTimer === 0 && p.ammo < w.magSize) {
     p.reloadTimer = w.reloadTicks
@@ -421,9 +473,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   const firePressed = (input.buttons & BTN_FIRE) !== 0
   const trigger = w.auto ? firePressed : firePressed && !p.prevFire
   p.prevFire = firePressed
-  if (playing && trigger && p.dashTimer === 0) {
-    // 저격총을 조준경 없이 쏘면 개머리판 후려치기 (재장전 중에도 가까운 적은 칠 수 있다)
-    if (w.bash && !p.ads) {
+  if (playing && trigger && p.dashTimer === 0 && p.fx[FX_WHIRL] === 0) {
+    // 저격총을 조준경 없이 쏘면 개머리판 후려치기 (아홉 목숨 중에는 그냥 쏜다)
+    if (w.bash && !p.ads && p.fx[FX_SNIPE] === 0) {
       if (p.fireCooldown === 0) bashSwing(state, map, p, w.bash)
     } else {
       const infinite = w.magSize === 0
@@ -438,8 +490,8 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
 }
 
 /**
- * 쓰러진 사람: 동료가 곁에서 F(BTN_USE)를 누르고 있으면 일어나고, 아니면 시간이 흘러 죽는다.
- * 일으켜 주는 동안에는 시간이 멈춘다. 일으켜 줄 사람이 아무도 없으면(혼자·전원 쓰러짐) 오래 기다릴 이유가 없어 금방 죽는다.
+ * 쓰러진 사람(던전): 동료가 곁에서 F(BTN_USE)를 누르고 있으면 일어나고, 아니면 시간이 흘러 죽는다.
+ * 일으켜 주는 동안에는 시간이 멈춘다. 일으켜 줄 사람이 아무도 없으면(혼자·전원 쓰러짐) 금방 죽는다.
  * 돕는 사람은 번호가 앞선 사람 하나만 친다(순서가 곧 결정론).
  */
 function stepDowned(state: GameState, inputs: Input[]): void {
@@ -457,10 +509,7 @@ function stepDowned(state: GameState, inputs: Input[]): void {
     if (helper) {
       p.revive++
       if (p.revive >= REVIVE_TICKS) {
-        p.downed = false
-        p.revive = 0
-        p.hp = Math.round(p.maxHp * REVIVE_HP_FRAC)
-        p.invuln = 90
+        raise(state, p, Math.round(p.maxHp * REVIVE_HP_FRAC), 90)
         helper.revives++
         state.events.push({ type: 'revive', p: p.id, by: helper.id, x: p.x, y: p.y })
       }
@@ -469,27 +518,53 @@ function stepDowned(state: GameState, inputs: Input[]): void {
     p.revive = Math.max(0, p.revive - 2)
     if (!anyone) p.downTimer = Math.min(p.downTimer, SOLO_BLEED_TICKS)
     p.downTimer--
-    if (p.downTimer <= 0) die(state, p)
+    if (p.downTimer <= 0) die(state, p, -1)
   }
 }
 
-function die(state: GameState, p: PlayerState): void {
+/** 쓰러진 사람을 일으킨다 */
+function raise(state: GameState, p: PlayerState, hp: number, invuln: number): void {
+  p.downed = false
+  p.revive = 0
+  p.hp = Math.min(p.maxHp, hp)
+  p.invuln = Math.max(p.invuln, invuln)
+  void state
+}
+
+function die(state: GameState, p: PlayerState, by: number): void {
   p.alive = false
   p.downed = false
   p.revive = 0
   p.deaths++
   p.killStreak = 0
-  p.respawnTimer = RESPAWN_TICKS
-  if (state.deathRule === 2) p.out = true
-  state.events.push({ type: 'death', p: p.id, x: p.x, y: p.y, out: p.out })
+  p.respawnTimer = p.char === 'seungwoo' && state.mode === 'arena' ? 120 : RESPAWN_TICKS
+  p.fx.fill(0)
+  p.rateMul = 1
+  if (state.mode === 'dungeon' && state.deathRule === 2) p.out = true
+  state.events.push({ type: 'death', p: p.id, by, x: p.x, y: p.y, out: p.out })
 }
 
 function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   const c = CHARACTERS[p.char]
   const w = WEAPONS[p.weapon]
-  const s = spotNear(state, map, state.entryX, state.entryY, p.id)
-  p.x = s.x
-  p.y = s.y
+  if (state.mode === 'arena') {
+    // 살아있는 적 모두에게서 먼 곳 (상위 3곳 중 무작위) — 덕 그대로
+    const enemies: { x: number; y: number }[] = []
+    for (const e of state.players) if (isEnemy(p, e) && e.alive && !e.left) enemies.push(e)
+    let spot = farthestSpawn(map, enemies, state.rng, 3)
+    for (const e of state.players) {
+      if (e.id !== p.id && e.alive && circlesOverlap(spot.x, spot.y, PLAYER_RADIUS, e.x, e.y, PLAYER_RADIUS)) {
+        spot = farthestSpawn(map, [spot, ...enemies], state.rng, 1)
+        break
+      }
+    }
+    p.x = spot.x
+    p.y = spot.y
+  } else {
+    const s = spotNear(state, map, state.entryX, state.entryY, p.id)
+    p.x = s.x
+    p.y = s.y
+  }
   p.maxHp = c.maxHp
   p.hp = c.maxHp
   p.alive = true
@@ -501,7 +576,7 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   p.dashTimer = 0
   p.dashCooldown = 0
   p.legInjury = 0
-  p.invuln = SPAWN_PROTECT_TICKS
+  p.invuln = c.id === 'seungwoo' && state.mode === 'arena' ? SPAWN_PROTECT_TICKS * 2 : SPAWN_PROTECT_TICKS
   p.aliveTicks = 0
   p.lastHitTick = -10000
   p.streak = 0
@@ -509,25 +584,42 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   p.stamina = p.staminaMax
   p.blockLock = 0
   p.sprinting = false
+  p.pierceShots = 0
+  p.empowerShots = 0
   state.events.push({ type: 'respawn', p: p.id, x: p.x, y: p.y })
 }
 
-/** 몬스터가 플레이어를 때린다. 실제로 맞았으면 true (구르는 중·무적이면 false — 투사체는 그대로 지나간다) */
+/** 받는 피해 배율: 철벽 · 회전 공격 · 포효의 가호 (곱한다) */
+function takenMul(p: PlayerState): number {
+  let k = 1
+  if (p.fx[FX_GUARD] > 0) k *= 0.5
+  if (p.fx[FX_WHIRL] > 0) k *= 0.5
+  if (p.fx[FX_PARTYDR] > 0) k *= 0.7
+  return k
+}
+
+/**
+ * 후라이팬 막기 (덕 규칙): 앞에서 온 공격을 BLOCK_CHANCE 확률로 기력만큼 막는다. 막는 동안 기력이 안 찬다.
+ * 반환 = 막고 남은 피해
+ */
+function panBlock(state: GameState, p: PlayerState, dmg: number, sx: number, sy: number): number {
+  if (!WEAPONS[p.weapon].melee) return dmg
+  const from = atan2A(sy - p.y, sx - p.x)
+  if (Math.abs(angleDiff(from, p.aim)) >= 213) return dmg
+  p.blockLock = BLOCK_LOCK_TICKS
+  if (p.stamina > 0 && rand(state.rng) < BLOCK_CHANCE) {
+    const absorbed = Math.min(dmg, Math.floor(p.stamina / BLOCK_COST))
+    p.stamina = Math.max(0, p.stamina - absorbed * BLOCK_COST)
+    dmg -= absorbed
+    state.events.push({ type: 'block', p: p.id, x: p.x, y: p.y })
+  }
+  return dmg
+}
+
+/** 몬스터가 플레이어를 때린다(던전). 실제로 맞았으면 true (구르는 중·무적이면 false — 투사체는 그대로 지나간다) */
 function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, sx: number, sy: number): boolean {
   if (!isActive(p) || p.invuln > 0 || p.dashTimer > 0 || state.phase !== 'playing') return false
-  // 후라이팬: 앞에서 오는 공격을 기력으로 막는다 (덕의 규칙 그대로 — 막는 동안 기력이 안 찬다, 확률로만)
-  if (WEAPONS[p.weapon].melee) {
-    const from = atan2A(sy - p.y, sx - p.x)
-    if (Math.abs(angleDiff(from, p.aim)) < 213) {
-      p.blockLock = BLOCK_LOCK_TICKS
-      if (p.stamina > 0 && rand(state.rng) < BLOCK_CHANCE) {
-        const absorbed = Math.min(dmg, Math.floor(p.stamina / BLOCK_COST))
-        p.stamina = Math.max(0, p.stamina - absorbed * BLOCK_COST)
-        dmg -= absorbed
-        state.events.push({ type: 'block', p: p.id, x: p.x, y: p.y })
-      }
-    }
-  }
+  dmg = panBlock(state, p, Math.round(dmg * takenMul(p)), sx, sy)
   if (dmg <= 0) return true
   p.hp -= dmg
   p.dmgTaken += dmg
@@ -542,16 +634,55 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
     p.dashTimer = 0
     p.sprinting = false
     p.killStreak = 0
+    p.fx.fill(0)
+    p.rateMul = 1
     state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y })
   }
   return true
 }
 
-// ---------------------------------------------------------------- 사격
+/**
+ * 플레이어가 플레이어를 때린다(투기장 — 덕의 hurt). 킬·힐팩·승리 판정까지.
+ * part = 부위(머리·몸·다리). 스킬 피해는 몸통으로 친다.
+ */
+function hurtPvp(state: GameState, shooter: PlayerState, victim: PlayerState, dmg: number, part: number, hx: number, hy: number): void {
+  if (dmg <= 0 || !victim.alive || victim.left) return
+  dmg = Math.round(dmg * takenMul(victim))
+  if (dmg <= 0) return
+  shooter.hits++
+  if (part === PART_HEAD) shooter.heads++
+  shooter.dmgDealt += dmg
+  victim.dmgTaken += dmg
+  victim.hp -= dmg
+  victim.lastHitTick = state.tick
+  if (part === PART_LEGS) victim.legInjury = 180
+  state.events.push({ type: 'hit', p: victim.id, by: shooter.id, x: hx, y: hy, part, dmg })
+  if (victim.hp > 0) return
+  victim.hp = 0
+  die(state, victim, shooter.id)
+  shooter.kills++
+  shooter.killStreak++
+  if (shooter.killStreak > shooter.bestStreak) shooter.bestStreak = shooter.killStreak
+  if (shooter.char === 'tongdak') {
+    shooter.maxHp = Math.min(CHARACTERS.tongdak.maxHp + CHICKEN_MAXHP_CAP, shooter.maxHp + CHICKEN_MAXHP_PER_KILL)
+    shooter.hp = Math.min(shooter.maxHp, shooter.hp + CHICKEN_HEAL)
+  }
+  // 죽은 자리에 힐팩 (덕 규칙 — 이긴 쪽이 그 자리를 차지하면 이어서 싸울 수 있다)
+  state.globes.push({ id: state.nextGlobeId++, x: victim.x, y: victim.y, ttl: MEDKIT_TTL, heal: Math.round(MEDKIT_HEAL_FRAC * 100), share: false })
+  state.events.push({ type: 'drop', x: victim.x, y: victim.y })
+  while (state.globes.length > 6) state.globes.shift()
+  if (teamKills(state, shooter.team) >= state.targetKills && state.phase === 'playing') {
+    state.phase = 'over'
+    state.winner = shooter.team
+    state.events.push({ type: 'over', winner: shooter.team })
+  }
+}
 
-/** 쏠 때 커서(조준점)가 약점 위에 있는 몬스터 id (-1 = 없음). 치명타는 이 몬스터에게만 난다 (덕의 헤드샷 규칙) */
+// ================================================================ 사격
+
+/** 던전: 쏠 때 커서가 약점 위에 있는 몬스터 id (-1 = 없음). 치명타는 이 몬스터에게만 난다 (덕의 헤드샷 규칙) */
 function aimedMonster(state: GameState, map: GameMap, p: PlayerState): number {
-  if (p.aimDist <= 0) return -1
+  if (p.aimDist <= 0 || state.monsters.length === 0) return -1
   const ax = p.x + cosA(p.aim) * p.aimDist
   const ay = p.y + sinA(p.aim) * p.aimDist
   let found = -1
@@ -563,7 +694,103 @@ function aimedMonster(state: GameState, map: GameMap, p: PlayerState): number {
   return found
 }
 
-/** 부채꼴 안의 몬스터를 모두 친다 (후라이팬 · 개머리판). 반환 = 맞힌 수 */
+/** 투기장: 쏠 때 커서가 올라가 있는 적 플레이어 (덕 그대로) */
+function aimedEnemy(state: GameState, p: PlayerState): number {
+  if (p.aimDist <= 0 || state.mode !== 'arena') return -1
+  const ax = p.x + cosA(p.aim) * p.aimDist
+  const ay = p.y + sinA(p.aim) * p.aimDist
+  for (const e of state.players) {
+    if (!isEnemy(p, e) || !e.alive || e.left) continue
+    if (len(ax - e.x, ay - e.y) <= PLAYER_RADIUS * HEAD_AIM_FRAC * headHitScale(e.char)) return e.id
+  }
+  return -1
+}
+
+/** 투기장: 이 각도의 탄이 적의 머리(중심)를 정확히 겨누는가 → 모래주머니를 넘어간다 (덕 그대로) */
+function aimsAtHead(state: GameState, map: GameMap, shooter: PlayerState, mx: number, my: number, a: number, headTarget: number): boolean {
+  if (headTarget < 0) return false
+  const dx = cosA(a)
+  const dy = sinA(a)
+  for (const e of state.players) {
+    if (e.id !== headTarget || !isEnemy(shooter, e) || !e.alive || e.left) continue
+    const t = (e.x - mx) * dx + (e.y - my) * dy
+    if (t <= 0 || t > 1200) continue
+    if (len(mx + dx * t - e.x, my + dy * t - e.y) > PLAYER_RADIUS * HEAD_FRAC * headHitScale(e.char)) continue
+    if (rayCast(map, mx, my, e.x, e.y, 'sight').blocked) continue
+    return true
+  }
+  return false
+}
+
+interface AoeOpts {
+  /** 기절 (몬스터) · 적 플레이어는 다리 부상(느려짐)으로 */
+  stun?: number
+  slow?: number
+  knock?: number
+  /** 부채꼴: 이 방향 ±arc 만 */
+  arcAim?: number
+  arc?: number
+  /** 스킬 이름 (렌더·소리) */
+  id: string
+  /** 이벤트를 내지 않는다 (회전 공격처럼 자주 치는 것) */
+  quiet?: boolean
+  /** 한 번만 맞는 효과 번호 (돌진) */
+  tag?: number
+}
+
+/**
+ * 스킬 범위 공격: 원(또는 부채꼴) 안의 몬스터와 **적 플레이어**를 친다. 벽 너머는 안 맞는다.
+ * 반환 = 맞힌 수
+ */
+function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: number, r: number, dmg: number, o: AoeOpts): number {
+  if (!o.quiet) state.events.push({ type: 'aoe', p: caster.id, id: o.id, x, y, r })
+  let n = 0
+  const inArc = (tx: number, ty: number) => {
+    if (o.arc === undefined || o.arcAim === undefined) return true
+    const d = len(tx - x, ty - y)
+    return d < 1 || Math.abs(angleDiff(atan2A(ty - y, tx - x), o.arcAim)) <= o.arc
+  }
+  const hit: Monster[] = []
+  gridFor(map).query(x - r - 20, y - r - 20, x + r + 20, y + r + 20, (i) => {
+    const m = state.monsters[i]
+    if (!m || m.hp <= 0) return
+    if (o.tag !== undefined && m.tag === o.tag) return
+    if (len(m.x - x, m.y - y) > r + MONSTER_LIST[m.kind].r) return
+    if (!inArc(m.x, m.y)) return
+    if (rayCast(map, x, y, m.x, m.y, 'bullet', true).blocked) return
+    hit.push(m)
+  })
+  hit.sort((a, b) => a.id - b.id)
+  for (const m of hit) {
+    const def = MONSTER_LIST[m.kind]
+    if (o.tag !== undefined) m.tag = o.tag
+    if (o.knock) {
+      const d = len(m.x - x, m.y - y) || 1
+      const k = o.knock * (1 - def.knockRes)
+      m.kx += ((m.x - x) / d) * k
+      m.ky += ((m.y - y) / d) * k
+    }
+    if (o.stun) m.stun = Math.max(m.stun, o.stun)
+    if (o.slow) m.slow = Math.max(m.slow, o.slow)
+    hurtMonster(state, m, dmg, caster.id, false, m.x, m.y)
+    n++
+  }
+  // 투기장: 적 플레이어도 맞는다 (기절 대신 다리 부상 — 조작을 빼앗으면 PvP 에서 너무 답답하다)
+  if (state.mode === 'arena') {
+    for (const e of state.players) {
+      if (!isEnemy(caster, e) || !e.alive || e.left || e.invuln > 0 || e.dashTimer > 0) continue
+      if (len(e.x - x, e.y - y) > r + PLAYER_RADIUS) continue
+      if (!inArc(e.x, e.y)) continue
+      if (rayCast(map, x, y, e.x, e.y, 'bullet', true).blocked) continue
+      if (o.stun || o.slow) e.legInjury = Math.max(e.legInjury, Math.max(o.stun ?? 0, o.slow ?? 0))
+      hurtPvp(state, caster, e, dmg, PART_BODY, e.x, e.y)
+      n++
+    }
+  }
+  return n
+}
+
+/** 부채꼴 안을 친다 (후라이팬 · 개머리판) — 몬스터와 적 플레이어 */
 function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, arc: number, dmg: number, knock: number): number {
   let n = 0
   const reach = range + PLAYER_RADIUS + 20
@@ -579,7 +806,6 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     if (rayCast(map, p.x, p.y, m.x, m.y, 'bullet', true).blocked) return
     hit.push(m)
   })
-  // 격자 칸 순서가 아니라 id 순서로 (읽기 쉬운 결정론)
   hit.sort((a, b) => a.id - b.id)
   for (const m of hit) {
     const d = len(m.x - p.x, m.y - p.y) || 1
@@ -588,6 +814,18 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     m.ky += ((m.y - p.y) / d) * k
     hurtMonster(state, m, dmg, p.id, false, m.x, m.y)
     n++
+  }
+  if (state.mode === 'arena') {
+    for (const victim of state.players) {
+      if (!isEnemy(p, victim) || !victim.alive || victim.left || victim.invuln > 0 || victim.dashTimer > 0) continue
+      const dx = victim.x - p.x
+      const dy = victim.y - p.y
+      if (len(dx, dy) > range + PLAYER_RADIUS) continue
+      if (Math.abs(angleDiff(atan2A(dy, dx), p.aim)) > arc) continue
+      if (rayCast(map, p.x, p.y, victim.x, victim.y, 'bullet', true).blocked) continue
+      hurtPvp(state, p, victim, dmg, PART_BODY, victim.x, victim.y)
+      n++
+    }
   }
   return n
 }
@@ -599,62 +837,306 @@ function bashSwing(state: GameState, map: GameMap, p: PlayerState, bash: BashDef
   swingAt(state, map, p, bash.range, bash.arc, bash.damage, 3)
 }
 
+/** 탄 하나를 만든다 (사격·난사·관통 저격 공용) */
+function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a: number, weapon: PlayerState['weapon'], o: { speed?: number; damage?: number; life?: number; pierce?: number; mul?: number; headTarget: number; critMon: number; over: boolean; overR: number }): void {
+  const w = WEAPONS[weapon]
+  const sp = o.speed ?? w.speed
+  const b: Bullet = {
+    id: state.nextBulletId++,
+    owner: p.id,
+    x: mx,
+    y: my,
+    px: mx,
+    py: my,
+    vx: cosA(a) * sp,
+    vy: sinA(a) * sp,
+    life: o.life ?? w.life,
+    damage: o.damage ?? w.damage,
+    ads: p.ads || p.fx[FX_SNIPE] > 0,
+    ox: p.x,
+    oy: p.y,
+    weapon,
+    hitSomeone: false,
+    over: o.over,
+    headTarget: o.headTarget,
+    critMon: o.critMon,
+    overR: o.overR,
+    pierce: o.pierce ?? 0,
+    lastHit: 0,
+    mul: o.mul ?? 1,
+    forceCrit: p.fx[FX_CRIT] > 0,
+  }
+  state.bullets.push(b)
+}
+
+function muzzle(map: GameMap, p: PlayerState): { x: number; y: number } {
+  const mx = p.x + cosA(p.aim) * (PLAYER_RADIUS + 6)
+  const my = p.y + sinA(p.aim) * (PLAYER_RADIUS + 6)
+  return isWallAt(map, mx, my) ? { x: p.x, y: p.y } : { x: mx, y: my }
+}
+
 function fire(state: GameState, map: GameMap, p: PlayerState): void {
   const w = WEAPONS[p.weapon]
-  const spread = Math.round((p.ads ? w.spreadAds : w.spreadHip) * (p.char === 'chim' ? CHIM.spreadMul : 1)) + p.recoil
-  let mx = p.x + cosA(p.aim) * (PLAYER_RADIUS + 6)
-  let my = p.y + sinA(p.aim) * (PLAYER_RADIUS + 6)
-  if (isWallAt(map, mx, my)) {
-    mx = p.x
-    my = p.y
-  }
+  const snipe = p.fx[FX_SNIPE] > 0
+  const spread = Math.round((p.ads || snipe ? w.spreadAds : w.spreadHip) * (p.char === 'chim' ? CHIM.spreadMul : 1)) + p.recoil
+  const { x: mx, y: my } = muzzle(map, p)
+  const interval = p.fx[FX_RATE] > 0 ? Math.max(1, Math.ceil(w.fireInterval / p.rateMul)) : w.fireInterval
   if (w.melee) {
-    p.fireCooldown = w.fireInterval
+    p.fireCooldown = interval
     p.shots++
     state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: p.weapon })
     const n = swingAt(state, map, p, w.meleeRange ?? 60, w.meleeArc ?? 150, Math.round(w.damage), w.knock)
     if (n > 0) p.streak = Math.min(99, p.streak + 1)
     return
   }
-  // 모래주머니에 붙어 쏘면 기댄 자루만 넘어간다 (던전에는 모래주머니가 없지만 덕의 맵에서 시험할 때를 위해 둔다)
-  const overR = nearSandbag(map, p.x, p.y) ? COVER_DIST + TILE * 3 : 0
-  const headTarget = aimedMonster(state, map, p)
-  for (let i = 0; i < w.pellets; i++) {
-    const off = spread > 0 ? Math.floor(rand(state.rng) * (spread * 2 + 1)) - spread : 0
-    const a = (p.aim + off) & 1023
-    const b: Bullet = {
-      id: state.nextBulletId++,
-      owner: p.id,
-      x: mx,
-      y: my,
-      px: mx,
-      py: my,
-      vx: cosA(a) * w.speed,
-      vy: sinA(a) * w.speed,
-      life: w.life,
-      damage: w.damage,
-      ads: p.ads,
-      ox: p.x,
-      oy: p.y,
-      weapon: p.weapon,
-      hitSomeone: false,
-      over: false,
-      overR,
-      headTarget,
-    }
-    state.bullets.push(b)
+  // 투기장: 모래주머니에 붙어 쏘면(엄폐) 내가 기댄 자루만 넘어간다 (덕 그대로)
+  const overR = nearSandbag(map, p.x, p.y) ? COVER_REACH : 0
+  const headTarget = aimedEnemy(state, p)
+  const critMon = aimedMonster(state, map, p)
+  // 관통탄(침착덕 Q) · 아홉 목숨(관통 2) · 고양이 걸음 다음 한 발(2배)
+  let pierce = 0
+  let mul = 1
+  if (p.pierceShots > 0) {
+    p.pierceShots--
+    pierce = 3
+    mul *= 1.3
   }
-  if (w.magSize > 0) p.ammo--
-  if (!w.suppressed) noise(state, p.x, p.y)
+  if (snipe) pierce = Math.max(pierce, 2)
+  if (p.empowerShots > 0 && w.scope) {
+    p.empowerShots--
+    mul *= 2
+  }
+  for (let i = 0; i < w.pellets; i++) {
+    const off = spread > 0 ? randInt(state.rng, -spread, spread + 1) : 0
+    const a = (p.aim + off) & 1023
+    spawnBullet(state, p, mx, my, a, p.weapon, { headTarget, critMon, over: aimsAtHead(state, map, p, mx, my, a, headTarget), overR, pierce, mul })
+  }
+  if (w.magSize > 0 && p.fx[FX_FREEAMMO] === 0) p.ammo--
+  if (state.mode === 'dungeon' && !w.suppressed) noise(state, p.x, p.y)
   p.shots += w.pellets // 명중률을 탄 단위로 재야 산탄총이 왜곡되지 않는다
-  p.fireCooldown = w.fireInterval
-  p.recoil = Math.min(w.recoil * MAX_RECOIL_MUL * 2, p.recoil + w.recoil * (p.char === 'chim' ? CHIM.recoilMul : 1))
+  p.fireCooldown = interval
+  if (p.fx[FX_CRIT] === 0) p.recoil = Math.min(w.recoil * MAX_RECOIL_MUL * 2, p.recoil + w.recoil * (p.char === 'chim' ? CHIM.recoilMul : 1))
   state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: p.weapon })
   if (w.magSize > 0 && p.ammo === 0) {
     p.reloadTimer = w.reloadTicks
     state.events.push({ type: 'reload', p: p.id })
   }
 }
+
+// ================================================================ 스킬
+
+/** 커서 지점 (reach 까지, 벽을 넘지 않게 — 벽에 닿으면 그 앞) */
+function cursorPoint(map: GameMap, p: PlayerState, reach: number): { x: number; y: number } {
+  const d = Math.min(reach, p.aimDist > 0 ? p.aimDist : reach)
+  let x = p.x + cosA(p.aim) * d
+  let y = p.y + sinA(p.aim) * d
+  const hit = rayCast(map, p.x, p.y, x, y, 'sight')
+  if (hit.blocked) {
+    // 막힌 타일 앞까지 조금씩 당긴다
+    for (let k = 1; k <= 12; k++) {
+      const t = 1 - k / 12
+      x = p.x + cosA(p.aim) * d * t
+      y = p.y + sinA(p.aim) * d * t
+      if (!rayCast(map, p.x, p.y, x, y, 'sight').blocked) break
+    }
+  }
+  return { x, y }
+}
+
+/** 같은 편(자기 포함)으로 반경 안에 있고 움직일 수 있는 사람 */
+function alliesNear(state: GameState, p: PlayerState, r: number, includeDowned = false): PlayerState[] {
+  return state.players.filter((q) => q.alive && !q.left && q.team === p.team && (includeDowned || !q.downed) && len(q.x - p.x, q.y - p.y) <= r)
+}
+
+function buffRate(p: PlayerState, ticks: number, mul: number): void {
+  p.rateMul = p.fx[FX_RATE] > 0 ? Math.max(p.rateMul, mul) : mul
+  p.fx[FX_RATE] = Math.max(p.fx[FX_RATE], ticks)
+}
+
+function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number): void {
+  const id: SkillId = CHAR_SKILLS[p.char][slot]
+  const def = SKILLS[id]
+  p.cd[slot] = def.cd
+  let tx = p.x
+  let ty = p.y
+  if (def.reach) {
+    const c = cursorPoint(map, p, def.reach)
+    tx = c.x
+    ty = c.y
+  }
+  state.events.push({ type: 'skill', p: p.id, slot, id, x: p.x, y: p.y, aim: p.aim, tx, ty })
+  const T = TILE
+  switch (id) {
+    // ---- 철면덕
+    case 'ironwall': {
+      p.fx[FX_GUARD] = 240
+      // 도발: 7칸 안의 (깨어 있는) 몬스터가 나를 노린다
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 7 * T) continue
+        if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
+        m.target = p.id
+        m.taunt = 240
+      }
+      break
+    }
+    case 'barrage':
+      buffRate(p, 240, 2)
+      p.fx[FX_FREEAMMO] = 240
+      break
+    case 'roar': {
+      aoe(state, map, p, p.x, p.y, 5 * T, 120, { stun: 120, knock: 8, id })
+      for (const q of alliesNear(state, p, 8 * T)) q.fx[FX_PARTYDR] = 360
+      break
+    }
+    // ---- 침착덕
+    case 'pierce':
+      p.pierceShots = 6
+      break
+    case 'grenade':
+      state.throws.push({ id: state.nextFxId++, owner: p.id, x0: p.x, y0: p.y, x: tx, y: ty, t: 42, max: 42 })
+      break
+    case 'composure':
+      p.fx[FX_CRIT] = 360
+      buffRate(p, 360, 1.5)
+      break
+    // ---- 단군덕
+    case 'broadcast': {
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 18 * T) continue
+        m.mark = 480
+        m.vuln = 480
+        m.vulnPct = Math.max(m.vulnPct, 25)
+      }
+      break
+    }
+    case 'fanfire': {
+      const { x: mx, y: my } = muzzle(map, p)
+      const headTarget = aimedEnemy(state, p)
+      const critMon = aimedMonster(state, map, p)
+      for (let i = 0; i < 8; i++) {
+        const a = (p.aim + Math.round(((i - 3.5) / 3.5) * deg(15))) & 1023
+        spawnBullet(state, p, mx, my, a, 'pistol', { headTarget, critMon, over: false, overR: 0 })
+      }
+      p.shots += 8
+      state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'pistol' })
+      break
+    }
+    case 'spotlight':
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480 })
+      break
+    // ---- 매직덕
+    case 'firstaid': {
+      for (const q of alliesNear(state, p, 6 * T)) {
+        const amount = Math.min(q.maxHp - q.hp, Math.round(q.maxHp * 0.25))
+        if (amount <= 0) continue
+        q.hp += amount
+        state.events.push({ type: 'heal', p: q.id, x: q.x, y: q.y, amount })
+      }
+      break
+    }
+    case 'flame':
+      aoe(state, map, p, p.x, p.y, 4 * T, 60, { knock: 5, arcAim: p.aim, arc: deg(40), id })
+      break
+    case 'surgery': {
+      for (const q of alliesNear(state, p, 8 * T, true)) {
+        if (q.downed) {
+          raise(state, q, q.maxHp, 180)
+          p.revives++
+          state.events.push({ type: 'revive', p: q.id, by: p.id, x: q.x, y: q.y })
+        } else {
+          const amount = q.maxHp - q.hp
+          q.hp = q.maxHp
+          q.invuln = Math.max(q.invuln, 180)
+          if (amount > 0) state.events.push({ type: 'heal', p: q.id, x: q.x, y: q.y, amount: Math.round(amount) })
+        }
+      }
+      break
+    }
+    // ---- 승빠덕
+    case 'pancharge':
+      p.dashDx = cosA(p.aim)
+      p.dashDy = sinA(p.aim)
+      p.fx[FX_CHARGE] = 13
+      p.chargeTag = state.nextFxId++
+      p.ads = false
+      break
+    case 'oil':
+      aoe(state, map, p, p.x, p.y, 3 * T, 50, { slow: 150, knock: 2, id })
+      break
+    case 'kitchen':
+      p.fx[FX_WHIRL] = 300
+      break
+    // ---- 옥냥덕
+    case 'catstep':
+      p.dashDx = -cosA(p.aim)
+      p.dashDy = -sinA(p.aim)
+      p.fx[FX_CHARGE] = 11
+      p.chargeTag = 0
+      p.empowerShots = 1
+      break
+    case 'railshot': {
+      const { x: mx, y: my } = muzzle(map, p)
+      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 200, life: 50, pierce: 99, headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
+      p.shots++
+      state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
+      break
+    }
+    case 'ninelives':
+      p.fx[FX_SNIPE] = 480
+      buffRate(p, 480, 3)
+      break
+  }
+}
+
+/** 돌진 중: 몸에 닿는 몬스터·적을 한 번씩 친다 */
+function chargeHit(state: GameState, map: GameMap, p: PlayerState): void {
+  aoe(state, map, p, p.x, p.y, PLAYER_RADIUS + 10, 60, { knock: 6, id: 'pancharge', quiet: true, tag: p.chargeTag })
+}
+
+/** 땅의 효과: 스포트라이트 — 안의 몬스터는 느려지고 약해지고, 안의 동료는 빨리 쏜다 */
+function stepZones(state: GameState): void {
+  if (state.zones.length === 0) return
+  let write = 0
+  for (const z of state.zones) {
+    z.t--
+    if (z.t <= 0) continue
+    if (z.kind === ZONE_SPOTLIGHT) {
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - z.x, m.y - z.y) > z.r) continue
+        m.slow = Math.max(m.slow, 6)
+        m.vuln = Math.max(m.vuln, 6)
+        m.vulnPct = Math.max(m.vulnPct, 50)
+      }
+      const owner = state.players[z.owner]
+      for (const q of state.players) {
+        if (!q.alive || q.left || q.downed || len(q.x - z.x, q.y - z.y) > z.r) continue
+        if (owner && isEnemy(owner, q)) q.legInjury = Math.max(q.legInjury, 6)
+        else buffRate(q, 6, 1.3)
+      }
+    }
+    state.zones[write++] = z
+  }
+  state.zones.length = write
+}
+
+/** 던진 것(수류탄): 시간이 다 되면 터진다 */
+function stepThrows(state: GameState, map: GameMap, grid: Grid): void {
+  if (state.throws.length === 0) return
+  let write = 0
+  for (const t of state.throws) {
+    t.t--
+    if (t.t > 0) {
+      state.throws[write++] = t
+      continue
+    }
+    const owner = state.players[t.owner]
+    if (owner) aoe(state, map, owner, t.x, t.y, 3 * TILE, 80, { stun: 60, knock: 4, id: 'grenade' })
+  }
+  state.throws.length = write
+  void grid
+}
+
+// ================================================================ 탄
 
 function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
   const bullets = state.bullets
@@ -668,6 +1150,7 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
     b.life--
     let dead = false
 
+    // 엄폐 관통은 총구 근처에서만 (기대고 있는 자루를 넘기려는 것이다)
     const near = b.overR > 0 && (b.px - b.ox) ** 2 + (b.py - b.oy) ** 2 <= b.overR * b.overR
     const tileHit = rayCast(map, b.px, b.py, b.x, b.y, 'bullet', b.over || near)
     if (tileHit.blocked) {
@@ -677,26 +1160,52 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
     }
 
     if (!dead) {
-      // 이 선분에 걸리는 몬스터 중 **가장 먼저 닿는** 것 (같으면 id 가 작은 것)
-      let best: Monster | null = null
-      let bestT = Infinity
+      // 이 선분에 걸리는 것 중 **가장 먼저 닿는** 것 (몬스터·적 플레이어). 같으면 번호가 작은 것
+      const shooter = state.players[b.owner]
       const sx = b.x - b.px
       const sy = b.y - b.py
       const s2 = sx * sx + sy * sy || 1
-      grid.query(Math.min(b.px, b.x) - 24, Math.min(b.py, b.y) - 24, Math.max(b.px, b.x) + 24, Math.max(b.py, b.y) + 24, (k) => {
-        const m = state.monsters[k]
-        if (!m || m.hp <= 0) return
-        const r = MONSTER_LIST[m.kind].r
-        if (!segmentHitsCircle(b.px, b.py, b.x, b.y, m.x, m.y, r)) return
-        const t = ((m.x - b.px) * sx + (m.y - b.py) * sy) / s2
-        if (t < bestT || (t === bestT && best && m.id < best.id)) {
-          bestT = t
-          best = m
+      let bestT = Infinity
+      let bestM: Monster | null = null
+      let bestP: PlayerState | null = null
+      if (state.monsters.length > 0) {
+        grid.query(Math.min(b.px, b.x) - 24, Math.min(b.py, b.y) - 24, Math.max(b.px, b.x) + 24, Math.max(b.py, b.y) + 24, (k) => {
+          const m = state.monsters[k]
+          if (!m || m.hp <= 0 || m.id === b.lastHit) return
+          if (!segmentHitsCircle(b.px, b.py, b.x, b.y, m.x, m.y, MONSTER_LIST[m.kind].r)) return
+          const t = ((m.x - b.px) * sx + (m.y - b.py) * sy) / s2
+          if (t < bestT || (t === bestT && bestM && m.id < bestM.id)) {
+            bestT = t
+            bestM = m
+          }
+        })
+      }
+      if (state.mode === 'arena') {
+        for (const v of state.players) {
+          if (!isEnemy(shooter, v) || !v.alive || v.left || v.invuln > 0 || v.dashTimer > 0 || -(v.id + 1) === b.lastHit) continue
+          if (!segmentHitsCircle(b.px, b.py, b.x, b.y, v.x, v.y, PLAYER_RADIUS)) continue
+          const t = ((v.x - b.px) * sx + (v.y - b.py) * sy) / s2
+          if (t < bestT) {
+            bestT = t
+            bestP = v
+            bestM = null
+          }
         }
-      })
-      if (best) {
-        applyHit(state, b, best, pointLineDistance((best as Monster).x, (best as Monster).y, b.px, b.py, b.vx, b.vy))
-        dead = true
+      }
+      if (bestM) {
+        const m: Monster = bestM
+        applyHit(state, b, m, pointLineDistance(m.x, m.y, b.px, b.py, b.vx, b.vy))
+        if (b.pierce > 0) {
+          b.pierce--
+          b.lastHit = m.id
+        } else dead = true
+      } else if (bestP) {
+        const v: PlayerState = bestP
+        applyHitPlayer(state, b, v, pointLineDistance(v.x, v.y, b.px, b.py, b.vx, b.vy))
+        if (b.pierce > 0) {
+          b.pierce--
+          b.lastHit = -(v.id + 1)
+        } else dead = true
       }
     }
 
@@ -714,9 +1223,9 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): void {
   const def = MONSTER_LIST[m.kind]
   const dist = len(m.x - b.ox, m.y - b.oy)
   // 치명타 = 덕의 헤드샷: 쏠 때 커서가 이 몬스터의 약점 위였고, 그 탄이 이 몬스터를 맞혔다.
-  // 산탄은 정중앙을 지나는 탄만 (일곱 개가 전부 치명타가 되면 과하다)
-  const crit = b.headTarget === m.id && (w.pellets === 1 || partForOffset(dOff, def.r) === PART_HEAD)
-  let dmg = b.damage * (crit ? headMult(w) : 1) * falloff(w, dist)
+  // 산탄은 정중앙을 지나는 탄만 (일곱 개가 전부 치명타가 되면 과하다). 침착 모드는 전부
+  const crit = b.forceCrit || (b.critMon === m.id && (w.pellets === 1 || partForOffset(dOff, def.r) === PART_HEAD))
+  let dmg = b.damage * b.mul * (crit ? headMult(w) : 1) * falloff(w, dist)
   const shooter = state.players[b.owner]
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
   if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
@@ -727,7 +1236,39 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): void {
   const k = w.knock * (1 - def.knockRes)
   m.kx += (b.vx / speed) * k
   m.ky += (b.vy / speed) * k
+  // 탄막(철면덕 E): 맞은 괴물은 잠깐 느려진다
+  if (shooter.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 30)
   hurtMonster(state, m, dmg, b.owner, crit, b.x, b.y)
+}
+
+/**
+ * 탄이 적 플레이어를 맞혔다 (투기장 — 덕의 applyHit). 헤드샷은 커서 규칙, 저격 조준경 한 방, 후라이팬 막기까지 덕 그대로.
+ * 스킬 배율(mul)과 침착 모드(forceCrit = 머리)가 얹힌다.
+ */
+function applyHitPlayer(state: GameState, b: Bullet, victim: PlayerState, dOff: number): void {
+  const w = WEAPONS[b.weapon]
+  const dist = len(victim.x - b.ox, victim.y - b.oy)
+  let part = partForOffset(dOff, PLAYER_RADIUS, headHitScale(victim.char))
+  if (b.forceCrit) part = PART_HEAD
+  else if (w.pellets > 1) {
+    if (part === PART_HEAD && b.headTarget !== victim.id) part = PART_BODY
+  } else if (b.headTarget === victim.id) part = PART_HEAD
+  else if (part === PART_HEAD) part = PART_BODY
+  const mult = part === PART_HEAD ? headMult(w) : PART_MULT[part]
+  let dmg = b.damage * b.mul * mult * falloff(w, dist)
+  // 저격 조준경 탄: 맞으면 한 방, 스치면 체력 10 남김 (덕 오픈 베타 규칙)
+  if (w.lethalAds && b.ads && b.damage === w.damage) {
+    const graze = dOff > PLAYER_RADIUS * SNIPER_GRAZE_FRAC
+    dmg = graze ? Math.max(0, victim.hp - (w.grazeLeave ?? 10)) : victim.hp / takenMul(victim)
+  }
+  const shooter = state.players[b.owner]
+  if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
+  if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
+  dmg = Math.round(dmg)
+  b.hitSomeone = true
+  shooter.streak = Math.min(99, shooter.streak + 1)
+  dmg = panBlock(state, victim, dmg, b.ox, b.oy)
+  hurtPvp(state, shooter, victim, dmg, part, b.x, b.y)
 }
 
 function damageSandbag(state: GameState, map: GameMap, tx: number, ty: number, dmg: number): void {
@@ -753,7 +1294,7 @@ export function syncSandbags(state: GameState, map: GameMap): void {
   map.version++
 }
 
-// ---------------------------------------------------------------- 몬스터
+// ================================================================ 몬스터
 
 function wakePack(state: GameState, pack: number, x: number, y: number): void {
   let woke = false
@@ -780,6 +1321,8 @@ function noise(state: GameState, x: number, y: number): void {
 
 function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit: boolean, x: number, y: number): void {
   if (m.hp <= 0 || dmg <= 0) return
+  // 약화(생중계·스포트라이트): 받는 피해 증가
+  if (m.vuln > 0 && m.vulnPct > 0) dmg = Math.round(dmg * (1 + m.vulnPct / 100))
   const shooter = by >= 0 ? state.players[by] : null
   if (shooter) {
     shooter.hits++
@@ -807,7 +1350,7 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
       if (killer.killStreak > killer.bestStreak) killer.bestStreak = killer.killStreak
     }
     if (rand(state.rng) < def.globe) {
-      state.globes.push({ id: state.nextGlobeId++, x: m.x, y: m.y, ttl: GLOBE_TTL })
+      state.globes.push({ id: state.nextGlobeId++, x: m.x, y: m.y, ttl: GLOBE_TTL, heal: Math.round(GLOBE_HEAL_FRAC * 100), share: true })
       state.events.push({ type: 'drop', x: m.x, y: m.y })
     }
     // 쓰러뜨려도 터진다 — 약하게
@@ -871,6 +1414,8 @@ function stepMonsters(state: GameState, map: GameMap): void {
     if (m.hp <= 0) continue
     const def = MONSTER_LIST[m.kind]
     m.moving = 0
+    if (m.mark > 0) m.mark--
+    if (m.vuln > 0 && --m.vuln === 0) m.vulnPct = 0
     if (m.st === MS_SLEEP) {
       // 8틱에 한 번만 본다 (잠든 무리가 수십이라 매 틱 레이캐스트는 아깝다)
       if (((tick + m.id) & 7) !== 0) continue
@@ -883,6 +1428,8 @@ function stepMonsters(state: GameState, map: GameMap): void {
       }
       continue
     }
+    if (m.slow > 0) m.slow--
+    if (m.taunt > 0) m.taunt--
     // 넉백: 벽에 막히며 밀리고 금방 줄어든다
     if (m.kx !== 0 || m.ky !== 0) {
       const r = moveCircle(map, m.x, m.y, def.r, m.kx, m.ky)
@@ -895,11 +1442,17 @@ function stepMonsters(state: GameState, map: GameMap): void {
     }
     if (m.stun > 0) {
       m.stun--
+      // 기절하면 하던 공격 예고도 끊긴다
+      if (m.st === MS_WINDUP) {
+        m.st = MS_CHASE
+        m.cd = Math.max(m.cd, 20)
+      }
       continue
     }
     if (m.cd > 0) m.cd--
-    // 표적: 가장 가까운 움직일 수 있는 사람. 30틱마다 다시 고른다 (쓰러지면 바로)
-    if (m.target < 0 || !isActive(state.players[m.target]) || (tick + m.id) % 30 === 0) m.target = nearestActive(state, m.x, m.y)
+    // 표적: 가장 가까운 움직일 수 있는 사람. 30틱마다 다시 고른다 (쓰러지면 바로). 도발 중이면 그대로
+    const tauntOk = m.taunt > 0 && m.target >= 0 && isActive(state.players[m.target])
+    if (!tauntOk && (m.target < 0 || !isActive(state.players[m.target]) || (tick + m.id) % 30 === 0)) m.target = nearestActive(state, m.x, m.y)
     if (m.target < 0) {
       if (m.st !== MS_CHASE) m.st = MS_CHASE
       continue
@@ -940,7 +1493,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       if (def.attack === 'melee') m.aim = turnToward(m.aim, face, TURN_WINDUP)
       else if (def.attack === 'ranged') m.aim = atan2A(m.ay - m.y, m.ax - m.x)
       m.t--
-      if (m.t <= 0) resolveAttack(state, map, m, def)
+      if (m.t <= 0) resolveAttack(state, m, def)
     } else if (m.st === MS_RECOVER) {
       m.t--
       if (m.t <= 0) m.st = MS_CHASE
@@ -967,14 +1520,15 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
     dirX = (gx - m.x) / gd
     dirY = (gy - m.y) / gd
   }
-  const speed = away ? def.speed * 0.8 : def.speed
+  let speed = away ? def.speed * 0.8 : def.speed
+  if (m.slow > 0) speed *= 0.5
   const r = moveCircle(map, m.x, m.y, def.r, dirX * speed, dirY * speed)
   m.x = r.x
   m.y = r.y
   m.moving = 1
 }
 
-function resolveAttack(state: GameState, map: GameMap, m: Monster, def: MonsterDef): void {
+function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
   if (def.attack === 'melee') {
     state.events.push({ type: 'swipe', m: m.id, x: m.x, y: m.y, aim: m.aim })
     const reach = def.r + PLAYER_RADIUS + def.range + 8
@@ -1004,12 +1558,12 @@ function resolveAttack(state: GameState, map: GameMap, m: Monster, def: MonsterD
     killMonster(state, m, -1, true)
     booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: def.dmg, by: -1 })
   }
-  void map
 }
 
 /** 몬스터끼리 겹치지 않게 서로 민다 + 플레이어 몸 안으로는 못 들어온다 (몬스터만 밀린다) */
 function separate(state: GameState, map: GameMap, grid: Grid): void {
   const ms = state.monsters
+  if (ms.length === 0) return
   for (let i = 0; i < ms.length; i++) {
     const a = ms[i]
     if (a.hp <= 0 || a.st === MS_SLEEP) continue
@@ -1061,6 +1615,7 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
 
 /** 몬스터 투사체: 벽에 막히고, 구르는 사람은 지나간다 */
 function stepShots(state: GameState, map: GameMap): void {
+  if (state.mshots.length === 0) return
   let write = 0
   for (const s of state.mshots) {
     const px = s.x
@@ -1088,17 +1643,21 @@ function stepShots(state: GameState, map: GameMap): void {
   state.mshots.length = write
 }
 
-/** 회복 구슬: 밟은 사람과 가까운 동료가 회복한다. 모두 가득이면 남겨 둔다 */
+/**
+ * 회복 구슬(던전) · 힐팩(투기장): 밟은 사람이 회복한다. 던전 구슬은 가까운 동료에게도 나눈다.
+ * 모두 가득이면 남겨 둔다. 동시에 밟으면 번호가 앞선 사람이 줍는다(순서가 곧 결정론).
+ */
 function stepGlobes(state: GameState): void {
   if (state.globes.length === 0) return
   let write = 0
   for (const g of state.globes) {
     g.ttl--
     if (g.ttl <= 0) continue
+    const reach = (g.share ? GLOBE_RADIUS : MEDKIT_RADIUS) + PLAYER_RADIUS
     let taker: PlayerState | null = null
     for (const p of state.players) {
       if (!isActive(p) || p.hp >= p.maxHp) continue
-      if ((p.x - g.x) ** 2 + (p.y - g.y) ** 2 > (GLOBE_RADIUS + PLAYER_RADIUS) ** 2) continue
+      if ((p.x - g.x) ** 2 + (p.y - g.y) ** 2 > reach * reach) continue
       taker = p
       break
     }
@@ -1108,7 +1667,7 @@ function stepGlobes(state: GameState): void {
     }
     for (const p of state.players) {
       if (!isActive(p) || p.hp >= p.maxHp) continue
-      const frac = p === taker ? GLOBE_HEAL_FRAC : len(p.x - g.x, p.y - g.y) <= GLOBE_SHARE_RANGE ? GLOBE_SHARE_FRAC : 0
+      const frac = p === taker ? g.heal / 100 : g.share && p.team === taker.team && len(p.x - g.x, p.y - g.y) <= GLOBE_SHARE_RANGE ? GLOBE_SHARE_FRAC : 0
       if (frac <= 0) continue
       const amount = Math.min(p.maxHp - p.hp, Math.round(p.maxHp * frac))
       p.hp += amount
@@ -1118,7 +1677,7 @@ function stepGlobes(state: GameState): void {
   state.globes.length = write
 }
 
-// ---------------------------------------------------------------- 스냅샷
+// ================================================================ 스냅샷
 
 /** 스냅샷 (events 제외) */
 export function snapshot(state: GameState): GameState {

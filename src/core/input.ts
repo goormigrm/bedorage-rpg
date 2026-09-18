@@ -10,6 +10,12 @@ export const BTN_SWAP = 1 << 4
 export const BTN_SPRINT = 1 << 5
 /** 상호작용 (F): 쓰러진 동료 일으키기 · (M3~) 줍기·계단 */
 export const BTN_USE = 1 << 6
+/** 스킬 Q · E · 궁극기 X (2026-09-18 — 버튼이 8비트를 넘어 16비트로 늘렸다) */
+export const BTN_SKILL1 = 1 << 7
+export const BTN_SKILL2 = 1 << 8
+export const BTN_ULT = 1 << 9
+/** 스킬 번호(0·1·2) → 버튼 */
+export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT]
 
 export interface Input {
   /** -1, 0, 1 */
@@ -39,16 +45,16 @@ export function inputEquals(a: Input, b: Input): boolean {
   return a.mx === b.mx && a.my === b.my && a.aim === b.aim && a.buttons === b.buttons && a.char === b.char && (a.aimDist ?? 0) === (b.aimDist ?? 0)
 }
 
-/** 7바이트 직렬화 (2026-09-05: 조준 거리 1바이트 추가 → 프로토콜 APP_ID v3) */
-export const INPUT_BYTES = 7
+/** 8바이트 직렬화 (2026-09-18: 버튼 16비트 — 스킬 셋 · APP_ID bedorage-rpg-v1) */
+export const INPUT_BYTES = 8
 
 export function writeInput(view: DataView, offset: number, i: Input): void {
   view.setInt8(offset, i.mx)
   view.setInt8(offset + 1, i.my)
   view.setUint16(offset + 2, i.aim & 1023)
-  view.setUint8(offset + 4, i.buttons & 255)
-  view.setUint8(offset + 5, i.char & 255)
-  view.setUint8(offset + 6, (i.aimDist ?? 0) & 255)
+  view.setUint16(offset + 4, i.buttons & 0xffff)
+  view.setUint8(offset + 6, i.char & 255)
+  view.setUint8(offset + 7, (i.aimDist ?? 0) & 255)
 }
 
 export function readInput(view: DataView, offset: number): Input {
@@ -56,8 +62,8 @@ export function readInput(view: DataView, offset: number): Input {
     mx: view.getInt8(offset),
     my: view.getInt8(offset + 1),
     aim: view.getUint16(offset + 2) & 1023,
-    buttons: view.getUint8(offset + 4),
-    char: view.getUint8(offset + 5),
-    aimDist: view.getUint8(offset + 6),
+    buttons: view.getUint16(offset + 4),
+    char: view.getUint8(offset + 6),
+    aimDist: view.getUint8(offset + 7),
   }
 }

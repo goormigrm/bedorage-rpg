@@ -231,6 +231,28 @@ export class Sfx {
         case 'bash':
           this.gun('pan', sp(e.x, e.y), e.p === localPlayer) // 개머리판 휘두르기 = 후라이팬 소리
           break
+        case 'hit':
+          // 투기장: 플레이어가 플레이어를 맞힘 (덕 그대로)
+          this.hit(sp(e.x, e.y), e.part === 0)
+          break
+        case 'skill': {
+          // 스킬: 휙 + 높은 음. 궁극기는 세 음 화음을 더한다
+          const b = this.bus(e.p === localPlayer ? { gain: 1, pan: 0, far: 0 } : sp(e.x, e.y), e.slot === 2 ? 1 : 0.7)
+          this.noiseBurst(b.node, b.t0, 0.22, 'bandpass', 600, 3200, 0.45, 1.5)
+          this.tone(b.node, b.t0, 0.18, 'triangle', 520, 880, 0.25, 0.004)
+          if (e.slot === 2) for (const [i, f] of [330, 415, 494, 660].entries()) this.tone(b.node, b.t0 + 0.05 + i * 0.05, 0.5, 'sawtooth', f, f, 0.12, 0.01)
+          break
+        }
+        case 'aoe': {
+          const b = this.bus(sp(e.x, e.y), e.id === 'grenade' || e.id === 'roar' ? 1.1 : 0.7)
+          if (e.id === 'flame') this.noiseBurst(b.node, b.t0, 0.45, 'bandpass', 900, 400, 0.6, 0.8)
+          else if (e.id === 'oil') this.noiseBurst(b.node, b.t0, 0.3, 'highpass', 2600, 1800, 0.5)
+          else {
+            this.noiseBurst(b.node, b.t0, 0.55, 'lowpass', 1600, 110, 0.9)
+            this.tone(b.node, b.t0, 0.4, 'sine', 110, 40, 0.6, 0.004)
+          }
+          break
+        }
         case 'mhit': {
           // 치명타는 늘 들리게, 보통 명중은 35ms 에 한 번
           const now = performance.now()

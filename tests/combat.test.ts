@@ -153,7 +153,7 @@ describe('회복 구슬', () => {
     b.y = a.y
     a.hp = 50
     b.hp = 50
-    s.globes.push({ id: 1, x: a.x, y: a.y, ttl: 600 })
+    s.globes.push({ id: 1, x: a.x, y: a.y, ttl: 600, heal: 25, share: true })
     step(s, map, [idle(), idle()])
     expect(s.globes.length).toBe(0)
     expect(a.hp).toBeGreaterThan(50 + a.maxHp * 0.2)

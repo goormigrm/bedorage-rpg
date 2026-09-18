@@ -2,12 +2,13 @@
 // 카메라: 고정 피치 55°, 요 45° 고정(camera.ts). HUD 는 2D 캔버스 오버레이. 인원 2~4명.
 
 import * as THREE from 'three'
-import { CHARACTERS } from '../core/characters'
+import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, isTeamMatch } from '../core/state'
+import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { MONSTER_LIST } from '../core/monsters'
-import { WEAPONS, HEAD_AIM_FRAC } from '../core/weapons'
+import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
@@ -140,6 +141,12 @@ export class Renderer3D {
   private shotPool: THREE.Sprite[] = []
   /** 던전: 플레이어마다 드는 등불 — 디아블로의 빛 반경. 어둠과 시야 제한이 겹쳐 분위기를 만든다 */
   private lanterns: THREE.PointLight[] = []
+  /** 스킬 연출: 땅의 무대(스포트라이트) · 던진 수류탄 · 버프 고리 */
+  private zoneMeshes = new Map<number, THREE.Group>()
+  private throwMeshes = new Map<number, THREE.Mesh>()
+  private auras: THREE.Mesh[] = []
+  /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
+  private lastKiller = -1
   private bulletPool: THREE.Group[] = []
   /** 명중·벽 섬광 (카메라를 보는 스프라이트, 커지며 사라진다) */
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
@@ -347,6 +354,10 @@ export class Renderer3D {
             v.swing = 1
             break
           }
+          // 단군덕 패시브(중계, 투기장): 시야 밖 적의 총성 위치를 1.2초 표시
+          if (state.mode === 'arena' && localPlayer >= 0 && state.players[localPlayer].char === 'dangun' && this.hidden[e.p] && state.players[e.p].team !== state.players[localPlayer].team) {
+            this.pings.push({ x: e.x * U, z: e.y * U, life: 1.2, max: 1.2 })
+          }
           const tip = new THREE.Vector3()
           rig.gunTip.getWorldPosition(tip)
           this.spawnFlash(tip, w.scope ? 2.6 : w.pellets > 1 ? 1.6 : 1)
@@ -374,6 +385,47 @@ export class Renderer3D {
           this.spawnImpact(e.x * U, GUN_H, e.y * U, 0xffe8b0, 0.8)
           break
         }
+        case 'hit': {
+          // 투기장: 플레이어가 플레이어를 맞힘 — 덕의 명중 연출 (몸통 빨강 · 머리 금색)
+          const v = this.vis[e.p]
+          if (!v) break
+          const head = e.part === PART_HEAD
+          this.hitShow[e.p] = 2.5
+          v.flash = head ? 0.22 : 0.15
+          v.flashColor = head ? 0xffd84a : 0xff3b30
+          if (v.hitCd <= 0) {
+            v.hitCd = 0.1
+            v.vsx += head ? 0.4 : 0.28
+            v.vsy -= head ? 0.34 : 0.24
+          }
+          if (e.by === localPlayer || e.p === localPlayer)
+            this.texts.push({ x: e.x * U, z: e.y * U, y: head ? 2.1 : 1.9, text: head ? `헤드샷 ${e.dmg}` : `${e.dmg}`, life: head ? 1.0 : 0.8, max: head ? 1.0 : 0.8, color: head ? '#ffd84a' : '#ff5a4a', big: head, pop: head ? 1.6 : 0.8 })
+          const n = head ? 16 : 10
+          for (let k = 0; k < n; k++) {
+            const a = Math.random() * Math.PI * 2
+            const sp = (head ? 0.1 : 0.07) + Math.random() * 0.13
+            const col = head ? (k % 3 === 0 ? 0xfff3c0 : 0xffd84a) : k % 3 === 0 ? 0xff9a6a : 0xff4a3a
+            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.12, Math.sin(a) * sp, 0.24 + Math.random() * 0.12, col, head ? 0.5 : 0.44)
+          }
+          this.spawnImpact(e.x * U, GUN_H, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.8 : 1.7)
+          if (e.by === localPlayer) this.hud.hitMark(head)
+          if (e.p === localPlayer) {
+            this.shake = Math.max(this.shake, 0.18)
+            const from = state.players[e.by]
+            const me = state.players[e.p]
+            if (from && me) {
+              const sd = worldDirToScreen(from.x - me.x, from.y - me.y)
+              if (sd.x !== 0 || sd.y !== 0) this.hud.addHitDir(Math.atan2(sd.y, sd.x), e.dmg >= 40)
+            }
+          }
+          break
+        }
+        case 'skill':
+          this.onSkill(e, state, localPlayer)
+          break
+        case 'aoe':
+          this.onAoe(e)
+          break
         case 'hurt': {
           // 플레이어가 몬스터에게 맞음: 빨간 번쩍 + 숫자
           const v = this.vis[e.p]
@@ -501,7 +553,12 @@ export class Renderer3D {
             this.spawnParticle(e.x * U, 1.0, e.y * U, Math.cos(a) * sp, 0.12 + Math.random() * 0.1, Math.sin(a) * sp, 1.3, c.bodyColor, 1.2)
           }
           this.spawnRing(e.x * U, e.y * U, 0.3, 2.2, 0.5, 0xffffff)
-          this.hud.notice(e.out ? `${nm[e.p]} 탈락` : `${nm[e.p]} 사망 · 입구에서 다시 일어납니다`, e.out ? '#ff5a4a' : '#ffb0a4')
+          if (state.mode === 'arena' && e.by >= 0) {
+            if (e.p === localPlayer) this.lastKiller = e.by
+            const revenge = localPlayer >= 0 && e.by === localPlayer && e.p === this.lastKiller
+            if (revenge) this.lastKiller = -1
+            this.hud.notice(`${nm[e.by]} → ${nm[e.p]}${revenge ? ' · 복수!' : ''}`, '#' + CHARACTERS[state.players[e.by].char].bodyColor.toString(16).padStart(6, '0'))
+          } else this.hud.notice(e.out ? `${nm[e.p]} 탈락` : `${nm[e.p]} 사망 · 입구에서 다시 일어납니다`, e.out ? '#ff5a4a' : '#ffb0a4')
           this.shake = Math.max(this.shake, e.p === localPlayer ? 0.35 : 0.2)
           break
         }
@@ -669,6 +726,9 @@ export class Renderer3D {
     this.updateBullets(prev, curr, alpha)
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
+    this.updateZones(curr)
+    this.updateThrows(curr)
+    this.updateAuras(curr, pos)
     this.updateLanterns(curr, pos)
     this.updateCamera(curr, pos, dt, opts)
 
@@ -701,6 +761,16 @@ export class Renderer3D {
         if (Math.hypot(w.x - m.x, w.y - m.y) <= MONSTER_LIST[m.kind].r * HEAD_AIM_FRAC) {
           cursorOn = true
           break
+        }
+      }
+      const me = curr.players[opts.localPlayer]
+      if (!cursorOn && curr.mode === 'arena') {
+        for (const p of curr.players) {
+          if (p.id === me.id || !p.alive || p.left || this.hidden[p.id] || p.team === me.team) continue
+          if (Math.hypot(w.x - p.x, w.y - p.y) <= PLAYER_RADIUS * HEAD_AIM_FRAC * headHitScale(p.char)) {
+            cursorOn = true
+            break
+          }
         }
       }
     }
@@ -755,7 +825,7 @@ export class Renderer3D {
           break
         }
       }
-      const vis = near && canSee(this.map, viewers, m.x, m.y, rpx)
+      const vis = m.mark > 0 || (near && canSee(this.map, viewers, m.x, m.y, rpx))
       const t = vis ? 0.22 : Math.max(0, (this.seenM.get(m.id) ?? 0) - this.lastDt)
       this.seenM.set(m.id, t)
       if (t > 0) this.hiddenM.delete(m.id)
@@ -874,7 +944,8 @@ export class Renderer3D {
     if (!this.miniCanvas) this.miniCanvas = renderMapTiles(map)
     const ctx = this.hud.ctx
     const S = MINIMAP_SIZE
-    const x = 16
+    // 디아블로 4 처럼 오른쪽 위 (그 아래에 목표 추적이 붙는다)
+    const x = VIEW_W - 16 - S
     const y = 16
     const cx = x + S / 2
     const cy = y + S / 2
@@ -919,10 +990,11 @@ export class Renderer3D {
       const p = curr.players[i]
       if (!p.alive || p.left) continue
       const mine = i === lp
-      const ally = !mine
+      const ally = !mine && lp >= 0 && p.team === curr.players[lp].team
+      if (!mine && !ally && this.hidden[i] && lp >= 0) continue // 투기장: 안 보이는 적은 미니맵에도 없다
       const px = p.x / TILE
       const py = p.y / TILE
-      ctx.fillStyle = p.downed ? '#ff8a7a' : mine ? '#ffd84a' : '#5aa9ff'
+      ctx.fillStyle = p.downed ? '#ff8a7a' : mine ? '#ffd84a' : ally ? '#5aa9ff' : '#ff5a4a'
       ctx.beginPath()
       ctx.arc(px, py, (mine ? 3.6 : 3) * rp, 0, Math.PI * 2)
       ctx.fill()
@@ -950,17 +1022,29 @@ export class Renderer3D {
       ctx.fill()
     }
     ctx.globalAlpha = 1
-    // 회복 구슬: 분홍 점
+    // 회복 구슬: 분홍 점 · 힐팩(투기장): 흰 네모에 빨간 십자
     for (const g of curr.globes) {
-      ctx.fillStyle = '#ff7a8a'
-      ctx.beginPath()
-      ctx.arc(g.x / TILE, g.y / TILE, 2.4 * rp, 0, Math.PI * 2)
-      ctx.fill()
+      if (g.share) {
+        ctx.fillStyle = '#ff7a8a'
+        ctx.beginPath()
+        ctx.arc(g.x / TILE, g.y / TILE, 2.4 * rp, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        const px = g.x / TILE
+        const py = g.y / TILE
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(px - 2.4 * rp, py - 2.4 * rp, 4.8 * rp, 4.8 * rp)
+        ctx.fillStyle = '#f25c4c'
+        ctx.fillRect(px - 0.7 * rp, py - 1.7 * rp, 1.4 * rp, 3.4 * rp)
+        ctx.fillRect(px - 1.7 * rp, py - 0.7 * rp, 3.4 * rp, 1.4 * rp)
+      }
     }
-    // 층 입구: 초록 네모
-    ctx.strokeStyle = '#7ee0a0'
-    ctx.lineWidth = 1.4 * rp
-    ctx.strokeRect(curr.entryX / TILE - 3 * rp, curr.entryY / TILE - 3 * rp, 6 * rp, 6 * rp)
+    // 층 입구: 초록 네모 (던전)
+    if (curr.mode === 'dungeon') {
+      ctx.strokeStyle = '#7ee0a0'
+      ctx.lineWidth = 1.4 * rp
+      ctx.strokeRect(curr.entryX / TILE - 3 * rp, curr.entryY / TILE - 3 * rp, 6 * rp, 6 * rp)
+    }
     // 단군덕 패시브(중계): 시야 밖 총성 위치를 미니맵에도 찍는다(창 안이면). 화면 가장자리 화살표만으로는
     // 방향은 알아도 거리를 모른다 (2026-09-05 요청). 좌표는 이미 타일 단위(x·U)
     for (const g of this.pings) {
@@ -1063,6 +1147,7 @@ export class Renderer3D {
     const ctx = this.hud.ctx
     const lp = opts.localPlayer
     const spectator = lp === -1
+    const teams = isTeamMatch(curr)
     for (let i = 0; i < curr.players.length; i++) {
       const p = curr.players[i]
       if (!p.alive || !this.rigs[i]?.root.visible) continue
@@ -1070,7 +1155,7 @@ export class Renderer3D {
       const s = this.worldToScreen(pos[i].x, this.rigs[i].height + 0.2, pos[i].z)
       const name = opts.names[i] ?? c.name
       const mine = i === lp
-      const ally = !spectator && !mine
+      const ally = !spectator && !mine && (curr.mode === 'dungeon' || (teams && p.team === curr.players[lp].team))
       // 상대 정보는 숨긴다. 체력 바는 나·아군·관전, 그리고 상대는 맞은 직후 몇 초만
       const showHp = spectator || mine || ally || this.hitShow[i] > 0
       ctx.font = `600 ${mine ? 13 : 12}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
@@ -1279,8 +1364,9 @@ export class Renderer3D {
     }
     // 정조준: 팔을 조금 더 앞으로
     rig.arms.position.z = p.ads ? 0.18 : 0.1
-    // 후라이팬 휘두르기
+    // 후라이팬 휘두르기 · 회전 공격(주방 대참사)이면 몸째 빙글빙글
     rig.arms.rotation.y = v.swing > 0 ? Math.sin(v.swing * Math.PI) * 1.5 : v.reloadSwing
+    if (p.fx[FX_WHIRL] > 0) root.rotation.y = this.t * 18
     root.scale.set(v.sx, v.sy, v.sx)
     // 무적(스폰 보호 · 우원덕이 구른 뒤): **황금 보호막**. 전에는 몸을 반투명하게 깜빡였는데
     // 눈에 띄지 않아 우원덕 패시브가 있는지도 몰랐다(2026-09-06 제보). 구르는 동안은 구르기 연출이 이미 말해 준다
@@ -1300,6 +1386,139 @@ export class Renderer3D {
     }
   }
 
+  // ---------- 스킬 연출 ----------
+  /** 스킬을 쓴 순간: 시전 고리 + 스킬마다의 튀는 효과 */
+  private onSkill(e: Extract<SimEvent, { type: 'skill' }>, state: GameState, localPlayer: number): void {
+    const x = e.x * U
+    const z = e.y * U
+    const ult = e.slot === 2
+    const color = SKILL_COLOR[e.id] ?? 0xffffff
+    this.spawnRing(x, z, ult ? 2.2 : 1.4, 0.3, ult ? 0.5 : 0.35, color)
+    if (ult) {
+      this.spawnImpact(x, 1.2, z, color, 4)
+      const light = new THREE.PointLight(color, 14, 9, 1.5)
+      light.position.set(x, 1.5, z)
+      this.scene.add(light)
+      this.flashes.push({ light, mesh: new THREE.Mesh(), life: 0.25 })
+      if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.25)
+      const v = this.vis[e.p]
+      if (v) {
+        v.vsx -= 0.3
+        v.vsy += 0.45
+      }
+    }
+    if (e.id === 'broadcast') this.spawnRing(x, z, 0.5, 18, 0.9, 0xb99cff)
+    if (e.id === 'pancharge' || e.id === 'catstep') {
+      for (let k = 0; k < 10; k++) {
+        const a = Math.random() * Math.PI * 2
+        this.spawnParticle(x, 0.3, z, Math.cos(a) * 0.04, 0.05, Math.sin(a) * 0.04, 0.5, 0xd8c8a8, 0.6)
+      }
+    }
+    void state
+  }
+
+  /** 스킬 범위 공격이 터짐: 크기만큼의 고리 + 스킬별 입자 */
+  private onAoe(e: Extract<SimEvent, { type: 'aoe' }>): void {
+    const x = e.x * U
+    const z = e.y * U
+    const r = e.r * U
+    const color = SKILL_COLOR[e.id] ?? 0xffffff
+    this.spawnRing(x, z, 0.3, r, 0.45, color)
+    const n = Math.min(40, Math.round(r * 6))
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2
+      const d = Math.random() * r
+      const sp = 0.03 + Math.random() * 0.06
+      const col = e.id === 'flame' ? (k % 2 === 0 ? 0xff8a3a : 0xffd26a) : e.id === 'oil' ? 0xe8d060 : e.id === 'grenade' ? (k % 2 === 0 ? 0xffb050 : 0x3a3530) : color
+      this.spawnParticle(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp, 0.06 + Math.random() * 0.1, Math.sin(a) * sp, 0.5 + Math.random() * 0.3, col, 0.7)
+    }
+    if (e.id === 'grenade' || e.id === 'roar') {
+      this.spawnImpact(x, 0.8, z, color, r * 2.2)
+      this.shake = Math.max(this.shake, 0.25)
+    }
+  }
+
+  /** 스포트라이트 무대: 땅에 밝은 원 + 테두리, 끝나 갈수록 흐려진다 */
+  private updateZones(curr: GameState): void {
+    const live = new Set<number>()
+    for (const zn of curr.zones) {
+      live.add(zn.id)
+      let g = this.zoneMeshes.get(zn.id)
+      if (!g) {
+        g = new THREE.Group()
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
+        disc.rotation.x = -Math.PI / 2
+        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        rim.rotation.x = -Math.PI / 2
+        g.add(disc, rim)
+        const beam = new THREE.PointLight(0xfff0c0, 10, zn.r * U * 2.5, 1.4)
+        beam.position.y = 3
+        g.add(beam)
+        this.scene.add(g)
+        this.zoneMeshes.set(zn.id, g)
+      }
+      g.position.set(zn.x * U, 0.04, zn.y * U)
+      g.scale.set(zn.r * U, 1, zn.r * U)
+      const fade = Math.min(1, zn.t / 60)
+      ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.16 * fade + 0.04 * Math.sin(this.t * 4)
+      ;((g.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.8 * fade
+    }
+    for (const [id, g] of this.zoneMeshes) {
+      if (live.has(id)) continue
+      this.scene.remove(g)
+      this.zoneMeshes.delete(id)
+    }
+  }
+
+  /** 수류탄: 던진 곳에서 목표로 포물선 */
+  private updateThrows(curr: GameState): void {
+    const live = new Set<number>()
+    for (const t of curr.throws) {
+      live.add(t.id)
+      let m = this.throwMeshes.get(t.id)
+      if (!m) {
+        m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshLambertMaterial({ color: 0x3d4a33 }))
+        m.castShadow = true
+        this.scene.add(m)
+        this.throwMeshes.set(t.id, m)
+      }
+      const k = 1 - t.t / t.max
+      m.position.set((t.x0 + (t.x - t.x0) * k) * U, 0.5 + Math.sin(k * Math.PI) * 2.2, (t.y0 + (t.y - t.y0) * k) * U)
+    }
+    for (const [id, m] of this.throwMeshes) {
+      if (live.has(id)) continue
+      this.scene.remove(m)
+      this.throwMeshes.delete(id)
+    }
+  }
+
+  /** 버프 고리: 발밑에 버프 색 고리가 돈다 (철벽 금 · 포효 붉은 금 · 연사 주황 · 침착 노랑 · 회전 빨강 · 저격 파랑) */
+  private updateAuras(curr: GameState, pos: { x: number; z: number }[]): void {
+    let n = 0
+    for (let i = 0; i < curr.players.length; i++) {
+      const p = curr.players[i]
+      if (!p.alive || p.left || p.downed || this.hidden[i]) continue
+      const f = p.fx
+      const col = f[FX_WHIRL] > 0 ? 0xff5a3a : f[FX_GUARD] > 0 ? 0xe0a060 : f[FX_CRIT] > 0 ? 0xffd86a : f[FX_SNIPE] > 0 ? 0x7fb8ff : f[FX_PARTYDR] > 0 ? 0xff9a50 : f[FX_RATE] > 0 ? 0xffb04a : -1
+      if (col < 0) continue
+      let m = this.auras[n]
+      if (!m) {
+        m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32, 1, 0, Math.PI * 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        m.rotation.x = -Math.PI / 2
+        this.auras[n] = m
+        this.scene.add(m)
+      }
+      m.visible = true
+      ;(m.material as THREE.MeshBasicMaterial).color.setHex(col)
+      m.position.set(pos[i].x, 0.05, pos[i].z)
+      m.rotation.z = this.t * (f[FX_WHIRL] > 0 ? 14 : 3)
+      const k = f[FX_WHIRL] > 0 ? 2.4 : 1
+      m.scale.setScalar(k)
+      n++
+    }
+    for (let i = n; i < this.auras.length; i++) this.auras[i].visible = false
+  }
+
   /** 회복 구슬: 붉게 빛나는 구가 떠서 맥박치듯 흔들린다 — 디아블로의 체력 구슬 */
   private updateGlobes(curr: GameState): void {
     const live = new Set<number>()
@@ -1308,10 +1527,21 @@ export class Renderer3D {
       let g = this.globeMeshes.get(g0.id)
       if (!g) {
         g = new THREE.Group()
-        const core = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff3a4a }))
-        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff4a5a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
-        halo.scale.setScalar(0.9)
-        g.add(core, halo)
+        if (g0.share) {
+          const core = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff3a4a }))
+          const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff4a5a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
+          halo.scale.setScalar(0.9)
+          g.add(core, halo)
+        } else {
+          const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.42), new THREE.MeshLambertMaterial({ color: 0xf2f4f0 }))
+          box.castShadow = true
+          const crossMat = new THREE.MeshBasicMaterial({ color: 0xe4483a })
+          const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.09), crossMat)
+          const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.26), crossMat)
+          bar1.position.y = 0.15
+          bar2.position.y = 0.15
+          g.add(box, bar1, bar2)
+        }
         this.scene.add(g)
         this.globeMeshes.set(g0.id, g)
       }
@@ -1675,6 +1905,7 @@ export class Renderer3D {
 
   dispose(): void {
     this.monsterView.dispose()
+    void this.lastKiller
     this.vision.dispose()
     this.world.dispose()
     this.gl.dispose()
@@ -1688,6 +1919,16 @@ function newVis(): DuckVis {
 }
 
 export { hex, PLAYER_RADIUS }
+
+/** 스킬 색 (고리·입자). skillIcons 의 색과 맞춘다 */
+const SKILL_COLOR: Record<string, number> = {
+  ironwall: 0xe0a060, barrage: 0xffb04a, roar: 0xff7a40,
+  pierce: 0x7fd6d0, grenade: 0xffa040, composure: 0xffd86a,
+  broadcast: 0xb99cff, fanfire: 0xb99cff, spotlight: 0xfff0b0,
+  firstaid: 0x7ee0a0, flame: 0xff8a3a, surgery: 0xb0ffcc,
+  pancharge: 0xffb070, oil: 0xe8d060, kitchen: 0xff5a3a,
+  catstep: 0x9cc8ff, railshot: 0x9cc8ff, ninelives: 0xffd86a,
+}
 
 /** 빛줄기 텍스처: 머리(u=1)는 밝고 꼬리(u=0)로 갈수록 사라진다. 위아래 가장자리도 부드럽게 */
 function makeStreakTexture(): THREE.CanvasTexture {

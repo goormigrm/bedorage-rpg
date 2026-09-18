@@ -44,6 +44,12 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     pack,
     los: 0,
     moving: 0,
+    slow: 0,
+    vuln: 0,
+    vulnPct: 0,
+    mark: 0,
+    taunt: 0,
+    tag: 0,
   }
 }
 
