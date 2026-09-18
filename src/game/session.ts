@@ -6,7 +6,7 @@ import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/c
 import { Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
-import { createState, dropPlayer, hashState, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
+import { createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -98,6 +98,8 @@ export class Session {
   private stallCount = 0
   private stallMs = 0
   private lockstep: Lockstep | null = null
+  /** 받은 리싱크 횟수 (어긋남 — 시험·운영 확인용) */
+  private resyncs = 0
   private peerIndex = new Map<string, number>()
   private pendingDrops: PendingDrop[] = []
   private dropped = new Set<number>()
@@ -190,7 +192,7 @@ export class Session {
     cfg.absent?.forEach((a, i) => {
       if (a && i !== cfg.localPlayer) this.dropped.add(i)
     })
-    this.prev = snapshot(this.state)
+    this.prev = interpSnapshot(this.state)
     this.makeBots(cfg.seed)
 
     host.innerHTML = `
@@ -289,6 +291,9 @@ export class Session {
       names: () => this.names,
       bots: () => this.cfg.bots ?? [],
       stalls: () => ({ count: this.stallCount, ms: Math.round(this.stallMs), now: this.stallSince >= 0 ? Math.round(performance.now() - this.stallSince) : 0 }),
+      // P2P 확인용: 60틱마다의 상태 해시(틱 → 해시)와 받은 리싱크 수 — 탭끼리 같은 틱의 해시가 같으면 어긋나지 않은 것
+      hashes: () => Object.fromEntries(this.hashes),
+      resyncs: () => this.resyncs,
     }
   }
 
@@ -773,7 +778,8 @@ export class Session {
           step(this.state, this.map, this.lockstep.get(this.state.tick))
           this.applyDrops()
         }
-        this.prev = snapshot(this.state)
+        this.prev = interpSnapshot(this.state)
+        this.resyncs++
         this.message = '동기화됨'
         setTimeout(() => (this.message = ''), 1200)
         break
@@ -856,7 +862,7 @@ export class Session {
     // 이미 나간 사람은 처음부터 빠진 채로
     for (const d of this.dropped) dropPlayer(this.state, d)
     this.state.events = []
-    this.prev = snapshot(this.state)
+    this.prev = interpSnapshot(this.state)
     this.makeBots(seed)
     this.hashes.clear()
     this.pendingDrops = []
@@ -933,7 +939,7 @@ export class Session {
           inputs[i] = i === lp ? localIn : this.botFor(i, this.cfg.difficulty ?? 'normal')
         }
       }
-      this.prev = snapshot(this.state)
+      this.prev = interpSnapshot(this.state)
       step(this.state, this.map, inputs)
       this.applyDrops()
       this.renderer.onEvents(this.state.events, this.state, lp, this.names)

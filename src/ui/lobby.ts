@@ -1017,7 +1017,8 @@ export class Lobby {
   private maybeStart(): void {
     if (this.role !== 'host' || this.starting || !this.link) return
     const link = this.link
-    if (this.members.length < MIN_PLAYERS) return
+    // 던전은 혼자여도 시작한다(남은 자리는 게임 중 난입으로) — 투기장은 상대가 있어야 한다
+    if (this.members.length < (this.kind === 'arena' ? 2 : MIN_PLAYERS)) return
     if (!this.members.every((m) => m.ready)) return
     if (this.roomMode === 'teams' && (!this.members.some((m) => m.team === 0) || !this.members.some((m) => m.team === 1))) return
     this.starting = true
@@ -1176,7 +1177,7 @@ export class Lobby {
         <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : '준비'}</button>
         ${teams ? `<button class="btn secondary" id="btn-team" ${connected ? '' : 'disabled'}>팀 바꾸기</button>` : ''}
       </div>
-      <p class="roomhint">둘 이상 모이고 모두 준비를 누르면 자동으로 시작합니다.</p>`
+      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 자동으로 시작합니다.' : '모두 준비를 누르면 시작합니다 — 혼자 시작해도 남은 자리는 게임 중 난입으로 채워집니다.'}</p>`
     const readyCount = this.members.filter((m) => m.ready).length
     const st = !connected
       ? '연결 중… (최대 20초)'

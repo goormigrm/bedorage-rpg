@@ -1846,6 +1846,20 @@ function stepGlobes(state: GameState): void {
 
 // ================================================================ 스냅샷
 
+/**
+ * 화면 보간용 가벼운 사본: 렌더러가 이전 틱에서 읽는 것은 **위치뿐**이다(플레이어 x·y, 탄·몬스터·투사체의 id·x·y).
+ * 전에는 매 틱 판 전체를 structuredClone 했는데(덕 그대로), 몬스터·가방이 생기자 틱마다 0.33ms 가 들었다(2026-09-18 실측).
+ * 모양만 GameState 이고 나머지는 비어 있다 — 렌더러 말고는 쓰지 말 것. 리싱크·난입 전송은 snapshot() 을 쓴다.
+ */
+export function interpSnapshot(state: GameState): GameState {
+  return {
+    players: state.players.map((p) => ({ x: p.x, y: p.y })),
+    bullets: state.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y })),
+    monsters: state.monsters.map((m) => ({ id: m.id, x: m.x, y: m.y })),
+    mshots: state.mshots.map((m) => ({ id: m.id, x: m.x, y: m.y })),
+  } as unknown as GameState
+}
+
 /** 스냅샷 (events 제외) */
 export function snapshot(state: GameState): GameState {
   const { events: _e, ...rest } = state
