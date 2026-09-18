@@ -12,6 +12,8 @@ const BACKUP = 'brpg.save.v1.bak'
 interface SaveData {
   v: 1
   chars: Partial<Record<CharacterId, Sheet>>
+  /** 보관함 — 캐릭터끼리 공유 (GUIDE 9장) */
+  stash?: Sheet['stash']
   updated: number
 }
 
@@ -45,13 +47,16 @@ function write(d: SaveData): void {
 /** 캐릭터의 기록 (없으면 1레벨 맨몸) */
 export function sheetOf(char: CharacterId): Sheet {
   const d = loadSave()
-  return sanitizeSheet(d.chars[char] ?? emptySheet())
+  // 보관함은 캐릭터 밖에 두고, 판에 들어갈 때 내 기록에 실어 간다
+  return sanitizeSheet({ ...(d.chars[char] ?? emptySheet()), stash: d.stash ?? [] })
 }
 
 /** 판의 플레이어 상태를 세이브에 적는다 */
 export function commitSheet(p: PlayerState): void {
   const d = loadSave()
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: p.wps })
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: p.wps, potMax: p.potMax })
+  delete d.chars[p.char]!.stash
+  d.stash = sanitizeSheet({ stash: p.stash }).stash
   write(d)
 }
 
@@ -82,8 +87,10 @@ export async function importSave(file: File): Promise<number> {
   for (const [id, sh] of Object.entries(raw.chars)) {
     if (!(id in CHARACTERS)) continue
     d.chars[id as CharacterId] = sanitizeSheet(sh)
+    delete d.chars[id as CharacterId]!.stash
     n++
   }
+  d.stash = sanitizeSheet({ stash: raw.stash }).stash
   write(d)
   return n
 }

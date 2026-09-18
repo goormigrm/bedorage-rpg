@@ -18,6 +18,8 @@ export const BTN_ULT = 1 << 9
 export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT]
 /** 타운 포털 (T): 1.5초 시전 — 움직이거나 쏘거나 맞으면 끊긴다 */
 export const BTN_PORTAL = 1 << 10
+/** 물약 (3): 최대 체력 35% 를 3초에 걸쳐 채운다. 충전식 (디아블로 4) */
+export const BTN_POTION = 1 << 11
 /** 마을(안전지대)에서 막는 버튼: 사격·정조준·스킬·포털 */
 export const TOWN_BLOCKED = BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_PORTAL
 
@@ -51,6 +53,15 @@ export const CMD_UNEQUIP = 2
 export const CMD_DROP = 3
 /** 웨이포인트로 이동: arg = 가려는 지역 번호 (웨이포인트 곁에 서 있고, 그곳이 열려 있어야 한다) */
 export const CMD_WAYPOINT = 4
+/** 마을 NPC (그 NPC 곁에서만 — GUIDE 9장): 상인 팔기(가방 칸) · 사기(진열 칸) · 물약 칸 늘리기 · 대장장이 다시 굴리기(가방 칸) ·
+ *  도박(장비 칸 종류) · 보관함 넣기(가방 칸) · 꺼내기(보관함 칸) */
+export const CMD_SELL = 5
+export const CMD_BUY = 6
+export const CMD_POTUP = 7
+export const CMD_REROLL = 8
+export const CMD_GAMBLE = 9
+export const CMD_STASH_PUT = 10
+export const CMD_STASH_TAKE = 11
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

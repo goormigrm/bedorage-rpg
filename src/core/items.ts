@@ -120,10 +120,10 @@ export function armorBase(it: Item): number {
  * 아이템 하나를 굴린다. myWeapon = 주운 사람의 무기(스마트 루트 85%).
  * 등급 확률: 일반 55 · 마법 32 · 희귀 11 · 전설 2 (엘리트·보스는 bonus 로 위로)
  */
-export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, bonus = 0): Item {
-  const slot = randInt(rng, 0, SLOT_COUNT)
+export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, bonus = 0, minRarity = 0, forceSlot = -1): Item {
+  const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
   const r = rand(rng) - bonus
-  const rarity = r < 0.02 ? 3 : r < 0.13 ? 2 : r < 0.45 ? 1 : 0
+  const rarity = Math.max(minRarity, r < 0.02 ? 3 : r < 0.13 ? 2 : r < 0.45 ? 1 : 0)
   let wt = -1
   if (slot === SLOT_WEAPON) {
     wt = rand(rng) < 0.85 ? WEAPON_IDS.indexOf(myWeapon) : randInt(rng, 0, WEAPON_IDS.length)
@@ -140,6 +140,32 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
     aff.push(pick.i, v)
   }
   return { uid, slot, wt, rarity, ilvl, aff }
+}
+
+/** 상인에게 파는 값 (골드): 아이템 레벨 × 등급 */
+export function itemValue(it: Item): number {
+  return Math.round((6 + it.ilvl * 3) * [1, 2.5, 6, 15][it.rarity])
+}
+
+/** 마을 값 (GUIDE 9장): 상인 진열은 파는 값의 4배 · 대장장이 다시 굴리기 = 파는 값의 2배 · 도박 = 60 + 레벨×25 · 물약 칸 = 200×(늘린 횟수+1)² */
+export const buyPrice = (it: Item) => itemValue(it) * 4
+export const rerollPrice = (it: Item) => itemValue(it) * 2 + 20
+export const gamblePrice = (level: number) => 60 + level * 25
+export const potUpPrice = (potMax: number) => 200 * (potMax - 3) ** 2
+/** 보관함 칸 (캐릭터 공유) */
+export const STASH_SIZE = 60
+
+/** 대장장이: 옵션 하나를 같은 칸의 다른 옵션으로 다시 굴린다 (디아블로 3 마법부여) */
+export function rerollAffix(rng: Rng, it: Item): void {
+  if (it.aff.length === 0) return
+  const k = randInt(rng, 0, it.aff.length / 2) * 2
+  const have = new Set(it.aff.filter((_, i) => i % 2 === 0))
+  const pool = AFFIXES.map((a, i) => ({ a, i })).filter(({ a, i }) => a.slots.includes(it.slot) && (!have.has(i) || i === it.aff[k]))
+  const pick = pool[randInt(rng, 0, pool.length)]
+  const max = pick.a.base + pick.a.per * it.ilvl
+  const lo = it.rarity === 3 ? 0.8 : 0.5
+  it.aff[k] = pick.i
+  it.aff[k + 1] = Math.max(1, Math.round(max * (lo + rand(rng) * (1 - lo))))
 }
 
 // ---------- 레벨 ----------
@@ -186,6 +212,10 @@ export type Sheet = {
   bag: Item[]
   /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) */
   wps?: number
+  /** 물약 칸 수 (상인에게서 늘린다, 기본 4 · 최대 8) */
+  potMax?: number
+  /** 보관함 (캐릭터끼리 공유 — 세이브는 따로 두고, 판에 들어올 때 내 기록에 실어 온다) */
+  stash?: Item[]
 }
 
 export function emptySheet(): Sheet {
@@ -208,5 +238,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
   if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
   e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0xffff
+  e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
+  e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
   return e
 }

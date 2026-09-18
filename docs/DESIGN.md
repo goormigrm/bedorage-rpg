@@ -76,6 +76,17 @@
 - 첫 화면 `ui/bonfire.ts`: 로비 배경의 3D 모닥불 장면(캐릭터 여섯 · 불빛 흔들림 · 불티 · 천막 윤곽). 누르면 `onPick`. 로비를 닫을 때 dispose.
 - UI 색: style.css 끝의 D2 블록이 덕의 변수·버튼을 덮는다(돌·쇠·바랜 금·명조체).
 
+## 3.7 전리품 · 경제 (D3)
+
+- `Drop` = 아이템(F) · 골드 더미(`gold`) · 물약(`pot`). 몬스터·상자·항아리는 `spill()` 로 사람마다 따로 흩뿌린다(주인만 보고 줍는다).
+  골드·물약은 `pickUp`(밟으면 — 물약은 칸이 차면 두고 간다), 아이템은 `pickItem`(F, 가까운 것).
+- 물약: `PlayerState.potions/potMax/potHot/potCd` — 3(`BTN_POTION`), 180틱에 35%, 다시 마시기 90틱, 마을에서 가득. `potMax` 는 세이브.
+- 지역 물건 `MapObj`(AreaState.objects — 묶는 칸 `state.objects`): 상자 · 금빛 상자 · 항아리 · 제단. `placeObjects` 가 지역 시드로 놓는다. F 는 포털 → 물건 → 아이템 순. 항아리는 총알이 닿으면 깨진다(`stepBullets`).
+  제단 축복 `shrine/shrineT` — `dmgMul` · `takenMul` · 이동 속도 · 경험치에 곱한다.
+- 마을 NPC: 자리는 world.ts `TOWNS.npcs`, 거래는 `CMD_SELL/BUY/POTUP/REROLL/GAMBLE/STASH_PUT/STASH_TAKE` → `townCommand`(그 NPC 곁 70px 안에서만). 상인 진열 `state.shop`(게임 시드, 공용).
+  보관함 `PlayerState.stash`(60칸) — 세이브의 `stash`(캐릭터 밖, 공유)를 판에 들어올 때 내 기록에 실어 온다. 값: `itemValue` · `buyPrice` ×4 · `rerollPrice` · `gamblePrice` · `potUpPrice`.
+- 음성(`net/voice.ts`): 게임 연결에 마이크 스트림을 얹는다(`RoomLink.setVoice/onVoice`). 눌러서 말하기는 트랙 `enabled` 를 누르는 동안만 켠다. sim 과 무관.
+
 ## 4. 몬스터
 
 `monsters.ts` 가 정의표, 행동은 `sim.ts stepMonsters`, 모습은 `render3d/monsters3d.ts`.

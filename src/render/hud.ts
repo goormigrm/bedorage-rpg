@@ -63,6 +63,8 @@ export interface RenderOptions {
   touch?: boolean
   /** 층 이름 (위 가운데 목표 패널) */
   floorName?: string
+  /** 자리별로 지금 말하고 있나 (음성 대화) */
+  speaking?: boolean[]
 }
 
 export interface ScreenText {

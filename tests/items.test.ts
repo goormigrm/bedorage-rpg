@@ -1,6 +1,6 @@
 // 성장·전리품: 스마트 루트 · 개인 전리품 · 줍기 · 장착 명령 · 버리기(선물) · 경험치 공유 · 레벨업 · 소실 규칙 · 세이브 검사.
 import { describe, expect, it } from 'vitest'
-import { CMD_DROP, CMD_EQUIP, Input } from '../src/core/input'
+import { BTN_USE, CMD_DROP, CMD_EQUIP, Input } from '../src/core/input'
 import { buildMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
@@ -89,17 +89,36 @@ describe('전리품 · 성장 (sim)', () => {
     for (let k = 0; k < 60; k++) killNear(s, map, 0, 2)
     expect(a.xpGain).toBeGreaterThan(0)
     expect(b.xpGain).toBe(a.xpGain)
-    expect(b.goldGain).toBe(a.goldGain)
-    const mine = s.drops.filter((d) => d.owner === 0).length + a.bag.length
-    const theirs = s.drops.filter((d) => d.owner === 1).length + b.bag.length
-    expect(mine).toBeGreaterThan(0)
-    expect(theirs).toBeGreaterThan(0)
-    // 남의 전리품 위에 서도 줍지 않는다
-    const other = s.drops.find((d) => d.owner === 1)
+    // 전리품은 사람마다 따로 굴린다: 골드 더미 · 물약 · 아이템이 각자 몫으로 바닥에
+    const mine = s.drops.filter((d) => d.owner === 0)
+    const theirs = s.drops.filter((d) => d.owner === 1)
+    expect(mine.some((d) => d.gold > 0)).toBe(true)
+    expect(theirs.some((d) => d.gold > 0)).toBe(true)
+    expect(mine.some((d) => d.item) || a.bag.length > 0).toBe(true)
+    // 골드는 밟으면 줍는다
+    const g = mine.find((d) => d.gold > 0)!
+    const gold0 = a.gold
+    a.x = g.x
+    a.y = g.y
+    for (let t = 0; t < 20; t++) step(s, map, [idle(), idle()])
+    expect(a.gold).toBeGreaterThanOrEqual(gold0 + g.gold)
+    expect(s.drops.some((d) => d.id === g.id)).toBe(false)
+    // 아이템은 F 로 줍는다 (밟기만 하면 그대로)
+    const it = s.drops.find((d) => d.owner === 0 && d.item)!
+    a.x = it.x
+    a.y = it.y
+    const bag0 = a.bag.length
+    for (let t = 0; t < 20; t++) step(s, map, [idle(), idle()])
+    expect(a.bag.length).toBe(bag0)
+    step(s, map, [{ ...idle(), buttons: BTN_USE }, idle()])
+    expect(a.bag.length).toBe(bag0 + 1)
+    // 남의 전리품 위에서 F 를 눌러도 줍지 않는다
+    const other = s.drops.find((d) => d.owner === 1 && d.item)
     if (other) {
       a.x = other.x
       a.y = other.y
-      for (let t = 0; t < 30; t++) step(s, map, [idle(), idle()])
+      step(s, map, [idle(), idle()])
+      step(s, map, [{ ...idle(), buttons: BTN_USE }, idle()])
       expect(s.drops.some((d) => d.id === other.id)).toBe(true)
     }
   })
@@ -132,11 +151,12 @@ describe('전리품 · 성장 (sim)', () => {
     expect(a.st[ST_DMG]).toBeGreaterThan(d0)
     // 버리면 누구나 보이는 것이 되고, 잠시 뒤 동료가 밟으면 줍는다
     step(s, map, [cmd(CMD_DROP, 0), idle()])
-    const d = s.drops.find((x) => x.item.uid === 12)!
+    const d = s.drops.find((x) => x.item?.uid === 12)!
     expect(d.owner).toBe(-1)
     b.x = d.x
     b.y = d.y
     for (let t = 0; t < 120; t++) step(s, map, [idle(), idle()])
+    step(s, map, [idle(), { ...idle(), buttons: BTN_USE }])
     expect(b.bag.some((it) => it.uid === 12)).toBe(true)
   })
 

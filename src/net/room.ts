@@ -222,6 +222,9 @@ export interface RoomLink {
   onInput(cb: (buf: Uint8Array, from: string) => void): void
   onPeerJoin(cb: (id: string) => void): void
   onPeerLeave(cb: (id: string) => void): void
+  /** 음성: 마이크 스트림을 지금·나중에 붙는 모든 피어에게 보낸다 (null = 거두기) */
+  setVoice(stream: MediaStream | null): void
+  onVoice(cb: (stream: MediaStream, from: string) => void): void
   leave(): void
 }
 
@@ -247,6 +250,8 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   const leaveCbs: ((id: string) => void)[] = []
   const ctlCbs: ((m: CtlMessage, from: string) => void)[] = []
   const inCbs: ((buf: Uint8Array, from: string) => void)[] = []
+  const voiceCbs: ((s: MediaStream, from: string) => void)[] = []
+  let voice: MediaStream | null = null
 
   const link: RoomLink = {
     code,
@@ -284,7 +289,22 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
     onPeerLeave(cb) {
       leaveCbs.push(cb)
     },
+    setVoice(stream) {
+      if (voice) {
+        try {
+          room.removeStream(voice)
+        } catch {
+          /* 이미 끊긴 피어 */
+        }
+      }
+      voice = stream
+      if (stream && peers.size > 0) for (const p of room.addStream(stream)) void p.catch(() => {})
+    },
+    onVoice(cb) {
+      voiceCbs.push(cb)
+    },
     leave() {
+      voiceCbs.length = 0
       clearInterval(pingTimer)
       joinCbs.length = 0
       leaveCbs.length = 0
@@ -320,7 +340,12 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   }, 0)
   room.onPeerJoin((id) => {
     peers.add(id)
+    // 음성을 켜 둔 채면 새로 붙은 사람에게도 보낸다
+    if (voice) for (const p of room.addStream(voice, id)) void p.catch(() => {})
     for (const cb of [...joinCbs]) cb(id)
+  })
+  room.onPeerStream((stream, id) => {
+    for (const cb of [...voiceCbs]) cb(stream, id)
   })
   room.onPeerLeave((id) => {
     peers.delete(id)

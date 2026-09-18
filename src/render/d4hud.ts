@@ -278,6 +278,31 @@ export class D4Hud {
     const bx = cx - barW / 2
     const by = baseY - S / 2 - 12
     ironPanel(c, bx, by - 14, barW, S + 44)
+    // 물약 (3): 스킬 바 왼쪽 아래 — 붉은 병 + 남은 칸 (디아블로 4 충전식)
+    {
+      const px = bx - 22
+      const py = by + S + 14
+      c.save()
+      c.globalAlpha = me.potions > 0 ? 1 : 0.35
+      if (me.potHot > 0) {
+        c.shadowColor = '#ff4a3a'
+        c.shadowBlur = 12
+      }
+      c.fillStyle = '#b81a22'
+      c.beginPath()
+      c.arc(px, py, 9, 0, Math.PI * 2)
+      c.fill()
+      c.fillStyle = '#d8c8a8'
+      c.fillRect(px - 3, py - 16, 6, 7)
+      c.shadowBlur = 0
+      c.font = `700 11px ${SANS}`
+      c.textAlign = 'center'
+      c.fillStyle = '#ffd0c0'
+      c.fillText(`${me.potions}/${me.potMax}`, px, py + 22)
+      c.fillStyle = GOLD
+      c.fillText('3', px + 14, py - 8)
+      c.restore()
+    }
     // 기력 (위 가는 막대)
     const stK = Math.max(0, Math.min(1, me.stamina / me.staminaMax))
     c.fillStyle = 'rgba(255,255,255,0.08)'
@@ -567,6 +592,26 @@ export class D4Hud {
       c.textBaseline = 'alphabetic'
       c.fillStyle = '#efe4cf'
       c.fillText(opts.names[p.id] ?? def.name, x + 52, y + 20)
+      // 말하는 중: 이름 옆 초록 소리 표시 (음성 대화)
+      if (opts.speaking?.[p.id]) {
+        const nx = x + 58 + c.measureText(opts.names[p.id] ?? def.name).width
+        c.fillStyle = '#6aff8a'
+        c.beginPath()
+        c.moveTo(nx, y + 11)
+        c.lineTo(nx + 5, y + 11)
+        c.lineTo(nx + 10, y + 7)
+        c.lineTo(nx + 10, y + 21)
+        c.lineTo(nx + 5, y + 17)
+        c.lineTo(nx, y + 17)
+        c.fill()
+      }
+      // 다른 지역에 있으면 그 지역 이름
+      if (p.away) {
+        c.font = `600 10px ${SANS}`
+        c.fillStyle = '#8d8170'
+        c.fillText(areaDef(p.area).name, x + 52, y + 8)
+        c.font = `700 12px ${SANS}`
+      }
       const hpK = p.alive && !p.downed && !p.left ? Math.max(0, p.hp / p.maxHp) : 0
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 52, y + 27, W - 64, 7)

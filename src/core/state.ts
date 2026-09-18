@@ -200,6 +200,16 @@ export interface PlayerState {
   portalCast: number
   /** 따라가는 사람 (용병·동료 봇 — 그 사람이 다른 지역으로 가면 곁으로 따라간다). -1 = 없음 */
   follow: number
+  /** 물약: 남은 칸 · 칸 수 · 회복 남은 틱 · 다시 마실 때까지 */
+  potions: number
+  potMax: number
+  potHot: number
+  potCd: number
+  /** 제단 축복 종류 · 남은 틱 */
+  shrine: number
+  shrineT: number
+  /** 보관함 (캐릭터 공유 · 마을의 보관함 곁에서 넣고 꺼낸다) */
+  stash: Item[]
   /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
   away?: boolean
 }
@@ -212,6 +222,7 @@ export type MoveHow = 'exit' | 'wp' | 'portal' | 'town' | 'follow'
 
 export interface AreaState {
   id: number
+  objects: MapObj[]
   monsters: Monster[]
   mshots: MShot[]
   bullets: Bullet[]
@@ -366,15 +377,39 @@ export interface Globe {
  * 바닥의 전리품. owner = 주인 플레이어(개인 전리품 — 주인에게만 보이고 주인만 줍는다), -1 = 누구나(버린 것).
  * lock = 버린 직후 다시 줍지 않게 막는 틱
  */
+/** 바닥의 전리품: 아이템(F 로 줍는다) · 골드 더미 · 물약(밟으면 줍는다). 주인에게만 보이고 주인만 줍는다(-1 = 누구나) */
 export interface Drop {
   id: number
   owner: number
   x: number
   y: number
-  item: Item
+  item: Item | null
+  /** 골드 더미면 금액 */
+  gold: number
+  /** 물약이면 1 */
+  pot: number
   ttl: number
   lock: number
 }
+
+/** 지역의 물건: 상자 · 금빛 상자 · 항아리(쏘거나 F 로 깬다) · 제단(F → 30초 축복) */
+export interface MapObj {
+  id: number
+  kind: number
+  x: number
+  y: number
+  /** 이미 열었다·깨졌다·썼다 */
+  used: boolean
+  /** 제단 종류 등 */
+  v: number
+}
+export const OBJ_CHEST = 0
+export const OBJ_GOLDCHEST = 1
+export const OBJ_URN = 2
+export const OBJ_SHRINE = 3
+/** 제단 축복: 전투(피해 +25%) · 수호(받는 피해 -25%) · 지혜(경험치 +50%) · 신속(이동 +20%) */
+export const SHRINE_NAMES = ['전투의 제단', '수호의 제단', '지혜의 제단', '신속의 제단']
+export const SHRINE_TICKS = 60 * 30
 
 /** 땅에 깔리는 효과 (스포트라이트 무대) */
 export interface Zone {
@@ -427,6 +462,15 @@ export type SimEvent =
   | { type: 'portalOpen'; p: number; area: number; x: number; y: number }
   /** 우두머리·보스가 쓰러졌다 */
   | { type: 'bossDown'; area: number; kind: number }
+  /** 골드 더미를 주웠다 · 물약을 주웠다 · 물약을 마셨다 */
+  | { type: 'gold'; p: number; n: number; x: number; y: number }
+  | { type: 'potGet'; p: number; x: number; y: number }
+  | { type: 'potion'; p: number }
+  /** 상자를 열었다 · 항아리가 깨졌다 · 제단의 축복 */
+  | { type: 'objOpen'; p: number; kind: number; x: number; y: number }
+  | { type: 'shrine'; p: number; kind: number; x: number; y: number }
+  /** 마을 NPC 와 거래했다 (what: sell · buy · potup · reroll · gamble · stash) */
+  | { type: 'trade'; p: number; what: string; gold: number; uid: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
   /** 주웠다 */
@@ -522,6 +566,9 @@ export interface GameState {
   nextFxId: number
   /** 묶인 지역의 처음 몬스터 수 (진행 표시) */
   monstersTotal: number
+  /** 묶인 지역의 물건 (상자·항아리·제단) */
+  objects: MapObj[]
+  nextObjId: number
   /**
    * 지금 묶인 지역 (step 이 지역마다 그 배열들을 위의 칸에 묶는다). step 밖에서는 -1 이고 위의 칸들은 비어 있다 —
    * 화면·봇은 `areaView(state, 지역)` 로 본다
@@ -534,6 +581,8 @@ export interface GameState {
   /** 우두머리·보스를 쓰러뜨린 지역 (지역을 다시 채워도 다시 나오지 않는다) */
   killed: number[]
   portals: Portal[]
+  /** 상인 진열 (게임마다 새로 — 모두가 같은 진열을 보고, 먼저 산 사람이 가져간다) */
+  shop: Item[]
   /** 이벤트가 어느 지역 것인지: [시작, 끝, 지역] 셋씩. 해시·스냅샷 대상 아님 */
   evSpans: number[]
   /** 0 = 층 정리, 1 = 전멸. -1 = 아직 */

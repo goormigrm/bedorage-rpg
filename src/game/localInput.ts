@@ -1,7 +1,7 @@
 // 키보드·마우스 → Input. 화면 좌표는 1280x720 논리 프레임.
 
 import { ANGLE_MASK, angleDiff, radToAngle } from '../core/fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_RELOAD, BTN_SKILL1, BTN_SKILL2, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SKILL1, BTN_SKILL2, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
 import { GameMap } from '../core/map'
 import { GameState } from '../core/state'
 import { WEAPONS } from '../core/weapons'
@@ -65,7 +65,7 @@ export class LocalInput {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', 'q', 'e', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '3', 'q', 'e', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
         if (down) this.keys.add(k)
         else this.keys.delete(k)
         e.preventDefault()
@@ -209,6 +209,7 @@ export class LocalInput {
     // F: 쓰러진 동료 일으키기 (누르고 있는 동안)
     if (k.has('f')) buttons |= BTN_USE
     if (k.has('t')) buttons |= BTN_PORTAL
+    if (k.has('3')) buttons |= BTN_POTION
     // 스킬 Q · E, 궁극기 X (누르고 있으면 준비되는 대로 쓴다)
     if (k.has('q')) buttons |= BTN_SKILL1
     if (k.has('e')) buttons |= BTN_SKILL2

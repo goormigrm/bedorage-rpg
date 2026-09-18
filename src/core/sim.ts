@@ -7,10 +7,11 @@
 import { CHARACTERS, CharacterId, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_DROP, CMD_EQUIP, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, TOWN_BLOCKED,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
+  CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, TOWN_BLOCKED,
 } from './input'
 import {
-  BAG_SIZE, LEVEL_CAP, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
+  BAG_SIZE, LEVEL_CAP, STASH_SIZE, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
   ST_STAMINA, ST_XP, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -21,7 +22,7 @@ import {
   AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 import { makeMonster, populate, rollAffixes } from './dungeon'
-import { ACTS, AreaLayout, WAYPOINTS, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
+import { ACTS, AreaLayout, WAYPOINTS, npcNear, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
@@ -29,7 +30,7 @@ import {
 } from './skills'
 import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
-  COUNTDOWN_TICKS, CHIM, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
+  COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
@@ -95,6 +96,8 @@ function mapFn(maps: MapSource): (area: number) => GameMap {
 
 /** 출구에 이만큼 다가서면 건너간다 · 웨이포인트를 밟으면 열린다 · 포털에 이만큼 가까이서 F */
 const EXIT_R = 30
+/** 보스 방 바로 앞 지역 (금빛 상자) */
+const AREAS_BOSS_BEFORE = [8]
 const WP_R = 44
 const PORTAL_R = 40
 /** 타운 포털 시전 (틱) */
@@ -103,7 +106,7 @@ export const PORTAL_CAST = 90
 const FROZEN_KEEP = 3
 
 function newArea(id: number, tick: number): AreaState {
-  return { id, monsters: [], mshots: [], bullets: [], globes: [], zones: [], throws: [], drops: [], monstersTotal: 0, seen: tick }
+  return { id, objects: [], monsters: [], mshots: [], bullets: [], globes: [], zones: [], throws: [], drops: [], monstersTotal: 0, seen: tick }
 }
 
 function findArea(state: GameState, id: number): AreaState | undefined {
@@ -125,6 +128,7 @@ function unbind(state: GameState): void {
     a.zones = state.zones
     a.throws = state.throws
     a.drops = state.drops
+    a.objects = state.objects
     a.monstersTotal = state.monstersTotal
   }
   state.curArea = -1
@@ -139,6 +143,7 @@ function bind(state: GameState, a: AreaState): void {
   state.zones = a.zones
   state.throws = a.throws
   state.drops = a.drops
+  state.objects = a.objects
   state.monstersTotal = a.monstersTotal
 }
 
@@ -161,6 +166,7 @@ function bindPrimary(state: GameState): void {
   state.zones = []
   state.throws = []
   state.drops = []
+  state.objects = []
   state.monstersTotal = 0
 }
 
@@ -205,6 +211,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   const lvl = areaLevel(id, partyLevel(state))
   const seats = state.players.length
   populate(state, map, areaSeed(seed, id), seats, lvl, def.density ?? 1, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l))
+  placeObjects(state, map, id, areaSeed(seed, id), safeSpots(l))
   if (state.killed.includes(id)) return
   const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
   const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
@@ -355,9 +362,24 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     const pressed = btn & ~p.btnPrev
     p.btnPrev = btn
     if (p.exitLock > 0) p.exitLock--
+    if (p.potCd > 0) p.potCd--
+    if (p.shrineT > 0) p.shrineT--
+    // 물약: 3초에 걸쳐 채운다 (쓰러지면 끊긴다)
+    if (p.potHot > 0) {
+      if (isActive(p)) p.hp = Math.min(p.maxHp, p.hp + (p.maxHp * 0.35) / POT_TICKS)
+      p.potHot--
+    }
+    if (town && p.alive) p.potions = p.potMax
     if (!isActive(p) || state.phase !== 'playing') {
       p.portalCast = 0
       continue
+    }
+    // 물약 (3)
+    if ((pressed & BTN_POTION) !== 0 && p.potions > 0 && p.potCd === 0 && !town) {
+      p.potions--
+      p.potHot = POT_TICKS
+      p.potCd = 90
+      state.events.push({ type: 'potion', p: p.id })
     }
     // 출구: 걸어 들어가면 그 사람만 건너간다
     if (p.exitLock === 0) {
@@ -388,7 +410,8 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
         state.events.push({ type: 'portalOpen', p: p.id, area, x: p.x, y: p.y })
       }
     }
-    // 포털 드나들기 (F)
+    // F: 포털 → 물건(상자·항아리·제단) → 아이템 (가까운 것 하나만)
+    let used = false
     if ((pressed & BTN_USE) !== 0) {
       for (const q of state.portals) {
         if (town) {
@@ -400,11 +423,155 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
           const t = ACTS[areaDef(area).act].town
           queueMove(p, { to: t, how: 'portal' })
         }
+        used = true
         break
       }
+      if (!used) used = useObject(state, p)
+      if (!used) pickItem(state, p)
     }
   }
 }
+
+const POT_TICKS = 180
+
+/**
+ * 마을 NPC 명령 (GUIDE 9장). 그 NPC 곁에 서 있어야 하고, 골드가 모자라면 아무 일도 없다.
+ * 모든 추첨은 state.rng — 모두의 화면에서 같은 결과.
+ */
+function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number): void {
+  if (state.mode !== 'dungeon' || !p.alive) return
+  const npc = npcNear(p.area, p.x, p.y)
+  const trade = (what: string, gold: number, uid: number) => state.events.push({ type: 'trade', p: p.id, what, gold, uid })
+  if (cmd === CMD_SELL && npc === 'merchant') {
+    const it = p.bag[arg]
+    if (!it) return
+    const g = itemValue(it)
+    p.bag.splice(arg, 1)
+    p.gold += g
+    trade('sell', g, it.uid)
+  } else if (cmd === CMD_BUY && npc === 'merchant') {
+    const it = state.shop[arg]
+    if (!it || p.gold < buyPrice(it) || p.bag.length >= BAG_SIZE) return
+    const g = buyPrice(it)
+    p.gold -= g
+    state.shop.splice(arg, 1)
+    p.bag.push({ ...it, aff: [...it.aff] })
+    trade('buy', -g, it.uid)
+  } else if (cmd === CMD_POTUP && npc === 'merchant') {
+    const g = potUpPrice(p.potMax)
+    if (p.potMax >= 8 || p.gold < g) return
+    p.gold -= g
+    p.potMax++
+    p.potions = p.potMax
+    trade('potup', -g, 0)
+  } else if (cmd === CMD_REROLL && npc === 'smith') {
+    const it = p.bag[arg]
+    if (!it || it.aff.length === 0 || p.gold < rerollPrice(it)) return
+    const g = rerollPrice(it)
+    p.gold -= g
+    rerollAffix(state.rng, it)
+    trade('reroll', -g, it.uid)
+  } else if (cmd === CMD_GAMBLE && npc === 'gambler') {
+    const g = gamblePrice(p.level)
+    if (arg < 0 || arg >= SLOT_COUNT || p.gold < g || p.bag.length >= BAG_SIZE) return
+    p.gold -= g
+    const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 0.12, 0, arg)
+    p.bag.push(it)
+    trade('gamble', -g, it.uid)
+  } else if (cmd === CMD_STASH_PUT && npc === 'stash') {
+    const it = p.bag[arg]
+    if (!it || p.stash.length >= STASH_SIZE) return
+    p.bag.splice(arg, 1)
+    p.stash.push(it)
+    trade('stash', 0, it.uid)
+  } else if (cmd === CMD_STASH_TAKE && npc === 'stash') {
+    const it = p.stash[arg]
+    if (!it || p.bag.length >= BAG_SIZE) return
+    p.stash.splice(arg, 1)
+    p.bag.push(it)
+    trade('stash', 0, it.uid)
+  }
+}
+
+/** 가까운 물건을 쓴다 (상자 열기 · 항아리 깨기 · 제단) */
+function useObject(state: GameState, p: PlayerState): boolean {
+  for (const o of state.objects) {
+    if (o.used || len(o.x - p.x, o.y - p.y) > 44) continue
+    openObject(state, o, p)
+    return true
+  }
+  return false
+}
+
+/** 물건이 열린다. 상자·항아리는 가까운 파티원 모두에게 각자의 전리품 (개인 전리품) */
+function openObject(state: GameState, o: MapObj, by: PlayerState): void {
+  o.used = true
+  if (o.kind === OBJ_SHRINE) {
+    by.shrine = o.v
+    by.shrineT = SHRINE_TICKS
+    state.events.push({ type: 'shrine', p: by.id, kind: o.v, x: o.x, y: o.y })
+    return
+  }
+  state.events.push({ type: 'objOpen', p: by.id, kind: o.kind, x: o.x, y: o.y })
+  if (state.mode !== 'dungeon') return
+  for (const q of state.players) {
+    if (!q.alive || q.left || q.out || len(q.x - o.x, q.y - o.y) > SHARE_RANGE) continue
+    const lvl = Math.max(1, areaLevel(state.curArea, q.level))
+    if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 1, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 0.2, 2)
+    else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, rand(state.rng) < 0.3 ? 1 : 0, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 0.05, 0)
+    else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.08 ? 1 : 0, rand(state.rng) < 0.04 ? 1 : 0, 0, 0)
+  }
+}
+
+/**
+ * 지역에 물건을 둔다 (지역 시드 rng — 결정론): 상자 둘~넷(벽 곁 막다른 곳), 항아리 무리 여섯~열(둘~넷씩), 제단 0~1,
+ * 던전 마지막 칸(다음 출구가 없는 곳 · 보스 방 앞)에는 금빛 상자 하나.
+ */
+function placeObjects(state: GameState, map: GameMap, id: number, seed: number, safe: { x: number; y: number }[]): void {
+  const def = areaDef(id)
+  if (def.kind === 'town') return
+  const rng = makeRng((seed ^ 0x0b1ec7) >>> 0)
+  const spots: { x: number; y: number; wall: number }[] = []
+  for (let ty = 2; ty < map.h - 2; ty++) {
+    for (let tx = 2; tx < map.w - 2; tx++) {
+      if (map.tiles[ty * map.w + tx] !== 0) continue
+      let walls = 0
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (map.tiles[(ty + dy) * map.w + tx + dx] === 1) walls++
+      const x = tx * TILE + TILE / 2
+      const y = ty * TILE + TILE / 2
+      if (safe.some((q) => (q.x - x) ** 2 + (q.y - y) ** 2 < (5 * TILE) ** 2)) continue
+      spots.push({ x, y, wall: walls })
+    }
+  }
+  if (spots.length === 0) return
+  const pick = (want: (s: { wall: number }) => boolean) => {
+    for (let t = 0; t < 40; t++) {
+      const s = spots[randInt(rng, 0, spots.length)]
+      if (!want(s)) continue
+      if (state.objects.some((o) => (o.x - s.x) ** 2 + (o.y - s.y) ** 2 < (4 * TILE) ** 2)) continue
+      return s
+    }
+    return null
+  }
+  const add = (kind: number, s: { x: number; y: number } | null, v = 0) => {
+    if (s) state.objects.push({ id: state.nextObjId++, kind, x: s.x, y: s.y, used: false, v })
+  }
+  const chests = randInt(rng, 2, 5)
+  // 상자는 벽 두 면에 붙은 구석을 좋아하고, 없으면(트인 들판) 벽 곁 아무 데나
+  for (let k = 0; k < chests; k++) add(OBJ_CHEST, pick((s) => s.wall >= 2) ?? pick((s) => s.wall >= 1))
+  const urns = randInt(rng, 6, 11)
+  for (let k = 0; k < urns; k++) {
+    const c = pick((s) => s.wall >= 1)
+    if (!c) continue
+    const n = randInt(rng, 2, 5)
+    for (let j = 0; j < n; j++) state.objects.push({ id: state.nextObjId++, kind: OBJ_URN, x: c.x + (j % 2) * 20 - 10, y: c.y + Math.floor(j / 2) * 20 - 10, used: false, v: 0 })
+  }
+  if (rand(rng) < 0.45) add(OBJ_SHRINE, pick((s) => s.wall === 0), randInt(rng, 0, 4))
+  // 던전의 막다른 끝(더 깊이 가는 출구가 없는 곳)과 보스 방 바로 앞 층에는 금빛 상자
+  const deepest = def.links.length === 1 || AREAS_BOSS_BEFORE.includes(id)
+  if (def.kind !== 'field' && deepest) add(OBJ_GOLDCHEST, pick((s) => s.wall >= 2) ?? pick((s) => s.wall >= 1))
+}
+
 
 /** 마을 쪽 포털 자리 (주인마다 옆으로 두 칸씩) */
 export function townPortalSpot(l: AreaLayout, owner: number): { x: number; y: number } | null {
@@ -429,6 +596,7 @@ export function areaView(state: GameState, id: number): GameState {
     zones: a?.zones ?? [],
     throws: a?.throws ?? [],
     drops: a?.drops ?? [],
+    objects: a?.objects ?? [],
     monstersTotal: a?.monstersTotal ?? 0,
     events: eventsIn(state, id),
   }
@@ -499,11 +667,14 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
     nextItemUid: 1_000_000 + (cfg.seed % 1_000_000) * 1000,
     nextFxId: 1,
     monstersTotal: 0,
+    objects: [],
+    nextObjId: 1,
     curArea: -1,
     areas: [],
     act: 0,
     killed: [],
     portals: [],
+    shop: [],
     evSpans: [],
     winner: -1,
     sandbags: {},
@@ -541,6 +712,10 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
     })
     // 마을 웨이포인트는 처음부터 열려 있다
     for (const p of players) p.wps |= wpBit(ACTS[0].town)
+    // 상인 진열 (게임 시드 — 모두 같다). 여러 무기 · 등급이 조금 높다
+    const srng = makeRng((cfg.seed ^ 0x5409) >>> 0)
+    const lvl = Math.max(1, Math.round(players.filter((q) => !q.vacant).reduce((a, q) => a + q.level, 0) / Math.max(1, players.filter((q) => !q.vacant).length)))
+    for (let k = 0; k < 10; k++) state.shop.push(rollItem(srng, state.nextItemUid++, lvl + 1, WEAPON_IDS[k % WEAPON_IDS.length], 0.15, 1))
   }
   for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
   bindPrimary(state)
@@ -631,6 +806,13 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     exitLock: 0,
     portalCast: 0,
     follow: -1,
+    potions: sh.potMax ?? 4,
+    potMax: sh.potMax ?? 4,
+    potHot: 0,
+    potCd: 0,
+    shrine: 0,
+    shrineT: 0,
+    stash: (sh.stash ?? []).map((it) => ({ ...it, aff: [...it.aff] })),
   }
 }
 
@@ -649,7 +831,7 @@ function recalc(p: PlayerState): void {
 
 /** 피해 배율 (레벨 + 장비) */
 function dmgMul(p: PlayerState): number {
-  return 1 + p.st[ST_DMG] / 100
+  return (1 + p.st[ST_DMG] / 100) * (p.shrineT > 0 && p.shrine === 0 ? 1.25 : 1)
 }
 
 /**
@@ -917,6 +1099,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     if (p.sprinting) speed *= SPRINT_MUL
     if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥덕 패시브: 정조준해도 느려지지 않음
     if (p.legInjury > 0) speed *= 0.7
+    if (p.shrineT > 0 && p.shrine === 3) speed *= 1.2
     if (p.fx[FX_WHIRL] > 0) speed *= 1.3
     speed *= 1 + p.st[ST_SPEED] / 100
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, mx * inv * speed, my * inv * speed)
@@ -1095,6 +1278,7 @@ function takenMul(p: PlayerState): number {
   if (p.fx[FX_GUARD] > 0) k *= 0.5
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
+  if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
   return k
 }
 
@@ -1679,6 +1863,15 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
       dead = true
     }
 
+    if (!dead && state.objects.length > 0) {
+      for (const o of state.objects) {
+        if (o.used || o.kind !== OBJ_URN) continue
+        if (!segmentHitsCircle(b.px, b.py, b.x, b.y, o.x, o.y, 11)) continue
+        openObject(state, o, state.players[b.owner])
+        dead = true
+        break
+      }
+    }
     if (!dead) {
       // 이 선분에 걸리는 것 중 **가장 먼저 닿는** 것 (몬스터·적 플레이어). 같으면 번호가 작은 것
       const shooter = state.players[b.owner]
@@ -1912,6 +2105,28 @@ function flushSpawns(state: GameState, map: GameMap): void {
   spawns.length = 0
 }
 
+/**
+ * 바닥에 전리품을 흩뿌린다 (주인 p): 골드 더미 golds 개(×goldK) · 물약 pots 개 · 아이템 items 개(등급 bonus, 첫 아이템은 minFirst 등급 이상)
+ */
+function spill(state: GameState, p: PlayerState, x: number, y: number, lvl: number, golds: number, goldK: number, pots: number, items: number, bonus: number, minFirst: number): void {
+  const at = () => ({ x: x + (rand(state.rng) - 0.5) * 60, y: y + (rand(state.rng) - 0.5) * 60 })
+  for (let k = 0; k < golds; k++) {
+    const g = Math.max(1, Math.round((4 + 1.3 * lvl) * goldK * (0.6 + rand(state.rng) * 0.8)))
+    const a = at()
+    state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item: null, gold: g, pot: 0, ttl: 60 * 120, lock: 12 })
+  }
+  for (let k = 0; k < pots; k++) {
+    const a = at()
+    state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item: null, gold: 0, pot: 1, ttl: 60 * 120, lock: 12 })
+  }
+  for (let k = 0; k < items; k++) {
+    const item = rollItem(state.rng, state.nextItemUid++, lvl, p.weapon, bonus, k === 0 ? minFirst : 0)
+    const a = at()
+    state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item, gold: 0, pot: 0, ttl: 60 * 240, lock: 20 })
+    state.events.push({ type: 'loot', owner: p.id, x: a.x, y: a.y, rarity: item.rarity })
+  }
+}
+
 /** 괴물이 쓰러지면 가까운 파티원 **모두**에게 경험치·골드, 그리고 각자 몫의 전리품을 굴린다 (디아블로 3·4 개인 전리품) */
 const SHARE_RANGE = 30 * TILE
 function reward(state: GameState, m: Monster, def: MonsterDef): void {
@@ -1920,22 +2135,18 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     if (!p.alive || p.left || p.out) continue
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
     const unique = (m.elite & EA_UNIQUE) !== 0
-    const eliteK = unique ? UNIQUE.xp : m.elite ? ELITE.xp : 1
-    gainXp(state, p, Math.round(xpFor(m) * (1 + p.st[ST_XP] / 100)))
-    const g = Math.max(1, Math.round(def.xp * 0.4 * eliteK * (m.pow / 100)))
-    p.gold += g
-    p.goldGain += g
-    // 전리품: 사람마다 따로 굴린다. 주인에게만 보이고 주인만 줍는다
-    // 정예·우두머리·보스는 확정 + 등급이 오른다 (우두머리·보스는 둘). 아이템 레벨 = 이 층의 지역 레벨
-    const drops = def.boss ? 2 : unique ? UNIQUE.drops : m.elite || rand(state.rng) < def.loot ? 1 : 0
-    const ilvl = Math.max(1, areaLevel(state.curArea, p.level))
-    for (let k = 0; k < drops; k++) {
-      const item = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, def.boss ? 0.3 : unique ? UNIQUE.lootBonus : m.elite ? ELITE.lootBonus : 0)
-      const ox = (rand(state.rng) - 0.5) * 36
-      const oy = (rand(state.rng) - 0.5) * 36
-      state.drops.push({ id: state.nextDropId++, owner: p.id, x: m.x + ox, y: m.y + oy, item, ttl: 60 * 240, lock: 20 })
-      state.events.push({ type: 'loot', owner: p.id, x: m.x + ox, y: m.y + oy, rarity: item.rarity })
-    }
+    gainXp(state, p, Math.round(xpFor(m) * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
+    // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 물약 4% · 아이템 10~16% / 정예는 골드 둘 · 아이템 1~2 · 물약 25% /
+    // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 물약 둘 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상.
+    // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
+    const lvl = Math.max(1, areaLevel(state.curArea, p.level))
+    const boss = !!def.boss
+    const fountain = boss || unique
+    const golds = fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
+    const pots = fountain ? 2 : m.elite ? (rand(state.rng) < 0.25 ? 1 : 0) : rand(state.rng) < 0.04 ? 1 : 0
+    const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
+    const bonus = fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0
+    spill(state, p, m.x, m.y, lvl, golds, fountain ? 3 : m.elite ? 2 : 1, pots, items, bonus, fountain ? 2 : 0)
   }
 }
 
@@ -1957,26 +2168,59 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
 }
 
 /** 바닥 전리품 줍기: 가방에 자리가 있으면 발밑의 내 것·버려진 것을 줍는다 */
+/** 밟으면 줍는 것: 골드 더미 · 물약(칸이 찼으면 두고 간다). 아이템은 F (pickItem) */
 function pickUp(state: GameState, p: PlayerState): void {
-  if (!isActive(p) || p.bag.length >= BAG_SIZE) return
+  if (!isActive(p)) return
   const R2 = (PLAYER_RADIUS + 14) ** 2
+  for (let i = state.drops.length - 1; i >= 0; i--) {
+    const d = state.drops[i]
+    if (d.item || d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
+    if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
+    if (d.gold > 0) {
+      p.gold += d.gold
+      p.goldGain += d.gold
+      state.events.push({ type: 'gold', p: p.id, n: d.gold, x: d.x, y: d.y })
+    } else if (d.pot > 0) {
+      if (p.potions >= p.potMax) continue
+      p.potions++
+      state.events.push({ type: 'potGet', p: p.id, x: d.x, y: d.y })
+    }
+    state.drops.splice(i, 1)
+  }
+}
+
+/** F: 가장 가까운 내 아이템(또는 버려진 것)을 줍는다 (가방이 차면 못 줍는다) */
+function pickItem(state: GameState, p: PlayerState): boolean {
+  if (p.bag.length >= BAG_SIZE) return false
+  let best = -1
+  let bestD = (PLAYER_RADIUS + 30) ** 2
   for (let i = 0; i < state.drops.length; i++) {
     const d = state.drops[i]
-    if (d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
-    if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
-    p.bag.push(d.item)
-    // 내가 버렸다 다시 주운 것도 센다 — 드물고, 결과표는 대략이면 된다
-    p.found++
-    if (d.item.rarity > p.bestFound) p.bestFound = d.item.rarity
-    state.drops.splice(i, 1)
-    state.events.push({ type: 'pickup', p: p.id, rarity: d.item.rarity, uid: d.item.uid })
-    return
+    if (!d.item || d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
+    const dd = (d.x - p.x) ** 2 + (d.y - p.y) ** 2
+    if (dd < bestD) {
+      bestD = dd
+      best = i
+    }
   }
+  if (best < 0) return false
+  const d = state.drops[best]
+  const it = d.item!
+  p.bag.push(it)
+  p.found++
+  if (it.rarity > p.bestFound) p.bestFound = it.rarity
+  state.drops.splice(best, 1)
+  state.events.push({ type: 'pickup', p: p.id, rarity: it.rarity, uid: it.uid })
+  return true
 }
 
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
+  if (cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) {
+    townCommand(state, p, cmd, arg)
+    return
+  }
   if (cmd === CMD_WAYPOINT) {
     // 웨이포인트 곁에 서 있고, 가려는 곳의 웨이포인트가 열려 있어야 한다
     if (state.mode !== 'dungeon' || !isActive(p) || arg === p.area) return
@@ -2008,7 +2252,7 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     if (!it || !p.alive) return
     p.bag.splice(arg, 1)
     // 버린 것은 누구나 볼 수 있고 누구나 줍는다 (친구에게 주는 방법). 바로 다시 줍지 않게 잠깐 잠근다
-    state.drops.push({ id: state.nextDropId++, owner: -1, x: p.x + cosA(p.aim) * 30, y: p.y + sinA(p.aim) * 30, item: it, ttl: 60 * 240, lock: 90 })
+    state.drops.push({ id: state.nextDropId++, owner: -1, x: p.x + cosA(p.aim) * 30, y: p.y + sinA(p.aim) * 30, item: it, gold: 0, pot: 0, ttl: 60 * 240, lock: 90 })
     state.events.push({ type: 'loot', owner: -1, x: p.x, y: p.y, rarity: it.rarity })
   }
 }

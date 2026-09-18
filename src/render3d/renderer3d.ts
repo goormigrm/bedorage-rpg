@@ -5,10 +5,10 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { MONSTER_LIST, affixNames, isBossLike } from '../core/monsters'
-import { AREAS, areaDef, areaLayout, isTown } from '../core/world'
+import { AREAS, NPC_NAMES, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
@@ -156,6 +156,8 @@ export class Renderer3D {
   private markersFor: GameMap | null = null
   /** 타운 포털 (주인 → 푸른 문) */
   private portalMeshes = new Map<number, THREE.Group>()
+  /** 지역 물건 (상자 · 항아리 · 제단) */
+  private objMeshes = new Map<number, THREE.Group>()
   /** 바닥 전리품 (id → 빛기둥). 내 것과 버려진 것만 보인다 (개인 전리품) */
   private dropMeshes = new Map<number, THREE.Group>()
   private localForDrops = -1
@@ -279,6 +281,8 @@ export class Renderer3D {
     this.hud.clearNotices()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
     this.portalMeshes.clear()
+    for (const g of this.objMeshes.values()) this.scene.remove(g)
+    this.objMeshes.clear()
     this.scene.remove(this.world.group)
     this.world.dispose()
     this.scene.remove(this.vision.group)
@@ -457,6 +461,29 @@ export class Renderer3D {
           if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
           break
         }
+        case 'gold':
+          if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${e.n} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
+          break
+        case 'potGet':
+          if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: '+물약', life: 0.9, max: 0.9, color: '#ff7a7a', big: false, pop: 0.4 })
+          break
+        case 'potion': {
+          const p = state.players[e.p]
+          if (p) this.spawnRing(p.x * U, p.y * U, 0.2, 1.2, 0.5, 0xff4a4a)
+          break
+        }
+        case 'objOpen':
+          if (e.kind === OBJ_URN) {
+            for (let k = 0; k < 6; k++) {
+              const a = Math.random() * Math.PI * 2
+              this.spawnParticle(e.x * U, 0.3, e.y * U, Math.cos(a) * 0.05, 0.08, Math.sin(a) * 0.05, 0.7, 0x8a6a4a, 0.6)
+            }
+          } else this.spawnRing(e.x * U, e.y * U, 0.2, 1.6, 0.6, e.kind === OBJ_GOLDCHEST ? 0xffd86a : 0xd8c8a8)
+          break
+        case 'shrine':
+          this.spawnRing(e.x * U, e.y * U, 0.3, 2.8, 0.8, [0xff5a3a, 0x5aa8ff, 0xd8a8ff, 0x7aff9a][e.kind] ?? 0xffffff)
+          if (e.p === localPlayer) this.hud.notice(`${SHRINE_NAMES[e.kind]} — ${['피해 +25%', '받는 피해 -25%', '경험치 +50%', '이동 +20%'][e.kind]} (30초)`, '#d8c8ff')
+          break
         case 'wpFound':
           if (e.p === localPlayer) {
             this.hud.notice(`웨이포인트 — ${areaDef(e.area).name}`, '#7ab8ff')
@@ -798,6 +825,7 @@ export class Renderer3D {
     this.updateDrops(curr, opts.localPlayer)
     this.updateMarkers(curr)
     this.updatePortals(curr)
+    this.updateObjects(curr)
     this.updateZones(curr)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
@@ -1517,6 +1545,33 @@ export class Renderer3D {
       ex.position.set(e.x * U, 0, e.y * U)
       g.add(ex)
     }
+    // 마을 사람들: 두건 쓴 사람(망토 색이 저마다) · 보관함은 쇠테 두른 큰 궤짝
+    const cloak: Record<string, number> = { merchant: 0x6a4a2a, smith: 0x4a3a30, gambler: 0x4a2a52, elder: 0x5a5a4a, captain: 0x5a2a22 }
+    for (const n of townNpcs(curr.curArea)) {
+      const f = new THREE.Group()
+      if (n.id === 'stash') {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.7), new THREE.MeshLambertMaterial({ color: 0x4a3420 }))
+        box.position.y = 0.35
+        box.castShadow = true
+        const band = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.08, 0.74), new THREE.MeshLambertMaterial({ color: 0x8a8070 }))
+        band.position.y = 0.6
+        const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.06), new THREE.MeshLambertMaterial({ color: 0xc9a24a }))
+        lock.position.set(0, 0.45, 0.37)
+        f.add(box, band, lock)
+      } else {
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.25, 10), new THREE.MeshLambertMaterial({ color: cloak[n.id] ?? 0x4a4a4a }))
+        body.position.y = 0.62
+        body.castShadow = true
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshLambertMaterial({ color: 0xc8a888 }))
+        head.position.y = 1.36
+        const hood = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.34, 10), new THREE.MeshLambertMaterial({ color: new THREE.Color(cloak[n.id] ?? 0x4a4a4a).multiplyScalar(0.8) }))
+        hood.position.y = 1.58
+        f.add(body, head, hood)
+      }
+      f.position.set(n.x * U, 0, n.y * U)
+      f.rotation.y = Math.PI / 4
+      g.add(f)
+    }
     if (l.wp) {
       const wp = new THREE.Group()
       const stone = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x4a4e5a }))
@@ -1574,6 +1629,76 @@ export class Renderer3D {
     }
   }
 
+  /**
+   * 지역 물건: 상자(나무 + 쇠테, 열리면 뚜껑이 젖혀진다) · 금빛 상자 · 항아리(깨지면 사라진다) · 제단(색 빛 — 쓰면 꺼진다)
+   */
+  private updateObjects(curr: GameState): void {
+    const live = new Set<number>()
+    for (const o of curr.objects ?? []) {
+      if (o.kind === OBJ_URN && o.used) continue
+      live.add(o.id)
+      let g = this.objMeshes.get(o.id)
+      if (!g) {
+        g = new THREE.Group()
+        if (o.kind === OBJ_CHEST || o.kind === OBJ_GOLDCHEST) {
+          const gold = o.kind === OBJ_GOLDCHEST
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.46), new THREE.MeshLambertMaterial({ color: gold ? 0xa87a1a : 0x5a3a20 }))
+          body.position.y = 0.2
+          body.castShadow = true
+          const trim = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.06, 0.5), new THREE.MeshLambertMaterial({ color: gold ? 0xffd86a : 0x6a6660 }))
+          trim.position.y = 0.3
+          const lid = new THREE.Group()
+          const lidM = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.7, 10, 1, false, 0, Math.PI), new THREE.MeshLambertMaterial({ color: gold ? 0xc8961a : 0x6a4428 }))
+          lidM.rotation.z = Math.PI / 2
+          lidM.position.z = 0.23
+          lid.add(lidM)
+          lid.position.set(0, 0.4, -0.23)
+          lid.userData.lid = true
+          g.add(body, trim, lid)
+          if (gold) {
+            const glow = new THREE.PointLight(0xffc84a, 4, 3, 1.6)
+            glow.position.y = 0.8
+            g.add(glow)
+          }
+        } else if (o.kind === OBJ_URN) {
+          const pts = [0, 0.09, 0.14, 0.15, 0.12, 0.07, 0.08, 0.1].map((r, i) => new THREE.Vector2(r, i * 0.06))
+          const urn = new THREE.Mesh(new THREE.LatheGeometry(pts, 10), new THREE.MeshLambertMaterial({ color: 0x8a6a4a }))
+          urn.castShadow = true
+          g.add(urn)
+        } else {
+          const col = [0xff5a3a, 0x5aa8ff, 0xd8a8ff, 0x7aff9a][o.v] ?? 0xffffff
+          const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, 1.1, 6), new THREE.MeshLambertMaterial({ color: 0x5a5660 }))
+          stone.position.y = 0.55
+          stone.castShadow = true
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshBasicMaterial({ color: col }))
+          orb.position.y = 1.3
+          orb.userData.orb = true
+          const light = new THREE.PointLight(col, 6, 5, 1.6)
+          light.position.y = 1.4
+          light.userData.orb = true
+          g.add(stone, orb, light)
+        }
+        g.position.set(o.x * U, 0, o.y * U)
+        g.rotation.y = ((o.id * 97) % 628) / 100
+        this.scene.add(g)
+        this.objMeshes.set(o.id, g)
+      }
+      if (o.used) {
+        for (const c of g.children) {
+          if (c.userData.lid) c.rotation.x = Math.max(-1.9, c.rotation.x - 0.12)
+          if (c.userData.orb) c.visible = false
+        }
+      } else if (o.kind === OBJ_SHRINE) {
+        for (const c of g.children) if (c.userData.orb && c instanceof THREE.Mesh) c.position.y = 1.3 + Math.sin(this.t * 2 + o.id) * 0.06
+      }
+    }
+    for (const [id, g] of this.objMeshes) {
+      if (live.has(id)) continue
+      this.scene.remove(g)
+      this.objMeshes.delete(id)
+    }
+  }
+
   /** 출구·웨이포인트·포털 이름표 (가까운 것만) */
   private drawPlaceLabels(curr: GameState, lp: number): void {
     if (curr.mode !== 'dungeon' || curr.curArea < 0 || lp < 0) return
@@ -1594,6 +1719,11 @@ export class Renderer3D {
       ctx.fillText(text, s.x, s.y + 0.5)
     }
     for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    for (const n of townNpcs(curr.curArea)) label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · F`, '#e8d6a8')
+    for (const o of curr.objects ?? []) {
+      if (o.used || o.kind === OBJ_URN || Math.hypot(o.x - me.x, o.y - me.y) > 5 * 32) continue
+      label(o.x, o.y, o.kind === OBJ_SHRINE ? `${SHRINE_NAMES[o.v]} · F` : o.kind === OBJ_GOLDCHEST ? '금빛 상자 · F' : '상자 · F', o.kind === OBJ_GOLDCHEST ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : '#d8cfbf')
+    }
     if (l.wp) label(l.wp.x, l.wp.y, '웨이포인트 · F', '#9ac8ff')
     if (isTown(curr.curArea)) {
       for (const q of curr.portals) {
@@ -1619,6 +1749,31 @@ export class Renderer3D {
       if (d.owner !== lp && d.owner !== -1) continue
       live.add(d.id)
       let g = this.dropMeshes.get(d.id)
+      if (!g && !d.item) {
+        // 골드 더미(금화 몇 닢) · 물약(붉은 병)
+        g = new THREE.Group()
+        if (d.gold > 0) {
+          const n = Math.min(6, 2 + Math.floor(d.gold / 15))
+          for (let k = 0; k < n; k++) {
+            const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.025, 10), new THREE.MeshLambertMaterial({ color: 0xffc84a, emissive: 0x6a4a0a, emissiveIntensity: 0.6 }))
+            coin.position.set(((k * 37) % 7) / 25 - 0.12, 0.02 + (k % 3) * 0.028, ((k * 53) % 5) / 20 - 0.1)
+            coin.rotation.z = (k % 2) * 0.3
+            g.add(coin)
+          }
+        } else {
+          const flask = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), new THREE.MeshLambertMaterial({ color: 0xc81e28, emissive: 0x5a0a0a, emissiveIntensity: 0.8 }))
+          flask.position.y = 0.12
+          const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6), new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }))
+          neck.position.y = 0.26
+          g.add(flask, neck)
+        }
+        this.scene.add(g)
+        this.dropMeshes.set(d.id, g)
+      }
+      if (!d.item) {
+        g!.position.set(d.x * U, 0, d.y * U)
+        continue
+      }
       if (!g) {
         g = new THREE.Group()
         const col = new THREE.Color(RARITY_COLORS[d.item.rarity])
@@ -1654,7 +1809,7 @@ export class Renderer3D {
     ctx.textBaseline = 'middle'
     let n = 0
     for (const d of curr.drops) {
-      if ((d.owner !== lp && d.owner !== -1) || n > 24) continue
+      if ((d.owner !== lp && d.owner !== -1) || n > 24 || !d.item) continue
       if (Math.hypot(d.x - me.x, d.y - me.y) > 10 * 32) continue
       const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
       const name = itemName(d.item)

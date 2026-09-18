@@ -134,10 +134,41 @@ interface TownSpots {
   exits: [number, number][]
   /** 타운 포털이 서는 자리 (자리 번호마다 옆으로 2칸씩) */
   portal: [number, number]
+  /** NPC 자리 (천막 앞) */
+  npcs: Record<NpcId, [number, number]>
 }
 
+/** 마을 사람들 (GUIDE 4장): 상인 · 대장장이 · 도박꾼 · 보관함 · 촌장(퀘스트, D5) · 용병 대장(D4) */
+export type NpcId = 'merchant' | 'smith' | 'gambler' | 'stash' | 'elder' | 'captain'
+export const NPC_NAMES: Record<NpcId, string> = {
+  merchant: '상인 말린',
+  smith: '대장장이 그룬',
+  gambler: '도박꾼 엘자',
+  stash: '보관함',
+  elder: '촌장 카인',
+  captain: '용병 대장 바르',
+}
+/** NPC 와 이야기할 수 있는 거리 (px) */
+export const NPC_RANGE = 70
+
 const TOWNS: Record<number, TownSpots> = {
-  0: { spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portal: [17, 21] },
+  0: {
+    spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portal: [17, 21],
+    npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
+  },
+}
+
+/** 마을이면 NPC 자리 (px) */
+export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {
+  const t = TOWNS[area]
+  if (!t) return []
+  return (Object.keys(t.npcs) as NpcId[]).map((id) => ({ id, x: t.npcs[id][0] * TILE + TILE / 2, y: t.npcs[id][1] * TILE + TILE / 2 }))
+}
+
+/** p 곁의 NPC (없으면 null) */
+export function npcNear(area: number, x: number, y: number): NpcId | null {
+  for (const n of townNpcs(area)) if ((n.x - x) ** 2 + (n.y - y) ** 2 <= NPC_RANGE * NPC_RANGE) return n.id
+  return null
 }
 
 // ---------------------------------------------------------------- 맵에서 계산하는 자리
