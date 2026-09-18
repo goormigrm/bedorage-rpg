@@ -41,10 +41,18 @@ export interface GameMap {
   /** 픽셀 단위 */
   pw: number
   ph: number
+  /**
+   * 타일이 바뀔 때마다 오른다(모래주머니가 부서지거나 리싱크로 되돌릴 때). 흐름장 캐시(flow.ts)가 이 값으로 낡았는지 안다.
+   * 상태 밖이지만 타일 자체가 상태에서 복원되므로 결정론과 무관하다
+   */
+  version: number
 }
 
-export function buildMap(idOrDef: MapId | MapDef = DEFAULT_MAP, scale: MapScale = 1, seed = 1): GameMap {
+export function buildMap(idOrDef: MapId | MapDef = DEFAULT_MAP, scaleArg: MapScale = 1, seed = 1): GameMap {
   const def = typeof idOrDef === 'string' ? MAPS[idOrDef] : idOrDef
+  // 던전 층(fixedScale)은 인원과 상관없이 원래 크기 — 세션이 인원수로 배율을 넘겨도 무시한다.
+  // (2026-09-18: 4인이면 거울로 4배가 돼 몬스터가 549마리였다)
+  const scale: MapScale = def.fixedScale ? 1 : scaleArg
   const rows = expandRows(def.rows, scale)
   const h = rows.length
   const w = rows[0].length
@@ -58,7 +66,7 @@ export function buildMap(idOrDef: MapId | MapDef = DEFAULT_MAP, scale: MapScale 
   }
   const map: GameMap = {
     id: def.id, name: def.name, theme: def.theme, scale, seed,
-    w, h, tiles, sandbagIdx: [], spawns: [], pw: w * TILE, ph: h * TILE,
+    w, h, tiles, sandbagIdx: [], spawns: [], pw: w * TILE, ph: h * TILE, version: 0,
   }
   generate(map, def, seed)
   for (let i = 0; i < tiles.length; i++) if (tiles[i] === TILE_SANDBAG) map.sandbagIdx.push(i)
@@ -93,9 +101,9 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
   }
   // 2) 상자 군집
   for (let i = 0; i < Math.round(g.crates * k); i++) placeCluster(map, rng, TILE_CRATE, randInt(rng, 1, 5))
-  // 3) 모래주머니 진지: 중앙에 하나. 넓은 맵이면 하나 더 (많으면 지저분하고 엄폐가 흔해진다)
-  const forts: [number, number][] = [[map.w / 2, map.h / 2]]
-  if (map.scale === 4) forts.push([map.w * 0.25, map.h * 0.25])
+  // 3) 모래주머니 진지: 중앙에 하나. 넓은 맵이면 하나 더 (많으면 지저분하고 엄폐가 흔해진다). 던전(forts: false)에는 없다
+  const forts: [number, number][] = g.forts === false ? [] : [[map.w / 2, map.h / 2]]
+  if (map.scale === 4 && g.forts !== false) forts.push([map.w * 0.25, map.h * 0.25])
   for (const [fx, fy] of forts) placeFort(map, Math.round(fx), Math.round(fy))
   // 4) 흩어진 모래주머니 줄 — 드물게, 짧게
   for (let i = 0; i < Math.round(g.sandbags * k); i++) placeLine(map, rng, TILE_SANDBAG, randInt(rng, 3, 6))
@@ -107,8 +115,8 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
   straightenPaths(map)
 }
 
-/** 8방향 걸음 수 거리 (실제 이동이 8방향이라 4방향으로 재면 대각선을 과대평가한다) */
-function walkField(map: GameMap, start: number): Float64Array {
+/** 8방향 걸음 수 거리 (실제 이동이 8방향이라 4방향으로 재면 대각선을 과대평가한다). 몬스터 흐름장(flow.ts)도 이것을 쓴다 */
+export function walkField(map: GameMap, start: number): Float64Array {
   const total = map.w * map.h
   const d = new Float64Array(total).fill(-1)
   // 대각선이 √2 라 단순 BFS 로는 안 되고, 작은 우선순위 없이 두 번 훑는 것으로 충분한 근사를 낸다

@@ -448,3 +448,7 @@ input.nick.big.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,
 .lobby.touch h1 { font-size: 34px; margin: 0 0 6px; }
 .lobby.touch .topbar { margin: 4px 0 10px; }
 .lobby.touch .notice { margin-top: 14px; }
+
+/* PvP 대전 → 배도라지 덕 (링크를 버튼처럼) */
+a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.topacts .pvp { font-size: 14px; }

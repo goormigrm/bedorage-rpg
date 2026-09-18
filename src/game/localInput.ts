@@ -1,9 +1,9 @@
 // 키보드·마우스 → Input. 화면 좌표는 1280x720 논리 프레임.
 
 import { ANGLE_MASK, angleDiff, radToAngle } from '../core/fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_SWAP, Input } from '../core/input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_USE, Input } from '../core/input'
 import { GameMap } from '../core/map'
-import { GameState, isTeamMatch } from '../core/state'
+import { GameState } from '../core/state'
 import { WEAPONS } from '../core/weapons'
 import { VIEW_H, VIEW_W } from '../render/hud'
 import { moveDirFromScreen } from '../render3d/camera'
@@ -46,8 +46,6 @@ export class LocalInput {
   private aimBiasLeft = 0
   private swayT = 0
   private detach: (() => void) | null = null
-  /** Tab 눌림 (다음 샘플 한 번만 BTN_SWAP) */
-  private swapPressed = false
   /** 캐릭터 선택 확정 (다음 샘플 한 번만 전송). 0 = 없음 */
   pendingChar = 0
   /** 캐릭터 선택 창이 열려 있을 때 1~5 키 → pendingChar */
@@ -59,12 +57,12 @@ export class LocalInput {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', ' ', 'r', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
         if (down) this.keys.add(k)
         else this.keys.delete(k)
         e.preventDefault()
       } else if (k === 'tab') {
-        if (down && !e.repeat) this.swapPressed = true
+        // 탭은 브라우저 포커스를 옮기므로 막는다 (RPG 에서는 원정 중 캐릭터 교체가 없다 — 캐릭터 = 세이브 칸)
         e.preventDefault()
       } else if (down && this.pickerOpen && k >= '1' && k <= '9') {
         this.pendingChar = Number(k)
@@ -114,7 +112,7 @@ export class LocalInput {
   }
 
   /**
-   * 터치 자동 조준. 보이는 적 중 하나를 골라 조준각을 **천천히** 돌린다.
+   * 터치 자동 조준. 보이는 몬스터 중 하나를 골라 조준각을 **천천히** 돌린다.
    * - 폰에서 스틱 두 개를 정확히 미는 것은 무리라 조준은 대신 해 준다.
    * - 대신 즉시 겨누지 않는다(TURN_STEP). 뒤에 있는 적을 잡으려면 반 바퀴 도는 시간이 걸린다.
    * - 눈에 보이는 적만 고른다. 벽 뒤나 시야 밖은 고르지 않는다.
@@ -125,14 +123,12 @@ export class LocalInput {
     if (!me || !me.alive) return
     const w = WEAPONS[me.weapon]
     const range = VIEW_RADIUS_PX * (me.ads && w.scope ? 1.8 : 1)
-    const teams = isTeamMatch(ctx.state)
     const eye = [{ x: me.x, y: me.y }]
     let want: number | null = null
     let best = Infinity
     let bestDist = 0
-    for (const p of ctx.state.players) {
-      if (p.id === ctx.me || !p.alive || p.choosing || p.left) continue
-      if (teams && p.team === me.team) continue
+    for (const p of ctx.state.monsters) {
+      if (p.hp <= 0) continue
       const dx = p.x - me.x
       const dy = p.y - me.y
       const d = Math.hypot(dx, dy)
@@ -202,10 +198,9 @@ export class LocalInput {
     // 폰은 달리기 버튼으로 켜고 끈다 (스틱 끝까지 밀기는 늘 켜져 있어 무조건 달리는 꼴이었다)
     if (k.has('shift') || t?.sprint) buttons |= BTN_SPRINT
     if (k.has('r') || t?.reload) buttons |= BTN_RELOAD
-    if (this.swapPressed || t?.takeSwap()) {
-      buttons |= BTN_SWAP
-      this.swapPressed = false
-    }
+    // F: 쓰러진 동료 일으키기 (누르고 있는 동안)
+    if (k.has('f')) buttons |= BTN_USE
+    t?.takeSwap()
     const char = this.pendingChar
     this.pendingChar = 0
     return { mx, my, aim: this.lastAim, buttons, char, aimDist: Math.min(255, Math.round(this.lastDist / 4)) }

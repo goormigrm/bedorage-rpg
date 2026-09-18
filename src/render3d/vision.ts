@@ -78,6 +78,8 @@ export class Vision {
 
   constructor(readonly map: GameMap) {
     this.px = pxFor(map)
+    // 던전은 시야 밖이 더 캄캄하다 (디아블로의 빛 반경 느낌)
+    if (map.theme.dark) this.darkness = `rgba(3,3,5,${map.theme.dark.fogAlpha})`
     this.canvas = document.createElement('canvas')
     this.canvas.width = map.w * this.px
     this.canvas.height = map.h * this.px

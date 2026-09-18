@@ -311,6 +311,17 @@ export const BOT_BALANCE_LIST: CharacterDef[] = CHARACTER_LIST.filter((c) => !c.
 
 export const PROTAGONIST: CharacterDef = CHARACTERS.cheolmyeon
 
+/**
+ * 1차에 고를 수 있는 6명 (2026-09-18 사용자 결정: 6명 먼저). 무기가 하나도 겹치지 않게 골랐다 —
+ * 기관총(탱커) · 소총(원거리) · 권총(정찰) · 산탄총(치유) · 후라이팬(근접) · 저격총(보스 딜). 나머지는 M7.
+ * 순서가 로비 목록 순서다.
+ */
+export const PLAYABLE: CharacterId[] = ['cheolmyeon', 'chim', 'dangun', 'magic', 'seungwoo', 'oknyang']
+
+export function isPlayable(id: CharacterId): boolean {
+  return PLAYABLE.includes(id)
+}
+
 /** 같은 캐릭터가 여럿이면 "철면덕 2" 처럼 번호를 붙인 표시 이름 */
 export function displayNames(chars: CharacterId[]): string[] {
   const count = new Map<CharacterId, number>()

@@ -8,6 +8,8 @@ export const BTN_DASH = 1 << 3
 export const BTN_SWAP = 1 << 4
 /** 달리기 (Shift). 누르고 있는 동안 기력을 쓰며 빨라진다 */
 export const BTN_SPRINT = 1 << 5
+/** 상호작용 (F): 쓰러진 동료 일으키기 · (M3~) 줍기·계단 */
+export const BTN_USE = 1 << 6
 
 export interface Input {
   /** -1, 0, 1 */

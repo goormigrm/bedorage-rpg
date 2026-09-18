@@ -4,7 +4,7 @@
 
 import { GameState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
-import { PART_HEAD, WEAPONS, WeaponId } from '../core/weapons'
+import { WEAPONS, WeaponId } from '../core/weapons'
 import { worldDirToScreen } from '../render3d/camera'
 
 const STORAGE_KEY = 'brpg.muted'
@@ -45,6 +45,10 @@ export class Sfx {
   private noise: AudioBuffer | null = null
   private mutedFlag: boolean
   private lastWall = 0
+  /** 몬스터 소리 되풀이 제한 (무리 전투에서 같은 소리가 수십 번 겹치면 귀가 아프다) */
+  private lastMHit = 0
+  private lastMDeath = 0
+  private lastGrowl = 0
   private lastCountdownSec = -1
   private unlockOff: (() => void) | null = null
   private bgmTimer = 0
@@ -227,9 +231,78 @@ export class Sfx {
         case 'bash':
           this.gun('pan', sp(e.x, e.y), e.p === localPlayer) // 개머리판 휘두르기 = 후라이팬 소리
           break
-        case 'hit':
-          this.hit(sp(e.x, e.y), e.part === PART_HEAD)
+        case 'mhit': {
+          // 치명타는 늘 들리게, 보통 명중은 35ms 에 한 번
+          const now = performance.now()
+          if (e.crit || now - this.lastMHit > 35) {
+            this.lastMHit = now
+            this.hit(sp(e.x, e.y), e.crit)
+          }
           break
+        }
+        case 'mdeath': {
+          const now = performance.now()
+          if (now - this.lastMDeath > 30) {
+            this.lastMDeath = now
+            this.squelch(sp(e.x, e.y))
+          }
+          this.intensity = Math.min(1, this.intensity + 0.05)
+          break
+        }
+        case 'wake':
+        case 'windup': {
+          // 으르렁: 깨어날 때, 그리고 가까이서 공격을 준비할 때 (거리 감쇠가 알아서 멀리 것을 줄인다)
+          const now = performance.now()
+          if (now - this.lastGrowl > (e.type === 'wake' ? 250 : 400)) {
+            this.lastGrowl = now
+            this.growl(sp(e.x, e.y), e.type === 'wake' ? 1 : 0.55)
+          }
+          if (e.type === 'wake') this.intensity = Math.min(1, this.intensity + 0.3)
+          break
+        }
+        case 'swipe': {
+          const b = this.bus(sp(e.x, e.y), 0.55)
+          this.noiseBurst(b.node, b.t0, 0.12, 'bandpass', 900, 2600, 0.5, 1.2)
+          break
+        }
+        case 'mshot': {
+          const b = this.bus(sp(e.x, e.y), 0.6)
+          this.tone(b.node, b.t0, 0.14, 'triangle', 760, 380, 0.35, 0.002)
+          this.noiseBurst(b.node, b.t0, 0.06, 'highpass', 3000, 1500, 0.2)
+          break
+        }
+        case 'shotEnd': {
+          const b = this.bus(sp(e.x, e.y), 0.4)
+          this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 1400, 600, 0.3)
+          break
+        }
+        case 'boom': {
+          const b = this.bus(sp(e.x, e.y), 1.1)
+          this.noiseBurst(b.node, b.t0, 0.7, 'lowpass', 1400, 90, 1.0)
+          this.tone(b.node, b.t0, 0.5, 'sine', 90, 32, 0.8, 0.004)
+          this.intensity = 1
+          break
+        }
+        case 'hurt': {
+          if (e.p === localPlayer) {
+            const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.7)
+            this.tone(b.node, b.t0, 0.12, 'square', 220, 140, 0.18, 0.002)
+            this.noiseBurst(b.node, b.t0, 0.08, 'lowpass', 900, 300, 0.4)
+          }
+          break
+        }
+        case 'down': {
+          // 내려가는 세 음 — 누가 쓰러졌다
+          const b = this.bus(e.p === localPlayer ? { gain: 1, pan: 0, far: 0 } : sp(e.x, e.y), 0.9)
+          ;[520, 390, 260].forEach((f, i) => this.tone(b.node, b.t0 + i * 0.12, 0.2, 'triangle', f, f * 0.97, 0.36, 0.004))
+          this.intensity = 1
+          break
+        }
+        case 'revive': {
+          const b = this.bus(sp(e.x, e.y), 0.9)
+          ;[440, 554, 660, 880].forEach((f, i) => this.tone(b.node, b.t0 + i * 0.07, 0.2, 'sine', f, f * 1.01, 0.3, 0.004))
+          break
+        }
         case 'death':
           this.death(sp(e.x, e.y))
           this.intensity = 1
@@ -275,10 +348,6 @@ export class Sfx {
           this.tone(b.node, b.t0, 0.3, 'triangle', 150, 50, 0.4)
           break
         }
-        case 'choose':
-        case 'swap':
-          if (e.p === localPlayer) this.blip()
-          break
         case 'start':
           this.start()
           break
@@ -410,6 +479,21 @@ export class Sfx {
     }
   }
 
+  /** 몬스터가 쓰러지는 소리: 질척한 저음 */
+  private squelch(s: Spatial): void {
+    const b = this.bus(s, 0.7)
+    this.noiseBurst(b.node, b.t0, 0.24, 'lowpass', 700, 140, 0.55, 2)
+    this.tone(b.node, b.t0, 0.22, 'sawtooth', 130, 55, 0.22, 0.004)
+  }
+
+  /** 으르렁: 톱니파 두 겹을 살짝 어긋나게 + 흔들림 */
+  private growl(s: Spatial, vol: number): void {
+    const b = this.bus(s, vol * 0.5)
+    this.tone(b.node, b.t0, 0.45, 'sawtooth', 78, 62, 0.35, 0.05)
+    this.tone(b.node, b.t0, 0.45, 'sawtooth', 83, 60, 0.3, 0.05)
+    this.noiseBurst(b.node, b.t0, 0.4, 'bandpass', 420, 260, 0.25, 3)
+  }
+
   private death(s: Spatial): void {
     const { node, t0 } = this.bus(s, 1)
     this.tone(node, t0, 0.45, 'sawtooth', 500, 70, 0.45)
@@ -455,7 +539,9 @@ export class Sfx {
     this.tone(node, t0 + 0.07, 0.12, 'sine', 1560, 1560, 0.26, 0.003)
   }
 
-  private blip(): void {
+  /** 짧은 알림음 (창 열기·줍기 등 UI) */
+  blip(): void {
+    if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
     this.tone(node, t0, 0.08, 'sine', 880, 1320, 0.4, 0.005)
   }

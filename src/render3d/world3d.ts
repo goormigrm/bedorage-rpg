@@ -161,9 +161,10 @@ export function buildWorld(map: GameMap): World3D {
   group.add(skirt)
 
   // ---- 조명 ----
-  const hemi = new THREE.HemisphereLight(t.ambientColor, darken(t.floor, 0.5), 0.9)
+  // 던전(theme.dark)은 해·하늘빛을 줄이고 플레이어의 등불(renderer3d)로 밝힌다
+  const hemi = new THREE.HemisphereLight(t.ambientColor, darken(t.floor, 0.5), t.dark ? t.dark.hemi : 0.9)
   group.add(hemi)
-  const sun = new THREE.DirectionalLight(t.sunColor, 2.2)
+  const sun = new THREE.DirectionalLight(t.sunColor, t.dark ? t.dark.sun : 2.2)
   sun.position.set(8, 18, 10)
   sun.castShadow = true
   sun.shadow.mapSize.set(2048, 2048)

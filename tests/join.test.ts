@@ -101,7 +101,7 @@ describe('락스텝 자리 비움·채움', () => {
 describe('판 이어받기 (난입)', () => {
   it('받은 판으로 갈아 끼우고 이어서 돌려도 해시가 같다', () => {
     // 호스트 쪽: 600틱 진행
-    const host = createState({ seed: 24, targetKills: 9, chars: ['chim', 'cheolmyeon'] }, map)
+    const host = createState({ seed: 24, chars: ['chim', 'cheolmyeon'] }, map)
     const bots = [makeBot(1), makeBot(2)]
     const inputsLog: Input[][] = []
     for (let t = 0; t < 600; t++) {
@@ -130,7 +130,7 @@ describe('판 이어받기 (난입)', () => {
   })
 
   it('부서진 모래주머니도 그대로 이어진다', () => {
-    const host = createState({ seed: 25, targetKills: 9, chars: ['chim', 'cheolmyeon'] }, map)
+    const host = createState({ seed: 25, chars: ['chim', 'cheolmyeon'] }, map)
     // 모래주머니 하나를 부순다
     const idx = map.sandbagIdx[0]
     expect(idx).toBeGreaterThan(0)

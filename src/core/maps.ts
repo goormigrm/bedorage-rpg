@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -20,6 +20,11 @@ export interface MapTheme {
   ambientColor: number
   /** 안개 색 (3D) */
   fog: number
+  /**
+   * 어두운 던전 조명 (없으면 덕의 밝은 낮). sun·hemi = 해·하늘빛 세기, fogAlpha = 시야 밖 어둠의 진하기,
+   * lantern = 플레이어마다 드는 등불 세기 (디아블로의 '빛 반경' — 시야 제한과 겹쳐 분위기를 만든다)
+   */
+  dark?: { sun: number; hemi: number; fogAlpha: number; lantern: number }
 }
 
 /**
@@ -38,6 +43,8 @@ export interface MapGen {
   sandbags: number
   /** scatter 벽 덩어리 최대 길이 */
   maxLen: number
+  /** 중앙 모래주머니 진지 (기본 true). 던전에는 없다 */
+  forts?: boolean
 }
 
 export interface MapDef {
@@ -46,6 +53,8 @@ export interface MapDef {
   desc: string
   /** 크기·테두리 전용 (안쪽은 생성된다) */
   rows: string[]
+  /** 인원과 상관없이 이 크기 그대로 (던전 층은 거울로 늘리지 않는다 — 대칭이면 던전 같지 않다) */
+  fixedScale?: boolean
   gen: MapGen
   theme: MapTheme
 }
@@ -84,6 +93,22 @@ export const MAPS: Record<MapId, MapDef> = {
       sunColor: 0xfff7e0, ambientColor: 0x8fb0c8, fog: 0x2c3a2a,
     },
   },
+  crypt: {
+    id: 'crypt',
+    name: '지하 묘지',
+    desc: '무너진 성당 아래. 방과 복도마다 굶주린 것들이 잠들어 있다.',
+    rows: frame(84, 62),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 7, crates: 10, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      // 젖은 돌바닥 · 이끼 낀 벽 · 달빛 같은 푸른 기운. 따뜻한 빛은 플레이어의 등불뿐
+      floor: 0x3a3631, floorAlt: 0x34302b, floorLine: 0x292622,
+      // crate = 돌 관·무너진 돌무더기 (갈색 나무 상자는 어둠 속에서 새까만 덩어리로 보였다)
+      wall: 0x4b463f, wallTop: 0x5d574e, crate: 0x77706a, outside: 0x040405,
+      sunColor: 0x8aa0c8, ambientColor: 0x4a4868, fog: 0x050507,
+      dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+    },
+  },
   garage: {
     id: 'garage',
     name: '주차장',
@@ -99,7 +124,8 @@ export const MAPS: Record<MapId, MapDef> = {
 }
 
 export const MAP_LIST: MapDef[] = Object.values(MAPS)
-export const DEFAULT_MAP: MapId = 'studio'
+/** 던전 층 (M1 은 지하 묘지 하나). 덕의 맵 셋은 생성기 시험용으로 남겨 둔다 */
+export const DEFAULT_MAP: MapId = 'crypt'
 
 export function isMapId(s: string): s is MapId {
   return s in MAPS

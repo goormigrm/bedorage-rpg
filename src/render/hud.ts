@@ -1,8 +1,8 @@
 // HUD 오버레이 (2D 캔버스). 3D 씬 위에 투명하게 겹친다. sim 을 바꾸지 않는다.
-// 2명이면 좌우 카드, 3~4명이면 내 카드 + 오른쪽 아래 상대 목록. 팀전은 위 점수판이 A팀 : B팀.
+// 협동: 위 가운데 층 목표(남은 몬스터), 왼쪽 아래 내 카드, 오른쪽 아래 파티(동료 체력은 늘 보인다), 가운데 알림.
 
 import { CHARACTERS, CharacterDef } from '../core/characters'
-import { GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
+import { BLEED_TICKS, DEATH_RULE_LABEL, GameState, PlayerState } from '../core/state'
 import { WEAPONS, WeaponId } from '../core/weapons'
 
 /** 기준 논리 해상도. 카메라 시야 보정의 기준점이기도 하다 */
@@ -60,6 +60,8 @@ export interface RenderOptions {
   fog?: boolean
   /** 터치 조작 중. 오른쪽 아래는 버튼이 차지하므로 패널을 옮긴다 */
   touch?: boolean
+  /** 층 이름 (위 가운데 목표 패널) */
+  floorName?: string
 }
 
 export interface ScreenText {
@@ -82,16 +84,12 @@ interface HitDir {
   big: boolean
 }
 
-interface Banner {
-  /** 죽인 사람 · 죽은 사람. 사이에는 화살표 대신 **무기 그림**을 그린다 (2026-09-05 요청) */
-  left: string
-  right: string
-  weapon: WeaponId
-  /** "복수!" 같은 꼬리표 (없으면 생략) */
-  tag?: string
+/** 가운데 알림 (쓰러짐 · 부활 · 사망). 여러 개가 겹치면 위아래로 쌓는다 */
+interface Notice {
+  text: string
+  color: string
   life: number
   max: number
-  color: string
 }
 
 /** 나간 자리 표시. 한 번도 사람이 앉지 않은 자리는 "나감" 이 아니라 "빈 자리" */
@@ -99,26 +97,10 @@ function leftLabel(p: PlayerState): string {
   return p.vacant ? '빈 자리' : '나감'
 }
 
-/** 점수판 이름: 닉네임(캐릭터). 닉네임이 없어 캐릭터 이름을 그대로 쓰는 사람은 캐릭터 이름만 */
-function nameTag(nick: string, p: PlayerState): string {
-  const c = CHARACTERS[p.char].name
-  return nick === c || nick.startsWith(c + ' ') ? nick : `${nick}(${c})`
-}
-
-/** 글자가 maxW 를 넘으면 크기를 줄여 맞춘다 (닉네임 8자 + 캐릭터 이름이 판 밖으로 나가지 않게). 최소 9px */
-function fitFont(ctx: CanvasRenderingContext2D, text: string, maxW: number, size: number, weight: number): void {
-  let px = size
-  for (;;) {
-    ctx.font = `${weight} ${px}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
-    if (ctx.measureText(text).width <= maxW || px <= 9) return
-    px -= 0.5
-  }
-}
-
 export class Hud {
   readonly ctx: CanvasRenderingContext2D
-  /** 킬 배너. 여러 킬이 겹치면 최대 3개를 위아래로 쌓는다 (전에는 하나뿐이라 앞 것이 사라졌다 — 2026-09-05) */
-  private banners: Banner[] = []
+  /** 가운데 알림. 최대 3개 */
+  private notices: Notice[] = []
   private hitDirs: HitDir[] = []
   /** 조준점 히트마커: 내 탄이 맞으면 조준점 네 귀퉁이가 잠깐 벌어진다 (헤드샷은 금색) */
   private hitMarkT = 0
@@ -208,19 +190,10 @@ export class Hud {
     ctx.globalAlpha = 1
   }
 
-  showKill(state: GameState, killer: number, victim: number, names: string[], revenge = false): void {
-    const kp = state.players[killer]
-    const k = CHARACTERS[kp.char]
-    this.banners.push({
-      left: names[killer] ?? k.name,
-      right: names[victim] ?? CHARACTERS[state.players[victim].char].name,
-      weapon: kp.weapon,
-      tag: revenge ? '복수!' : undefined,
-      life: revenge ? 2.2 : 1.6,
-      max: revenge ? 2.2 : 1.6,
-      color: hex(k.bodyColor),
-    })
-    if (this.banners.length > 3) this.banners.shift()
+  /** 가운데 알림 한 줄 (쓰러짐·부활·사망) */
+  notice(text: string, color: string): void {
+    this.notices.push({ text, color, life: 2.2, max: 2.2 })
+    if (this.notices.length > 3) this.notices.shift()
   }
 
   showOver(): void {
@@ -233,8 +206,8 @@ export class Hud {
     const ctx = this.ctx
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, VIEW_W, VIEW_H)
-    for (const b of this.banners) b.life -= dt
-    this.banners = this.banners.filter((b) => b.life > 0)
+    for (const b of this.notices) b.life -= dt
+    this.notices = this.notices.filter((b) => b.life > 0)
     for (let i = this.hitDirs.length - 1; i >= 0; i--) {
       this.hitDirs[i].life -= dt
       if (this.hitDirs[i].life <= 0) this.hitDirs.splice(i, 1)
@@ -278,17 +251,13 @@ export class Hud {
 
   private drawPanels(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    const n = s.players.length
-    const teams = isTeamMatch(s)
+    this.drawObjective(s, opts)
 
-    if (teams) this.drawTeamScore(s, opts)
-    else this.drawFfaScore(s, opts)
-
-    // 아래: 내 카드(체력·기력·탄약) + 다른 사람 목록 (상대 체력은 숨김, 관전·아군만 표시)
+    // 아래: 내 카드(체력·기력·탄약) + 파티 목록 (동료 체력은 늘 보인다)
     const lp = opts.localPlayer
     if (lp !== -1) this.drawPlayerCard(s.players[lp], CHARACTERS[s.players[lp].char], opts.names[lp], 24, VIEW_H - 46, 'left', true)
-    this.drawOthersList(s, opts)
-    void n
+    if (s.players.length > 1) this.drawOthersList(s, opts)
+    if (lp !== -1) this.drawMyStatus(s.players[lp], s)
 
     if (s.phase === 'countdown') {
       const sec = Math.ceil(s.phaseTimer / 60)
@@ -345,99 +314,69 @@ export class Hud {
     }
   }
 
-  /** 개인전 점수판: 2명은 "0 : 0", 3~4명은 이름·킬 한 줄 */
-  private drawFfaScore(s: GameState, opts: RenderOptions): void {
+  /** 위 가운데: 층 이름 · 남은 몬스터 · 진행 막대 · 죽음 규칙 */
+  private drawObjective(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    const n = s.players.length
-    // 닉네임(캐릭터) 를 쓰므로 폭을 넉넉히 (닉네임 8자 + 캐릭터 3자가 들어가야 한다)
-    const colW = 170
-    const pw = n === 2 ? 540 : colW * n + 40
+    const pw = 360
     const px = VIEW_W / 2 - pw / 2
-    this.panel(px, 14, pw, 62)
+    this.panel(px, 14, pw, 58)
+    const left = s.monsters.length
+    const total = Math.max(1, s.monstersTotal)
     ctx.textBaseline = 'middle'
-    if (n === 2) {
-      const c0 = CHARACTERS[s.players[0].char]
-      const c1 = CHARACTERS[s.players[1].char]
-      ctx.font = '400 40px "Black Han Sans", "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillStyle = '#e6edf3'
-      ctx.fillText(`${s.players[0].kills}`, VIEW_W / 2 - 60, 44)
-      ctx.fillText(`${s.players[1].kills}`, VIEW_W / 2 + 60, 44)
-      ctx.fillStyle = '#6b7683'
-      ctx.font = '400 26px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-      ctx.fillText(':', VIEW_W / 2, 43)
-      // 닉네임(캐릭터): 누가 무슨 캐릭터인지 한눈에. 이름이 길면 글자를 줄여 판 안에 들어가게 한다
-      ctx.textAlign = 'right'
-      ctx.fillStyle = hex(c0.bodyColor)
-      fitFont(ctx, nameTag(opts.names[0], s.players[0]), pw / 2 - 108, 15, 600)
-      ctx.fillText(nameTag(opts.names[0], s.players[0]), VIEW_W / 2 - 100, 38)
-      ctx.textAlign = 'left'
-      ctx.fillStyle = hex(c1.bodyColor)
-      fitFont(ctx, nameTag(opts.names[1], s.players[1]), pw / 2 - 108, 15, 600)
-      ctx.fillText(nameTag(opts.names[1], s.players[1]), VIEW_W / 2 + 100, 38)
-      ctx.font = '400 11px "IBM Plex Sans KR", sans-serif'
-      ctx.fillStyle = '#7d8896'
-      ctx.textAlign = 'right'
-      ctx.fillText(opts.subLabels[0], VIEW_W / 2 - 100, 58)
-      ctx.textAlign = 'left'
-      ctx.fillText(opts.subLabels[1], VIEW_W / 2 + 100, 58)
-    } else {
-      for (let i = 0; i < n; i++) {
-        const p = s.players[i]
-        const c = CHARACTERS[p.char]
-        const cx = px + 20 + colW * i + colW / 2
-        ctx.textAlign = 'center'
-        ctx.fillStyle = p.left ? '#666' : hex(c.bodyColor)
-        const label = p.vacant ? opts.names[i] : nameTag(opts.names[i], p) + (i === opts.localPlayer ? ' (나)' : '')
-        fitFont(ctx, label, colW - 12, 13, 600)
-        ctx.fillText(label, cx, 30)
-        ctx.font = '400 30px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-        ctx.fillStyle = p.left ? '#666' : '#e6edf3'
-        ctx.fillText(p.left ? leftLabel(p) : `${p.kills}`, cx, 54)
-        if (i > 0) {
-          ctx.fillStyle = 'rgba(255,255,255,0.1)'
-          ctx.fillRect(px + 20 + colW * i, 24, 1, 42)
-        }
-      }
-    }
-    ctx.font = '500 11px "IBM Plex Mono", "IBM Plex Sans KR", monospace'
-    ctx.fillStyle = '#a9b4c0'
     ctx.textAlign = 'center'
-    ctx.fillText(`목표 ${s.targetKills} 킬`, VIEW_W / 2, 66)
+    ctx.font = '400 20px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+    ctx.fillStyle = '#e6d6b0'
+    ctx.fillText(opts.floorName ?? '던전', VIEW_W / 2, 32)
+    ctx.font = '600 12px "IBM Plex Sans KR", sans-serif'
+    ctx.fillStyle = '#a9b4c0'
+    ctx.textAlign = 'left'
+    ctx.fillText(s.monstersTotal > 0 ? `남은 괴물 ${left} / ${s.monstersTotal}` : '괴물 없음', px + 14, 58)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#7d8896'
+    ctx.fillText(`죽음 규칙: ${DEATH_RULE_LABEL[s.deathRule]}`, px + pw - 14, 58)
+    // 정리한 비율 막대
+    const k = 1 - left / total
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    roundRect(ctx, px + 14, 44, pw - 28, 5, 2)
+    ctx.fill()
+    ctx.fillStyle = '#c9a24a'
+    roundRect(ctx, px + 14, 44, (pw - 28) * k, 5, 2)
+    ctx.fill()
   }
 
-  /** 팀전 점수판: A팀 킬 : B팀 킬 + 팀원 이름 */
-  private drawTeamScore(s: GameState, opts: RenderOptions): void {
+  /** 가운데: 내가 쓰러졌거나 죽었을 때 무엇을 기다리는지 */
+  private drawMyStatus(me: PlayerState, s: GameState): void {
+    if (me.left || s.phase !== 'playing') return
+    let title = ''
+    let sub = ''
+    if (me.alive && me.downed) {
+      const others = s.players.some((p) => p.id !== me.id && p.alive && !p.downed && !p.left)
+      title = '쓰러졌습니다'
+      sub = others ? `동료가 곁에서 F 를 누르고 있으면 일어납니다 · ${Math.ceil(me.downTimer / 60)}초` : `${Math.ceil(me.downTimer / 60)}초 뒤 숨이 끊깁니다`
+      void BLEED_TICKS
+    } else if (!me.alive && me.out) {
+      title = '탈락'
+      sub = '하드코어 — 이번 원정은 관전만 할 수 있습니다'
+    } else if (!me.alive) {
+      title = '사망'
+      sub = `${Math.ceil(me.respawnTimer / 60)}초 뒤 층 입구에서 다시 일어납니다`
+    } else return
     const ctx = this.ctx
-    const pw = 660
-    const px = VIEW_W / 2 - pw / 2
-    this.panel(px, 14, pw, 62)
+    ctx.save()
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = '400 40px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-    ctx.textAlign = 'center'
+    ctx.font = '400 44px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+    ctx.lineWidth = 6
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+    ctx.strokeText(title, VIEW_W / 2, VIEW_H / 2 - 110)
+    ctx.fillStyle = title === '탈락' ? '#ff5a4a' : '#ff8a7a'
+    ctx.fillText(title, VIEW_W / 2, VIEW_H / 2 - 110)
+    ctx.font = '500 15px "IBM Plex Sans KR", sans-serif'
+    ctx.lineWidth = 3
+    ctx.strokeText(sub, VIEW_W / 2, VIEW_H / 2 - 74)
     ctx.fillStyle = '#e6edf3'
-    ctx.fillText(`${teamKills(s, 0)}`, VIEW_W / 2 - 60, 44)
-    ctx.fillText(`${teamKills(s, 1)}`, VIEW_W / 2 + 60, 44)
-    ctx.fillStyle = '#6b7683'
-    ctx.font = '400 26px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-    ctx.fillText(':', VIEW_W / 2, 43)
-    for (const team of [0, 1]) {
-      const side = team === 0 ? -1 : 1
-      const x = VIEW_W / 2 + side * 100
-      ctx.textAlign = team === 0 ? 'right' : 'left'
-      ctx.font = '600 15px "IBM Plex Sans KR", sans-serif'
-      ctx.fillStyle = TEAM_COLORS[team]
-      ctx.fillText(TEAM_NAMES[team], x, 32)
-      const members = s.players.map((p, i) => ({ p, i })).filter((m) => m.p.team === team && !m.p.vacant)
-      ctx.fillStyle = '#a9b4c0'
-      const line = members.map((m) => `${nameTag(opts.names[m.i], m.p)}${m.i === opts.localPlayer ? '(나)' : ''} ${m.p.kills}`).join(' · ')
-      fitFont(ctx, line, pw / 2 - 108, 11, 400)
-      ctx.fillText(line, x, 52)
-    }
-    ctx.font = '500 11px "IBM Plex Mono", "IBM Plex Sans KR", monospace'
-    ctx.fillStyle = '#a9b4c0'
-    ctx.textAlign = 'center'
-    ctx.fillText(`목표 ${s.targetKills} 킬`, VIEW_W / 2, 66)
+    ctx.fillText(sub, VIEW_W / 2, VIEW_H / 2 - 74)
+    ctx.restore()
   }
 
   private panel(x: number, y: number, w: number, h: number): void {
@@ -454,7 +393,6 @@ export class Hud {
   /** 3~4명: 오른쪽 아래에 나 이외 사람들의 간단 상태 */
   private drawOthersList(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    const teams = isTeamMatch(s)
     const others = s.players.map((p, i) => ({ p, i })).filter((m) => m.i !== opts.localPlayer)
     const rowH = 30
     const w = 280
@@ -474,26 +412,21 @@ export class Hud {
       ctx.font = '600 13px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
       ctx.fillStyle = m.p.left ? '#777' : '#e6edf3'
       ctx.fillText(opts.names[m.i], x + 22, ry + rowH / 2 - 1)
-      if (teams) {
-        ctx.font = '500 10px "IBM Plex Mono", monospace'
-        ctx.fillStyle = TEAM_COLORS[m.p.team] ?? '#999'
-        ctx.fillText(TEAM_NAMES[m.p.team] ?? '', x + 22 + ctx.measureText(opts.names[m.i]).width + 30, ry + rowH / 2 - 1)
-      }
-      // 체력 바는 관전자와 아군에게만. 상대 정보는 숨긴다
-      const reveal = opts.localPlayer === -1 || (teams && opts.localPlayer >= 0 && s.players[opts.localPlayer].team === m.p.team)
-      if (reveal) {
+      // 협동이라 동료 체력은 늘 보인다
+      {
         const hpK = m.p.left ? 0 : Math.max(0, m.p.hp / m.p.maxHp)
         ctx.fillStyle = 'rgba(255,255,255,0.1)'
         roundRect(ctx, x + 150, ry + rowH / 2 - 4, 70, 8, 3)
         ctx.fill()
-        ctx.fillStyle = !m.p.alive ? '#555' : hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
+        ctx.fillStyle = !m.p.alive || m.p.downed ? '#555' : hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
         roundRect(ctx, x + 150, ry + rowH / 2 - 4, 70 * hpK, 8, 3)
         ctx.fill()
       }
       ctx.font = '600 12px "IBM Plex Mono", monospace'
       ctx.textAlign = 'right'
       ctx.fillStyle = '#a9b4c0'
-      const status = m.p.left ? leftLabel(m.p) : m.p.choosing ? '캐릭터 선택 중' : !m.p.alive ? `리스폰 ${Math.ceil(m.p.respawnTimer / 60)}` : `${m.p.kills}킬`
+      const status = m.p.left ? leftLabel(m.p) : m.p.downed ? `쓰러짐 ${Math.ceil(m.p.downTimer / 60)}` : m.p.out ? '탈락' : !m.p.alive ? `사망 ${Math.ceil(m.p.respawnTimer / 60)}` : `${m.p.kills}처치`
+      if (m.p.downed) ctx.fillStyle = '#ff8a7a'
       ctx.fillText(status, x + w - 12, ry + rowH / 2 - 1)
     })
   }
@@ -535,7 +468,7 @@ export class Hud {
     ctx.fill()
     ctx.font = '600 12px "IBM Plex Mono", monospace'
     ctx.fillStyle = '#e6edf3'
-    ctx.fillText(p.alive ? `${Math.ceil(p.hp)} / ${p.maxHp}` : p.left ? leftLabel(p) : p.choosing ? '선택 중' : `리스폰 ${Math.ceil(p.respawnTimer / 60)}`, ix + 208, by + 45)
+    ctx.fillText(p.downed ? '쓰러짐' : p.alive ? `${Math.ceil(p.hp)} / ${p.maxHp}` : p.left ? leftLabel(p) : p.out ? '탈락' : `사망 ${Math.ceil(p.respawnTimer / 60)}`, ix + 208, by + 45)
     ctx.font = '500 12px "IBM Plex Sans KR", sans-serif'
     ctx.fillStyle = '#a9b4c0'
     ctx.fillText(w.name, ix, by + 70)
@@ -580,54 +513,32 @@ export class Hud {
 
   private drawBanner(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    // 최근 것이 맨 위, 먼저 난 것은 아래로 밀린다
-    for (let n = 0; n < this.banners.length && s.phase !== 'over'; n++) {
-      const b = this.banners[this.banners.length - 1 - n]
+    // 알림: 최근 것이 맨 위
+    for (let n = 0; n < this.notices.length && s.phase !== 'over'; n++) {
+      const b = this.notices[this.notices.length - 1 - n]
       const k = b.life / b.max
       const inK = Math.min(1, (b.max - b.life) * 6)
       ctx.globalAlpha = Math.min(1, k * 4) * inK
-      const y = 120 + n * 58
-      ctx.font = '400 34px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-      ctx.textAlign = 'left'
+      const y = 110 + n * 44
+      ctx.font = '400 24px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+      ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      // 이름 · [무기 그림] · 이름. 그림 자리는 무기와 상관없이 같은 폭이라 배너가 들썩이지 않는다
-      const ICON_W = 72
-      const lw = ctx.measureText(b.left).width
-      const rw = ctx.measureText(b.right).width
-      const tw = lw + ICON_W + rw + 64
-      const x0 = VIEW_W / 2 - tw / 2
+      const tw = ctx.measureText(b.text).width + 48
       ctx.fillStyle = 'rgba(13,17,23,0.82)'
-      roundRect(ctx, x0, y - 26, tw, 52, 6)
+      roundRect(ctx, VIEW_W / 2 - tw / 2, y - 19, tw, 38, 6)
       ctx.fill()
       ctx.fillStyle = b.color
-      roundRect(ctx, x0, y - 26, 6, 52, 3)
+      roundRect(ctx, VIEW_W / 2 - tw / 2, y - 19, 5, 38, 3)
       ctx.fill()
-      ctx.fillStyle = '#e6edf3'
-      ctx.fillText(b.left, x0 + 32, y)
-      drawWeaponIcon(ctx, x0 + 32 + lw + ICON_W / 2, y, b.weapon)
-      ctx.fillText(b.right, x0 + 32 + lw + ICON_W, y)
-      if (b.tag) {
-        // 꼬리표(복수!): 배너 왼쪽 위에 금색 알약
-        ctx.font = '700 15px "IBM Plex Sans KR", sans-serif'
-        const tw2 = ctx.measureText(b.tag).width + 22
-        ctx.fillStyle = '#f2c94c'
-        roundRect(ctx, x0 - 10, y - 44, tw2, 26, 13)
-        ctx.fill()
-        ctx.fillStyle = '#1a1406'
-        ctx.textAlign = 'center'
-        ctx.fillText(b.tag, x0 - 10 + tw2 / 2, y - 31)
-        ctx.textAlign = 'left'
-        ctx.font = '400 34px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
-      }
+      ctx.fillText(b.text, VIEW_W / 2, y + 1)
       ctx.globalAlpha = 1
     }
-    const wi = s.winner
-    if (s.phase === 'over' && wi !== -1) {
-      const teams = isTeamMatch(s)
-      const title = teams ? `${TEAM_NAMES[wi] ?? '?'} 승리` : `${opts.names[wi] ?? CHARACTERS[s.players[wi].char].name} 승리`
-      const color = teams ? TEAM_COLORS[wi] ?? '#fff' : hex(CHARACTERS[s.players[wi].char].bodyColor)
+    if (s.phase === 'over' && s.winner !== -1) {
+      const cleared = s.winner === 0
+      const title = cleared ? '층 정리!' : '전멸'
+      const color = cleared ? '#e8c46a' : '#ff5a4a'
       const k = Math.min(1, this.overT * 1.5)
-      ctx.fillStyle = `rgba(10,12,8,${0.55 * k})`
+      ctx.fillStyle = `rgba(6,6,8,${0.6 * k})`
       ctx.fillRect(0, 0, VIEW_W, VIEW_H)
       ctx.save()
       ctx.translate(VIEW_W / 2, VIEW_H / 2 - 30)
@@ -644,20 +555,14 @@ export class Hud {
       ctx.fillText(title, 0, 0)
       ctx.restore()
       ctx.globalAlpha = k
-      ctx.font = '400 40px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+      ctx.font = '500 18px "IBM Plex Sans KR", sans-serif'
       ctx.fillStyle = '#e6edf3'
       ctx.textAlign = 'center'
-      const score = teams
-        ? `${teamKills(s, 0)}  :  ${teamKills(s, 1)}`
-        : s.players.length === 2
-          ? `${s.players[0].kills}  :  ${s.players[1].kills}`
-          : s.players.map((p, i) => `${opts.names[i]} ${p.kills}`).join('  ·  ')
-      ctx.fillText(score, VIEW_W / 2, VIEW_H / 2 + 44)
-      ctx.font = '500 14px "IBM Plex Sans KR", sans-serif'
-      ctx.fillStyle = '#a9b4c0'
-      ctx.fillText(`목표 ${s.targetKills}킬 달성`, VIEW_W / 2, VIEW_H / 2 + 84)
+      const kills = s.players.reduce((a, p) => a + p.kills, 0)
+      ctx.fillText(cleared ? `괴물 ${kills}마리를 쓰러뜨렸습니다` : '모두 쓰러졌습니다', VIEW_W / 2, VIEW_H / 2 + 44)
       ctx.globalAlpha = 1
     }
+    void opts
   }
 
   private drawCursor(cur: { x: number; y: number }, me: PlayerState, on: boolean): void {
@@ -705,10 +610,10 @@ export class Hud {
 }
 
 /**
- * 킬 배너용 무기 그림. (cx, cy) 가운데, 폭 약 50px, 총구는 오른쪽(죽은 사람 쪽).
+ * 무기 그림 (덕의 킬 배너에서 가져옴 — 아이템 아이콘·캐릭터 창에 다시 쓴다). (cx, cy) 가운데, 폭 약 50px, 총구는 오른쪽(죽은 사람 쪽).
  * 화살표 "▶" 대신 무엇으로 죽였는지 보여 준다 (2026-09-05 요청). 선 몇 개로 그린 실루엣이라 폰트가 없어도 같다.
  */
-function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: WeaponId): void {
+export function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: WeaponId): void {
   ctx.save()
   ctx.translate(cx, cy + 1)
   ctx.scale(1.25, 1.25) // 34px 글자 옆에서 눈에 들어오는 크기

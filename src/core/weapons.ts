@@ -63,6 +63,8 @@ export interface WeaponDef {
   scope?: boolean
   /** 소음기: 발소리가 안 나고 총소리가 아주 작다 (권총 — 단군덕·우원덕, 2026-09-05) */
   suppressed?: boolean
+  /** 몬스터를 미는 힘 (px/틱, 탄 하나 기준). 몬스터의 넉백 저항만큼 줄어든다 */
+  knock: number
 }
 
 /** 거리에 따른 피해 배율 */
@@ -78,13 +80,13 @@ const deg = (d: number) => Math.round((d / 360) * 1024)
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   pistol: {
     // 2026-09-05 오픈 베타: 소음기 달린 권총 — 발소리 없음·총소리 아주 작음, 피해 27 → 30 (보통 봇 표에서 권총 둘이 37~40% 바닥)
-    id: 'pistol', name: '권총', damage: 30, suppressed: true, pellets: 1, fireInterval: 11, auto: true,
+    id: 'pistol', knock: 1.2, name: '권총', damage: 30, suppressed: true, pellets: 1, fireInterval: 11, auto: true,
     magSize: 14, reloadTicks: 90, spreadHip: deg(5), spreadAds: deg(1.6), recoil: deg(2.2),
     recoilRecover: deg(0.55), speed: 15, life: 60, moveMul: 1.0, length: 14, color: 0x9aa0a6,
     falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   smg: {
-    id: 'smg', name: 'SMG', damage: 16, pellets: 1, fireInterval: 5, auto: true,
+    id: 'smg', knock: 0.6, name: 'SMG', damage: 16, pellets: 1, fireInterval: 5, auto: true,
     magSize: 32, reloadTicks: 110, spreadHip: deg(8), spreadAds: deg(4.2), recoil: deg(1.4),
     recoilRecover: deg(0.5), speed: 14, life: 55, moveMul: 0.96, length: 18, color: 0x7c8590,
     falloffStart: 320, falloffEnd: 700, falloffMin: 0.62,
@@ -93,14 +95,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // 빨라진 만큼 피해 23 → 20 (계측: 23 이면 소총 셋이 62~67% 로 최상위, 20 이면 48~58% 로 가운데)
   rifle: {
     // 2026-09-05 보통 봇 기준 재조정: 20 → 23 (소총 셋이 29~37% 로 바닥). 탄속 24 는 유지
-    id: 'rifle', name: '소총', damage: 23, pellets: 1, fireInterval: 10, auto: true,
+    id: 'rifle', knock: 1.0, name: '소총', damage: 23, pellets: 1, fireInterval: 10, auto: true,
     magSize: 30, reloadTicks: 130, spreadHip: deg(6.5), spreadAds: deg(1.4), recoil: deg(2.6),
     recoilRecover: deg(0.5), speed: 24, life: 50, moveMul: 0.92, length: 24, color: 0x5f6b48,
     falloffStart: 420, falloffEnd: 820, falloffMin: 0.78,
   },
   // 근접에서 압도적(탄당 17×7 = 119), 멀면 급감. 한 방에 죽이지는 못한다
   shotgun: {
-    id: 'shotgun', name: '산탄총', damage: 17, pellets: 7, fireInterval: 38, auto: true,
+    id: 'shotgun', knock: 0.9, name: '산탄총', damage: 17, pellets: 7, fireInterval: 38, auto: true,
     magSize: 6, reloadTicks: 150, spreadHip: deg(7.5), spreadAds: deg(5), recoil: deg(4),
     recoilRecover: deg(0.4), speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b,
     falloffStart: 200, falloffEnd: 500, falloffMin: 0.35,
@@ -111,7 +113,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // 2026-09-05 오픈 베타 제보 "저격이 너무 어렵다(기력이 늘어 다들 빠르다)": **조준경으로 맞히면 한 방**, 스치면 체력 10 남김,
   // 조준경 없이는 개머리판 후려치기(10, 재장전 중에도), 탄 5 → 6. damage 120 은 이제 봇 평가·표시용이고 실제 조준경 피해는 상대 체력이다.
   sniper: {
-    id: 'sniper', name: '저격총', damage: 120, pellets: 1, fireInterval: 78, auto: true,
+    id: 'sniper', knock: 4, name: '저격총', damage: 120, pellets: 1, fireInterval: 78, auto: true,
     magSize: 6, reloadTicks: 225, spreadHip: deg(15), spreadAds: deg(0.4), recoil: deg(7),
     recoilRecover: deg(0.35), speed: 26, life: 90, moveMul: 0.7, length: 32, color: 0x3d4a5c,
     falloffStart: 9999, falloffEnd: 9999, falloffMin: 1, scope: true,
@@ -120,7 +122,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // 명중률은 낮고 반동은 세지만 탄이 많아 계속 퍼붓는다
   mg: {
     // 2026-09-05 보통 봇 기준 재조정: 16 → 15 (철면덕 76% — 세게 두는 건 의도지만 너무 셌다 → 64%)
-    id: 'mg', name: '기관총', damage: 15, pellets: 1, fireInterval: 5, auto: true,
+    id: 'mg', knock: 0.5, name: '기관총', damage: 15, pellets: 1, fireInterval: 5, auto: true,
     magSize: 80, reloadTicks: 210, spreadHip: deg(8), spreadAds: deg(4.5), recoil: deg(2.4),
     recoilRecover: deg(0.35), speed: 15, life: 60, moveMul: 0.9, length: 30, color: 0x4a4f45,
     falloffStart: 320, falloffEnd: 760, falloffMin: 0.55,
@@ -130,7 +132,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // 세 대(186) 로는 아무도 못 잡고 네 대(248) 부터. 같은 날 소총 하향으로 상대가 약해져 68 로는
   // tools/melee.ts 정면 대치가 5/10(권장 2~4)이라 62 까지 내렸다 → 3/10. 2026-09-05 오픈 베타 제보로 55 → 45 (다섯 대 225 — 체력 220 이하는 다섯 대, 매직덕 여섯, 철면덕 일곱)
   pan: {
-    id: 'pan', name: '후라이팬', damage: 45, pellets: 1, fireInterval: 23, auto: true,
+    id: 'pan', knock: 5, name: '후라이팬', damage: 45, pellets: 1, fireInterval: 23, auto: true,
     magSize: 0, reloadTicks: 0, spreadHip: 0, spreadAds: 0, recoil: 0,
     recoilRecover: 0, speed: 0, life: 0, moveMul: 1.02, length: 20, color: 0x33383c,
     falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,

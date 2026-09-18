@@ -1,5 +1,5 @@
-// 게임 세션: 혼자 하기(봇) 와 대전(락스텝) 을 같은 루프로 돌린다. 렌더는 Three.js. 인원 2~4명.
-// 대전: 플레이어 0 = 호스트. 호스트가 해시 비교·리싱크·이탈자 드롭 틱을 정한다.
+// 게임 세션: 혼자 하기(동료 봇) 와 협동(락스텝) 을 같은 루프로 돌린다. 렌더는 Three.js. 인원 1~4명.
+// 협동: 플레이어 0 = 호스트. 호스트가 해시 비교·리싱크·이탈자 드롭 틱·난입을 정한다.
 
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
@@ -8,12 +8,12 @@ import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { createState, dropPlayer, hashState, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
 import { angleToRad } from '../core/fixedmath'
-import { GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
+import { DeathRule, GameState, PlayerState, TICK_MS } from '../core/state'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
 import { CtlMessage, LobbyLink, RoomLink } from '../net/room'
-import { TEAM_NAMES, VIEW_H, VIEW_W, setViewAspect } from '../render/hud'
+import { VIEW_H, VIEW_W, setViewAspect } from '../render/hud'
 import { worldDirToScreen } from '../render3d/camera'
 import { U } from '../render3d/world3d'
 import { Renderer3D } from '../render3d/renderer3d'
@@ -26,9 +26,12 @@ export interface SessionConfig {
   mode: 'solo' | 'p2p'
   /** 인원 = 길이. 인덱스가 플레이어 번호 */
   chars: CharacterId[]
-  /** 팀 배정 (없으면 개인전) */
+  /** 덕의 팀 배정 — 협동이라 쓰지 않는다 (로비 호환용) */
   teams?: number[]
-  targetKills: number
+  /** 덕의 목표 킬 — 쓰지 않는다 (로비 호환용) */
+  targetKills?: number
+  /** 죽음 규칙 (방장이 정한다, 기본 0 = 없음) */
+  deathRule?: DeathRule
   seed: number
   localPlayer: number
   mapId?: MapId
@@ -51,7 +54,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -150,10 +153,7 @@ export class Session {
     private cfg: SessionConfig,
   ) {
     this.map = buildMap(cfg.mapId ?? DEFAULT_MAP, cfg.mapScale ?? scaleForPlayers(cfg.chars.length), cfg.seed)
-    this.state = createState(
-      { seed: cfg.seed, targetKills: cfg.targetKills, chars: cfg.chars, teams: cfg.teams, absent: cfg.absent },
-      this.map,
-    )
+    this.state = createState({ seed: cfg.seed, chars: cfg.chars, absent: cfg.absent, deathRule: cfg.deathRule }, this.map)
     // 재접속: 호스트가 보내 준 판으로 갈아 끼운다. 맵의 모래주머니 상태도 그때로 맞춘다
     if (cfg.resumeState) {
       this.state = cfg.resumeState as GameState
@@ -185,7 +185,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준 · <b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>R</b> 재장전 · <b>Tab</b> 캐릭터 교체(리스폰 대기·3초) · <b>V</b> 팀 신호 · <b>1·2·3</b> 감정 · <b>N</b> 소리 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준 · <b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>R</b> 재장전 · <b>F</b> 동료 일으키기(누르고 있기) · <b>V</b> 신호 · <b>1·2·3</b> 감정 · <b>N</b> 소리 · <b>Esc</b> 메뉴</div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -209,7 +209,7 @@ export class Session {
     this.stage.appendChild(ui)
     if (isTouchDevice()) {
       this.touch = new TouchControls(this.root)
-      this.touch.setMarkVisible(isTeamMatch(this.state))
+      this.touch.setMarkVisible(true)
       this.root.classList.add('touching')
       void enterLandscape()
     }
@@ -262,6 +262,7 @@ export class Session {
       tick: () => this.state.tick,
       phase: () => this.state.phase,
       state: () => this.state,
+      map: () => this.map,
       others: () => this.state.players.filter((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i]).length,
       names: () => this.names,
       bots: () => this.cfg.bots ?? [],
@@ -287,6 +288,7 @@ export class Session {
         map: info.map,
         mode: info.mode as never,
         targetKills: info.targetKills,
+        deathRule: info.deathRule,
         count,
         max: info.size,
         state: this.state.phase === 'over' || count >= info.size ? 'full' : 'playing',
@@ -328,7 +330,7 @@ export class Session {
   }
 
   private makeBots(seed: number): void {
-    this.bots = this.cfg.chars.map((_, i) => makeBot((seed ^ 0x9e37) + i * 7919, { swap: true })) // 게임의 봇은 죽으면 캐릭터를 바꾸기도 한다
+    this.bots = this.cfg.chars.map((_, i) => makeBot((seed ^ 0x9e37) + i * 7919))
   }
 
   private get isHost(): boolean {
@@ -363,8 +365,8 @@ export class Session {
       e.preventDefault()
       return
     }
-    // 팀 신호 (팀전에서만). 커서가 가리키는 곳에 "여기" 를 찍는다
-    if ((e.key === 'v' || e.key === 'V') && isTeamMatch(this.state)) {
+    // 신호: 커서가 가리키는 곳에 "여기" 를 찍는다 (협동이라 언제나)
+    if (e.key === 'v' || e.key === 'V') {
       this.sendMark()
       e.preventDefault()
       return
@@ -465,7 +467,7 @@ export class Session {
   // ---------- 캐릭터 교체 창 ----------
   /** 터치 메뉴 버튼 */
   private pollTouchMenu(): void {
-    if (this.touch?.takeMark() && isTeamMatch(this.state)) this.sendMark()
+    if (this.touch?.takeMark()) this.sendMark()
     if (this.touch?.takeEmote()) this.sendEmote(1)
     if (this.touch?.takeMenu()) {
       if (this.overlay.hidden) this.showMenu()
@@ -558,12 +560,6 @@ export class Session {
       return
     }
     if (this.dropped.has(idx)) return
-    // 팀전은 한 명만 빠져도 짝이 안 맞으니 그 자리에서 끝낸다 (사용자 요청)
-    if (isTeamMatch(this.state) && this.state.phase !== 'over') {
-      if (this.isHost) this.cfg.link?.sendCtl({ t: 'abort', p: idx })
-      this.abortMatch(idx)
-      return
-    }
     this.dropped.add(idx)
     this.lockstep?.drop(idx)
     if (idx === 0) {
@@ -715,21 +711,14 @@ export class Session {
         this.applyJoinCancel(m.p, m.id)
         break
       }
-      case 'abort': {
-        if (this.peerIndex.get(from) !== 0) return
-        this.abortMatch(m.p)
-        break
-      }
       case 'emote': {
         // 누구 것이든 본다(보이는 사람만 그려진다). 번호는 보낸 사람 자리와 맞아야 한다
         if (m.p !== this.cfg.localPlayer && this.peerIndex.get(from) === m.p) this.renderer.showEmote(m.p, m.id)
         break
       }
       case 'mark': {
-        // 같은 편이 찍은 것만 본다
-        const from = this.state.players[m.p]
-        const me = this.state.players[this.cfg.localPlayer]
-        if (from && me && from.team === me.team && m.p !== this.cfg.localPlayer) {
+        // 협동이라 모두 같은 편이다
+        if (this.state.players[m.p] && m.p !== this.cfg.localPlayer) {
           this.renderer.addMark(m.x, m.y)
           this.sfx.mark()
         }
@@ -750,7 +739,7 @@ export class Session {
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.map = buildMap(this.cfg.mapId ?? DEFAULT_MAP, this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), seed)
     this.renderer.setMap(this.map)
-    this.state = createState({ seed, targetKills: this.cfg.targetKills, chars: this.cfg.chars, teams: this.cfg.teams }, this.map)
+    this.state = createState({ seed, chars: this.cfg.chars, deathRule: this.cfg.deathRule }, this.map)
     // 이미 나간 사람은 처음부터 빠진 채로
     for (const d of this.dropped) dropPlayer(this.state, d)
     this.state.events = []
@@ -834,7 +823,6 @@ export class Session {
       this.prev = snapshot(this.state)
       step(this.state, this.map, inputs)
       this.applyDrops()
-      for (const e of this.state.events) if (e.type === 'swap') this.names = this.computeNames()
       this.renderer.onEvents(this.state.events, this.state, lp, this.names)
       this.sfx.onEvents(this.state.events, this.state, lp)
       if (this.lockstep && this.state.tick % 60 === 0) {
@@ -848,11 +836,9 @@ export class Session {
       if (this.isHost) this.serveJoin()
       for (const e of this.state.events) {
         if (e.type === 'over') this.onOver()
-        // 내가 죽으면 나를 죽인 사람을 본다 (자살·이탈이면 살아 있는 아무나)
+        // 내가 죽으면(입구에서 일어나기를 기다리거나 하드코어 탈락) 살아 있는 동료를 본다
         else if (e.type === 'death' && e.p === this.cfg.localPlayer) {
-          // 개인전이면 나를 죽인 사람, 팀전이면 아군만 (상대 시점은 적 위치를 그대로 알려 준다)
-          const teams = isTeamMatch(this.state)
-          this.spectate = !teams && e.by !== e.p ? e.by : this.nextAlive(-1)
+          this.spectate = this.nextAlive(-1)
         } else if (e.type === 'respawn' && e.p === this.cfg.localPlayer) {
           this.spectate = -1
         } else if (e.type === 'join' && e.p === this.cfg.localPlayer) {
@@ -879,18 +865,16 @@ export class Session {
     // 발소리는 sim 이벤트가 아니라 이동 상태로 낸다(틱마다 이벤트를 만들면 패킷이 무거워진다)
     this.sfx.updateSteps(this.state, lp, dt)
     const alpha = Math.min(1, this.acc / TICK_MS)
-    const choosing = this.state.players[lp].choosing && this.state.phase === 'playing'
+    const choosing = false
     if (choosing && !this.pickerOpen) this.showPicker()
     else if (!choosing && this.pickerOpen) this.hidePicker()
     const sub = this.cfg.chars.map((_, i) => this.subLabel(i))
     // 죽어서 기다리는 동안만 남의 시점. 살아 있으면 언제나 내 시점
     const me = this.state.players[lp]
-    // 팀전에서 상대는 못 본다. 보던 사람이 죽었으면 다음 아군으로 넘긴다
+    // 보던 동료가 죽었으면 다음 동료로 넘긴다
     if (this.spectate >= 0) {
       const t = this.state.players[this.spectate]
-      const teams = isTeamMatch(this.state)
-      const okTeam = !teams || t.team === this.state.players[lp].team
-      if (!t || !t.alive || t.left || !okTeam) this.spectate = this.nextAlive(this.spectate)
+      if (!t || !t.alive || t.left) this.spectate = this.nextAlive(this.spectate)
     }
     const spec = !me.alive && !me.choosing && this.spectate >= 0 && this.state.players[this.spectate]?.alive ? this.spectate : -1
     if (spec < 0 && this.spectate >= 0 && me.alive) this.spectate = -1
@@ -911,6 +895,7 @@ export class Session {
       message,
       cursor: this.aimCursor(),
       touch: this.touch !== null,
+      floorName: `${this.map.name} 1층`,
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }
@@ -935,9 +920,8 @@ export class Session {
   private subLabel(i: number): string {
     // 캐릭터 이름은 점수판 이름 줄에 "닉네임(캐릭터)" 로 들어가므로 여기서는 역할만
     if (i === this.cfg.localPlayer) return '나'
-    if (this.cfg.mode === 'solo' || this.cfg.bots?.[i]) return `AI · ${DIFFICULTY_LABEL[this.cfg.difficulty ?? 'normal']}`
-    const ally = this.cfg.teams && this.cfg.teams[i] === this.cfg.teams[this.cfg.localPlayer]
-    return ally ? '아군' : '상대'
+    if (this.cfg.mode === 'solo' || this.cfg.bots?.[i]) return `동료 봇 · ${DIFFICULTY_LABEL[this.cfg.difficulty ?? 'normal']}`
+    return '동료'
   }
 
   /** 버튼이 여러 개인 분기에서 통계 표를 붙이기 쉽게 */
@@ -955,23 +939,20 @@ export class Session {
    * 명중률은 **탄 단위**(산탄총 한 발 = 탄 7개)라 무기가 달라도 비교가 된다.
    */
   private statsTable(): string {
-    const teams = isTeamMatch(this.state)
     const rows = this.state.players
       .map((p, i) => ({ p, i }))
       .filter(({ p }) => !p.vacant)
       .sort((a, b) => b.p.kills - a.p.kills || a.p.deaths - b.p.deaths)
       .map(({ p, i }) => {
         const acc = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0
-        const headPct = p.hits > 0 ? Math.round((p.heads / p.hits) * 100) : 0
+        const critPct = p.hits > 0 ? Math.round((p.heads / p.hits) * 100) : 0
         const me = i === this.cfg.localPlayer ? ' class="me"' : ''
-        const team = teams ? `<td>${TEAM_NAMES[p.team] ?? '?'}</td>` : ''
-        return `<tr${me}><td class="nick">${this.names[i]}</td>${team}<td>${CHARACTERS[p.char].name}</td>
-          <td class="n">${p.kills}</td><td class="n">${p.deaths}</td><td class="n">${p.bestStreak}</td>
-          <td class="n">${acc}%</td><td class="n">${headPct}%</td>
+        return `<tr${me}><td class="nick">${this.names[i]}</td><td>${CHARACTERS[p.char].name}</td>
+          <td class="n">${p.kills}</td><td class="n">${p.deaths}</td><td class="n">${p.revives}</td>
+          <td class="n">${acc}%</td><td class="n">${critPct}%</td>
           <td class="n">${Math.round(p.dmgDealt)}</td><td class="n">${Math.round(p.dmgTaken)}</td></tr>`
       })
       .join('')
-    // 한 줄 요약(MVP): 최다 헤드샷 · 최장 연속 · 최다 피해. 0 이면 뺀다
     const alive = this.state.players.map((p, i) => ({ p, i })).filter(({ p }) => !p.vacant)
     const top = (key: (p: PlayerState) => number, label: string, fmt: (v: number) => string) => {
       let best = alive[0]
@@ -980,15 +961,15 @@ export class Session {
       return v > 0 ? `${label} <b>${this.names[best.i]} ${fmt(v)}</b>` : ''
     }
     const mvp = [
-      top((p) => p.heads, '최다 헤드샷', (v) => `${v}`),
-      top((p) => p.bestStreak, '최장 연속', (v) => `${v}`),
-      top((p) => p.dmgDealt, '최다 피해', (v) => `${Math.round(v)}`),
+      top((p) => p.kills, '최다 처치', (v) => `${v}`),
+      top((p) => p.heads, '최다 치명타', (v) => `${v}`),
+      top((p) => p.revives, '최다 부활', (v) => `${v}`),
     ].filter(Boolean)
     const mvpLine = mvp.length ? `<p class="statsmvp">⭐ ${mvp.join(' · ')}</p>` : ''
     return `<div class="stats">${mvpLine}<table>
-      <thead><tr><th>이름</th>${teams ? '<th>팀</th>' : ''}<th>캐릭터</th><th>킬</th><th>데스</th><th>연속</th><th>명중</th><th>헤드</th><th>준 피해</th><th>받은 피해</th></tr></thead>
+      <thead><tr><th>이름</th><th>캐릭터</th><th>처치</th><th>사망</th><th>부활</th><th>명중</th><th>치명</th><th>준 피해</th><th>받은 피해</th></tr></thead>
       <tbody>${rows}</tbody></table>
-      <p class="statsnote">명중률은 탄 단위입니다 (산탄총 한 발 = 탄 7개). 연속은 죽지 않고 이어 간 최다 킬.</p></div>`
+      <p class="statsnote">명중률은 탄 단위입니다 (산탄총 한 발 = 탄 7개). 치명은 커서를 약점(몸 한가운데)에 올리고 맞힌 비율. 부활은 동료를 일으킨 횟수.</p></div>`
   }
 
   /** 빠른 감정 표현. 1.2초에 한 번. sim 밖(컨트롤 메시지) */
@@ -1026,11 +1007,6 @@ export class Session {
   private onJoinAsk(char: CharacterId, name: string, peerId: string): void {
     if (this.state.phase === 'over') {
       this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '이미 끝난 판입니다' }, peerId)
-      return
-    }
-    // 팀전은 난입 불가 — 짝이 안 맞는 채로 이어 봐야 의미가 없다(누가 나가면 그 자리에서 끝낸다)
-    if (isTeamMatch(this.state)) {
-      this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '팀전에는 난입할 수 없습니다' }, peerId)
       return
     }
     // 같은 사람이 다시 물어봤다 (연결이 늦어 두 번 보냈거나 버튼을 두 번 눌렀다): 이미 배정 중이면 그대로 둔다
@@ -1082,7 +1058,8 @@ export class Session {
         chars: this.cfg.chars,
         teams: this.cfg.teams,
         names: this.cfg.names ?? [],
-        targetKills: this.cfg.targetKills,
+        targetKills: this.cfg.targetKills ?? 0,
+        deathRule: this.cfg.deathRule ?? 0,
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
         scale: this.map.scale,
@@ -1157,33 +1134,6 @@ export class Session {
     this.message = '연결 완료 · 자리를 기다리는 중…'
   }
 
-  /**
-   * 팀전 중단: 누가 나가면 그 자리에서 끝내고 결과표를 띄운다.
-   * 승자는 그때까지의 팀 킬로 정한다(같으면 무승부). 다시 하기는 없다 — 짝이 안 맞는다.
-   * sim 밖에서 phase 를 바꾸지만 이후 틱을 더 돌리지 않으므로 어긋날 것이 없다.
-   */
-  private abortMatch(gone: number): void {
-    if (this.state.phase === 'over' || this.disposed) return
-    const p = this.state.players[gone]
-    if (p) {
-      p.left = true
-      this.dropped.add(gone)
-      this.lockstep?.drop(gone)
-    }
-    const k0 = teamKills(this.state, 0)
-    const k1 = teamKills(this.state, 1)
-    const winner = k0 === k1 ? -1 : k0 > k1 ? 0 : 1
-    this.state.phase = 'over'
-    this.state.winner = winner
-    this.message = ''
-    const lp = this.cfg.localPlayer
-    const myTeam = this.state.players[lp].team
-    const title = winner < 0 ? '경기 중단 · 무승부' : winner === myTeam ? '경기 중단 · 우세승' : '경기 중단 · 열세'
-    const desc = `${this.names[gone]} 님이 나가서 팀전을 끝냈습니다 · ${TEAM_NAMES[0]} ${k0} : ${k1} ${TEAM_NAMES[1]}`
-    this.showOverlay(title, desc, [{ label: '로비로', primary: true, onClick: () => this.exit() }], this.statsTable())
-    this.paused = true
-  }
-
   /** 정해진 틱이 되면 자리를 채운다 (모두가 같은 틱에) */
   private applyJoins(): void {
     if (this.pendingJoins.length === 0) return
@@ -1207,7 +1157,7 @@ export class Session {
 
   /** 난입한 자리의 봇 기억을 새로 만든다 (봇이 조종하던 자리였을 수 있다) */
   private makeBotFor(idx: number): void {
-    this.bots[idx] = makeBot((this.cfg.seed ^ 0x9e37) + idx * 7919 + this.state.tick, { swap: true })
+    this.bots[idx] = makeBot((this.cfg.seed ^ 0x9e37) + idx * 7919 + this.state.tick)
   }
 
   /**
@@ -1217,13 +1167,10 @@ export class Session {
    */
   private nextAlive(from: number): number {
     const n = this.state.players.length
-    const teams = isTeamMatch(this.state)
-    const myTeam = this.state.players[this.cfg.localPlayer].team
     for (let k = 1; k <= n; k++) {
       const i = (from + k + n) % n
       const p = this.state.players[i]
       if (i === this.cfg.localPlayer || !p.alive || p.left) continue
-      if (teams && p.team !== myTeam) continue
       return i
     }
     return -1
@@ -1231,29 +1178,21 @@ export class Session {
 
   /** 지금 볼 수 있는 사람 수 (안내 문구에 "바꾸기" 를 넣을지 정한다) */
   private spectateCandidates(): number {
-    const teams = isTeamMatch(this.state)
-    const myTeam = this.state.players[this.cfg.localPlayer].team
     let c = 0
     for (const p of this.state.players) {
       if (p.id === this.cfg.localPlayer || !p.alive || p.left) continue
-      if (teams && p.team !== myTeam) continue
       c++
     }
     return c
   }
 
   private onOver(): void {
-    const w = this.state.winner
-    const lp = this.cfg.localPlayer
-    const iWon = this.state.players[lp].team === w
-    const title = iWon ? '승리!' : '패배'
-    const teams = isTeamMatch(this.state)
+    const cleared = this.state.winner === 0
+    const title = cleared ? '층 정리!' : '전멸'
+    const kills = this.state.players.reduce((a, p) => a + p.kills, 0)
+    const secs = Math.round(this.state.tick / 60)
+    const desc = `${this.map.name} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초`
     const stats = this.statsTable()
-    const desc = teams
-      ? `${TEAM_NAMES[w] ?? '?'} 승리 · ` + this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
-      : this.state.players.length === 2
-        ? `${this.names[0]} ${this.state.players[0].kills} : ${this.state.players[1].kills} ${this.names[1]}`
-        : this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
     setTimeout(() => {
       if (this.disposed) return
       if (this.cfg.mode === 'solo') {
@@ -1280,12 +1219,7 @@ export class Session {
           { label: '로비로', primary: false, onClick: () => this.exit() },
         ])
       } else {
-        this.showOverlay(
-          title,
-          desc + ' · 호스트가 다시 시작하길 기다리는 중',
-          [{ label: '로비로', primary: false, onClick: () => this.exit() }],
-          stats,
-        )
+        this.showOverlay(title, desc + ' · 방장이 다시 시작하길 기다리는 중', [{ label: '로비로', primary: false, onClick: () => this.exit() }], stats)
       }
     }, 2200)
   }
