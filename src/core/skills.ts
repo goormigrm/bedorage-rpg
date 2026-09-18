@@ -14,6 +14,12 @@ export type SkillId =
   | 'firstaid' | 'flame' | 'surgery'
   | 'pancharge' | 'oil' | 'kitchen'
   | 'catstep' | 'railshot' | 'ninelives'
+  | 'flash' | 'mirror' | 'supernova'
+  | 'stunt' | 'curtain' | 'redcarpet'
+  | 'overdrive' | 'shout' | 'kingrage'
+  | 'gust' | 'windstep' | 'typhoon'
+  | 'snack' | 'trap' | 'angelshot'
+  | 'catwalk' | 'flashbulb' | 'encore'
 
 export interface SkillDef {
   id: SkillId
@@ -55,6 +61,31 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 저격 한 발 피해 2배.', cd: s(9) },
   railshot: { id: 'railshot', name: '관통 저격', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타.', cd: s(12) },
   ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 저격 연사 3배 · 재장전 즉시 · 탄이 2마리를 꿰뚫고 조준경 없이도 정확.', cd: s(70), ult: true },
+  // ---- D7 나머지 여섯 (2026-09-18) ----
+  // 주펄덕 — 빛: 붙어서 눈부시게
+  flash: { id: 'flash', name: '섬광', desc: '주변 3.5칸에 25 피해 · 1.5초 기절.', cd: s(11) },
+  mirror: { id: 'mirror', name: '반사광', desc: '3초간 받는 피해 -60% · 나를 때린 괴물은 그 피해의 1.5배를 돌려받는다.', cd: s(14) },
+  supernova: { id: 'supernova', name: '초신성', desc: '주변 6칸에 200 피해 · 밀쳐 내고 2.5초 기절.', cd: s(75), ult: true },
+  // 우원덕 — 배우: 구르고 무대를 지배한다
+  stunt: { id: 'stunt', name: '스턴트', desc: '조준 방향으로 구르며(무적) 부채꼴로 6발을 쏜다.', cd: s(9) },
+  curtain: { id: 'curtain', name: '커튼콜', desc: '7칸 안의 괴물이 4초간 절반 속도 · 드러남 · 받는 피해 +20%.', cd: s(14) },
+  redcarpet: { id: 'redcarpet', name: '레드카펫', desc: '8초간 구르기가 줄지 않고, 구를 때마다 주변 2.5칸에 70 피해 · 0.5초 기절.', cd: s(70), ult: true },
+  // 기열덕 — 뇌절: 쌓아서 터뜨린다
+  overdrive: { id: 'overdrive', name: '폭주', desc: '뇌절을 바로 가득 채우고 5초간 연사 +30%.', cd: s(14) },
+  shout: { id: 'shout', name: '고함', desc: '앞 5칸 부채꼴에 50 피해 · 멀리 밀치고 2초 느리게.', cd: s(10) },
+  kingrage: { id: 'kingrage', name: '킹의 분노', desc: '8초간 모든 탄이 2마리를 꿰뚫고 피해 +30% · 뇌절이 두 배로 쌓인다.', cd: s(70), ult: true },
+  // 풍월덕 — 바람: 휩쓸고 지나간다
+  gust: { id: 'gust', name: '돌풍', desc: '주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.', cd: s(9) },
+  windstep: { id: 'windstep', name: '순풍', desc: '구르기가 모두 차고 4초간 이동 +40%.', cd: s(12) },
+  typhoon: { id: 'typhoon', name: '태풍', desc: '커서 지점(8칸까지)에 6초 소용돌이 — 안의 괴물을 가운데로 끌어당기고 0.5초마다 30 피해.', cd: s(70), ult: true, reach: 8 * 32 },
+  // 통천덕 — 치킨: 버티며 한 방
+  snack: { id: 'snack', name: '치킨 한 입', desc: '체력 30% 회복 · 4초간 연사 +30%.', cd: s(15) },
+  trap: { id: 'trap', name: '덫', desc: '커서 지점(7칸까지)에 덫(20초). 처음 밟은 괴물 둘레 2칸에 120 피해 · 3초 기절.', cd: s(12), reach: 7 * 32 },
+  angelshot: { id: 'angelshot', name: '천사의 한 발', desc: '모든 것을 꿰뚫는 거대한 한 발 — 400 피해, 약점을 겨누면 치명타.', cd: s(70), ult: true },
+  // 우재덕 — 런웨이: 길게 가로지른다
+  catwalk: { id: 'catwalk', name: '런웨이 워크', desc: '조준 방향으로 7칸 긴 돌진(무적). 지나는 괴물에 60 피해 · 밀침.', cd: s(8) },
+  flashbulb: { id: 'flashbulb', name: '플래시 세례', desc: '커서 지점(9칸까지) 3칸에 20 피해 · 2초 기절 · 6초간 드러남과 받는 피해 +30%.', cd: s(12), reach: 9 * 32 },
+  encore: { id: 'encore', name: '앙코르', desc: '다른 스킬의 재사용 대기를 모두 끝내고 집중을 가득 · 6초간 연사 +50%.', cd: s(80), ult: true },
 }
 
 /** 캐릭터별 [Q, E, X]. 1차 6명 밖의 캐릭터는 무기가 같은 1차 캐릭터 것을 빌린다(M7 에서 제 것을 준다) */
@@ -70,6 +101,12 @@ export const TREE_ACTIVE: Record<string, SkillId[]> = {
   magic: ['firstaid', 'flame', 'ironwall', 'broadcast', 'grenade'],
   seungwoo: ['pancharge', 'oil', 'ironwall', 'flame', 'barrage'],
   oknyang: ['catstep', 'railshot', 'pierce', 'oil', 'fanfire'],
+  jupeol: ['flash', 'mirror', 'fanfire', 'barrage', 'oil'],
+  uwon: ['stunt', 'curtain', 'broadcast', 'catstep', 'fanfire'],
+  giyeol: ['overdrive', 'shout', 'pierce', 'grenade', 'flashbulb'],
+  pungwol: ['gust', 'windstep', 'flame', 'firstaid', 'pancharge'],
+  tongdak: ['snack', 'trap', 'railshot', 'catstep', 'broadcast'],
+  juwoojae: ['catwalk', 'flashbulb', 'pierce', 'stunt', 'curtain'],
 }
 export const PASSIVES: { name: string; desc: string }[] = [
   { name: '총기 숙련', desc: '피해 +4% / 랭크' },
@@ -151,13 +188,12 @@ export const CHAR_SKILLS: Record<CharacterId, [SkillId, SkillId, SkillId]> = {
   magic: ['firstaid', 'flame', 'surgery'],
   seungwoo: ['pancharge', 'oil', 'kitchen'],
   oknyang: ['catstep', 'railshot', 'ninelives'],
-  // 아직 고를 수 없는 캐릭터 (무기 기준으로 빌림)
-  jupeol: ['pierce', 'fanfire', 'composure'],
-  uwon: ['broadcast', 'fanfire', 'spotlight'],
-  giyeol: ['pierce', 'grenade', 'composure'],
-  pungwol: ['firstaid', 'flame', 'surgery'],
-  tongdak: ['catstep', 'railshot', 'ninelives'],
-  juwoojae: ['pierce', 'grenade', 'composure'],
+  jupeol: ['flash', 'mirror', 'supernova'],
+  uwon: ['stunt', 'curtain', 'redcarpet'],
+  giyeol: ['overdrive', 'shout', 'kingrage'],
+  pungwol: ['gust', 'windstep', 'typhoon'],
+  tongdak: ['snack', 'trap', 'angelshot'],
+  juwoojae: ['catwalk', 'flashbulb', 'encore'],
 }
 
 /** 스킬 칸 키 (칸 번호 = PlayerState.cd 번호: 0 Q · 1 E · 2 X · 3 [1] · 4 [2]) */
@@ -187,4 +223,12 @@ export const FX_PARTYDR = 5
 export const FX_SNIPE = 6
 /** 돌진·도약 중 (움직임은 dashTimer 가 맡고, 이 값은 돌진 피해를 준다) */
 export const FX_CHARGE = 7
-export const FX_COUNT = 8
+/** 반사광 (주펄덕): 받는 피해 -60% · 때린 괴물에게 1.5배 */
+export const FX_REFLECT = 8
+/** 레드카펫 (우원덕): 구르기가 줄지 않고 구를 때마다 주변을 친다 */
+export const FX_CARPET = 9
+/** 킹의 분노 (기열덕): 탄 관통 2 · 피해 +30% · 뇌절 두 배 */
+export const FX_KING = 10
+/** 순풍 (풍월덕): 이동 +40% */
+export const FX_SWIFT = 11
+export const FX_COUNT = 12

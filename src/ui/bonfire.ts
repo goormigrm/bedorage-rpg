@@ -98,10 +98,17 @@ export class BonfireScene {
     this.scene.add(this.embers)
 
     // 캐릭터: 불 뒤편 반원, 불을 바라본다
+    // 여섯씩 두 줄 (앞줄 가까이 · 뒷줄 한 발 뒤) — 12명이 한 줄이면 겹친다
+    const row = 6
     ids.forEach((id, i) => {
       const rig = buildCharacter(CHARACTERS[id])
-      const a = ((i - (ids.length - 1) / 2) / Math.max(1, ids.length - 1)) * 2.3
-      const home = new THREE.Vector3(Math.sin(a) * 3.4, 0, -Math.cos(a) * 2.1 + 0.3)
+      const back = Math.floor(i / row)
+      const j = i % row
+      const n = Math.min(row, ids.length - back * row)
+      const a = ((j - (n - 1) / 2) / Math.max(1, n - 1)) * (back ? 2.0 : 2.3) + (back ? 0.12 : 0)
+      const rx = back ? 4.6 : 3.4
+      const rz = back ? 3.2 : 2.1
+      const home = new THREE.Vector3(Math.sin(a) * rx, 0, -Math.cos(a) * rz + 0.3)
       // 불 옆 앞자리 — 불빛을 옆에서 받는다 (불 앞에 서면 불을 등져 새까맣다)
       const front = new THREE.Vector3(1.25, 0, 1.7)
       rig.root.position.copy(home)

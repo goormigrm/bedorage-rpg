@@ -61,9 +61,10 @@ describe('스킬 — 캐릭터마다 셋', () => {
       step(s, map, [press(BTN_ULT)])
       for (const e of s.events) if (e.type === 'skill') seen.push(e.id)
       expect(seen).toEqual(CHAR_SKILLS[c])
-      // 대기 중에는 다시 안 쓰인다
+      // 대기 중에는 다시 안 쓰인다 (앙코르는 다른 스킬 대기를 끝내는 궁극기라 예외)
       step(s, map, [press(BTN_SKILL1)])
-      expect(s.events.some((e) => e.type === 'skill')).toBe(false)
+      if (CHAR_SKILLS[c][2] !== 'encore') expect(s.events.some((e) => e.type === 'skill')).toBe(false)
+      else expect(s.events.some((e) => e.type === 'skill')).toBe(true)
     }
   })
 

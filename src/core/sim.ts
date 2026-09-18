@@ -28,7 +28,7 @@ import { botInput, makeBot } from './bot'
 import { ACTS, AreaLayout, QUESTS, WAYPOINTS, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
-  CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
+  CHAR_SKILLS, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_SNIPE, FX_SWIFT, FX_WHIRL,
   MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
 import {
@@ -37,7 +37,7 @@ import {
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
-  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills, MoveHow, SimEvent,
+  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, isActive, isEnemy, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -949,6 +949,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     legCd: 0,
     focus: 50,
     dashCharges: 2,
+    carpetDmg: 0,
     build: sanitizeBuild(sh.build),
     spBonus: questPoints(sh.quests ?? []),
     quests: Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, sh.quests?.[i] ?? 0))),
@@ -1116,7 +1117,7 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)
-  stepZones(state)
+  stepZones(state, map)
   stepThrows(state, map, grid)
   stepBullets(state, map, grid)
   stepShots(state, map)
@@ -1295,6 +1296,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     if (p.shrineT > 0 && p.shrine === 3) speed *= 1.2
     if (p.build.r[8] > 0) speed *= 1 + 0.02 * p.build.r[8]
     if (p.fx[FX_WHIRL] > 0) speed *= 1.3
+    if (p.fx[FX_SWIFT] > 0) speed *= 1.4
     speed *= 1 + p.st[ST_SPEED] / 100
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, mx * inv * speed, my * inv * speed)
     p.x = r.x
@@ -1316,6 +1318,11 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     p.dashCooldown = dungeon ? (p.dashCooldown > 0 ? p.dashCooldown : dashRecharge(p)) : c.dashCooldown
     p.ads = false
     if (c.id === 'uwon') p.invuln = Math.max(p.invuln, p.dashTimer + UWON.invulnAfterDash)
+    // 레드카펫: 구르기가 줄지 않고, 구를 때마다 주변을 친다
+    if (p.fx[FX_CARPET] > 0) {
+      if (dungeon) p.dashCharges = Math.min(DASH_MAX, p.dashCharges + 1)
+      aoe(state, map, p, p.x, p.y, 2.5 * TILE, p.carpetDmg, { stun: 30, knock: 4, id: 'redcarpet' })
+    }
     state.events.push({ type: 'dash', p: p.id })
   }
 
@@ -1478,6 +1485,7 @@ function takenMul(p: PlayerState): number {
   let k = 1 - p.st[ST_DR] / 100
   if (p.fx[FX_GUARD] > 0) k *= 0.5
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
+  if (p.fx[FX_REFLECT] > 0) k *= 0.4
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
   if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
   if (hasLeg(p, LEG_GUARD)) k *= 0.92
@@ -1505,6 +1513,11 @@ function panBlock(state: GameState, p: PlayerState, dmg: number, sx: number, sy:
 /** 몬스터가 플레이어를 때린다(던전). 실제로 맞았으면 true (구르는 중·무적이면 false — 투사체는 그대로 지나간다) */
 function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, sx: number, sy: number): boolean {
   if (!isActive(p) || p.invuln > 0 || p.dashTimer > 0 || state.phase !== 'playing') return false
+  // 반사광: 때린 괴물이 받은 피해의 1.5배를 돌려받는다
+  if (p.fx[FX_REFLECT] > 0 && by >= 0) {
+    const m = state.monsters.find((q) => q.id === by && q.hp > 0)
+    if (m) hurtMonster(state, m, Math.round(dmg * 1.5), p.id, false, m.x, m.y)
+  }
   dmg = panBlock(state, p, Math.round(dmg * takenMul(p)), sx, sy)
   if (dmg <= 0) return true
   p.hp -= dmg
@@ -1763,9 +1776,9 @@ function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a
     headTarget: o.headTarget,
     critMon: o.critMon,
     overR: o.overR,
-    pierce: o.pierce ?? 0,
+    pierce: (o.pierce ?? 0) + (p.fx[FX_KING] > 0 ? 2 : 0),
     lastHit: 0,
-    mul: o.mul ?? 1,
+    mul: (o.mul ?? 1) * (p.fx[FX_KING] > 0 ? 1.3 : 1),
     forceCrit: p.fx[FX_CRIT] > 0,
   }
   state.bullets.push(b)
@@ -2007,6 +2020,112 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_SNIPE] = 480
       buffRate(p, 480, 3)
       break
+    // ---- 주펄덕
+    case 'flash':
+      aoe(state, map, p, p.x, p.y, 3.5 * T, 25, { stun: 90, id })
+      break
+    case 'mirror':
+      p.fx[FX_REFLECT] = 180
+      break
+    case 'supernova':
+      aoe(state, map, p, p.x, p.y, 6 * T, 200, { stun: 150, knock: 10, id })
+      break
+    // ---- 우원덕
+    case 'stunt': {
+      p.dashDx = cosA(p.aim)
+      p.dashDy = sinA(p.aim)
+      p.fx[FX_CHARGE] = 11
+      p.chargeTag = 0
+      p.ads = false
+      const { x: mx, y: my } = muzzle(map, p)
+      const headTarget = aimedEnemy(state, p)
+      const critMon = aimedMonster(state, map, p)
+      for (let i = 0; i < 6; i++) spawnBullet(state, p, mx, my, (p.aim + Math.round(((i - 2.5) / 2.5) * deg(18))) & 1023, 'pistol', { headTarget, critMon, over: false, overR: 0 })
+      p.shots += 6
+      state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'pistol' })
+      break
+    }
+    case 'curtain':
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 7 * T) continue
+        m.slow = Math.max(m.slow, 240)
+        m.mark = Math.max(m.mark, 240)
+        m.vuln = Math.max(m.vuln, 240)
+        m.vulnPct = Math.max(m.vulnPct, 20)
+      }
+      break
+    case 'redcarpet':
+      p.fx[FX_CARPET] = 480
+      p.carpetDmg = Math.round(70 * skillPow)
+      break
+    // ---- 기열덕
+    case 'overdrive':
+      p.streak = Math.max(p.streak, GIYEOL.maxStacks)
+      buffRate(p, 300, 1.3)
+      break
+    case 'shout':
+      aoe(state, map, p, p.x, p.y, 5 * T, 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
+      break
+    case 'kingrage':
+      p.fx[FX_KING] = 480
+      break
+    // ---- 풍월덕
+    case 'gust':
+      aoe(state, map, p, p.x, p.y, 4 * T, 30, { knock: 12, stun: 60, id })
+      break
+    case 'windstep':
+      if (state.mode === 'dungeon') {
+        p.dashCharges = DASH_MAX
+        p.dashCooldown = 0
+      }
+      p.fx[FX_SWIFT] = 240
+      break
+    case 'typhoon':
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_VORTEX, owner: p.id, x: tx, y: ty, r: 3.5 * T, t: 360, max: 360, dmg: Math.round(30 * skillPow) })
+      break
+    // ---- 통천덕
+    case 'snack': {
+      const amount = Math.min(p.maxHp - p.hp, Math.round(p.maxHp * 0.3 * skillPow))
+      if (amount > 0) {
+        p.hp += amount
+        state.events.push({ type: 'heal', p: p.id, x: p.x, y: p.y, amount })
+      }
+      buffRate(p, 240, 1.3)
+      break
+    }
+    case 'trap':
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_TRAP, owner: p.id, x: tx, y: ty, r: 1.2 * T, t: 1200, max: 1200, dmg: Math.round(120 * skillPow) })
+      break
+    case 'angelshot': {
+      const { x: mx, y: my } = muzzle(map, p)
+      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 400, life: 60, pierce: 99, headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
+      p.shots++
+      state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
+      break
+    }
+    // ---- 우재덕
+    case 'catwalk':
+      p.dashDx = cosA(p.aim)
+      p.dashDy = sinA(p.aim)
+      p.fx[FX_CHARGE] = 20
+      p.chargeTag = state.nextFxId++
+      p.ads = false
+      break
+    case 'flashbulb': {
+      aoe(state, map, p, tx, ty, 3 * T, 20, { stun: 120, id })
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - tx, m.y - ty) > 3 * T) continue
+        m.mark = Math.max(m.mark, 360)
+        m.vuln = Math.max(m.vuln, 360)
+        m.vulnPct = Math.max(m.vulnPct, 30)
+      }
+      break
+    }
+    case 'encore':
+      for (let k = 0; k < p.cd.length; k++) if (k !== slot) p.cd[k] = 0
+      p.focus = 100
+      buffRate(p, 360, 1.5)
+      break
   }
 }
 
@@ -2016,7 +2135,7 @@ function chargeHit(state: GameState, map: GameMap, p: PlayerState): void {
 }
 
 /** 땅의 효과: 스포트라이트 — 안의 몬스터는 느려지고 약해지고, 안의 동료는 빨리 쏜다 */
-function stepZones(state: GameState): void {
+function stepZones(state: GameState, map: GameMap): void {
   if (state.zones.length === 0) return
   let write = 0
   for (const z of state.zones) {
@@ -2026,7 +2145,28 @@ function stepZones(state: GameState): void {
       if (z.kind === ZONE_FUSE) booms.push({ x: z.x, y: z.y, r: z.r, dmg: z.dmg, by: -2 })
       continue
     }
-    if (z.kind === ZONE_ACID) {
+    if (z.kind === ZONE_VORTEX) {
+      // 태풍: 안의 괴물을 가운데로 끌어당기고(보스는 조금) 30틱마다 친다
+      const owner = state.players[z.owner]
+      for (const m of state.monsters) {
+        if (m.hp <= 0) continue
+        const dx = z.x - m.x
+        const dy = z.y - m.y
+        const d = len(dx, dy)
+        if (d > z.r || d < 4) continue
+        const k = 1.2 * (1 - MONSTER_LIST[m.kind].knockRes)
+        m.kx += (dx / d) * k
+        m.ky += (dy / d) * k
+      }
+      if (owner && z.t % 30 === 0) aoe(state, map, owner, z.x, z.y, z.r, z.dmg, { id: 'typhoon', quiet: true })
+    } else if (z.kind === ZONE_TRAP) {
+      // 덫: 처음 밟은 괴물 둘레를 치고 사라진다
+      const owner = state.players[z.owner]
+      if (owner && state.monsters.some((m) => m.hp > 0 && m.st !== MS_SLEEP && len(m.x - z.x, m.y - z.y) <= z.r)) {
+        aoe(state, map, owner, z.x, z.y, 2 * TILE, z.dmg, { stun: 180, id: 'trap' })
+        continue
+      }
+    } else if (z.kind === ZONE_ACID) {
       // 산성 웅덩이: 안에 선 사람이 주기마다 다친다 (구르는 중·무적이면 hurtPlayer 가 거른다)
       if (z.t % ACID.every === 0) {
         for (const q of state.players) {
@@ -2182,7 +2322,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
   dmg = Math.round(dmg)
   b.hitSomeone = true
-  shooter.streak = Math.min(99, shooter.streak + 1)
+  shooter.streak = Math.min(99, shooter.streak + (shooter.fx[FX_KING] > 0 ? 2 : 1))
   const speed = len(b.vx, b.vy) || 1
   const k = w.knock * (1 - def.knockRes)
   m.kx += (b.vx / speed) * k

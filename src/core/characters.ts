@@ -316,7 +316,8 @@ export const PROTAGONIST: CharacterDef = CHARACTERS.cheolmyeon
  * 기관총(탱커) · 소총(원거리) · 권총(정찰) · 산탄총(치유) · 후라이팬(근접) · 저격총(보스 딜). 나머지는 M7.
  * 순서가 로비 목록 순서다.
  */
-export const PLAYABLE: CharacterId[] = ['cheolmyeon', 'chim', 'dangun', 'magic', 'seungwoo', 'oknyang']
+// D7(2026-09-18): 12명 모두. 뒤 여섯은 제 스킬(skills.ts)을 받았다
+export const PLAYABLE: CharacterId[] = ['cheolmyeon', 'chim', 'dangun', 'magic', 'seungwoo', 'oknyang', 'jupeol', 'uwon', 'giyeol', 'pungwol', 'tongdak', 'juwoojae']
 
 export function isPlayable(id: CharacterId): boolean {
   return PLAYABLE.includes(id)

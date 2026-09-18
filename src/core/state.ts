@@ -218,6 +218,8 @@ export interface PlayerState {
   focus: number
   /** 구르기 충전 (던전 — 최대 2, dashCooldown 이 다시 차는 시간) */
   dashCharges: number
+  /** 레드카펫 한 번 피해 (시전 때의 스킬 위력으로 정한다) */
+  carpetDmg: number
   /** 스킬 트리 빌드 */
   build: { r: number[]; m3: number[]; m5: number[]; s: number[] }
   /** 퀘스트로 받은 스킬 포인트 (D5) */
@@ -454,6 +456,10 @@ export const ZONE_SPOTLIGHT = 0
 export const ZONE_FUSE = 1
 /** 산성 웅덩이(토사꾼): 안에 선 사람이 ACID.every 틱마다 다친다 (몬스터 편) */
 export const ZONE_ACID = 2
+/** 태풍 (풍월덕): 안의 괴물을 가운데로 끌어당기고 30틱마다 친다 (플레이어 편, dmg = 한 번 피해) */
+export const ZONE_VORTEX = 3
+/** 덫 (통천덕): 처음 밟은 괴물 둘레를 치고 사라진다 (플레이어 편) */
+export const ZONE_TRAP = 4
 
 /** 던진 것 (수류탄) — t 가 0 이 되면 터진다 */
 export interface Throw {

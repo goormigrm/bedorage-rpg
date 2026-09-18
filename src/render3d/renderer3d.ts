@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { ACID, LORD, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
 import { ACTS, AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
@@ -1909,7 +1909,8 @@ export class Renderer3D {
       }
     }
     if (e.id === 'broadcast') this.spawnRing(x, z, 0.5, 18, 0.9, 0xb99cff)
-    if (e.id === 'pancharge' || e.id === 'catstep') {
+    if (e.id === 'curtain') this.spawnRing(x, z, 0.5, 7, 0.8, 0xd0506a)
+    if (e.id === 'pancharge' || e.id === 'catstep' || e.id === 'stunt' || e.id === 'catwalk') {
       for (let k = 0; k < 10; k++) {
         const a = Math.random() * Math.PI * 2
         this.spawnParticle(x, 0.3, z, Math.cos(a) * 0.04, 0.05, Math.sin(a) * 0.04, 0.5, 0xd8c8a8, 0.6)
@@ -1933,7 +1934,7 @@ export class Renderer3D {
       const col = e.id === 'flame' ? (k % 2 === 0 ? 0xff8a3a : 0xffd26a) : e.id === 'oil' ? 0xe8d060 : e.id === 'grenade' ? (k % 2 === 0 ? 0xffb050 : 0x3a3530) : color
       this.spawnParticle(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp, 0.06 + Math.random() * 0.1, Math.sin(a) * sp, 0.5 + Math.random() * 0.3, col, 0.7)
     }
-    if (e.id === 'grenade' || e.id === 'roar') {
+    if (e.id === 'grenade' || e.id === 'roar' || e.id === 'supernova' || e.id === 'trap') {
       this.spawnImpact(x, 0.8, z, color, r * 2.2)
       this.shake = Math.max(this.shake, 0.25)
     }
@@ -1947,14 +1948,18 @@ export class Renderer3D {
       let g = this.zoneMeshes.get(zn.id)
       const fuse = zn.kind === ZONE_FUSE
       const acid = zn.kind === ZONE_ACID
+      const vortex = zn.kind === ZONE_VORTEX
+      const trap = zn.kind === ZONE_TRAP
       if (!g) {
         g = new THREE.Group()
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: acid ? 0x6aff2a : fuse ? 0xff3a1a : 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const cDisc = acid ? 0x6aff2a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : 0xfff0b0
+        const cRim = acid ? 0x9aff3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : 0xffe07a
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: acid ? 0x9aff3a : fuse ? 0xff5a2a : 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        const beam = new THREE.PointLight(acid ? 0x8aff4a : fuse ? 0xff4a20 : 0xfff0c0, acid ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
+        const beam = new THREE.PointLight(acid ? 0x8aff4a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
         beam.position.y = 3
         g.add(beam)
         this.scene.add(g)
@@ -1962,6 +1967,19 @@ export class Renderer3D {
       }
       g.position.set(zn.x * U, 0.04, zn.y * U)
       g.scale.set(zn.r * U, 1, zn.r * U)
+      if (vortex) {
+        // 태풍: 돌며 안쪽으로 빨려 드는 입자
+        g.rotation.y = this.t * 4
+        if (Math.random() < 0.6) {
+          const a = Math.random() * Math.PI * 2
+          const d = zn.r * U * (0.5 + Math.random() * 0.5)
+          const px = zn.x * U + Math.cos(a) * d
+          const pz = zn.y * U + Math.sin(a) * d
+          this.spawnParticle(px, 0.3 + Math.random() * 0.8, pz, -Math.cos(a) * 0.06 - Math.sin(a) * 0.05, 0.02, -Math.sin(a) * 0.06 + Math.cos(a) * 0.05, 0.5, 0xc0f0ff, 0.5)
+        }
+        continue
+      }
+      if (trap) continue
       if (acid) {
         // 산성 웅덩이: 부글거리며, 끝나 갈수록 옅어진다
         const fade = Math.min(1, zn.t / 40)
@@ -2540,6 +2558,12 @@ const SKILL_COLOR: Record<string, number> = {
   firstaid: 0x7ee0a0, flame: 0xff8a3a, surgery: 0xb0ffcc,
   pancharge: 0xffb070, oil: 0xe8d060, kitchen: 0xff5a3a,
   catstep: 0x9cc8ff, railshot: 0x9cc8ff, ninelives: 0xffd86a,
+  flash: 0xfff4a0, mirror: 0xc8f0ff, supernova: 0xffe070,
+  stunt: 0xe8c070, curtain: 0xd0506a, redcarpet: 0xff4a5a,
+  overdrive: 0xff9a3a, shout: 0xffb050, kingrage: 0xffd040,
+  gust: 0xa0f0e0, windstep: 0xa0f0e0, typhoon: 0x70d0ff,
+  snack: 0xffc070, trap: 0xc09060, angelshot: 0xfff0c0,
+  catwalk: 0xf0a0d0, flashbulb: 0xffffff, encore: 0xffd0f0,
 }
 
 /** 빛줄기 텍스처: 머리(u=1)는 밝고 꼬리(u=0)로 갈수록 사라진다. 위아래 가장자리도 부드럽게 */
