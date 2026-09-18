@@ -9,9 +9,9 @@ import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/map
 import { createState, dropPlayer, enterFloor, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
 import { floorSeed } from '../core/dungeon'
 import { angleToRad } from '../core/fixedmath'
-import { DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
+import { DEATH_RULE_LABEL, DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { Sheet, emptySheet, sanitizeSheet } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, Sheet, emptySheet, sanitizeSheet } from '../core/items'
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
@@ -1122,10 +1122,12 @@ export class Session {
         const acc = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0
         const critPct = p.hits > 0 ? Math.round((p.heads / p.hits) * 100) : 0
         const me = i === this.cfg.localPlayer ? ' class="me"' : ''
-        return `<tr${me}><td class="nick">${this.names[i]}</td><td>${CHARACTERS[p.char].name}</td>
+        return `<tr${me}><td class="nick">${this.names[i]}</td><td>${CHARACTERS[p.char].name} <small>Lv ${p.level}</small></td>
           <td class="n">${p.kills}</td><td class="n">${p.deaths}</td><td class="n">${p.revives}</td>
           <td class="n">${acc}%</td><td class="n">${critPct}%</td>
-          <td class="n">${Math.round(p.dmgDealt)}</td><td class="n">${Math.round(p.dmgTaken)}</td></tr>`
+          <td class="n">${Math.round(p.dmgDealt)}</td><td class="n">${Math.round(p.dmgTaken)}</td>
+          <td class="n">+${p.xpGain}</td><td class="n">${p.goldGain >= 0 ? '+' : ''}${p.goldGain}</td>
+          <td class="n">${p.found}${p.bestFound >= 0 ? ` <small style="color:${RARITY_COLORS[p.bestFound]}">${RARITY_NAMES[p.bestFound]}</small>` : ''}</td></tr>`
       })
       .join('')
     const alive = this.state.players.map((p, i) => ({ p, i })).filter(({ p }) => !p.vacant)
@@ -1142,9 +1144,9 @@ export class Session {
     ].filter(Boolean)
     const mvpLine = mvp.length ? `<p class="statsmvp">⭐ ${mvp.join(' · ')}</p>` : ''
     return `<div class="stats">${mvpLine}<table>
-      <thead><tr><th>이름</th><th>캐릭터</th><th>처치</th><th>사망</th><th>부활</th><th>명중</th><th>치명</th><th>준 피해</th><th>받은 피해</th></tr></thead>
+      <thead><tr><th>이름</th><th>캐릭터</th><th>처치</th><th>사망</th><th>부활</th><th>명중</th><th>치명</th><th>준 피해</th><th>받은 피해</th><th>경험치</th><th>골드</th><th>주운 것</th></tr></thead>
       <tbody>${rows}</tbody></table>
-      <p class="statsnote">명중률은 탄 단위입니다 (산탄총 한 발 = 탄 7개). 치명은 커서를 약점(몸 한가운데)에 올리고 맞힌 비율. 부활은 동료를 일으킨 횟수.</p></div>`
+      <p class="statsnote">명중률은 탄 단위입니다 (산탄총 한 발 = 탄 7개). 치명은 커서를 약점(몸 한가운데)에 올리고 맞힌 비율. 부활은 동료를 일으킨 횟수. 경험치·골드·주운 것은 이번 원정에서 얻은 것(소실 규칙이면 잃은 골드를 뺀 값, 주운 것 옆은 가장 높은 등급).${this.state.deathRule === 2 && this.state.players[this.cfg.localPlayer]?.out ? ' <b>하드코어 탈락 — 이번 원정에서 얻은 것은 저장되지 않았습니다.</b>' : ''}</p></div>`
   }
 
   /** 투기장 결과표 (덕 그대로): 킬 · 데스 · 연속 · 명중 · 헤드 · 준/받은 피해 */
@@ -1429,7 +1431,7 @@ export class Session {
       ? isTeamMatch(this.state)
         ? `${w === 0 ? 'A팀' : 'B팀'} 승리 · A팀 ${teamKills(this.state, 0)} : ${teamKills(this.state, 1)} B팀`
         : this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
-      : `${this.map.name} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초`
+      : `${this.map.name} ${this.state.floor}층${cleared ? '' : ` / ${this.state.floorMax}층`} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초 · 죽음 규칙 ${DEATH_RULE_LABEL[this.state.deathRule]}`
     const stats = this.statsTable()
     setTimeout(() => {
       if (this.disposed) return

@@ -311,6 +311,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     magSize,
     xpGain: 0,
     goldGain: 0,
+    found: 0,
+    bestFound: -1,
   }
 }
 
@@ -1577,6 +1579,9 @@ function pickUp(state: GameState, p: PlayerState): void {
     if (d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
     if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
     p.bag.push(d.item)
+    // 내가 버렸다 다시 주운 것도 센다 — 드물고, 결과표는 대략이면 된다
+    p.found++
+    if (d.item.rarity > p.bestFound) p.bestFound = d.item.rarity
     state.drops.splice(i, 1)
     state.events.push({ type: 'pickup', p: p.id, rarity: d.item.rarity, uid: d.item.uid })
     return

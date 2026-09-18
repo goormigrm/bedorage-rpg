@@ -185,6 +185,9 @@ export interface PlayerState {
   /** 이번 판에서 얻은 경험치·골드 (결과표) */
   xpGain: number
   goldGain: number
+  /** 이번 판에서 주운 아이템 수 · 그중 가장 높은 등급(-1 = 없음) */
+  found: number
+  bestFound: number
 }
 
 export interface Bullet {
