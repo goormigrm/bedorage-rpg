@@ -313,11 +313,118 @@ function goblinParts(): Part[] {
   ]
 }
 
+/** 늑대: 낮고 긴 몸 · 뾰족한 주둥이 · 네 다리 · 붉은 눈. 예고 때 몸을 낮췄다가 덤빈다 */
+function wolfParts(): Part[] {
+  const fur = lambert(0x7a7266)
+  const dark = lambert(0x3e3a34)
+  const eye = glow(0xff4a2a)
+  const leg = cap(0.05, 0.22)
+  const legs: [number, number][] = [[-0.12, 0.2], [0.12, 0.2], [-0.12, -0.2], [0.12, -0.2]]
+  return [
+    part(cap(0.18, 0.5).rotateX(Math.PI / 2), fur, true, (a, o) => {
+      o.position.set(0, 0.34 - a.wind * 0.08 + Math.abs(sin(a.walk * 2)) * 0.03 * a.move, a.swing * 0.12)
+      o.rotation.set(-a.wind * 0.15, 0, 0)
+      o.scale.set(1, 1 - a.squash * 0.3, 1)
+    }),
+    part(new THREE.SphereGeometry(0.16, 10, 8), fur, true, (a, o) => {
+      o.position.set(0, 0.42 - a.wind * 0.1, 0.42 + a.swing * 0.15)
+      o.scale.set(1, 0.9, 1.1)
+    }),
+    part(new THREE.ConeGeometry(0.08, 0.22, 6).rotateX(Math.PI / 2), dark, false, (a, o) => {
+      o.position.set(0, 0.38 - a.wind * 0.1, 0.6 + a.swing * 0.15)
+      o.scale.setScalar(1)
+    }),
+    part(mergeGeometries([new THREE.ConeGeometry(0.05, 0.12, 4).translate(-0.08, 0, 0), new THREE.ConeGeometry(0.05, 0.12, 4).translate(0.08, 0, 0)])!, fur, false, (a, o) => {
+      o.position.set(0, 0.58 - a.wind * 0.1, 0.4 + a.swing * 0.15)
+      o.scale.setScalar(1)
+    }),
+    part(mergeGeometries([new THREE.SphereGeometry(0.025, 6, 5).translate(-0.06, 0, 0), new THREE.SphereGeometry(0.025, 6, 5).translate(0.06, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 0.47 - a.wind * 0.1, 0.55 + a.swing * 0.15)
+      o.scale.setScalar(1 + a.wind * 0.6)
+    }, false),
+    part(cap(0.04, 0.3).rotateX(-0.9), fur, false, (a, o) => {
+      o.position.set(0, 0.4, -0.45)
+      o.rotation.set(0, sin(a.walk * 2) * 0.4 * a.move, 0)
+      o.scale.setScalar(1)
+    }),
+    ...legs.map(([lx, lz], k) =>
+      part(leg, dark, false, (a, o) => {
+        o.position.set(lx, 0.15, lz)
+        o.rotation.set(sin(a.walk * 2 + (k % 2 === 0 ? 0 : Math.PI) + (k < 2 ? 0 : Math.PI / 2)) * 0.7 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
+/** 독거미 · 거미 여왕: 둥근 배 · 작은 머리 · 다리 여덟(한쪽 넷씩) · 붉은 눈 여럿. 여왕은 보랏빛 배에 흰 무늬 */
+function spiderParts(queen = false): Part[] {
+  const body = lambert(queen ? 0x6a3a76 : 0x4e4238)
+  const mark = lambert(queen ? 0xe8e0f0 : 0xb03a2a)
+  const leg = lambert(0x3a322c)
+  const eye = glow(0xff2a2a)
+  const legGeo = (side: number) =>
+    mergeGeometries([0, 1, 2, 3].map((k) => cap(0.025, 0.42).rotateZ(side * 1.0).rotateY(side * (0.9 - k * 0.55)).translate(side * 0.22, 0.18, 0.18 - k * 0.12)))!
+  return [
+    part(new THREE.SphereGeometry(0.34, 12, 10), body, true, (a, o) => {
+      o.position.set(0, 0.3 + Math.abs(sin(a.walk * 3)) * 0.02 * a.move, -0.2)
+      o.scale.set(1 + a.squash * 0.2 + a.wind * 0.1, 0.85, 1.1)
+    }),
+    part(new THREE.SphereGeometry(0.12, 8, 6).scale(1.3, 0.4, 1), mark, false, (a, o) => {
+      o.position.set(0, 0.56, -0.24)
+      o.scale.setScalar(1 + a.wind * 0.1)
+    }, false),
+    part(new THREE.SphereGeometry(0.16, 10, 8), body, true, (a, o) => {
+      o.position.set(0, 0.26, 0.16 + a.swing * 0.08)
+      o.scale.set(1, 0.8, 1)
+    }),
+    part(mergeGeometries([-0.06, -0.02, 0.02, 0.06].map((x) => new THREE.SphereGeometry(0.02, 5, 4).translate(x, Math.abs(x) * 0.4, 0)))!, eye, false, (a, o) => {
+      o.position.set(0, 0.32, 0.3 + a.swing * 0.08)
+      o.scale.setScalar(1 + a.wind * 0.8)
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(legGeo(side), leg, false, (a, o) => {
+        o.position.set(0, 0, 0)
+        o.rotation.set(sin(a.walk * 3 + (side > 0 ? 0 : Math.PI)) * 0.2 * a.move, sin(a.walk * 3) * 0.15 * a.move, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
+/** 버섯 주술사: 굽은 누더기 몸 · 머리 위 커다란 빛나는 버섯 갓 · 지팡이. 고칠 때 갓이 부풀어 빛난다 */
+function shamanParts(): Part[] {
+  const robe = lambert(0x6a5a40)
+  const skin = lambert(0x9aae78)
+  const cap0 = glow(0x9ad8a0)
+  const staff = lambert(0x3a2a1a)
+  return [
+    part(new THREE.ConeGeometry(0.34, 0.9, 10), robe, true, (a, o) => {
+      o.position.set(0, 0.45, 0)
+      o.rotation.set(0.15, 0, sin(a.walk) * 0.05 * a.move)
+      o.scale.set(1 + a.squash * 0.2, 1 - a.squash * 0.2, 1)
+    }),
+    part(new THREE.SphereGeometry(0.16, 10, 8), skin, true, (_a, o) => {
+      o.position.set(0, 0.92, 0.1)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.SphereGeometry(0.34, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.55, 1), cap0, false, (a, o) => {
+      o.position.set(0, 1.04, 0.06)
+      o.scale.setScalar(1 + a.wind * 0.35)
+    }, false),
+    part(cap(0.03, 1.1), staff, false, (a, o) => {
+      o.position.set(0.28, 0.6, 0.12)
+      o.rotation.set(0.1 - a.wind * 0.4, 0, -0.1)
+      o.scale.setScalar(1)
+    }),
+  ]
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
-const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts]
+const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts, wolfParts, () => spiderParts(), shamanParts, () => spiderParts(true)]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8]
 
 export class MonsterView {
   readonly group = new THREE.Group()

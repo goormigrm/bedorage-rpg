@@ -5,7 +5,7 @@ import { CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
-import { areaLayout } from '../src/core/world'
+import { ACTS, areaLayout } from '../src/core/world'
 import { createState, hashState, snapshot, step } from '../src/core/sim'
 import { GameState, MS_SLEEP } from '../src/core/state'
 import { GameMap } from '../src/core/map'
@@ -46,7 +46,9 @@ describe('던전 배치', () => {
       expect(new Set(s.monsters.map((m) => m.pack)).size).toBeGreaterThan(10)
       // 보통 층에는 보스가 없다
       const fighting = s.monsters.filter((m) => MONSTER_LIST[m.kind].attack !== 'flee')
-      expect(new Set(fighting.map((m) => m.kind)).size).toBe(MONSTER_LIST.filter((d) => !d.boss && d.attack !== 'flee').length)
+      // 1막 무리의 원형이 모두 나온다 (2막 늑대·거미는 없다)
+      const act1 = new Set(ACTS[0].packs.flatMap((pk) => pk.groups.map((g) => g[0])))
+      expect(new Set(fighting.map((m) => m.kind))).toEqual(act1)
     }
   })
 

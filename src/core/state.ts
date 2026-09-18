@@ -348,6 +348,10 @@ export interface Monster {
   pow: number
   /** 몬스터 레벨 (지역 레벨) — 경험치가 이것으로 오른다 */
   lvl: number
+  /** 보스 특수 패턴 재사용 대기 (틱) — 보통 공격(cd)과 따로 센다 */
+  scd: number
+  /** 보스가 특수 패턴을 몇 번 썼나 (번갈아 쓰기 · 단계) */
+  phase: number
   /** 정예 (무리의 우두머리) */
   elite: number
   /** 보스 공격 방식: 0 보통 · 1 돌진 (예고 중 · 돌진 중) */
@@ -369,6 +373,8 @@ export interface MShot {
   kind: number
   /** 쏜 몬스터 id (흡혈 정예) */
   by: number
+  /** 맞으면 느려지는 틱 (거미줄) */
+  slow: number
   x: number
   y: number
   vx: number
@@ -531,6 +537,9 @@ export type SimEvent =
   | { type: 'shotEnd'; x: number; y: number; kind: number }
   /** 폭발 */
   | { type: 'boom'; x: number; y: number; r: number }
+  /** 주술사가 주위 동료를 고쳤다 (초록 고리) · 보스가 새끼를 불렀다 */
+  | { type: 'mheal'; m: number; x: number; y: number; r: number }
+  | { type: 'summon'; m: number; x: number; y: number }
   | { type: 'drop'; x: number; y: number }
   | { type: 'heal'; p: number; x: number; y: number; amount: number }
   | { type: 'start' }

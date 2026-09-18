@@ -47,11 +47,11 @@ export function buildWorld(map: GameMap): World3D {
 
 /** 테마별 재료 */
 const LOOK: Record<WorldStyle, {
-  wall: 'stone' | 'rock' | 'town'
+  wall: 'stone' | 'rock' | 'town' | 'tree'
   wallH: [number, number]
   floor: 'flag' | 'marble' | 'dirt' | 'rock' | 'earth'
   crate: 'coffin' | 'rubble' | 'table' | 'boulder' | 'barrel'
-  props: ('bone' | 'skull' | 'candle' | 'grass' | 'tomb' | 'blood' | 'straw')[]
+  props: ('bone' | 'skull' | 'candle' | 'grass' | 'tomb' | 'blood' | 'straw' | 'shroom')[]
   decal: { crack: number; blood: number; moss: number }
   torches: number
 }> = {
@@ -60,6 +60,7 @@ const LOOK: Record<WorldStyle, {
   butchery: { wall: 'stone', wallH: [1.8, 2.1], floor: 'flag', crate: 'table', props: ['bone', 'skull', 'blood'], decal: { crack: 0.08, blood: 0.14, moss: 0.02 }, torches: 0.12 },
   fields: { wall: 'rock', wallH: [0.9, 1.6], floor: 'dirt', crate: 'boulder', props: ['grass', 'tomb', 'bone'], decal: { crack: 0.02, blood: 0.02, moss: 0.1 }, torches: 0 },
   cave: { wall: 'rock', wallH: [1.6, 2.3], floor: 'rock', crate: 'boulder', props: ['bone', 'skull'], decal: { crack: 0.08, blood: 0.03, moss: 0.06 }, torches: 0.05 },
+  forest: { wall: 'tree', wallH: [2.2, 3.4], floor: 'dirt', crate: 'boulder', props: ['grass', 'shroom', 'bone'], decal: { crack: 0.01, blood: 0.02, moss: 0.2 }, torches: 0 },
   town: { wall: 'town', wallH: [1.9, 1.9], floor: 'earth', crate: 'barrel', props: ['straw', 'grass'], decal: { crack: 0.01, blood: 0, moss: 0.03 }, torches: 0.12 },
 }
 
@@ -157,6 +158,23 @@ function buildDark(map: GameMap, style: WorldStyle): World3D {
       const trees = inst(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x2a221c }), vis.length)
       for (const [tx, ty] of vis) if (hash(tx, ty, 20) < 0.12) put(trees, tx + 0.5, 0, ty + 0.5, 1, 0.8 + hash(tx, ty, 21) * 0.6, 1, hash(tx, ty, 22) * 6.28)
     }
+  } else if (look.wall === 'tree') {
+    // 숲: 벽 칸마다 전나무 (줄기 + 겹친 잎 원뿔 셋). 높이·색이 저마다
+    const trunk = inst(new THREE.CylinderGeometry(0.1, 0.16, 1, 6).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: 0x2e2218 }), vis.length)
+    const leafGeo = mergeGeometries([
+      new THREE.ConeGeometry(0.72, 1.1, 7).translate(0, 1.0, 0),
+      new THREE.ConeGeometry(0.58, 0.95, 7).translate(0, 1.55, 0),
+      new THREE.ConeGeometry(0.4, 0.8, 7).translate(0, 2.05, 0),
+    ])!
+    const leaves = inst(leafGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), vis.length)
+    const base = new THREE.Color(t.wall)
+    for (const [tx, ty] of vis) {
+      const h = (h0 + (h1 - h0) * hash(tx, ty, 1)) / 2.4
+      const x = tx + 0.5 + (hash(tx, ty, 5) - 0.5) * 0.25
+      const z = ty + 0.5 + (hash(tx, ty, 6) - 0.5) * 0.25
+      put(trunk, x, 0, z, 1, 0.9 * h, 1)
+      put(leaves, x, 0, z, 1 + hash(tx, ty, 7) * 0.2, h, 1 + hash(tx, ty, 8) * 0.2, hash(tx, ty, 9) * 6.28, col.copy(base).multiplyScalar(0.8 + 0.5 * hash(tx, ty, 2)))
+    }
   } else {
     // 마을: 테두리는 목책(끝이 뾰족한 말뚝), 안쪽 벽 덩어리는 천막
     const stakeGeo = mergeGeometries([new THREE.CylinderGeometry(0.13, 0.15, 1.7, 6).translate(0, 0.85, 0), new THREE.ConeGeometry(0.13, 0.35, 6).translate(0, 1.87, 0)])!
@@ -250,6 +268,8 @@ function buildDark(map: GameMap, style: WorldStyle): World3D {
   const skulls = P.has('skull') ? inst(new THREE.SphereGeometry(0.11, 8, 6).scale(1, 0.85, 1.1), new THREE.MeshLambertMaterial({ color: 0xd8cfb6 }), floors.length, false) : null
   const candleM = P.has('candle') ? inst(new THREE.CylinderGeometry(0.04, 0.045, 0.22, 6).translate(0, 0.11, 0), new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }), floors.length, false) : null
   const grass = P.has('grass') ? inst(grassGeometry(), new THREE.MeshLambertMaterial({ color: style === 'town' ? 0x4a4a2a : 0x3e4a2a, side: THREE.DoubleSide }), floors.length, false) : null
+  const shroomGeo = mergeGeometries([new THREE.CylinderGeometry(0.03, 0.04, 0.16, 5).translate(0, 0.08, 0), new THREE.SphereGeometry(0.11, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1).translate(0, 0.16, 0)])!
+  const shrooms = P.has('shroom') ? inst(shroomGeo, new THREE.MeshBasicMaterial({ color: 0x8ad8a8 }), floors.length, false) : null
   const straw = P.has('straw') ? inst(new THREE.CylinderGeometry(0.3, 0.38, 0.28, 8).translate(0, 0.14, 0), new THREE.MeshLambertMaterial({ color: 0x8a7a42 }), floors.length, false) : null
   const tombGeo = mergeGeometries([new THREE.BoxGeometry(0.42, 0.6, 0.1).translate(0, 0.3, 0), new THREE.CylinderGeometry(0.21, 0.21, 0.1, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).translate(0, 0.6, 0)])!
   const tombs = P.has('tomb') ? inst(tombGeo, new THREE.MeshLambertMaterial({ color: 0x6a6a64 }), floors.length) : null
@@ -267,6 +287,7 @@ function buildDark(map: GameMap, style: WorldStyle): World3D {
       candles.push({ x, z })
     } else if (grass && r < 0.2) put(grass, x, 0, z, 0.8 + hash(tx, ty, 35) * 0.6, 0.7 + hash(tx, ty, 36) * 0.8, 1, rot)
     else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1)
+    else if (shrooms && r < 0.24) put(shrooms, x, 0, z, 0.8 + hash(tx, ty, 40) * 1.4, 0.8 + hash(tx, ty, 41) * 1.6, 0.8 + hash(tx, ty, 40) * 1.4, rot)
     else if (tombs && wallSide && r < 0.26) put(tombs, x, 0, z, 1, 0.8 + hash(tx, ty, 37) * 0.5, 1, rot)
     else if (bloodM && r < 0.3) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39))
   }

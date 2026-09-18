@@ -474,6 +474,12 @@ export class Renderer3D {
           this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
           this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
           break
+        case 'mheal':
+          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.8, 0x7aff9a)
+          break
+        case 'summon':
+          this.spawnRing(e.x * U, e.y * U, 0.3, 2.4, 0.7, 0xd8c8ff)
+          break
         case 'questDone':
           this.hud.banner(`퀘스트 이룸 — ${QUESTS[e.q].name}`, '마을의 촌장 카인에게 보고하라', '#ffd86a')
           break
@@ -2045,6 +2051,7 @@ export class Renderer3D {
         this.scene.add(sp)
       }
       const p = prevById.get(s0.id) ?? s0
+      sp.material.color.setHex(MONSTER_LIST[s0.kind]?.shotColor ?? 0xff5a2a)
       sp.visible = true
       sp.position.set((p.x + (s0.x - p.x) * alpha) * U, 0.9, (p.y + (s0.y - p.y) * alpha) * U)
       sp.scale.setScalar(0.55 + Math.sin(this.t * 20 + s0.id) * 0.06)
@@ -2080,6 +2087,24 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const def = MONSTER_LIST[m.kind]
+      if (m.st === MS_WINDUP && m.mode === 2) {
+        // 거미줄 부채 예고: 일곱 갈래
+        const a0 = Math.atan2(m.ay - m.y, m.ax - m.x)
+        ctx.save()
+        ctx.strokeStyle = '#e8f0d8'
+        ctx.globalAlpha = 0.5
+        ctx.setLineDash([6, 6])
+        const from = this.worldToScreen(at.x, 0.9, at.z)
+        for (let k = 0; k < 7; k++) {
+          const a = a0 + ((k - 3) / 3) * ((36 * Math.PI) / 180)
+          const to = this.worldToScreen(at.x + Math.cos(a) * 9, 0.9, at.z + Math.sin(a) * 9)
+          ctx.beginPath()
+          ctx.moveTo(from.x, from.y)
+          ctx.lineTo(to.x, to.y)
+          ctx.stroke()
+        }
+        ctx.restore()
+      }
       if (m.st === MS_WINDUP && (def.attack === 'ranged' || m.mode === 1)) {
         const k = 1 - m.t / def.windup
         const a = this.worldToScreen(at.x, 0.9, at.z)

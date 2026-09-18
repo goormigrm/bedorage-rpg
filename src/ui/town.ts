@@ -9,13 +9,14 @@ import {
   Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
-import { NPC_NAMES, NpcId, QUESTS, questDiscount } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
 import { CMD_QUEST } from '../core/input'
 
 /** 퀘스트 목록 (촌장 창 — 버튼 있음 · 퀘스트 기록 — 버튼 없음) */
 export function questList(q: number[], buttons: boolean): string {
   return QUESTS.map((d, i) => {
     const st = q[i] ?? 0
+    if (st < 0) return ''
     const tag = ['아직 모름', '진행 중', '이룸 — 촌장에게 보고', '끝'][st]
     const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${i}">보상 받기 — ${d.reward}</button>` : ''
     const say = st === 3 ? d.thanks : d.ask
@@ -142,7 +143,10 @@ export class TownPanel {
       body = `<div class="tp-cols"><div><div class="tp-h">가방 (${me.bag.length}) — 누르면 넣기</div><div class="tp-list">${me.bag.map((it, i) => row(it, '→', `data-cmd="${CMD_STASH_PUT}" data-arg="${i}"`, me.stash.length >= STASH_SIZE)).join('') || '<p class="tp-empty">비었다</p>'}</div></div>
         <div><div class="tp-h">보관함 (${me.stash.length}/${STASH_SIZE}) — 누르면 꺼내기</div><div class="tp-list">${me.stash.map((it, i) => row(it, '←', `data-cmd="${CMD_STASH_TAKE}" data-arg="${i}"`)).join('') || '<p class="tp-empty">비었다</p>'}</div></div></div>`
     } else if (npc === 'elder') {
-      body = questList(me.quests, true)
+      const reach = actReached(me.quests)
+      const here = areaDef(me.area).act
+      const travel = ACTS.map((a, i) => (i <= reach && i !== here ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${100 + i}">${i + 1}막 ${a.name}으로 — ${AREAS[a.town].name}</button>` : '')).join('')
+      body = questList(me.quests.map((v, i) => (QUESTS[i]?.act === here ? v : -1)), true) + (travel ? `<div class="tp-slots">${travel}</div>` : '')
     } else if (npc === 'captain') {
       const mine = s.players.find((q) => q.merc === me.id && !q.left)
       const price = mercPrice(me.level)

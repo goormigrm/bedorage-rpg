@@ -48,6 +48,10 @@ const GHOUL = 0
 const ARCHER = 1
 const BLOATER = 2
 const BUTCHER = 3
+const WOLF = 5
+const SPIDER = 6
+const SHAMAN = 7
+const QUEEN = 8
 
 export interface ActDef {
   name: string
@@ -69,6 +73,30 @@ export const ACTS: ActDef[] = [
       { w: 0.2, groups: [[BLOATER, 2, 3], [GHOUL, 2, 3]] },
     ],
   },
+  {
+    name: '안개 숲',
+    town: 10,
+    packs: [
+      // 늑대 떼 — 빠르게 둘러싼다
+      { w: 0.4, groups: [[WOLF, 5, 8]] },
+      // 독거미 무리를 늑대가 지킨다 (거미줄에 걸리면 늑대를 못 떨친다)
+      { w: 0.25, groups: [[SPIDER, 3, 5], [WOLF, 1, 2]] },
+      // 주술사가 뒤에서 고친다 — 먼저 잡아라
+      { w: 0.2, groups: [[SHAMAN, 1, 1], [WOLF, 3, 5], [SPIDER, 0, 1]] },
+      // 숲까지 흘러나온 시체들
+      { w: 0.15, groups: [[GHOUL, 4, 6], [BLOATER, 1, 2]] },
+    ],
+  },
+]
+
+const WOLVES: PackDef[] = [
+  { w: 0.7, groups: [[WOLF, 6, 9]] },
+  { w: 0.3, groups: [[WOLF, 3, 5], [SPIDER, 1, 2]] },
+]
+const SPORES: PackDef[] = [
+  { w: 0.45, groups: [[SHAMAN, 1, 1], [GHOUL, 3, 5], [SPIDER, 1, 2]] },
+  { w: 0.35, groups: [[SPIDER, 3, 5], [SHAMAN, 0, 1]] },
+  { w: 0.2, groups: [[BLOATER, 2, 3], [SHAMAN, 1, 1]] },
 ]
 
 const GHOULS: PackDef[] = [
@@ -93,6 +121,16 @@ export const AREAS: AreaDef[] = [
   { id: 7, act: 0, name: '납골당 1층', kind: 'dungeon', map: 'crypt', level: 6, links: [6, 8], packs: ARCHERS },
   { id: 8, act: 0, name: '납골당 2층', kind: 'dungeon', map: 'crypt', level: 7, links: [7, 9], packs: ARCHERS, unique: { kind: ARCHER, name: '뼈활 레나' } },
   { id: 9, act: 0, name: '도살장', kind: 'boss', map: 'butchery', level: 8, links: [8], boss: BUTCHER, density: 0.5, lore: '신선한 고기…!' },
+  // ---------------- 2막 안개 숲 (지역 레벨 9~16) ----------------
+  { id: 10, act: 1, name: '숲 가장자리 야영지', kind: 'town', map: 'town2', level: 0, links: [11], wp: true, lore: '늑대 울음이 밤새 목책을 두드린다' },
+  { id: 11, act: 1, name: '안개 숲', kind: 'field', map: 'forest', level: 9, links: [10, 13, 12], wp: true, lore: '안개 너머에서 무언가 따라온다' },
+  { id: 12, act: 1, name: '늑대 굴', kind: 'dungeon', map: 'hollow', level: 10, links: [11], packs: WOLVES, density: 1.2, lore: '뼈가 발목까지 쌓였다' },
+  { id: 13, act: 1, name: '늑대 길', kind: 'field', map: 'forest', level: 11, links: [11, 14], packs: WOLVES, unique: { kind: WOLF, name: '회색 갈기' }, lore: '사방에서 울음이 좁혀 온다' },
+  { id: 14, act: 1, name: '포자 늪', kind: 'field', map: 'swamp', level: 12, links: [13, 15], wp: true, packs: SPORES, lore: '쓰러진 것들이 포자를 뒤집어쓰고 다시 일어선다' },
+  { id: 15, act: 1, name: '버섯 동굴 1층', kind: 'dungeon', map: 'hollow', level: 13, links: [14, 16], packs: SPORES },
+  { id: 16, act: 1, name: '버섯 동굴 2층', kind: 'dungeon', map: 'hollow', level: 14, links: [15, 17], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
+  { id: 17, act: 1, name: '거미 숲', kind: 'field', map: 'forest', level: 15, links: [16, 18], wp: true, lore: '나무마다 흰 실이 드리웠다' },
+  { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], boss: QUEEN, density: 0.5, lore: '여왕이 실을 당긴다' },
 ]
 
 export function areaDef(id: number): AreaDef {
@@ -134,6 +172,7 @@ export function buildAreaMap(seed: number, area: number): GameMap {
  */
 export interface QuestDef {
   name: string
+  act: number
   area: number
   goal: 'clear' | 'kill'
   /** 목표 추적에 뜨는 한 줄 */
@@ -142,47 +181,97 @@ export interface QuestDef {
   ask: string
   thanks: string
   reward: string
+  /** 보상: 스킬 포인트 · 골드 · 전설 확정 · 상인 할인 */
+  sp?: number
+  gold?: number
+  legend?: boolean
+  discount?: boolean
 }
 
 export const QUESTS: QuestDef[] = [
   {
-    name: '굴 속의 것들', area: 2, goal: 'clear',
+    name: '굴 속의 것들', act: 0, area: 2, goal: 'clear', sp: 1,
     task: '핏빛 들판 옆 굶주린 굴을 비워라',
     ask: '들판 옆 바위굴에서 밤마다 뼈 씹는 소리가 들리오. 순례자 둘이 물을 길으러 갔다가 돌아오지 않았지. 굴 속의 것들을 모두 치워 주시오.',
     thanks: '굴이 조용해졌군. 그 둘의 넋도 이제 쉬겠지… 받으시오, 싸우는 법을 하나 더 깨우칠 게요.',
     reward: '스킬 포인트 1',
   },
   {
-    name: '묘지기', area: 3, goal: 'kill',
+    name: '묘지기', act: 0, area: 3, goal: 'kill', discount: true,
     task: '묘지 길의 묘지기 오스를 쓰러뜨려라',
     ask: '성당 묘지기 오스는 착한 사람이었소. 종이 멈춘 밤, 그가 무덤을 파헤치는 걸 봤다는 사람이 있소. 그가 이제 무엇이 됐든… 멈춰 주시오.',
     thanks: '오스가… 그랬군. 상인 말린에게 말해 두겠소. 이제부터 당신에게는 싸게 팔 거요.',
     reward: '상인 값 20% 할인',
   },
   {
-    name: '뼈활 레나', area: 8, goal: 'kill',
+    name: '뼈활 레나', act: 0, area: 8, goal: 'kill', legend: true,
     task: '납골당 2층의 뼈활 레나를 쓰러뜨려라',
     ask: '성당 아래 납골당에서 활시위 소리가 끊이질 않소. 레나 — 옛날 이 마을을 지키던 궁수요. 죽어서도 활을 놓지 못하는 모양이오.',
     thanks: '레나의 활이 마침내 쉬는군. 그녀가 지니던 것이오 — 당신이라면 제대로 쓰겠지.',
     reward: '전설 아이템 하나',
   },
   {
-    name: '도살자', area: 9, goal: 'kill',
+    name: '도살자', act: 0, area: 9, goal: 'kill', sp: 1, gold: 500,
     task: '납골당 밑 도살장의 도살자를 쓰러뜨려라',
     ask: '모든 것의 밑바닥에 그것이 있소. 피 냄새가 가장 짙은 곳 — 도살장. 그것을 끝내지 않으면 이 땅은 다시 일어서지 못하오.',
-    thanks: '끝났구려… 정말로 끝났어. 하지만 숲 너머에서 또 다른 종소리가 들린다는 소문이 있소. (2막은 준비 중입니다)',
-    reward: '스킬 포인트 1 · 골드 500',
+    thanks: '끝났구려… 정말로 끝났어. 하지만 숲 너머에서 또 다른 종소리가 들린다는 소문이 있소. 준비가 되면 내게 말하시오 — 숲 가장자리 야영지로 보내 주겠소.',
+    reward: '스킬 포인트 1 · 골드 500 · 2막',
+  },
+  // ---------------- 2막 ----------------
+  {
+    name: '늑대 굴', act: 1, area: 12, goal: 'clear', sp: 1,
+    task: '안개 숲 옆 늑대 굴을 비워라',
+    ask: '사냥꾼 셋이 늑대 굴에 들어가 돌아오지 않았소. 늑대가 아니오 — 늑대처럼 생긴 무언가지. 굴을 비워 주시오.',
+    thanks: '굴에서 사냥꾼들의 활을 찾았다고? …고맙소. 이걸 익혀 두시오.',
+    reward: '스킬 포인트 1',
+  },
+  {
+    name: '회색 갈기', act: 1, area: 13, goal: 'kill', gold: 1000,
+    task: '늑대 길의 회색 갈기를 쓰러뜨려라',
+    ask: '무리를 이끄는 놈이 있소. 회색 갈기 — 화살을 스무 대 맞고도 달렸다오. 놈을 잡으면 숲길이 트일 거요.',
+    thanks: '회색 갈기의 가죽이군! 사냥꾼들이 돈을 모았소. 받으시오.',
+    reward: '골드 1000',
+  },
+  {
+    name: '포자 할멈', act: 1, area: 16, goal: 'kill', legend: true,
+    task: '버섯 동굴 2층의 포자 할멈을 쓰러뜨려라',
+    ask: '늪의 버섯은 할멈이 기르는 거요. 쓰러진 것들을 포자로 다시 일으키지. 할멈을 멈추지 않으면 죽은 이가 끝이 없소.',
+    thanks: '포자가 가라앉는구려. 할멈의 동굴에서 이것이 나왔소 — 아무나 쥘 물건이 아니오.',
+    reward: '전설 아이템 하나',
+  },
+  {
+    name: '거미 여왕', act: 1, area: 18, goal: 'kill', sp: 1, gold: 1500,
+    task: '거미 숲 끝 거미 둥지의 여왕을 쓰러뜨려라',
+    ask: '숲의 심장에 여왕이 있소. 늑대도, 포자도 모두 그 실에 매여 있지. 여왕을 끊어 주시오.',
+    thanks: '숲이 숨을 쉬는군… 하지만 도시 아래에서 종이 다시 울린다는구려. (3막은 준비 중입니다)',
+    reward: '스킬 포인트 1 · 골드 1500',
   },
 ]
 
 /** 퀘스트 보상으로 받은 스킬 포인트 */
 export function questPoints(q: number[]): number {
-  return (q[0] === 3 ? 1 : 0) + (q[3] === 3 ? 1 : 0)
+  return QUESTS.reduce((a, d, i) => a + (q[i] === 3 ? (d.sp ?? 0) : 0), 0)
 }
 
 /** 상인 할인 (묘지기) */
 export function questDiscount(q: number[]): number {
-  return q[1] === 3 ? 0.8 : 1
+  return QUESTS.some((d, i) => d.discount && q[i] === 3) ? 0.8 : 1
+}
+
+/** 막 보스 퀘스트 번호 (막마다 마지막 것) */
+export function actBossQuest(act: number): number {
+  let last = -1
+  QUESTS.forEach((d, i) => {
+    if (d.act === act) last = i
+  })
+  return last
+}
+
+/** 이 캐릭터가 갈 수 있는 가장 뒤 막: 앞 막의 보스를 쓰러뜨렸으면 (퀘스트 이룸 이상) 다음 막이 열린다 */
+export function actReached(q: number[]): number {
+  let act = 0
+  while (act + 1 < ACTS.length && (q[actBossQuest(act)] ?? 0) >= 2) act++
+  return act
 }
 
 // ---------------------------------------------------------------- 마을 배치 (손으로 짠 자리, 타일 단위)
@@ -211,12 +300,12 @@ export const NPC_NAMES: Record<NpcId, string> = {
 /** NPC 와 이야기할 수 있는 거리 (px) */
 export const NPC_RANGE = 70
 
-const TOWNS: Record<number, TownSpots> = {
-  0: {
-    spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portal: [17, 21],
-    npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
-  },
+const CAMP: TownSpots = {
+  spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portal: [17, 21],
+  npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
 }
+/** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
+const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP }
 
 /** 마을이면 NPC 자리 (px) */
 export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {

@@ -7,7 +7,7 @@ import { Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { NPC_RANGE, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs } from '../core/world'
+import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
@@ -556,6 +556,8 @@ export class Session {
       mode: this.arena ? 'arena' : 'dungeon',
       teams: this.arena ? this.cfg.teams : undefined,
       targetKills: this.cfg.targetKills,
+      // 방장이 연 가장 뒤 막의 마을에서 시작한다 (디아블로 2)
+      area: this.arena ? undefined : ACTS[actReached(this.sheetsFor()[0]?.quests ?? [])].town,
       // 동료 봇 = 용병: 1번 자리(방장·혼자 하는 나)를 따라다닌다 (GUIDE 8장 — D4 에서 마을의 용병 대장으로 옮긴다)
       follow: this.arena ? undefined : this.cfg.chars.map((_, i) => (i !== 0 && (this.cfg.mode === 'solo' || this.cfg.bots?.[i]) ? 0 : -1)),
     }

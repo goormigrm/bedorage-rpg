@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery' | 'town2' | 'forest' | 'swamp' | 'hollow' | 'nest'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -31,7 +31,7 @@ export interface MapTheme {
   style?: WorldStyle
 }
 
-export type WorldStyle = 'crypt' | 'cathedral' | 'butchery' | 'fields' | 'cave' | 'town'
+export type WorldStyle = 'crypt' | 'cathedral' | 'butchery' | 'fields' | 'cave' | 'town' | 'forest'
 
 /**
  * 안쪽 구조물 생성 규칙.
@@ -230,6 +230,83 @@ export const MAPS: Record<MapId, MapDef> = {
       sunColor: 0xa08880, ambientColor: 0x503838, fog: 0x060303,
       dark: { sun: 0.5, hemi: 0.45, fogAlpha: 0.92, lantern: 2.6 },
       style: 'butchery',
+    },
+  },
+  // ---------------- 2막 안개 숲 ----------------
+  town2: {
+    id: 'town2',
+    name: '숲 가장자리 야영지',
+    desc: '안개 숲 어귀의 사냥꾼 야영지. 늑대 울음이 밤새 목책을 두드린다.',
+    rows: town1Rows(),
+    fixedScale: true,
+    fire: [22, 16],
+    gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
+    theme: {
+      floor: 0x2f3526, floorAlt: 0x2a3022, floorLine: 0x22281c,
+      wall: 0x3e3424, wallTop: 0x5a4a30, crate: 0x5e4a30, outside: 0x020403,
+      sunColor: 0x8ab0b0, ambientColor: 0x3e5048, fog: 0x030504,
+      dark: { sun: 1.0, hemi: 0.9, fogAlpha: 0.8, lantern: 2.8 },
+      style: 'town',
+    },
+  },
+  forest: {
+    id: 'forest',
+    name: '안개 숲',
+    desc: '빽빽한 전나무 사이로 길이 갈라지고, 안개 너머에서 무언가 따라온다.',
+    rows: frame(72, 54),
+    fixedScale: true,
+    gen: { style: 'scatter', density: 14, crates: 8, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x3a4430, floorAlt: 0x353f2c, floorLine: 0x283222,
+      wall: 0x2a3a26, wallTop: 0x2a3a24, crate: 0x5e6458, outside: 0x020403,
+      sunColor: 0xa8c4d8, ambientColor: 0x506a60, fog: 0x040705,
+      dark: { sun: 1.15, hemi: 1.0, fogAlpha: 0.84, lantern: 2.6 },
+      style: 'forest',
+    },
+  },
+  swamp: {
+    id: 'swamp',
+    name: '포자 늪',
+    desc: '사람 키만 한 버섯이 늪을 덮었다. 포자가 안개처럼 떠다닌다.',
+    rows: frame(64, 48),
+    fixedScale: true,
+    gen: { style: 'scatter', density: 9, crates: 12, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x33402e, floorAlt: 0x3a4834, floorLine: 0x263022,
+      wall: 0x2e3e2a, wallTop: 0x34462c, crate: 0x7a6a8a, outside: 0x020302,
+      sunColor: 0xa8d0b4, ambientColor: 0x4a6a58, fog: 0x030604,
+      dark: { sun: 1.05, hemi: 0.95, fogAlpha: 0.85, lantern: 2.6 },
+      style: 'forest',
+    },
+  },
+  hollow: {
+    id: 'hollow',
+    name: '버섯 동굴',
+    desc: '뿌리가 천장을 뚫고 내려온 굴. 빛나는 버섯이 길을 밝힌다.',
+    rows: frame(60, 44),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 6, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x2e2a26, floorAlt: 0x2a2622, floorLine: 0x201c18,
+      wall: 0x3a3428, wallTop: 0x4a4434, crate: 0x5a4a6a, outside: 0x020202,
+      sunColor: 0x8aa8a0, ambientColor: 0x3a4a44, fog: 0x040504,
+      dark: { sun: 0.5, hemi: 0.5, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'cave',
+    },
+  },
+  nest: {
+    id: 'nest',
+    name: '거미 둥지',
+    desc: '숲의 심장은 거미줄로 덮여 있다. 알을 품은 여왕이 실을 당기며 기다린다.',
+    rows: frame(48, 38),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x2a2a2a, floorAlt: 0x262626, floorLine: 0x1c1c1c,
+      wall: 0x3a3a38, wallTop: 0x4e4e4a, crate: 0xc8c8c0, outside: 0x020202,
+      sunColor: 0xa8a8c0, ambientColor: 0x44444e, fog: 0x040404,
+      dark: { sun: 0.5, hemi: 0.5, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'cave',
     },
   },
   garage: {

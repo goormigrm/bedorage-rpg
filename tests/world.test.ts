@@ -3,11 +3,12 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { MONSTER_LIST } from '../src/core/monsters'
 import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step } from '../src/core/sim'
 import { GameState } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
+import { emptySheet } from '../src/core/items'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -226,7 +227,7 @@ describe('이어진 세계', () => {
     expect(s.players[0].area).toBe(1)
   })
 
-  it('1막 지역 표: 모든 링크가 양쪽으로 이어지고, 모든 지역의 맵과 자리가 만들어진다', () => {
+  it('지역 표 (1·2막): 모든 링크가 양쪽으로 이어지고, 모든 지역의 맵과 자리가 만들어진다', () => {
     const mapOf = world(56)
     for (const a of AREAS) {
       for (const to of a.links) expect(AREAS[to].links).toContain(a.id)
@@ -277,5 +278,105 @@ describe('퀘스트 (D5)', () => {
     step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 0 }, idle()])
     expect(a.quests[0]).toBe(3)
     expect(a.spBonus).toBe(pts + 1)
+  })
+})
+
+describe('2막 안개 숲 (D6)', () => {
+  it('도살자를 쓰러뜨리기 전엔 2막으로 못 가고, 쓰러뜨린 뒤엔 촌장이 2막 마을로 보낸다 (마을 웨이포인트가 열린다)', () => {
+    const seed = 58
+    const mapOf = world(seed)
+    const s = createState({ seed, chars: ['chim'] }, mapOf)
+    const p = s.players[0]
+    const elder = townNpcs(0).find((n) => n.id === 'elder')!
+    const near = () => {
+      p.x = elder.x + 30
+      p.y = elder.y
+    }
+    near()
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 101 }])
+    expect(p.area).toBe(TOWN)
+    // 도살자 퀘스트 이룸
+    p.quests[3] = 2
+    near()
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 101 }])
+    expect(p.area).toBe(ACTS[1].town)
+    expect(p.wps & wpBit(ACTS[1].town)).not.toBe(0)
+    // 2막 마을의 촌장은 2막 퀘스트를 맡긴다
+    const elder2 = townNpcs(ACTS[1].town).find((n) => n.id === 'elder')!
+    p.x = elder2.x + 30
+    p.y = elder2.y
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 4 }])
+    expect(p.quests[4]).toBe(1)
+    // 방장이 연 막의 마을에서 새 게임을 시작할 수 있다
+    const s2 = createState({ seed, chars: ['chim'], area: ACTS[1].town }, mapOf)
+    expect(s2.players[0].area).toBe(ACTS[1].town)
+    expect(s2.act).toBe(1)
+  })
+
+  it('거미 여왕: 예고 뒤 일곱 갈래 거미줄 부채 · 새끼 거미를 부른다', () => {
+    const { s, run } = game(['chim'], 59, { area: 18 })
+    const queen = s.monsters.find((m) => MONSTER_LIST[m.kind].special === 'queen')!
+    expect(queen).toBeTruthy()
+    const p = s.players[0]
+    const spiders0 = s.monsters.filter((m) => m.kind === 6).length
+    let fan = 0
+    let summoned = false
+    for (let t = 0; t < 60 * 15 && !(fan >= 7 && summoned); t++) {
+      p.x = queen.x - 240
+      p.y = queen.y
+      p.invuln = 99
+      p.hp = p.maxHp
+      run(1)
+      fan = Math.max(fan, s.mshots.filter((q) => q.by === queen.id).length)
+      summoned ||= s.events.some((e) => e.type === 'summon')
+    }
+    expect(fan).toBeGreaterThanOrEqual(7)
+    expect(summoned).toBe(true)
+    run(2)
+    expect(s.monsters.filter((m) => m.kind === 6).length).toBeGreaterThan(spiders0)
+  })
+
+  it('버섯 주술사: 곁의 다친 동료를 고친다', () => {
+    const { s, run } = game(['chim'], 60, { area: 15 })
+    const shaman = s.monsters.find((m) => MONSTER_LIST[m.kind].attack === 'heal' && !m.elite)!
+    expect(shaman).toBeTruthy()
+    const mate = s.monsters.find((m) => m !== shaman && m.pack === shaman.pack && !MONSTER_LIST[m.kind].boss && !m.elite)!
+    expect(mate).toBeTruthy()
+    const p = s.players[0]
+    let healed = false
+    for (let t = 0; t < 60 * 10 && !healed; t++) {
+      p.x = shaman.x - 200
+      p.y = shaman.y
+      p.invuln = 99
+      p.hp = p.maxHp
+      mate.x = shaman.x + 30
+      mate.y = shaman.y
+      if (t === 30) mate.hp = Math.round(mate.maxHp * 0.3)
+      const before = mate.hp
+      run(1)
+      healed = t > 30 && s.events.some((e) => e.type === 'mheal') && mate.hp > before
+    }
+    expect(healed).toBe(true)
+  })
+})
+
+describe('2막 난입', () => {
+  it('누군가 2막에 가면 난입한 사람도 2막 마을에서 — 2막을 못 연 캐릭터는 1막 마을에서', () => {
+    const seed = 61
+    const mapOf = world(seed)
+    const s = createState({ seed, chars: ['chim', 'magic', 'oknyang'], absent: [false, true, true] }, mapOf)
+    const p = s.players[0]
+    p.quests[3] = 2
+    const elder = townNpcs(0).find((n) => n.id === 'elder')!
+    p.x = elder.x + 30
+    p.y = elder.y
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 101 }, idle(), idle()])
+    expect(s.act).toBe(1)
+    const sheet = emptySheet()
+    sheet.quests = QUESTS.map((_, i) => (i <= 3 ? 3 : 0))
+    joinPlayer(s, mapOf, 1, 'magic', 0, sheet)
+    expect(s.players[1].area).toBe(ACTS[1].town)
+    joinPlayer(s, mapOf, 2, 'oknyang')
+    expect(s.players[2].area).toBe(TOWN)
   })
 })
