@@ -3,7 +3,7 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
 export type Attack = 'melee' | 'ranged' | 'explode'
@@ -49,6 +49,8 @@ export interface MonsterDef {
   xp: number
   /** 쓰러뜨렸을 때 파티원마다 전리품이 떨어질 확률 (개인 전리품 — 각자 굴린다) */
   loot: number
+  /** 보스: 화면 위 체력 바 · 돌진 공격 · 무리에 섞이지 않는다 */
+  boss?: boolean
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -80,12 +82,24 @@ export const MONSTER_LIST: MonsterDef[] = [
     attack: 'explode', dmg: 55, range: 62, windup: 45, recover: 0, cooldown: 0, blast: 88,
     knockRes: 0.6, globe: 0.12, xp: 10, loot: 0.14,
   },
+  {
+    // 보스 — 도살자: 마지막 층 깊은 곳. 붙으면 큰 칼질(±90°), 멀면 **예고선을 긋고 돌진**한다(옆으로 비키거나 구르면 산다)
+    id: 'butcher', idx: 3, name: '도살자',
+    hp: 1400, speed: 2.1, r: 24,
+    attack: 'melee', dmg: 42, range: 20, windup: 26, recover: 34, cooldown: 55, arc: deg(90),
+    knockRes: 0.92, globe: 1, xp: 240, loot: 1, boss: true,
+  },
 ]
 
 export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MONSTER_LIST.map((m) => [m.id, m])) as Record<MonsterKindId, MonsterDef>
 
 /** 쓰러뜨려서 터질 때는 이만큼만 (다가와 터질 때보다 약하게) */
 export const DEATH_BLAST_MULT = 0.6
+
+/** 보스 돌진: 예고 틱 · 속도 · 길이 · 피해 */
+export const CHARGE = { windup: 48, speed: 10, ticks: 30, dmg: 55, every: 60 * 7 }
+/** 정예: 무리 다섯에 하나, 우두머리가 된다 — 체력 4배 · 공격 1.4배 · 전리품 확정(등급 올림) · 경험치·골드 4배 */
+export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 
 /**
  * 인원 보정: 몬스터 체력 배율. 4인이면 2.8배 (PLAN 5.9).

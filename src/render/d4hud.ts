@@ -11,6 +11,7 @@
 import { CHARACTERS, CharacterDef } from '../core/characters'
 import { CHAR_SKILLS, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
+import { MONSTER_LIST } from '../core/monsters'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -417,7 +418,8 @@ export class D4Hud {
       c.fillText(opts.floorName ?? '던전', x + 12, y + 24)
       c.font = `600 12px ${SANS}`
       c.fillStyle = '#d8cfbf'
-      c.fillText(`◆ 괴물 정리  ${s.monstersTotal - left} / ${s.monstersTotal}`, x + 12, y + 46)
+      const last = s.floor >= s.floorMax
+      c.fillText(last ? '◆ 도살자를 쓰러뜨려라' : s.descend > 0 ? `◆ 내려가는 중… ${Math.ceil(s.descend / 60)}` : '◆ 계단(지도의 파란 원)에서 F', x + 12, y + 46)
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53, W - 24, 4)
       c.fillStyle = GOLD
@@ -456,6 +458,30 @@ export class D4Hud {
       })
     }
     c.restore()
+  }
+
+  /** 위 가운데: 보스 체력 (깨어 있을 때만) — 디아블로식 긴 막대 */
+  drawBoss(h: HudCtx, s: GameState): void {
+    const boss = s.monsters.find((m) => MONSTER_LIST[m.kind].boss && m.st !== 0)
+    if (!boss) return
+    const c = h.ctx
+    const W = Math.min(560, h.W - 480)
+    const x = h.W / 2 - W / 2
+    const y = 22
+    ironPanel(c, x - 10, y - 8, W + 20, 42)
+    c.fillStyle = 'rgba(255,255,255,0.06)'
+    c.fillRect(x, y + 14, W, 10)
+    const k = Math.max(0, boss.hp / boss.maxHp)
+    const g = c.createLinearGradient(x, 0, x + W, 0)
+    g.addColorStop(0, '#6a0a0a')
+    g.addColorStop(1, '#d8382a')
+    c.fillStyle = g
+    c.fillRect(x, y + 14, W * k, 10)
+    c.font = `800 15px ${SERIF}`
+    c.textAlign = 'center'
+    c.textBaseline = 'alphabetic'
+    c.fillStyle = '#f1d58a'
+    c.fillText(MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
   }
 
   /** 왼쪽 위: 파티 (던전은 모두, 투기장은 같은 팀만 — 상대 정보는 숨긴다) */

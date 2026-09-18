@@ -258,6 +258,7 @@ export class Hud {
     const lp = opts.localPlayer
     if (lp !== -1) this.d4.drawLowHealth(h, s.players[lp])
     this.d4.drawTracker(h, s, opts)
+    if (s.mode === 'dungeon') this.d4.drawBoss(h, s)
     this.d4.drawParty(h, s, opts)
     if (lp !== -1) this.d4.drawBottom(h, s.players[lp], opts.cursor, this.lastDt)
     if (lp !== -1) this.drawMyStatus(s.players[lp], s)
@@ -377,7 +378,7 @@ export class Hud {
       const arena = s.mode === 'arena'
       const cleared = arena ? opts.localPlayer >= 0 && s.players[opts.localPlayer].team === s.winner : s.winner === 0
       const winName = arena ? (s.players.some((p, i) => p.team === s.winner && i !== s.winner) ? (s.winner === 0 ? 'A팀' : 'B팀') : opts.names[s.winner] ?? CHARACTERS[s.players[s.winner].char].name) : ''
-      const title = arena ? `${winName} 승리` : cleared ? '층 정리!' : '전멸'
+      const title = arena ? `${winName} 승리` : cleared ? '원정 완료!' : '전멸'
       const color = cleared ? '#e8c46a' : '#ff5a4a'
       const k = Math.min(1, this.overT * 1.5)
       ctx.fillStyle = `rgba(6,6,8,${0.6 * k})`
@@ -401,7 +402,7 @@ export class Hud {
       ctx.fillStyle = '#e6edf3'
       ctx.textAlign = 'center'
       const kills = s.players.reduce((a, p) => a + p.kills, 0)
-      ctx.fillText(arena ? `목표 ${s.targetKills}킬 달성` : cleared ? `괴물 ${kills}마리를 쓰러뜨렸습니다` : '모두 쓰러졌습니다', VIEW_W / 2, VIEW_H / 2 + 44)
+      ctx.fillText(arena ? `목표 ${s.targetKills}킬 달성` : cleared ? `도살자를 쓰러뜨렸습니다 · 괴물 ${kills}마리` : '모두 쓰러졌습니다', VIEW_W / 2, VIEW_H / 2 + 44)
       ctx.globalAlpha = 1
     }
     void opts

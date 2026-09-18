@@ -32,6 +32,8 @@ interface Anim {
   squashV: number
   /** 보간한 바라보는 각 (라디안) */
   yaw: number
+  /** 정예 (크게 · 금빛으로 달아오른다) */
+  elite?: boolean
 }
 
 interface Part {
@@ -80,12 +82,12 @@ function part(geo: THREE.BufferGeometry, mat: THREE.Material, flashes: boolean, 
 
 const sin = Math.sin
 
-/** 구울: 굽은 등, 긴 팔을 늘어뜨리고, 예고 때 두 팔을 치켜든다 */
-function ghoulParts(): Part[] {
+/** 구울: 굽은 등, 긴 팔을 늘어뜨리고, 예고 때 두 팔을 치켜든다. 도살자(보스)는 같은 뼈대에 붉은 살 · 붉은 눈 · 앞치마 */
+function ghoulParts(skinColor = 0x7d8479, eyeColor = 0xd6ff5c, darkColor = 0x3d3a36): Part[] {
   // 창백한 회녹색 살 — 등불(따뜻한 빛) 아래에서 노랗게 뜨지 않도록 채도를 낮춘다
-  const skin = lambert(0x7d8479)
-  const dark = lambert(0x3d3a36)
-  const eye = glow(0xd6ff5c)
+  const skin = lambert(skinColor)
+  const dark = lambert(darkColor)
+  const eye = glow(eyeColor)
   const legGeo = cap(0.07, 0.2)
   const armGeo = cap(0.055, 0.46)
   return [
@@ -235,11 +237,35 @@ function bloaterParts(): Part[] {
   ]
 }
 
+/** 도살자: 구울 뼈대를 키우고 붉은 살 · 핏빛 눈 · 가죽 앞치마 · 큰 식칼 */
+function butcherParts(): Part[] {
+  const parts = ghoulParts(0x8a5a50, 0xff2a1a, 0x2a1a14)
+  const leather = lambert(0x4a3020)
+  const steel = lambert(0x9aa0a6)
+  parts.push(
+    part(new THREE.SphereGeometry(0.5, 10, 8), leather, false, (a, o) => {
+      o.position.set(0, 0.42, 0.12)
+      o.rotation.set(0.5, 0, 0)
+      o.scale.set(0.34, 0.3, 0.2)
+      void a
+    }),
+    // 식칼: 오른팔 끝의 넓적한 날 — 휘두를 때 팔과 함께 돈다
+    part(new THREE.BoxGeometry(0.06, 0.42, 0.28), steel, true, (a, o) => {
+      const rx = 1.0 - a.wind * 2.3 + a.swing * 1.6
+      o.position.set(0.3, 0.6, 0.1)
+      o.rotation.set(rx, 0, 0.15)
+      o.translateY(-0.62)
+      o.scale.setScalar(1)
+    }),
+  )
+  return parts
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
-const BUILDERS = [ghoulParts, archerParts, bloaterParts]
+const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05]
 
 export class MonsterView {
   readonly group = new THREE.Group()
@@ -318,6 +344,7 @@ export class MonsterView {
       while (d > Math.PI) d -= Math.PI * 2
       while (d < -Math.PI) d += Math.PI * 2
       v.yaw += d * Math.min(1, dt * 14)
+      v.elite = m.elite > 0
       if (hidden(m)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
@@ -348,7 +375,7 @@ export class MonsterView {
     if (i >= CAP) return
     counts[kind]++
     const def = MONSTER_LIST[kind]
-    const size = def.r / 13 // 구울(13px) 기준 크기
+    const size = (def.r / 13) * (a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예는 더 크게
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
     this.o.position.set(x, -Math.max(0, corpseT - 0.5) * 0.9, z)
     this.o.rotation.set(0, Math.PI / 2 - yaw, 0)
@@ -364,6 +391,7 @@ export class MonsterView {
     const w = a.wind
     if (f > 0) this.col.setRGB(1 + f * 1.6, 1 + f * (a.crit ? 1.2 : -0.4), 1 + f * (a.crit ? -0.4 : -0.5))
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
+    else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
     for (const p of this.kinds[kind]) {
       this.o.position.set(0, 0, 0)

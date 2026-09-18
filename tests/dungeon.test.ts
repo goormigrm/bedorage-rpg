@@ -43,7 +43,8 @@ describe('던전 배치', () => {
       }
       // 무리가 여럿이고 원형이 섞여 있다
       expect(new Set(s.monsters.map((m) => m.pack)).size).toBeGreaterThan(10)
-      expect(new Set(s.monsters.map((m) => m.kind)).size).toBe(MONSTER_LIST.length)
+      // 보통 층에는 보스가 없다
+      expect(new Set(s.monsters.map((m) => m.kind)).size).toBe(MONSTER_LIST.filter((d) => !d.boss).length)
     }
   })
 

@@ -15,8 +15,8 @@ import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSand
 import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
-import { DEATH_BLAST_MULT, MONSTER_LIST, MonsterDef } from './monsters'
-import { entryOf, populate } from './dungeon'
+import { CHARGE, DEATH_BLAST_MULT, ELITE, MONSTER_LIST, MonsterDef } from './monsters'
+import { entryOf, farPoint, floorSeed, makeMonster, populate } from './dungeon'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
@@ -26,7 +26,7 @@ import {
   BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
   COUNTDOWN_TICKS, CHIM, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
-  MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
+  MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
   STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills,
 } from './state'
@@ -77,6 +77,75 @@ function buildGrid(state: GameState, map: GameMap): Grid {
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
 
+/** 원정 = 층 넷 (마지막 층에 보스). PLAN 은 4~6 — 처음엔 짧게 */
+export const FLOORS = 4
+/** 계단에서 F 를 누르면 이만큼 뒤 모두 내려간다 */
+const DESCEND_TICKS = 60 * 5
+
+/** 층 채우기: 무리 + 계단(마지막 층은 계단 대신 보스). 층이 깊을수록 몬스터 레벨이 오른다 */
+function fillFloor(state: GameState, map: GameMap, seed: number, seats: number, partyLevel: number): void {
+  const last = state.floor >= state.floorMax
+  const lvl = partyLevel + (state.floor - 1)
+  populate(state, map, seed, seats, lvl, last)
+  const far = farPoint(map)
+  if (last) {
+    // 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
+    const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
+    const boss = makeMonster(state, 3, far.x, far.y, 9999, hpMul, Math.round(100 * (1 + 0.06 * (lvl - 1))))
+    state.monsters.push(boss)
+    state.monstersTotal++
+    state.stairX = -1
+    state.stairY = -1
+  } else {
+    state.stairX = far.x
+    state.stairY = far.y
+  }
+}
+
+/**
+ * 다음 층으로 (세션이 새 맵을 만든 뒤 **모두 같은 틱에** 부른다). 몬스터·탄·바닥 것은 치우고, 모두 새 입구에 모인다.
+ * 쓰러졌거나 죽어 있던 사람도 일어난다(하드코어 탈락은 그대로). 판은 2초 카운트다운 뒤 이어진다.
+ */
+export function enterFloor(state: GameState, map: GameMap, floor: number, seed: number): void {
+  state.floor = floor
+  state.pendingFloor = 0
+  state.descend = -1
+  state.monsters = []
+  state.mshots = []
+  state.bullets = []
+  state.zones = []
+  state.throws = []
+  state.drops = []
+  state.globes = []
+  state.monstersTotal = 0
+  const entry = entryOf(map)
+  state.entryX = entry.x
+  state.entryY = entry.y
+  for (const i of map.sandbagIdx) state.sandbags[i] = SANDBAG_HP
+  map.version++
+  for (const p of state.players) {
+    if (p.left || p.out) continue
+    if (!p.alive || p.downed) {
+      p.alive = true
+      p.downed = false
+      p.hp = p.maxHp
+      p.respawnTimer = 0
+    }
+    const s = spotNear(state, map, entry.x, entry.y, p.id)
+    p.x = s.x
+    p.y = s.y
+    p.dashTimer = 0
+    p.fx[FX_CHARGE] = 0
+    p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
+  }
+  const seated = state.players.filter((p) => !p.vacant && !p.left)
+  const lvl = seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
+  fillFloor(state, map, floorSeed(seed, floor), state.players.length, lvl)
+  state.phase = 'countdown'
+  state.phaseTimer = 120
+  state.events.push({ type: 'floor', n: floor })
+}
+
 // ================================================================ 만들기
 
 export function createState(cfg: MatchConfig, map: GameMap): GameState {
@@ -122,6 +191,12 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     nextFxId: 1,
     entryX: entry.x,
     entryY: entry.y,
+    floor: 1,
+    floorMax: cfg.floors ?? FLOORS,
+    stairX: -1,
+    stairY: -1,
+    descend: -1,
+    pendingFloor: 0,
     monstersTotal: 0,
     winner: -1,
     sandbags: {},
@@ -154,7 +229,7 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     // 몬스터는 파티 평균 레벨에 맞춰 세진다 (빈 자리 제외)
     const seated = players.filter((p) => !p.vacant)
     const lvl = seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
-    if (!cfg.noMonsters) populate(state, map, cfg.seed, n, lvl)
+    if (!cfg.noMonsters) fillFloor(state, map, cfg.seed, n, lvl)
   }
   for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
   return state
@@ -315,7 +390,10 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
   // 근접 휘두르기·조준 판정·스킬이 쓸 격자 (몬스터가 움직이기 전 위치)
   buildGrid(state, map)
   for (let i = 0; i < state.players.length; i++) stepPlayer(state, map, state.players[i], inputs[i])
-  if (state.mode === 'dungeon') stepDowned(state, inputs)
+  if (state.mode === 'dungeon') {
+    stepDowned(state, inputs)
+    stepStairs(state, inputs)
+  }
   if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)
@@ -332,9 +410,28 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
   state.tick++
 }
 
+/** 계단 위에서 누가 F 를 누르면 5초 뒤 모두 내려간다 (따로 다니면 층이 두 개가 돼야 해서 전원 같이 — PLAN 4.4) */
+function stepStairs(state: GameState, inputs: Input[]): void {
+  if (state.phase !== 'playing' || state.stairX < 0 || state.pendingFloor > 0) return
+  if (state.descend < 0) {
+    for (const p of state.players) {
+      if (!isActive(p) || ((inputs[p.id]?.buttons ?? 0) & BTN_USE) === 0) continue
+      if (len(p.x - state.stairX, p.y - state.stairY) > 48) continue
+      state.descend = DESCEND_TICKS
+      state.events.push({ type: 'descendStart', p: p.id })
+      break
+    }
+    return
+  }
+  if (--state.descend <= 0) state.pendingFloor = state.floor + 1
+}
+
 function checkOver(state: GameState): void {
   if (state.phase !== 'playing' || state.mode !== 'dungeon') return
-  if (state.monstersTotal > 0 && state.monsters.length === 0) {
+  // 원정 완료: 마지막 층에서 보스가 쓰러지면 (또는 그 층의 몬스터를 다 잡으면)
+  const last = state.floor >= state.floorMax
+  const bossAlive = state.monsters.some((m) => MONSTER_LIST[m.kind].boss)
+  if (last && state.monstersTotal > 0 && (!bossAlive || state.monsters.length === 0)) {
     state.phase = 'over'
     state.winner = 0
     state.events.push({ type: 'over', winner: 0 })
@@ -1436,13 +1533,16 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
   for (const p of state.players) {
     if (!p.alive || p.left || p.out) continue
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
-    gainXp(state, p, Math.round(def.xp * (m.pow / 100) * (1 + p.st[ST_XP] / 100)))
-    const g = Math.max(1, Math.round(def.xp * 0.4))
+    const eliteK = m.elite ? ELITE.xp : 1
+    gainXp(state, p, Math.round(def.xp * eliteK * (m.pow / 100) * (1 + p.st[ST_XP] / 100)))
+    const g = Math.max(1, Math.round(def.xp * 0.4 * eliteK))
     p.gold += g
     p.goldGain += g
     // 전리품: 사람마다 따로 굴린다. 주인에게만 보이고 주인만 줍는다
-    if (rand(state.rng) < def.loot) {
-      const item = rollItem(state.rng, state.nextItemUid++, Math.max(1, p.level), p.weapon)
+    // 정예·보스는 확정 + 등급이 오른다 (보스는 둘)
+    const drops = def.boss ? 2 : m.elite || rand(state.rng) < def.loot ? 1 : 0
+    for (let k = 0; k < drops; k++) {
+      const item = rollItem(state.rng, state.nextItemUid++, Math.max(1, p.level + (state.floor - 1)), p.weapon, def.boss ? 0.3 : m.elite ? ELITE.lootBonus : 0)
       const ox = (rand(state.rng) - 0.5) * 36
       const oy = (rand(state.rng) - 0.5) * 36
       state.drops.push({ id: state.nextDropId++, owner: p.id, x: m.x + ox, y: m.y + oy, item, ttl: 60 * 240, lock: 20 })
@@ -1608,10 +1708,12 @@ function stepMonsters(state: GameState, map: GameMap): void {
       if (Math.abs(m.ky) < 0.05) m.ky = 0
     }
     if (m.stun > 0) {
-      m.stun--
+      // 보스는 기절이 짧다 (4분의 1)
+      m.stun = def.boss ? Math.max(0, m.stun - 4) : m.stun - 1
       // 기절하면 하던 공격 예고도 끊긴다
-      if (m.st === MS_WINDUP) {
+      if (m.st === MS_WINDUP || m.st === MS_CHARGE) {
         m.st = MS_CHASE
+        m.mode = 0
         m.cd = Math.max(m.cd, 20)
       }
       continue
@@ -1631,8 +1733,41 @@ function stepMonsters(state: GameState, map: GameMap): void {
     if ((tick + m.id) % 10 === 0) m.los = rayBlocked(map, m.x, m.y, tp.x, tp.y) ? 0 : 1
     const face = atan2A(dy, dx)
 
+    if (m.st === MS_CHARGE) {
+      // 보스 돌진: 정한 방향으로 곧게, 닿는 사람을 한 번씩 친다
+      const r = moveCircle(map, m.x, m.y, def.r, cosA(m.aim) * CHARGE.speed, sinA(m.aim) * CHARGE.speed)
+      const blocked = Math.abs(r.x - m.x) + Math.abs(r.y - m.y) < CHARGE.speed * 0.3
+      m.x = r.x
+      m.y = r.y
+      m.moving = 1
+      for (const p of state.players) {
+        if (!isActive(p) || len(p.x - m.x, p.y - m.y) > def.r + PLAYER_RADIUS + 4) continue
+        if (hurtPlayer(state, p, Math.round((CHARGE.dmg * m.pow) / 100), m.id, m.x, m.y)) {
+          p.x += cosA(m.aim) * 30
+          p.y += sinA(m.aim) * 30
+        }
+      }
+      if (--m.t <= 0 || blocked) {
+        m.st = MS_RECOVER
+        m.t = 50
+        m.mode = 0
+        m.cd = CHARGE.every
+      }
+      continue
+    }
     if (m.st === MS_CHASE) {
       m.aim = turnToward(m.aim, face, TURN)
+      // 보스: 멀리 있는 표적에게 예고선을 긋고 돌진
+      if (def.boss && m.cd === 0 && m.los === 1 && d > 140 && d < 520) {
+        m.st = MS_WINDUP
+        m.mode = 1
+        m.t = CHARGE.windup
+        m.aim = face
+        m.ax = tp.x
+        m.ay = tp.y
+        state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+        continue
+      }
       let attack = false
       let away = false
       let hold = false
@@ -1655,6 +1790,13 @@ function stepMonsters(state: GameState, map: GameMap): void {
         state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
       } else if (!hold) {
         moveMonster(map, m, def, tp.x, tp.y, d, away)
+      }
+    } else if (m.st === MS_WINDUP && m.mode === 1) {
+      // 돌진 예고: 방향은 정해졌다 (옆으로 비키면 산다)
+      if (--m.t <= 0) {
+        m.st = MS_CHARGE
+        m.t = CHARGE.ticks
+        m.tag = state.nextFxId++
       }
     } else if (m.st === MS_WINDUP) {
       if (def.attack === 'melee') m.aim = turnToward(m.aim, face, TURN_WINDUP)

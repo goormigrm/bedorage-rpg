@@ -148,6 +148,8 @@ export class Renderer3D {
   private auras: THREE.Mesh[] = []
   /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
   private lastKiller = -1
+  /** 계단 (층마다) */
+  private stairMesh: THREE.Group | null = null
   /** 바닥 전리품 (id → 빛기둥). 내 것과 버려진 것만 보인다 (개인 전리품) */
   private dropMeshes = new Map<number, THREE.Group>()
   private localForDrops = -1
@@ -441,6 +443,12 @@ export class Renderer3D {
           if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
           break
         }
+        case 'descendStart':
+          this.hud.notice(`${nm[e.p]} — 5초 뒤 모두 아래층으로`, '#6ab0ff')
+          break
+        case 'floor':
+          this.hud.notice(e.n >= state.floorMax ? `${e.n}층 — 도살자의 방` : `${e.n}층`, e.n >= state.floorMax ? '#ff5a4a' : '#e6d6b0')
+          break
         case 'levelup': {
           const p = state.players[e.p]
           if (!p) break
@@ -757,6 +765,7 @@ export class Renderer3D {
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
     this.updateDrops(curr, opts.localPlayer)
+    this.updateStairs(curr)
     this.updateZones(curr)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
@@ -1070,6 +1079,14 @@ export class Renderer3D {
         ctx.fillRect(px - 0.7 * rp, py - 1.7 * rp, 1.4 * rp, 3.4 * rp)
         ctx.fillRect(px - 1.7 * rp, py - 0.7 * rp, 3.4 * rp, 1.4 * rp)
       }
+    }
+    // 계단: 파란 원 (알면 찾아간다 — 디아블로도 층 출구는 지도에 보인다)
+    if (curr.mode === 'dungeon' && curr.stairX >= 0) {
+      ctx.strokeStyle = '#6ab0ff'
+      ctx.lineWidth = 2 * rp
+      ctx.beginPath()
+      ctx.arc(curr.stairX / TILE, curr.stairY / TILE, 4 * rp, 0, Math.PI * 2)
+      ctx.stroke()
     }
     // 층 입구: 초록 네모 (던전)
     if (curr.mode === 'dungeon') {
@@ -1418,6 +1435,35 @@ export class Renderer3D {
     }
   }
 
+  /** 계단: 바닥에 뚫린 어두운 구멍 + 푸른 불빛 (다음 층으로) */
+  private updateStairs(curr: GameState): void {
+    const has = curr.mode === 'dungeon' && curr.stairX >= 0
+    if (!has) {
+      if (this.stairMesh) {
+        this.scene.remove(this.stairMesh)
+        this.stairMesh = null
+      }
+      return
+    }
+    if (!this.stairMesh) {
+      const g = new THREE.Group()
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), new THREE.MeshBasicMaterial({ color: 0x020203 }))
+      hole.rotation.x = -Math.PI / 2
+      hole.position.y = 0.03
+      const rim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.05, 32), new THREE.MeshBasicMaterial({ color: 0x6ab0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }))
+      rim.rotation.x = -Math.PI / 2
+      rim.position.y = 0.04
+      const light = new THREE.PointLight(0x6ab0ff, 8, 6, 1.5)
+      light.position.y = 1
+      g.add(hole, rim, light)
+      this.scene.add(g)
+      this.stairMesh = g
+    }
+    this.stairMesh.position.set(curr.stairX * U, 0, curr.stairY * U)
+    const k = curr.descend > 0 ? 1.3 + Math.sin(this.t * 12) * 0.2 : 1 + Math.sin(this.t * 2) * 0.05
+    this.stairMesh.children[1].scale.setScalar(k)
+  }
+
   // ---------- 전리품 ----------
   /** 바닥 전리품: 등급 색 빛기둥 + 작은 상자. 내 것·버려진 것만 (디아블로 개인 전리품) */
   private updateDrops(curr: GameState, lp: number): void {
@@ -1704,7 +1750,7 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const def = MONSTER_LIST[m.kind]
-      if (m.st === MS_WINDUP && def.attack === 'ranged') {
+      if (m.st === MS_WINDUP && (def.attack === 'ranged' || m.mode === 1)) {
         const k = 1 - m.t / def.windup
         const a = this.worldToScreen(at.x, 0.9, at.z)
         const b = this.worldToScreen(m.ax * U, 0.9, m.ay * U)
@@ -1719,15 +1765,22 @@ export class Renderer3D {
         ctx.stroke()
         ctx.restore()
       }
-      if (curr.tick - m.hitTick > 180) continue
+      // 정예는 늘, 나머지는 맞은 뒤 3초만 (보스는 화면 위 큰 막대가 따로 있다)
+      if (def.boss || (!m.elite && curr.tick - m.hitTick > 180)) continue
       const s0 = this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.15, at.z)
       const w = 30
       const k = Math.max(0, m.hp / m.maxHp)
-      ctx.globalAlpha = Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
+      ctx.globalAlpha = m.elite ? 1 : Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
       ctx.fillStyle = 'rgba(0,0,0,0.6)'
       ctx.fillRect(s0.x - w / 2, s0.y, w, 4)
-      ctx.fillStyle = '#e04a3a'
+      ctx.fillStyle = m.elite ? '#ffb84a' : '#e04a3a'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, 2)
+      if (m.elite) {
+        ctx.font = '700 10px "Nanum Myeongjo", serif'
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#ffd86a'
+        ctx.fillText(`정예 ${def.name}`, s0.x, s0.y - 4)
+      }
       ctx.globalAlpha = 1
     }
   }

@@ -3,7 +3,7 @@
 // 모든 추첨은 시드로 만든 전용 Rng 로 한다(같은 시드 = 모든 브라우저에서 같은 배치).
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
-import { MONSTER_LIST, hpScaleFor } from './monsters'
+import { ELITE, MONSTER_LIST, hpScaleFor } from './monsters'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
 
@@ -51,6 +51,8 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     taunt: 0,
     tag: 0,
     pow,
+    elite: 0,
+    mode: 0,
   }
 }
 
@@ -81,7 +83,33 @@ function packMembers(rng: Rng): number[] {
  * 층에 몬스터를 채운다. state.monsters 에 넣고 monstersTotal 을 정한다.
  * players = 자리 수 (인원 보정용).
  */
-export function populate(state: GameState, map: GameMap, seed: number, players: number, level = 1): void {
+/** 층마다 맵 시드 (모든 브라우저가 같은 층을 만든다) */
+export function floorSeed(seed: number, floor: number): number {
+  return floor <= 1 ? seed : (seed ^ Math.imul(floor, 0x9e3779b1)) >>> 0
+}
+
+/** 계단(또는 보스) 자리: 입구에서 걸어서 가장 먼 트인 칸 */
+export function farPoint(map: GameMap): { x: number; y: number } {
+  const entry = entryOf(map)
+  const d = walkField(map, Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE))
+  let best = -1
+  let bestD = -1
+  for (let ty = 2; ty < map.h - 2; ty++) {
+    for (let tx = 2; tx < map.w - 2; tx++) {
+      const i = ty * map.w + tx
+      if (d[i] <= bestD) continue
+      let open = true
+      for (let dy = -1; dy <= 1 && open; dy++) for (let dx = -1; dx <= 1; dx++) if (map.tiles[(ty + dy) * map.w + tx + dx] !== TILE_FLOOR) open = false
+      if (!open) continue
+      bestD = d[i]
+      best = i
+    }
+  }
+  if (best < 0) return { x: map.pw / 2, y: map.ph / 2 }
+  return { x: (best % map.w) * TILE + TILE / 2, y: ((best / map.w) | 0) * TILE + TILE / 2 }
+}
+
+export function populate(state: GameState, map: GameMap, seed: number, players: number, level = 1, fewer = false): void {
   const rng = makeRng((seed ^ 0x51ed27) >>> 0)
   const entry = entryOf(map)
   const et = Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE)
@@ -114,7 +142,8 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
   }
   let floor = 0
   for (let i = 0; i < map.tiles.length; i++) if (map.tiles[i] === TILE_FLOOR) floor++
-  const want = Math.max(3, Math.round(floor / TILES_PER_PACK))
+  // 보스 층은 무리가 절반 (보스에게 힘을 남겨 두게)
+  const want = Math.max(3, Math.round(floor / TILES_PER_PACK / (fewer ? 2 : 1)))
   const centers: number[] = []
   for (const c of cand) {
     if (centers.length >= want) break
@@ -172,6 +201,12 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
         if (clash) continue
         const m = makeMonster(state, kind, x, y, pack, hpMul, pow)
         m.aim = randInt(rng, 0, 1024)
+        // 다섯 무리에 하나는 첫 놈이 정예 (무리 번호로 정하므로 결정론)
+        if (placed.length === 0 && pack % 5 === 2) {
+          m.elite = 1
+          m.maxHp = m.hp = Math.round(m.hp * ELITE.hp)
+          m.pow = Math.round(m.pow * ELITE.pow)
+        }
         placed.push(m)
         break
       }

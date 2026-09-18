@@ -273,6 +273,10 @@ export interface Monster {
   tag: number
   /** 공격력 배율 ×100 (파티 레벨로 세진다) */
   pow: number
+  /** 정예 (무리의 우두머리) */
+  elite: number
+  /** 보스 공격 방식: 0 보통 · 1 돌진 (예고 중 · 돌진 중) */
+  mode: number
 }
 
 /** 몬스터 상태 */
@@ -280,6 +284,8 @@ export const MS_SLEEP = 0
 export const MS_CHASE = 1
 export const MS_WINDUP = 2
 export const MS_RECOVER = 3
+/** 보스 돌진 중 */
+export const MS_CHARGE = 4
 
 /** 몬스터 투사체 (느리다 — 보고 피하라고) */
 export interface MShot {
@@ -360,6 +366,9 @@ export type SimEvent =
   | { type: 'hit'; p: number; by: number; x: number; y: number; part: number; dmg: number }
   /** 스킬 사용 (slot 0=Q 1=E 2=X). tx·ty = 커서 지점 스킬의 목표 */
   | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number }
+  /** 계단: 내려가기 시작 · 다음 층에 들어섬 */
+  | { type: 'descendStart'; p: number }
+  | { type: 'floor'; n: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
   /** 주웠다 */
@@ -419,6 +428,8 @@ export interface MatchConfig {
   noMonsters?: boolean
   /** 자리별 캐릭터 기록 (레벨·장비·가방·골드). 없으면 1레벨 맨몸 */
   sheets?: (Sheet | undefined)[]
+  /** 원정 층 수 (기본 FLOORS). 시험용으로 줄일 수 있다 */
+  floors?: number
 }
 
 export interface GameState {
@@ -450,6 +461,16 @@ export interface GameState {
   /** 층 입구 (px) — 죽은 사람이 여기서 일어난다 */
   entryX: number
   entryY: number
+  /** 지금 층 (1부터) · 마지막 층(보스) */
+  floor: number
+  floorMax: number
+  /** 계단 (없으면 -1 — 보스 층) */
+  stairX: number
+  stairY: number
+  /** 내려가기 카운트다운 (틱, -1 = 아님) */
+  descend: number
+  /** 다음 층으로 넘어가야 한다 (세션이 새 맵을 만들어 enterFloor 를 부른다 — 모두 같은 틱에) */
+  pendingFloor: number
   /** 이 층의 처음 몬스터 수 (진행 표시) */
   monstersTotal: number
   /** 0 = 층 정리, 1 = 전멸. -1 = 아직 */

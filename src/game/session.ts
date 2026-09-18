@@ -6,7 +6,8 @@ import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/c
 import { Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
-import { createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
+import { createState, dropPlayer, enterFloor, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
+import { floorSeed } from '../core/dungeon'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -169,10 +170,12 @@ export class Session {
   ) {
     this.map = buildMap(this.mapIdFor(), cfg.mapScale ?? scaleForPlayers(cfg.chars.length), cfg.seed)
     this.state = createState(this.matchCfg(cfg.seed), this.map)
+    this.mapFloor = 1
     // 재접속: 호스트가 보내 준 판으로 갈아 끼운다. 맵의 모래주머니 상태도 그때로 맞춘다
     if (cfg.resumeState) {
       this.state = cfg.resumeState as GameState
       this.state.events = []
+      this.ensureFloorMap()
       syncSandbags(this.state, this.map)
       // 아무도 없는 자리(나갔거나 아직 안 온 자리)는 입력을 기다리면 안 된다.
       // 이걸 빠뜨려 난입한 사람이 빈 자리 입력을 기다리다 멈추고, 그 사람이 멈추니
@@ -355,6 +358,29 @@ export class Session {
     // 나간 자리 · 아직 아무도 없는 자리는 입력을 기다리지 않는다 (둘 다 dropped 에 들어 있다)
     for (const d of this.dropped) ls.drop(d)
     return ls
+  }
+
+  /** 지금 맵이 몇 층 것인가 */
+  private mapFloor = 1
+
+  /** 상태의 층과 맵이 다르면(난입·리싱크로 판을 받았을 때) 그 층의 맵을 다시 만든다 */
+  private ensureFloorMap(): void {
+    const f = this.state.floor ?? 1
+    if (f === this.mapFloor || this.arena) return
+    this.map = buildMap(this.mapIdFor(), 1, floorSeed(this.cfg.seed, f))
+    this.mapFloor = f
+    this.renderer?.setMap(this.map)
+  }
+
+  /** 계단 카운트다운이 끝났다: 모두 같은 틱에 새 층 맵을 만들고 들어간다 */
+  private advanceFloor(): void {
+    const f = this.state.pendingFloor
+    this.map = buildMap(this.mapIdFor(), 1, floorSeed(this.cfg.seed, f))
+    this.mapFloor = f
+    enterFloor(this.state, this.map, f, this.cfg.seed)
+    this.renderer.setMap(this.map)
+    this.prev = interpSnapshot(this.state)
+    this.saveMine(false)
   }
 
   private get arena(): boolean {
@@ -773,9 +799,11 @@ export class Session {
         const snap = m.state as GameState
         this.state = snap
         this.state.events = []
+        this.ensureFloorMap()
         syncSandbags(this.state, this.map)
         while (this.state.tick < target && this.lockstep.hasAll(this.state.tick)) {
           step(this.state, this.map, this.lockstep.get(this.state.tick))
+          if (this.state.pendingFloor > 0) this.advanceFloor()
           this.applyDrops()
         }
         this.prev = interpSnapshot(this.state)
@@ -857,6 +885,8 @@ export class Session {
     this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.map = buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), seed)
+    this.cfg.seed = seed
+    this.mapFloor = 1
     this.renderer.setMap(this.map)
     this.state = createState({ ...this.matchCfg(seed), absent: undefined }, this.map)
     // 이미 나간 사람은 처음부터 빠진 채로
@@ -941,6 +971,7 @@ export class Session {
       }
       this.prev = interpSnapshot(this.state)
       step(this.state, this.map, inputs)
+      if (this.state.pendingFloor > 0) this.advanceFloor()
       this.applyDrops()
       this.renderer.onEvents(this.state.events, this.state, lp, this.names)
       this.sfx.onEvents(this.state.events, this.state, lp)
@@ -1020,7 +1051,7 @@ export class Session {
       message,
       cursor: this.aimCursor(),
       touch: this.touch !== null,
-      floorName: this.arena ? `투기장 · ${this.map.name}` : `${this.map.name} 1층`,
+      floorName: this.arena ? `투기장 · ${this.map.name}` : `${this.map.name} ${this.state.floor}층${this.state.floor >= this.state.floorMax ? ' · 도살자' : ''}`,
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }
@@ -1378,7 +1409,7 @@ export class Session {
     const w = this.state.winner
     const lp = this.cfg.localPlayer
     const cleared = this.arena ? this.state.players[lp].team === w : w === 0
-    const title = this.arena ? (cleared ? '승리!' : '패배') : cleared ? '층 정리!' : '전멸'
+    const title = this.arena ? (cleared ? '승리!' : '패배') : cleared ? '원정 완료!' : '전멸'
     const kills = this.state.players.reduce((a, p) => a + p.kills, 0)
     const secs = Math.round(this.state.tick / 60)
     const desc = this.arena
