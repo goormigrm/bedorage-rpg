@@ -125,6 +125,66 @@ export function buildAreaMap(seed: number, area: number): GameMap {
   return buildMap(areaDef(area).map, 1, areaSeed(seed, area))
 }
 
+// ---------------------------------------------------------------- 퀘스트 (GUIDE 10장 — D5)
+
+/**
+ * 막마다 퀘스트 넷. 상태(캐릭터 세이브): 0 모름 · 1 받음 · 2 목표를 이룸(보고하러 가야 한다) · 3 끝.
+ * 목표는 **같은 게임의 모두에게** 인정된다(디아블로 2). 보상은 촌장에게 말을 걸어 받는다.
+ * 목표 종류: clear = 그 지역의 몬스터를 모두 쓰러뜨림 · kill = 그 지역의 우두머리·보스를 쓰러뜨림
+ */
+export interface QuestDef {
+  name: string
+  area: number
+  goal: 'clear' | 'kill'
+  /** 목표 추적에 뜨는 한 줄 */
+  task: string
+  /** 촌장이 맡길 때 · 보고할 때 */
+  ask: string
+  thanks: string
+  reward: string
+}
+
+export const QUESTS: QuestDef[] = [
+  {
+    name: '굴 속의 것들', area: 2, goal: 'clear',
+    task: '핏빛 들판 옆 굶주린 굴을 비워라',
+    ask: '들판 옆 바위굴에서 밤마다 뼈 씹는 소리가 들리오. 순례자 둘이 물을 길으러 갔다가 돌아오지 않았지. 굴 속의 것들을 모두 치워 주시오.',
+    thanks: '굴이 조용해졌군. 그 둘의 넋도 이제 쉬겠지… 받으시오, 싸우는 법을 하나 더 깨우칠 게요.',
+    reward: '스킬 포인트 1',
+  },
+  {
+    name: '묘지기', area: 3, goal: 'kill',
+    task: '묘지 길의 묘지기 오스를 쓰러뜨려라',
+    ask: '성당 묘지기 오스는 착한 사람이었소. 종이 멈춘 밤, 그가 무덤을 파헤치는 걸 봤다는 사람이 있소. 그가 이제 무엇이 됐든… 멈춰 주시오.',
+    thanks: '오스가… 그랬군. 상인 말린에게 말해 두겠소. 이제부터 당신에게는 싸게 팔 거요.',
+    reward: '상인 값 20% 할인',
+  },
+  {
+    name: '뼈활 레나', area: 8, goal: 'kill',
+    task: '납골당 2층의 뼈활 레나를 쓰러뜨려라',
+    ask: '성당 아래 납골당에서 활시위 소리가 끊이질 않소. 레나 — 옛날 이 마을을 지키던 궁수요. 죽어서도 활을 놓지 못하는 모양이오.',
+    thanks: '레나의 활이 마침내 쉬는군. 그녀가 지니던 것이오 — 당신이라면 제대로 쓰겠지.',
+    reward: '전설 아이템 하나',
+  },
+  {
+    name: '도살자', area: 9, goal: 'kill',
+    task: '납골당 밑 도살장의 도살자를 쓰러뜨려라',
+    ask: '모든 것의 밑바닥에 그것이 있소. 피 냄새가 가장 짙은 곳 — 도살장. 그것을 끝내지 않으면 이 땅은 다시 일어서지 못하오.',
+    thanks: '끝났구려… 정말로 끝났어. 하지만 숲 너머에서 또 다른 종소리가 들린다는 소문이 있소. (2막은 준비 중입니다)',
+    reward: '스킬 포인트 1 · 골드 500',
+  },
+]
+
+/** 퀘스트 보상으로 받은 스킬 포인트 */
+export function questPoints(q: number[]): number {
+  return (q[0] === 3 ? 1 : 0) + (q[3] === 3 ? 1 : 0)
+}
+
+/** 상인 할인 (묘지기) */
+export function questDiscount(q: number[]): number {
+  return q[1] === 3 ? 0.8 : 1
+}
+
 // ---------------------------------------------------------------- 마을 배치 (손으로 짠 자리, 타일 단위)
 
 interface TownSpots {

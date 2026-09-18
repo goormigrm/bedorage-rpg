@@ -71,6 +71,8 @@ export const CMD_SKILL_MOD = 13
 export const CMD_SKILL_SLOT = 14
 export const CMD_RESPEC = 15
 export const CMD_HIRE = 16
+/** 촌장: 퀘스트 받기(arg = 퀘스트 번호, 목표 전) · 보상 받기(목표를 이뤘으면) */
+export const CMD_QUEST = 17
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

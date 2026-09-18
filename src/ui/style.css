@@ -666,3 +666,14 @@ body { background: var(--bg); }
 .sk-f button.on { border-color: #c9a24a; color: #ffe6a8; background: rgba(90,68,32,.45); }
 .sk-f button[disabled]:not(.on) { opacity: .35; cursor: default; }
 .sk-respec { margin-top: 8px; }
+
+/* 퀘스트 (촌장 창 · J) */
+.q-row { background: rgba(0,0,0,.3); border: 1px solid #2e261c; border-radius: 3px; padding: 8px 10px; margin-bottom: 6px; }
+.q-row.q2 { border-color: #c9a24a; }
+.q-row.q3 { opacity: .6; }
+.q-h { display: flex; align-items: baseline; gap: 10px; }
+.q-h b { font: 800 15px "Nanum Myeongjo", serif; color: #f1d58a; }
+.q-h span { margin-left: auto; font-size: 11px; color: #b8a67e; }
+.q-say { font: 500 12.5px "Nanum Myeongjo", serif; color: #d8cfbf; margin: 6px 0; line-height: 1.6; }
+.q-task { font-size: 11px; color: #9a8a70; margin: 4px 0; }
+.tp-claim { margin-top: 4px; }

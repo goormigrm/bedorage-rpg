@@ -54,7 +54,7 @@ export function sheetOf(char: CharacterId): Sheet {
 /** 판의 플레이어 상태를 세이브에 적는다 */
 export function commitSheet(p: PlayerState): void {
   const d = loadSave()
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: p.wps, potMax: p.potMax, build: p.build })
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: p.wps, potMax: p.potMax, build: p.build, quests: p.quests })
   delete d.chars[p.char]!.stash
   d.stash = sanitizeSheet({ stash: p.stash }).stash
   write(d)

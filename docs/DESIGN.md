@@ -99,6 +99,12 @@
 - 구르기(던전): `dashCharges` 최대 2, `dashCooldown` 이 하나 다시 차는 시간(캐릭터 값 × 1.6 × 민첩).
 - 용병: `CMD_HIRE` → 빈 자리(`vacant`)에 `makePlayer` + `merc = 고용인` · `follow` · `bot = makeBot(…)`. `stepAll` 이 지역마다 돌기 전에 용병 입력을 `botInput(areaView(…), …)` 로 만든다 — 봇 기억이 상태에 있어 결정론이고 해시·스냅샷에 들어간다. 난입자는 용병 자리를 차지하지 않는다(left 가 아니므로).
 
+## 3.9 퀘스트 (D5)
+
+- world.ts `QUESTS`(막마다 넷): 이름 · 지역 · 목표(clear = 그 지역 몬스터를 다 쓰러뜨림(고블린 빼고) · kill = 그 지역의 우두머리·보스) · 사연/감사/보상 글.
+- `PlayerState.quests[i]` 0 모름 · 1 받음 · 2 이룸 · 3 끝 — 세이브 `Sheet.quests`. `questGoal` 이 목표를 이룬 순간 **같은 게임의 모두**(용병 빼고)를 2 로 올린다.
+- `CMD_QUEST(i)` (촌장 곁): 0 → 1(맡음), 2 → 3(보상). 보상: 스킬 포인트(`questPoints` → `spBonus`) · 상인 할인(`questDiscount`, buy 에 곱함) · 전설(rollItem minRarity 3) · 골드.
+
 ## 4. 몬스터
 
 `monsters.ts` 가 정의표, 행동은 `sim.ts stepMonsters`, 모습은 `render3d/monsters3d.ts`.

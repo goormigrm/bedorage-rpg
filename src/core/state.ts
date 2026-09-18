@@ -222,6 +222,8 @@ export interface PlayerState {
   build: { r: number[]; m3: number[]; m5: number[]; s: number[] }
   /** 퀘스트로 받은 스킬 포인트 (D5) */
   spBonus: number
+  /** 퀘스트 상태 (world.ts QUESTS: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
+  quests: number[]
   /** 용병이면 고용한 사람 (-1 = 사람) · 용병의 봇 기억 (sim 안에서 결정론으로 움직인다) */
   merc: number
   bot?: BotMemory
@@ -490,6 +492,9 @@ export type SimEvent =
   | { type: 'goblinGone'; x: number; y: number }
   /** 용병 고용 · 내보냄 */
   | { type: 'hire'; p: number; by: number; on: boolean }
+  /** 퀘스트: 목표를 이뤘다(모두) · 보상을 받았다(한 사람) */
+  | { type: 'questDone'; q: number }
+  | { type: 'questReward'; p: number; q: number }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }

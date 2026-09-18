@@ -8,7 +8,7 @@ import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { MONSTER_LIST, affixNames, isBossLike } from '../core/monsters'
-import { AREAS, NPC_NAMES, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
+import { AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
@@ -473,6 +473,12 @@ export class Renderer3D {
         case 'goblinGone':
           this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
           this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
+          break
+        case 'questDone':
+          this.hud.banner(`퀘스트 이룸 — ${QUESTS[e.q].name}`, '마을의 촌장 카인에게 보고하라', '#ffd86a')
+          break
+        case 'questReward':
+          if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
         case 'gold':
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${e.n} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
@@ -1732,7 +1738,12 @@ export class Renderer3D {
       ctx.fillText(text, s.x, s.y + 0.5)
     }
     for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
-    for (const n of townNpcs(curr.curArea)) label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · F`, '#e8d6a8')
+    for (const n of townNpcs(curr.curArea)) {
+      // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로)
+      const q = me.quests ?? []
+      const mark = n.id === 'elder' ? (q.some((v) => v === 2) ? '? ' : q.some((v) => v === 0) ? '! ' : '') : ''
+      label(n.x, n.y - 44, `${mark}${NPC_NAMES[n.id]} · F`, mark ? '#ffd84a' : '#e8d6a8')
+    }
     for (const o of curr.objects ?? []) {
       if (o.used || o.kind === OBJ_URN || Math.hypot(o.x - me.x, o.y - me.y) > 5 * 32) continue
       label(o.x, o.y, o.kind === OBJ_SHRINE ? `${SHRINE_NAMES[o.v]} · F` : o.kind === OBJ_GOLDCHEST ? '금빛 상자 · F' : '상자 · F', o.kind === OBJ_GOLDCHEST ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : '#d8cfbf')

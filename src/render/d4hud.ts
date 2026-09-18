@@ -13,7 +13,7 @@ import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, isBossLike } from '../core/monsters'
-import { areaDef, isTown } from '../core/world'
+import { QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -483,7 +483,16 @@ export class D4Hud {
       const a = areaDef(s.curArea)
       const town = isTown(s.curArea)
       const bossHere = s.monsters.some((m) => m.hp > 0 && isBossLike(m))
-      const goal = town
+      // 퀘스트가 먼저 (GUIDE 10장 — "퀘스트가 길을 이끈다")
+      const me = opts.localPlayer >= 0 ? s.players[opts.localPlayer] : null
+      const q = me?.quests ?? []
+      const report = QUESTS.findIndex((_, i) => q[i] === 2)
+      const here = QUESTS.findIndex((d, i) => (q[i] ?? 0) < 2 && d.area === s.curArea)
+      const next = QUESTS.findIndex((_, i) => (q[i] ?? 0) < 2)
+      const questLine = report >= 0 ? `◆ 촌장에게 보고 — ${QUESTS[report].name}` : here >= 0 ? `◆ ${QUESTS[here].task}` : town && next >= 0 ? `◆ ${QUESTS[next].task}` : ''
+      const goal = questLine
+        ? questLine
+        : town
         ? '◆ 안전지대 · 성문은 동쪽'
         : bossHere
           ? a.boss !== undefined

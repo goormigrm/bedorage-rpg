@@ -255,6 +255,8 @@ export type Sheet = {
   stash?: Item[]
   /** 스킬 트리 빌드 (skills.ts Build) */
   build?: { r: number[]; m3: number[]; m5: number[]; s: number[] }
+  /** 퀘스트 상태 (world.ts QUESTS 순서: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
+  quests?: number[]
 }
 
 export function emptySheet(): Sheet {
@@ -282,5 +284,6 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build
+  e.quests = Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))
   return e
 }

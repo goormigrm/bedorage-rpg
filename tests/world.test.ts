@@ -1,9 +1,9 @@
 // 이어진 세계 (GUIDE 5·12장): 마을에서 시작 · 출구로 건너가기 · 지역마다 따로 도는 sim · 웨이포인트 · 타운 포털 ·
 // 쓰러뜨린 보스 기억 · 얼린 지역 버리기 · 용병 따라오기 · 난입은 마을에서.
 import { describe, expect, it } from 'vitest'
-import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_WAYPOINT, Input } from '../src/core/input'
+import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, WAYPOINTS, areaLayout, buildAreaMap, wpBit } from '../src/core/world'
+import { AREAS, ACTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { MONSTER_LIST } from '../src/core/monsters'
 import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step } from '../src/core/sim'
 import { GameState } from '../src/core/state'
@@ -234,5 +234,48 @@ describe('이어진 세계', () => {
       expect(l.exits.length).toBe(a.links.length)
       if (a.wp) expect(l.wp).not.toBeNull()
     }
+  })
+})
+
+describe('퀘스트 (D5)', () => {
+  it('촌장에게 맡고 → 굴을 비우면 모두 "이룸" → 보고하면 스킬 포인트', () => {
+    const seed = 57
+    const maps = new Map<number, GameMap>()
+    const mapOf = (id: number) => maps.get(id) ?? maps.set(id, buildAreaMap(seed, id)).get(id)!
+    const s = createState({ seed, chars: ['chim', 'magic'] }, mapOf)
+    const [a, b] = s.players
+    const elder = townNpcs(0).find((n) => n.id === 'elder')!
+    a.x = elder.x + 30
+    a.y = elder.y
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 0 }, idle()])
+    expect(a.quests[0]).toBe(1)
+    // 굴로 가서 몬스터를 모두 쓰러뜨린다 (b 는 마을에 남아도 같이 인정된다)
+    for (const to of [1, 2]) {
+      const e = areaLayout(a.area, mapOf(a.area)).exits.find((x) => x.to === to)!
+      a.x = e.x
+      a.y = e.y
+      a.exitLock = 0
+      step(s, mapOf, [idle(), idle()])
+    }
+    expect(a.area).toBe(2)
+    for (const m of areaView(s, 2).monsters) m.hp = 0
+    // 다음 틱에 걸러지며 "비움" 이 된다 — 한 마리를 쏴서 흐름을 태운다
+    const v = areaView(s, 2)
+    v.monsters[0].hp = 1
+    v.monsters[0].x = a.x + 60
+    v.monsters[0].y = a.y
+    for (let t = 0; t < 40 && a.quests[0] !== 2; t++) step(s, mapOf, [{ ...idle(), buttons: BTN_FIRE, aim: 0, aimDist: 15 }, idle()])
+    expect(a.quests[0]).toBe(2)
+    expect(b.quests[0]).toBe(2)
+    // 마을로 돌아가 보고
+    const pts = a.spBonus
+    a.area = 2
+    step(s, mapOf, [{ ...idle(), cmd: CMD_WAYPOINT, arg: 0 }, idle()])
+    a.area = 0
+    a.x = elder.x + 30
+    a.y = elder.y
+    step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 0 }, idle()])
+    expect(a.quests[0]).toBe(3)
+    expect(a.spBonus).toBe(pts + 1)
   })
 })

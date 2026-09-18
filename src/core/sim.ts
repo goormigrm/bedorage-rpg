@@ -8,7 +8,7 @@ import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
-  CMD_HIRE, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
@@ -25,7 +25,7 @@ import {
 export { nodeSkill, slotNode } from './skills'
 import { makeMonster, populate, rollAffixes } from './dungeon'
 import { botInput, makeBot } from './bot'
-import { ACTS, AreaLayout, WAYPOINTS, npcNear, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
+import { ACTS, AreaLayout, QUESTS, WAYPOINTS, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
@@ -493,6 +493,27 @@ function buildCommand(state: GameState, p: PlayerState, cmd: number, arg: number
   }
 }
 
+/** 촌장 (마을): 퀘스트를 받는다 · 이룬 퀘스트의 보상을 받는다 */
+function questCommand(state: GameState, p: PlayerState, i: number): void {
+  if (state.mode !== 'dungeon' || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'elder' || !QUESTS[i]) return
+  const st = p.quests[i] ?? 0
+  if (st === 0) {
+    p.quests[i] = 1
+    return
+  }
+  if (st !== 2) return
+  p.quests[i] = 3
+  p.spBonus = questPoints(p.quests)
+  if (i === 2) {
+    // 뼈활 레나: 전설 하나 (가방이 차 있으면 발밑에)
+    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level), p.weapon, 0, 3)
+    if (p.bag.length < BAG_SIZE) p.bag.push(it)
+    else state.drops.push({ id: state.nextDropId++, owner: p.id, x: p.x, y: p.y + 30, item: it, gold: 0, pot: 0, ttl: 60 * 600, lock: 30 })
+  }
+  if (i === 3) p.gold += 500
+  state.events.push({ type: 'questReward', p: p.id, q: i })
+}
+
 /** 용병 값: 150 + 레벨 × 40 */
 export const mercPrice = (level: number) => 150 + level * 40
 
@@ -548,8 +569,8 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     trade('sell', g, it.uid)
   } else if (cmd === CMD_BUY && npc === 'merchant') {
     const it = state.shop[arg]
-    if (!it || p.gold < buyPrice(it) || p.bag.length >= BAG_SIZE) return
-    const g = buyPrice(it)
+    const g = it ? Math.round(buyPrice(it) * questDiscount(p.quests)) : 0
+    if (!it || p.gold < g || p.bag.length >= BAG_SIZE) return
     p.gold -= g
     state.shop.splice(arg, 1)
     p.bag.push({ ...it, aff: [...it.aff] })
@@ -915,7 +936,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     focus: 50,
     dashCharges: 2,
     build: sanitizeBuild(sh.build),
-    spBonus: 0,
+    spBonus: questPoints(sh.quests ?? []),
+    quests: Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, sh.quests?.[i] ?? 0))),
     merc: -1,
   }
 }
@@ -1054,6 +1076,20 @@ function stepAll(state: GameState, mapOf: (area: number) => GameMap, inputs: Inp
   state.tick++
 }
 
+/** 퀘스트 목표를 이뤘다: 같은 게임에 있는 모두의 그 퀘스트가 "이룸" 이 된다 (디아블로 2) */
+function questGoal(state: GameState, goal: 'clear' | 'kill', area: number): void {
+  QUESTS.forEach((q, i) => {
+    if (q.goal !== goal || q.area !== area) return
+    let any = false
+    for (const p of state.players) {
+      if (p.vacant || p.merc >= 0 || (p.quests[i] ?? 0) >= 2) continue
+      p.quests[i] = 2
+      any = true
+    }
+    if (any) state.events.push({ type: 'questDone', q: i })
+  })
+}
+
 /** 묶인 지역 하나의 한 틱 (예전의 step 몸통) */
 function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   // 근접 휘두르기·조준 판정·스킬이 쓸 격자 (몬스터가 움직이기 전 위치)
@@ -1073,7 +1109,11 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   runBooms(state, map, grid)
   flushSpawns(state, map)
   // 쓰러진 몬스터를 뺀다 (순서 유지)
-  if (state.monsters.some((m) => m.hp <= 0)) state.monsters = state.monsters.filter((m) => m.hp > 0)
+  if (state.monsters.some((m) => m.hp <= 0)) {
+    state.monsters = state.monsters.filter((m) => m.hp > 0)
+    // 지역을 비웠다 (보물 고블린은 세지 않는다 — 도망쳐도 비운 것)
+    if (state.mode === 'dungeon' && state.monstersTotal > 0 && !state.monsters.some((m) => MONSTER_LIST[m.kind].attack !== 'flee')) questGoal(state, 'clear', state.curArea)
+  }
   stepGlobes(state)
   stepDrops(state)
 }
@@ -2253,6 +2293,7 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
     state.killed.push(state.curArea)
     state.events.push({ type: 'bossDown', area: state.curArea, kind: m.kind })
   }
+  if (state.mode === 'dungeon' && isBossLike(m)) questGoal(state, 'kill', state.curArea)
   if (!suicide) {
     const killer = by >= 0 ? state.players[by] : null
     if (killer) {
@@ -2417,6 +2458,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   if (p.left) return
   if (cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) {
     townCommand(state, p, cmd, arg)
+    return
+  }
+  if (cmd === CMD_QUEST) {
+    questCommand(state, p, arg)
     return
   }
   if (cmd >= CMD_SKILL_UP && cmd <= CMD_HIRE) {

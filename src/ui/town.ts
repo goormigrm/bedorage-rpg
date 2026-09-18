@@ -9,7 +9,49 @@ import {
   Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
-import { NPC_NAMES, NpcId } from '../core/world'
+import { NPC_NAMES, NpcId, QUESTS, questDiscount } from '../core/world'
+import { CMD_QUEST } from '../core/input'
+
+/** 퀘스트 목록 (촌장 창 — 버튼 있음 · 퀘스트 기록 — 버튼 없음) */
+export function questList(q: number[], buttons: boolean): string {
+  return QUESTS.map((d, i) => {
+    const st = q[i] ?? 0
+    const tag = ['아직 모름', '진행 중', '이룸 — 촌장에게 보고', '끝'][st]
+    const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${i}">보상 받기 — ${d.reward}</button>` : ''
+    const say = st === 3 ? d.thanks : d.ask
+    return `<div class="q-row q${st}"><div class="q-h"><b>${d.name}</b><span>${tag}</span></div>
+      ${st === 0 && !buttons ? '' : `<p class="q-say">"${say}"</p>`}
+      ${st < 3 ? `<p class="q-task">◆ ${d.task} · 보상: ${d.reward}</p>` : ''}${btn}</div>`
+  }).join('')
+}
+
+/** 퀘스트 기록 (J) */
+export class QuestLog {
+  readonly el: HTMLElement
+  open = false
+  private sig = ''
+  constructor(parent: HTMLElement, private me: () => PlayerState, private onToggle: (open: boolean) => void) {
+    this.el = document.createElement('div')
+    this.el.className = 'tp'
+    this.el.hidden = true
+    parent.appendChild(this.el)
+  }
+  toggle(open = !this.open): void {
+    this.open = open
+    this.el.hidden = !open
+    this.sig = ''
+    this.refresh()
+    this.onToggle(open)
+  }
+  refresh(): void {
+    if (!this.open) return
+    const q = this.me().quests
+    if (q.join('') === this.sig) return
+    this.sig = q.join('')
+    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 1막 무너진 성당</b><button class="inv-x" data-x>✕</button></div>${questList(q, false)}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
+    this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
+  }
+}
 
 function esc(t: string): string {
   return t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch)
@@ -31,7 +73,7 @@ const LINES: Record<NpcId, string> = {
   smith: '옵션 하나가 마음에 안 들면 가져와. 두드려서 다른 걸로 바꿔 주지 — 공짜는 아니고.',
   gambler: '안을 들여다보지 않고 사는 재미를 알아? 뭐가 나올지는 나도 몰라.',
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
-  elder: '성당 종이 멈춘 밤부터 모든 게 틀어졌소… (촌장의 부탁은 곧 들을 수 있다)',
+  elder: '성당 종이 멈춘 밤부터 모든 게 틀어졌소. 부탁할 것이 있소…',
   captain: '혼자 가기 무서우면 말해. 쓸 만한 녀석을 붙여 주지.',
 }
 
@@ -67,7 +109,7 @@ export class TownPanel {
     if (!this.open) return
     const me = this.me()
     const s = this.state()
-    const sig = `${this.tab}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
+    const sig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
     if (sig !== this.lastSig) this.render()
   }
 
@@ -76,13 +118,16 @@ export class TownPanel {
     if (!npc) return
     const me = this.me()
     const s = this.state()
-    this.lastSig = `${this.tab}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
+    this.lastSig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
     let body = ''
     if (npc === 'merchant') {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`
       const list =
         this.tab === 'buy'
-          ? s.shop.map((it, i) => row(it, `${buyPrice(it)} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < buyPrice(it))).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
+          ? s.shop.map((it, i) => {
+              const price = Math.round(buyPrice(it) * questDiscount(me.quests))
+              return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price)
+            }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
           : me.bag.map((it, i) => row(it, `+${itemValue(it)} 골드`, `data-cmd="${CMD_SELL}" data-arg="${i}"`)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
       const pot = me.potMax >= 8 ? '<p class="tp-note">물약 주머니가 가장 크다 (8칸).</p>' : `<button class="btn tp-pot" data-cmd="${CMD_POTUP}" data-arg="0" ${me.gold < potUpPrice(me.potMax) ? 'disabled' : ''}>물약 주머니 늘리기 ${me.potMax} → ${me.potMax + 1}칸 · ${potUpPrice(me.potMax)} 골드</button>`
       body = tabs + `<div class="tp-list">${list}</div>` + pot
@@ -96,6 +141,8 @@ export class TownPanel {
     } else if (npc === 'stash') {
       body = `<div class="tp-cols"><div><div class="tp-h">가방 (${me.bag.length}) — 누르면 넣기</div><div class="tp-list">${me.bag.map((it, i) => row(it, '→', `data-cmd="${CMD_STASH_PUT}" data-arg="${i}"`, me.stash.length >= STASH_SIZE)).join('') || '<p class="tp-empty">비었다</p>'}</div></div>
         <div><div class="tp-h">보관함 (${me.stash.length}/${STASH_SIZE}) — 누르면 꺼내기</div><div class="tp-list">${me.stash.map((it, i) => row(it, '←', `data-cmd="${CMD_STASH_TAKE}" data-arg="${i}"`)).join('') || '<p class="tp-empty">비었다</p>'}</div></div></div>`
+    } else if (npc === 'elder') {
+      body = questList(me.quests, true)
     } else if (npc === 'captain') {
       const mine = s.players.find((q) => q.merc === me.id && !q.left)
       const price = mercPrice(me.level)
