@@ -250,7 +250,9 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
 ## 다음 할 일
 
 **다음 세션은 여기부터 (D7 마감 — 우선순위 순)**:
-1. **공지용 사진·GIF**: 마을 · 들판 난전 · 막 보스 · 스킬 트리 · 전리품 분수 · 변형 무기(유탄 폭발). 덕 HANDOVER "스크린샷·GIF 다시 뜨기" 절차를 따르고, 파일은 로컬 `docs/img/` 에만 둔다(git 에 올리지 않음). 뜨기 전에 `localStorage.setItem('brpg.muted','1')` 로 소리부터 끈다.
+1. **공지용 GIF · 로비 사진**: 게임 사진 셋(마을 · 난전 · 최종 보스)은 떴다(`docs/img/`, 아래 "공지 사진 다시 뜨기"). 남은 것:
+   - GIF(난전 · 유탄 폭발 · 보스 예고) — 덕의 `tools/rec.js` · `tools/gif.py` 를 옮겨 오거나, 같은 `__snap` 을 `dir:'frames'` 로 여러 장 떠서 붙인다.
+   - 로비·스킬 트리·가방 사진은 DOM 이라 html2canvas 가 필요하다.
 2. **오픈 베타 게시 여부는 사용자에게 묻는다**: 공지글 초안은 `docs/공지글-모음.md` 에 있다. 게시는 사람이 한다(Claude 가 올리지 않음).
 3. **P2P 나머지**:
    - 타운 포털 왕복과 악몽 판을 여러 탭으로 확인한다.
@@ -259,6 +261,18 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
 4. **저격·3막**: 통천덕 혼자 한 바퀴가 가장 느리고(5.6시간) 3막에서 많이 죽는다(60). 저격 둘은 무리에 약한 역할이다. 오픈 베타 의견으로 더 볼 것.
 5. **투기장**: 통천덕 67% · 풍월덕 38%. 캐릭터 패시브 차이라 무기 배율로는 둘을 함께 못 맞춘다. 의견이 오면 캐릭터 수치(체력·패시브)로 맞춘다.
 6. 오픈 베타 뒤: 세이브의 막별 플레이 시간(`playSec`)으로 사람 어림(봇 × 2 + 지역마다 2분)을 고친다. 목표는 보통 한 바퀴 6시간이다.
+
+**공지 사진 다시 뜨기** (2026-09-19):
+- 개발 서버를 `?shot=1` 로 연다. 그러면 캔버스 버퍼가 남고 `window.__session` 이 열린다.
+  - 탭은 **tabs_create 로 만든 탭**을 쓴다(미리보기 첫 탭은 1분쯤 뒤 다시 로드된다).
+  - 열자마자 `localStorage.setItem('brpg.muted','1')` 로 소리를 끈다.
+- 백그라운드 탭은 rAF 가 멈춘다. 찍기 전에 `__session.frame(performance.now())` 를 몇 번 불러 그린다.
+- 합쳐 저장: `.game-stage` 안의 보이는 캔버스(3D + HUD)를 1280 폭 캔버스에 차례로 `drawImage` 한 뒤, `fetch('/__shot', {method:'POST', body: JSON.stringify({name, data: out.toDataURL('image/jpeg', 0.9)})})`.
+  - 결과는 `docs/img/<name>.jpg` 다(`vite.config.ts` shotEndpoint).
+- 장면 연출:
+  - `__bd.state().players[0]` 의 x·y 를 옮겨 자리를 잡는다(혼자 판이라 어긋날 걱정이 없다).
+  - 사격은 `window.dispatchEvent(new MouseEvent('mousedown', …))`, 스킬은 키 이벤트로 한다.
+  - 보스 예고는 `__bd.view().monsters` 의 `st === 2 && mode === 2` 를 기다렸다 찍는다.
 
 그 밖에 이어서 할 것:
 1. **M2 나머지** — 탭 넷으로 10분(던전·투기장 팀전), 게임 중 난입(캐릭터 기록 포함), 강제 리싱크. 확인법: 각 탭에서 `__bd.hashes()` 를 떠서 같은 틱끼리 비교, `__bd.resyncs()` 가 0 인지.
