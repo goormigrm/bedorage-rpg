@@ -40,6 +40,10 @@ const GHOUL = 0
 const ARCHER = 1
 const BLOATER = 2
 const BUTCHER = 3
+const WOLF = 4
+const SPIDER = 5
+const SHAMAN = 6
+const QUEEN = 7
 
 export const ACTS: ActDef[] = [
   {
@@ -53,6 +57,21 @@ export const ACTS: ActDef[] = [
       { w: 0.25, groups: [[ARCHER, 3, 4], [GHOUL, 1, 2]] },
       // 부푼 시체 떼 — 구울 사이에서 터지면 구울도 날아간다
       { w: 0.2, groups: [[BLOATER, 2, 3], [GHOUL, 2, 3]] },
+    ],
+  },
+  {
+    name: '안개 숲',
+    desc: '마을 밖 숲. 늑대 떼와 독거미, 그리고 쓰러진 것을 다시 일으키는 버섯 주술사.',
+    map: 'forest',
+    packs: [
+      // 늑대 떼 — 빠르게 둘러싼다
+      { w: 0.4, groups: [[WOLF, 5, 8]] },
+      // 독거미 무리를 늑대가 지킨다 (거미줄에 걸리면 늑대를 못 떨친다)
+      { w: 0.25, groups: [[SPIDER, 3, 5], [WOLF, 1, 2]] },
+      // 주술사가 뒤에서 고친다 — 먼저 잡아라
+      { w: 0.2, groups: [[SHAMAN, 1, 1], [WOLF, 3, 5], [SPIDER, 0, 1]] },
+      // 숲까지 흘러나온 시체들
+      { w: 0.15, groups: [[GHOUL, 4, 6], [BLOATER, 1, 2]] },
     ],
   },
 ]
@@ -72,6 +91,21 @@ export const STAGES: StageDef[] = [
     act: 0, n: 2, name: '도살장', level: 5, floors: 3,
     boss: BUTCHER,
     intro: '피 냄새가 가장 짙은 곳.\n갈고리에 걸린 것들 사이로 무언가 칼을 간다.',
+  },
+  {
+    act: 1, n: 0, name: '늑대 길', level: 8, floors: 3,
+    unique: { kind: WOLF, name: '회색 갈기' },
+    intro: '성당을 빠져나온 길은 안개에 잠겼다.\n사방에서 늑대 울음이 좁혀 온다.',
+  },
+  {
+    act: 1, n: 1, name: '포자 늪', level: 10, floors: 3,
+    unique: { kind: SHAMAN, name: '포자 할멈' },
+    intro: '사람 키만 한 버섯이 늪을 덮었다.\n쓰러진 것들이 포자를 뒤집어쓰고 다시 일어선다.',
+  },
+  {
+    act: 1, n: 2, name: '거미 둥지', level: 12, floors: 3,
+    boss: QUEEN,
+    intro: '숲의 심장은 거미줄로 덮여 있다.\n알을 품은 여왕이 실을 당기며 기다린다.',
   },
 ]
 

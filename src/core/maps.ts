@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage' | 'crypt'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'forest'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -107,6 +107,22 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4b463f, wallTop: 0x5d574e, crate: 0x77706a, outside: 0x040405,
       sunColor: 0x8aa0c8, ambientColor: 0x4a4868, fog: 0x050507,
       dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+    },
+  },
+  forest: {
+    id: 'forest',
+    name: '안개 숲',
+    desc: '마을 밖 숲. 덤불과 바위 사이로 길이 갈라지고, 안개 너머에서 무언가 따라온다.',
+    rows: frame(84, 62),
+    fixedScale: true,
+    // 흩어진 덤불(벽)·바위(상자) — 방이 없어 시야가 트이고, 여러 무리가 한꺼번에 몰려온다
+    gen: { style: 'scatter', density: 15, crates: 12, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      // 젖은 이끼 바닥 · 검푸른 덤불 · 이끼 낀 바위. 달빛은 푸르고 안개는 초록빛
+      floor: 0x2f3a2a, floorAlt: 0x2b3526, floorLine: 0x232c1f,
+      wall: 0x26301f, wallTop: 0x34422a, crate: 0x5e6258, outside: 0x030504,
+      sunColor: 0x9ab8c8, ambientColor: 0x3e5048, fog: 0x040705,
+      dark: { sun: 0.6, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
     },
   },
   garage: {

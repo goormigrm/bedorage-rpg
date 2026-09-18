@@ -16,7 +16,7 @@ import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
-  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, QUEEN, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 import { entryOf, farPoint, floorSeed, makeMonster, populate, rollAffixes } from './dungeon'
 import { ACTS, areaLevel, stageDef } from './campaign'
@@ -56,7 +56,7 @@ const CHARGE_SPEED = 12
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
 const booms: { x: number; y: number; r: number; dmg: number; by: number }[] = []
 /** 분열 정예가 낳을 구울 (이번 틱 끝에 넣는다 — 몬스터 배열을 도는 중에 늘리지 않게) */
-const spawns: { x: number; y: number; pack: number; hpMul: number; pow: number; lvl: number }[] = []
+const spawns: { kind: number; x: number; y: number; pack: number; hpMul: number; pow: number; lvl: number }[] = []
 const grids = new WeakMap<GameMap, Grid>()
 
 function gridFor(map: GameMap): Grid {
@@ -1567,19 +1567,19 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
   if (m.elite & EA_SPLIT) {
     // 정예 배율을 걷어 낸 층 보정만 물려준다
     const hpMul = m.maxHp / (def.hp * ELITE.hp)
-    for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow), lvl: m.lvl })
+    for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ kind: 0, x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow), lvl: m.lvl })
   }
 }
 
-/** 분열로 나온 구울을 넣는다: 깨어 있고, 죽은 자리 둘레에 조금씩 벌려 놓는다 */
+/** 새로 나온 몬스터(분열 구울 · 보스의 새끼)를 넣는다: 깨어 있고, 나온 자리 둘레에 조금씩 벌려 놓는다 */
 function flushSpawns(state: GameState, map: GameMap): void {
   if (spawns.length === 0) return
   const ring = [[0, -1], [0.87, 0.5], [-0.87, 0.5], [0.87, -0.5], [-0.87, -0.5], [0, 1]]
   for (let i = 0; i < spawns.length; i++) {
     const s = spawns[i]
     const d = ring[i % ring.length]
-    const r = moveCircle(map, s.x, s.y, MONSTER_LIST[0].r, d[0] * 14, d[1] * 14)
-    const g = makeMonster(state, 0, r.x, r.y, s.pack, s.hpMul, s.pow, s.lvl)
+    const r = moveCircle(map, s.x, s.y, MONSTER_LIST[s.kind].r, d[0] * 14 * (1 + Math.floor(i / 6)), d[1] * 14 * (1 + Math.floor(i / 6)))
+    const g = makeMonster(state, s.kind, r.x, r.y, s.pack, s.hpMul, s.pow, s.lvl)
     g.st = MS_CHASE
     g.cd = 20 + i * 6
     g.aim = (i * 341) & 1023
@@ -1788,6 +1788,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       continue
     }
     if (m.cd > 0) m.cd--
+    if (m.scd > 0) m.scd--
     // 표적: 가장 가까운 움직일 수 있는 사람. 30틱마다 다시 고른다 (쓰러지면 바로). 도발 중이면 그대로
     const tauntOk = m.taunt > 0 && m.target >= 0 && isActive(state.players[m.target])
     if (!tauntOk && (m.target < 0 || !isActive(state.players[m.target]) || (tick + m.id) % 30 === 0)) m.target = nearestActive(state, m.x, m.y)
@@ -1820,20 +1821,34 @@ function stepMonsters(state: GameState, map: GameMap): void {
         m.st = MS_RECOVER
         m.t = 50
         m.mode = 0
-        m.cd = CHARGE.every
+        m.scd = CHARGE.every
+        m.cd = Math.max(m.cd, 40)
       }
       continue
     }
     if (m.st === MS_CHASE) {
       m.aim = turnToward(m.aim, face, TURN)
-      // 보스: 멀리 있는 표적에게 예고선을 긋고 돌진
-      if (def.boss && m.cd === 0 && m.los === 1 && d > 140 && d < 520) {
+      // 도살자: 멀리 있는 표적에게 예고선을 긋고 돌진
+      if (def.special === 'charge' && m.scd === 0 && m.los === 1 && d > 140 && d < 520) {
         m.st = MS_WINDUP
         m.mode = 1
         m.t = CHARGE.windup
         m.aim = face
         m.ax = tp.x
         m.ay = tp.y
+        state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+        continue
+      }
+      // 거미 여왕: 거미줄 부채(mode 2)와 새끼 부르기(mode 3)를 번갈아
+      if (def.special === 'queen' && m.scd === 0 && m.los === 1 && d < 460) {
+        const brood = m.phase % 2 === 1
+        m.st = MS_WINDUP
+        m.mode = brood ? 3 : 2
+        m.t = brood ? QUEEN.broodWindup : QUEEN.fanWindup
+        m.aim = face
+        m.ax = tp.x
+        m.ay = tp.y
+        m.phase++
         state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
         continue
       }
@@ -1846,6 +1861,12 @@ function stepMonsters(state: GameState, map: GameMap): void {
         attack = m.cd === 0 && m.los === 1 && d <= def.range
         const keep = def.keepDist ?? 200
         if (m.los === 1 && d < keep * 0.65) away = true
+        else if (m.los === 1 && d <= keep) hold = true
+      } else if (def.attack === 'heal') {
+        // 주술사: 다친 동료가 곁에 있으면 고친다. 사람과는 거리를 둔다
+        attack = m.cd === 0 && hasWounded(state, m, def.range)
+        const keep = def.keepDist ?? 240
+        if (m.los === 1 && d < keep * 0.7) away = true
         else if (m.los === 1 && d <= keep) hold = true
       } else {
         attack = m.los === 1 && d <= def.range
@@ -1866,6 +1887,16 @@ function stepMonsters(state: GameState, map: GameMap): void {
         m.st = MS_CHARGE
         m.t = CHARGE.ticks
         m.tag = state.nextFxId++
+      }
+    } else if (m.st === MS_WINDUP && m.mode >= 2) {
+      // 보스 특수 예고: 끝나면 부채 · 새끼 (방향은 예고 시작 때 정했다 — 예고선 밖으로 비키면 산다)
+      if (--m.t <= 0) {
+        if (m.mode === 2) queenFan(state, m, def)
+        else if (m.mode === 3) queenBrood(state, m)
+        m.mode = 0
+        m.st = MS_RECOVER
+        m.t = 30
+        m.scd = QUEEN.every
       }
     } else if (m.st === MS_WINDUP) {
       if (def.attack === 'melee') m.aim = turnToward(m.aim, face, TURN_WINDUP)
@@ -1907,7 +1938,56 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
   m.moving = 1
 }
 
+/** 곁에 (보스·우두머리가 아닌) 다친 동료가 있나 */
+function hasWounded(state: GameState, m: Monster, r: number): boolean {
+  for (const o of state.monsters) {
+    if (o === m || o.hp <= 0 || o.st === MS_SLEEP || o.hp >= o.maxHp * 0.8 || isBossLike(o)) continue
+    if (len(o.x - m.x, o.y - m.y) <= r) return true
+  }
+  return false
+}
+
+/** 거미 여왕의 거미줄 부채: 예고 때 정한 방향으로 갈래를 고르게 벌려 쏜다 */
+function queenFan(state: GameState, m: Monster, def: MonsterDef): void {
+  const base = atan2A(m.ay - m.y, m.ax - m.x)
+  const step = deg((QUEEN.spread * 2) / (QUEEN.fan - 1))
+  const sp = def.shotSpeed ?? 5
+  const dmg = Math.round((def.dmg * QUEEN.fanDmg * m.pow) / 100)
+  for (let i = 0; i < QUEEN.fan; i++) {
+    const a = (base - deg(QUEEN.spread) + step * i) & 1023
+    const sx = m.x + cosA(a) * (def.r + 4)
+    const sy = m.y + sinA(a) * (def.r + 4)
+    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: def.shotSlow ?? 0, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg, r: def.shotR ?? 6 })
+  }
+  state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
+}
+
+/** 거미 여왕의 새끼: 독거미를 약하게 몇 마리 (살아 있는 새끼가 많으면 덜) */
+function queenBrood(state: GameState, m: Monster): void {
+  let alive = 0
+  for (const o of state.monsters) if (o.hp > 0 && o.pack === m.pack && o !== m) alive++
+  const n = Math.min(QUEEN.brood, QUEEN.broodMax - alive)
+  // 여왕의 인원·레벨 보정을 새끼도 받는다 (체력 배율만 줄여서)
+  const hpMul = (m.maxHp / MONSTER_LIST[m.kind].hp) * QUEEN.broodHp
+  for (let i = 0; i < n; i++) spawns.push({ kind: 5, x: m.x, y: m.y, pack: m.pack, hpMul, pow: Math.round(m.pow * 0.8), lvl: m.lvl })
+  state.events.push({ type: 'summon', m: m.id, x: m.x, y: m.y })
+}
+
 function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
+  if (def.attack === 'heal') {
+    // 주위의 다친 동료를 고친다 (보스·우두머리는 빼고 — 보스 싸움이 끝나지 않게)
+    const r = def.range
+    for (const o of state.monsters) {
+      if (o.hp <= 0 || o.st === MS_SLEEP || isBossLike(o)) continue
+      if (len(o.x - m.x, o.y - m.y) > r) continue
+      o.hp = Math.min(o.maxHp, o.hp + Math.round(o.maxHp * (def.heal ?? 0.25)))
+    }
+    state.events.push({ type: 'mheal', m: m.id, x: m.x, y: m.y, r })
+    m.st = MS_RECOVER
+    m.t = def.recover
+    m.cd = def.cooldown
+    return
+  }
   if (def.attack === 'melee') {
     state.events.push({ type: 'swipe', m: m.id, x: m.x, y: m.y, aim: m.aim })
     const reach = def.r + PLAYER_RADIUS + def.range + 8
@@ -1927,7 +2007,7 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
     const sp = def.shotSpeed ?? 5
     const sx = m.x + cosA(a) * (def.r + 4)
     const sy = m.y + sinA(a) * (def.r + 4)
-    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
+    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: def.shotSlow ?? 0, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
     state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: sx, y: sy })
     m.st = MS_RECOVER
     m.t = def.recover
@@ -2012,6 +2092,8 @@ function stepShots(state: GameState, map: GameMap): void {
         if (!isActive(p)) continue
         if (!segmentHitsCircle(px, py, s.x, s.y, p.x, p.y, PLAYER_RADIUS + s.r)) continue
         if (hurtPlayer(state, p, s.dmg, s.by, px, py)) {
+          // 거미줄: 맞으면 느려진다 (다리 부상과 같은 0.7배)
+          if (s.slow > 0 && isActive(p)) p.legInjury = Math.max(p.legInjury, s.slow)
           dead = true
           break
         }

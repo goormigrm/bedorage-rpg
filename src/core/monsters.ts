@@ -3,10 +3,16 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'wolf' | 'spider' | 'shaman' | 'queen'
 
-/** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
-export type Attack = 'melee' | 'ranged' | 'explode'
+/**
+ * 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 ·
+ * heal = 싸우지 않고 뒤에서 다친 동료를 고친다(주술사)
+ */
+export type Attack = 'melee' | 'ranged' | 'explode' | 'heal'
+
+/** 보스 특수 패턴 (MS_CHASE 에서 특수 재사용 대기 scd 가 0 이면) */
+export type Special = 'charge' | 'queen'
 
 export interface MonsterDef {
   id: MonsterKindId
@@ -49,8 +55,16 @@ export interface MonsterDef {
   xp: number
   /** 쓰러뜨렸을 때 파티원마다 전리품이 떨어질 확률 (개인 전리품 — 각자 굴린다) */
   loot: number
-  /** 보스: 화면 위 체력 바 · 돌진 공격 · 무리에 섞이지 않는다 */
+  /** 보스: 화면 위 체력 바 · 무리에 섞이지 않는다 */
   boss?: boolean
+  /** 보스 특수 패턴 */
+  special?: Special
+  /** ranged: 맞으면 이만큼(틱) 느려진다 (거미줄 — 다리 부상과 같은 0.7배) */
+  shotSlow?: number
+  /** 투사체 색 (기본 붉은빛) */
+  shotColor?: number
+  /** heal: 한 번에 주위 동료 체력의 이 비율을 채운다 (반경 = range) */
+  heal?: number
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -87,7 +101,38 @@ export const MONSTER_LIST: MonsterDef[] = [
     id: 'butcher', idx: 3, name: '도살자',
     hp: 1400, speed: 2.1, r: 24,
     attack: 'melee', dmg: 42, range: 20, windup: 26, recover: 34, cooldown: 55, arc: deg(90),
-    knockRes: 0.92, globe: 1, xp: 240, loot: 1, boss: true,
+    knockRes: 0.92, globe: 1, xp: 240, loot: 1, boss: true, special: 'charge',
+  },
+  // ---------------- 2막 안개 숲 ----------------
+  {
+    // 늑대: 빠르고 약하다. 떼로 둘러싼다 — 달리기만으로는 못 떨친다(사람 3.2 · 늑대 3.3). 구르기·넉백으로 벌린다
+    id: 'wolf', idx: 4, name: '굶주린 늑대',
+    hp: 48, speed: 3.3, r: 12,
+    attack: 'melee', dmg: 11, range: 12, windup: 10, recover: 18, cooldown: 30, arc: deg(60),
+    knockRes: 0, globe: 0.04, xp: 5, loot: 0.06,
+  },
+  {
+    // 독거미: 거미줄을 뱉는다 — 맞으면 3초 느려진다. 늑대와 같이 나오면 위험하다
+    id: 'spider', idx: 5, name: '독거미',
+    hp: 58, speed: 2.3, r: 12,
+    attack: 'ranged', dmg: 9, range: 300, windup: 26, recover: 22, cooldown: 90,
+    shotSpeed: 5.2, shotLife: 70, shotR: 9, keepDist: 190, shotSlow: 180, shotColor: 0xd8f0c8,
+    knockRes: 0.1, globe: 0.06, xp: 7, loot: 0.08,
+  },
+  {
+    // 버섯 주술사: 싸우지 않고 무리 뒤에서 다친 동료를 고친다(주위 동료 체력 25%, 초록 고리). 먼저 잡아라
+    id: 'shaman', idx: 6, name: '버섯 주술사',
+    hp: 85, speed: 1.8, r: 14,
+    attack: 'heal', dmg: 0, range: 230, windup: 40, recover: 30, cooldown: 150, keepDist: 260, heal: 0.25,
+    knockRes: 0.2, globe: 0.1, xp: 12, loot: 0.15,
+  },
+  {
+    // 보스 — 거미 여왕: 가까우면 물기, 번갈아 **거미줄 부채**(7갈래 · 맞으면 느려짐 · 예고선)와 **새끼 거미 부르기**
+    id: 'queen', idx: 7, name: '거미 여왕',
+    hp: 1700, speed: 1.9, r: 26,
+    attack: 'melee', dmg: 38, range: 18, windup: 22, recover: 30, cooldown: 50, arc: deg(60),
+    shotSpeed: 5, shotLife: 84, shotR: 9, shotSlow: 150, shotColor: 0xd8f0c8,
+    knockRes: 0.95, globe: 1, xp: 300, loot: 1, boss: true, special: 'queen',
   },
 ]
 
@@ -98,6 +143,12 @@ export const DEATH_BLAST_MULT = 0.6
 
 /** 보스 돌진: 예고 틱 · 속도 · 길이 · 피해 */
 export const CHARGE = { windup: 48, speed: 10, ticks: 30, dmg: 55, every: 60 * 7 }
+
+/**
+ * 거미 여왕: 부채(갈래 수 · 벌어짐 · 예고 · 피해 배율)와 새끼(한 번에 · 살아 있는 새끼 상한 · 체력 배율), 특수 간격
+ * 둘을 번갈아 쓴다 (Monster.phase 로 센다)
+ */
+export const QUEEN = { fan: 7, spread: 36, fanWindup: 40, fanDmg: 0.45, brood: 4, broodMax: 8, broodHp: 0.4, broodWindup: 34, every: 60 * 4 }
 /** 정예: 무리 다섯에 하나, 우두머리가 된다 — 체력 4배 · 공격 1.4배 · 전리품 확정(등급 올림) · 경험치·골드 4배 */
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 
