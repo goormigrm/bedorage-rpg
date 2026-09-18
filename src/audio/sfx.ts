@@ -626,6 +626,13 @@ export class Sfx {
     880, 0, 0, 987.8, 0, 830.6, 0, 0, 659.3, 0, 739.99, 0, 880, 0, 0, 0,
   ]
 
+  /** 배경음 결: 'chase' = 덕의 132BPM 추격(투기장) · 'dark' = 느리고 어두운 던전 */
+  private bgmStyle: 'chase' | 'dark' = 'chase'
+
+  setBgmStyle(style: 'chase' | 'dark'): void {
+    this.bgmStyle = style
+  }
+
   startBgm(): void {
     this.bgmOn = true
     if (this.ctx) this.startBgmScheduler()
@@ -646,9 +653,53 @@ export class Sfx {
     this.bgmTimer = window.setInterval(() => this.scheduleBgm(), 80)
   }
 
+  // ---------- 던전 배경음: 72 BPM 단조 (Dm - B♭ - Gm - A) ----------
+  // 지하 묘지는 쫓기는 음악이 아니라 **스며드는** 음악이어야 한다(디아블로 1 의 트리스트럼·던전처럼).
+  // 낮은 지속음 · 심장 박동 킥 · 드문 종소리 · 합창 같은 두 음. 교전이 붙으면 8분 맥박과 북이 더해진다.
+  private static readonly DARK = [
+    { root: 36.71, pad: [146.8, 174.6, 220.0] }, // Dm
+    { root: 29.14, pad: [116.5, 146.8, 174.6] }, // B♭
+    { root: 49.0, pad: [196.0, 233.1, 293.7] }, // Gm
+    { root: 55.0, pad: [220.0, 277.2, 329.6] }, // A (화성 단조의 C#)
+  ]
+  private static readonly BELL = [0, 0, 587.3, 0, 0, 0, 698.5, 0, 0, 0, 880.0, 0, 0, 0, 659.3, 0]
+
+  private scheduleDark(ctx: AudioContext): void {
+    const step16 = 60 / 72 / 4
+    this.intensity = Math.max(0, this.intensity - 0.0012)
+    while (this.bgmNextBeat < ctx.currentTime + 0.4) {
+      const t = this.bgmNextBeat
+      const step = this.bgmBeatIndex % 64
+      const bar = (step / 16) | 0
+      const s16 = step % 16
+      const ch = Sfx.DARK[bar]
+      const hot = this.intensity > 0.3
+      // 마디 시작: 낮은 지속음 + 합창 두 음 (길게)
+      if (s16 === 0) {
+        this.bgmNote(t, ch.root * 2, 'sawtooth', step16 * 16, 0.28, 320)
+        this.bgmNote(t, ch.pad[0], 'sine', step16 * 15, 0.07, 900)
+        this.bgmNote(t, ch.pad[2] * 1.003, 'sine', step16 * 15, 0.05, 900)
+      }
+      // 심장 박동: 쿵-쿵 (교전 중엔 두 배)
+      if (s16 === 0 || s16 === 2 || (hot && (s16 === 8 || s16 === 10))) this.bgmKick(t)
+      // 교전: 8분 낮은 맥박 + 먼 북
+      if (hot && s16 % 2 === 0) this.bgmNote(t, ch.root * 4, 'sawtooth', step16 * 1.4, 0.12, 420)
+      if (hot && s16 === 12) this.bgmSnare(t, 0.08)
+      // 드문 종소리 (2·4마디, 조용할 때 더 또렷하게)
+      const bell = Sfx.BELL[s16]
+      if (bell && bar % 2 === 1) this.bgmNote(t, bell * (bar === 3 ? 0.944 : 1), 'triangle', step16 * 7, hot ? 0.05 : 0.08, 2400)
+      this.bgmNextBeat += step16
+      this.bgmBeatIndex++
+    }
+  }
+
   private scheduleBgm(): void {
     const ctx = this.ctx
     if (!ctx || !this.bgmGain || ctx.state !== 'running') return
+    if (this.bgmStyle === 'dark') {
+      this.scheduleDark(ctx)
+      return
+    }
     const step16 = 60 / 132 / 4 // 16분음표 길이
     this.intensity = Math.max(0, this.intensity - 0.0016)
     while (this.bgmNextBeat < ctx.currentTime + 0.3) {

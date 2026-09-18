@@ -252,6 +252,8 @@ export class Session {
     if (this.autopilot) this.sfx.setMuted(true)
     syncMute()
     this.syncMute = syncMute
+    // 던전은 어두운 음악, 투기장은 덕의 추격 음악
+    this.sfx.setBgmStyle(cfg.kind === 'arena' ? 'chase' : 'dark')
     this.sfx.startBgm()
 
     this.names = this.computeNames()
