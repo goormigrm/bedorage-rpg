@@ -3,7 +3,7 @@
 // 모든 추첨은 시드로 만든 전용 Rng 로 한다(같은 시드 = 모든 브라우저에서 같은 배치).
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
-import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor } from './monsters'
+import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor, levelHp, levelPow, EA_STOUT, tierOf } from './monsters'
 import { PackDef } from './world'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
@@ -11,9 +11,11 @@ import { GameState, MS_SLEEP, Monster } from './state'
 /** 입구에서 이 걸음 수 안에는 무리를 두지 않는다 (들어서자마자 몰리지 않게) */
 const SAFE_STEPS = 16
 /** 무리 사이 최소 간격 (타일) */
-const PACK_GAP = 9
+// D7: 9 칸이면 밀도를 올려도 자리가 차서 무리가 더 안 늘었다 → 7
+const PACK_GAP = 7
 /** 바닥 몇 칸당 무리 하나 (D4 — GUIDE 7장 "무리를 쓸어 담는다": 200 → 160, 72×54 지역이면 약 22무리 · 140마리) */
-const TILES_PER_PACK = 160
+// D7 계측(2026-09-18): 160 이면 보통 봇 혼자 한 막이 11~23분 — 사람 어림 2시간. 90 으로 무리를 1.8배 (GUIDE 7장 6시간)
+const TILES_PER_PACK = 90
 
 /** 층 입구: 3×3 이 트인 칸 중 맨 왼쪽 위 (map.spawns[0] 이 그것이다) */
 export function entryOf(map: GameMap): { x: number; y: number } {
@@ -87,14 +89,22 @@ export function affixCount(level: number): number {
 }
 
 /** 겹치지 않게 접두 능력 n 개를 더한다 */
-export function rollAffixes(rng: Rng, elite: number, n: number): number {
+/** 접두 능력 n 개 (겹치지 않게). skip = 이 몬스터에게는 붙이지 않을 능력 (방패병에 "단단함" — 방패와 겹치면 너무 질기다) */
+export function rollAffixes(rng: Rng, elite: number, n: number, skip = 0): number {
+  let taken = elite | skip
   for (let k = 0; k < n; ) {
     const a = ELITE_AFFIXES[randInt(rng, 0, ELITE_AFFIXES.length)]
-    if (elite & a.bit) continue
+    if (taken & a.bit) continue
+    taken |= a.bit
     elite |= a.bit
     k++
   }
   return elite
+}
+
+/** 원형마다 붙이지 않는 접두 능력 */
+export function affixSkip(kind: number): number {
+  return MONSTER_LIST[kind].guard ? EA_STOUT : 0
 }
 
 /**
@@ -157,9 +167,10 @@ export function populate(
     }
     if (ok) centers.push(c)
   }
-  // 파티 레벨만큼 몬스터도 세진다 (디아블로 3 처럼 내 레벨에 맞춘 세계): 레벨마다 체력 +10% · 피해 +6%
-  const hpMul = hpScaleFor(players) * (1 + 0.1 * (level - 1))
-  const pow = Math.round(100 * (1 + 0.06 * (level - 1)))
+  // 몬스터 레벨만큼 세진다 (monsters.ts levelHp · levelPow)
+  const tier = tierOf(state.tier)
+  const hpMul = hpScaleFor(players) * levelHp(level) * tier.hp
+  const pow = levelPow(level)
   centers.forEach((c, pack) => {
     const cx = (c % map.w) * TILE + TILE / 2
     const cy = ((c / map.w) | 0) * TILE + TILE / 2
@@ -204,7 +215,7 @@ export function populate(
           m.maxHp = m.hp = Math.round(m.hp * ELITE.hp)
           m.pow = Math.round(m.pow * ELITE.pow)
           // 접두 능력: 지역 레벨이 오를수록 많아진다 (겹치지 않게)
-          m.elite = rollAffixes(rng, m.elite, affixCount(level))
+          m.elite = rollAffixes(rng, m.elite, Math.min(4, affixCount(level) + tier.affix), affixSkip(m.kind))
         }
         placed.push(m)
         break

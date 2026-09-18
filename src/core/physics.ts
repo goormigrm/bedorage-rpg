@@ -140,3 +140,16 @@ export function segmentHitsCircle(
   const py = y0 + dy * t - cy
   return px * px + py * py <= r * r
 }
+
+/** 원이 벽 타일과 겹치나 (옮기지 않고 보기만) */
+export function circleHitsWall(map: GameMap, x: number, y: number, r: number): boolean {
+  for (let ty = Math.floor((y - r) / TILE); ty <= Math.floor((y + r) / TILE); ty++) {
+    for (let tx = Math.floor((x - r) / TILE); tx <= Math.floor((x + r) / TILE); tx++) {
+      if (!isWall(map, tx, ty)) continue
+      const cx = Math.max(tx * TILE, Math.min(x, tx * TILE + TILE))
+      const cy = Math.max(ty * TILE, Math.min(y, ty * TILE + TILE))
+      if ((x - cx) ** 2 + (y - cy) ** 2 < r * r - 0.01) return true
+    }
+  }
+  return false
+}

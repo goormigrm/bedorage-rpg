@@ -56,7 +56,8 @@ describe('던전 배치', () => {
     const map = buildMap('crypt', 1, 5)
     const one = createState({ area: 4, seed: 5, chars: ['chim'] }, map)
     const four = createState({ area: 4, seed: 5, chars: PARTY }, map)
-    expect(four.monsters[0].maxHp).toBe(Math.round(one.monsters[0].maxHp * 2.8))
+    // 반올림 두 번이라 ±1
+    expect(Math.abs(four.monsters[0].maxHp - one.monsters[0].maxHp * 2.8)).toBeLessThanOrEqual(1.5)
   })
 })
 
@@ -138,6 +139,7 @@ describe('층 크기', () => {
     expect(b.w).toBe(a.w)
     expect(b.h).toBe(a.h)
     const s = createState({ area: 4, seed: 3, chars: PARTY }, b)
-    expect(s.monsters.length).toBeLessThan(200)
+    // D7 에서 무리를 약 1.8배로 늘렸다(지하 묘지 1층 약 270) — 맵이 네 배로 커졌다면 1000 을 넘는다
+    expect(s.monsters.length).toBeLessThan(400)
   })
 })

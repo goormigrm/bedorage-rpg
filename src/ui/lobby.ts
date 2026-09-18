@@ -9,9 +9,18 @@ import { CHARACTERS, CharacterId, PLAYABLE, isPlayable } from '../core/character
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
 import { DEATH_RULE_LABEL, DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
+import { TIER_LABEL } from '../core/monsters'
+import { tierOpen } from '../core/world'
+
+/** 난이도 설명 (방 만들기 창) */
+const TIER_DESC = [
+  '처음 한 바퀴. 지역 레벨 1~30',
+  '같은 세계를 지역 레벨 +10 으로 — 정예 능력 하나 더 · 전리품 등급·골드↑ (보통의 심연의 군주를 쓰러뜨리면 열린다)',
+  '지역 레벨 +20 — 정예 능력 둘 더 · 전리품 등급·골드 더↑ (악몽의 심연의 군주를 쓰러뜨리면 열린다)',
+]
 import { CHAR_SKILLS, SKILLS } from '../core/skills'
 import { sanitizeSheet } from '../core/items'
-import { exportSave, importSave, levelOf, sheetOf } from '../game/save'
+import { exportSave, importSave, levelOf, playTimeOf, sheetOf } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
@@ -58,6 +67,8 @@ export class Lobby {
   private arenaMap: MapId = 'studio'
   /** 죽음 규칙 (혼자 하기·방 만들기 공용, 게스트는 방 정보로 받는다) */
   private deathRule: DeathRule = 0
+  /** 난이도 (0 보통 · 1 악몽 · 2 지옥) — 방장 캐릭터가 연 것만 */
+  private tier = 0
   private previewTimer = 0
   private roomMode: RoomMode = 'ffa'
   /** 방 정원 (호스트가 방 만들 때 정한다). 2명만 모여도 시작할 수 있고, 나머지 자리는 난입으로 채운다 */
@@ -164,6 +175,10 @@ export class Lobby {
                 ${DEATH_RULE_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
               </div></div>
               <p class="hintline" id="death-desc">${DEATH_RULE_DESC[0]}</p>
+              <div class="row"><label>난이도</label><div class="seg" id="seg-tier">
+                ${TIER_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
+              </div></div>
+              <p class="hintline" id="tier-desc">${TIER_DESC[0]}</p>
             </div>
             <div class="arena-only" hidden>
               <div class="row"><label>모드</label><div class="seg" id="seg-room-mode">
@@ -235,6 +250,13 @@ export class Lobby {
       this.hostChanged()
     }
     this.seg('#seg-death', onDeath)
+    this.seg('#seg-tier', (v) => {
+      const t = Number(v) || 0
+      if (!tierOpen(sheetOf(this.char), t)) return
+      this.tier = t
+      this.syncTier()
+      this.hostChanged()
+    })
     // 종류: 던전 / 투기장 — 두 창이 같은 값을 쓰고, 해당 줄만 보인다
     const onKind = (v: string) => {
       this.kind = v === 'arena' ? 'arena' : 'dungeon'
@@ -398,13 +420,15 @@ export class Lobby {
     const c = CHARACTERS[this.char]
     const el = this.host.querySelector('#char-info') as HTMLElement | null
     if (!el) return
-    el.innerHTML = `<b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}</span>
+    const played = playTimeOf(c.id)
+    el.innerHTML = `<b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
       <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div>
       <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div>`
     this.bonfire?.select(this.char)
   }
 
   private selectChar(id: CharacterId): void {
+    queueMicrotask(() => this.syncTier())
     this.char = id
     try {
       localStorage.setItem('brpg.char', id)
@@ -537,7 +561,7 @@ export class Lobby {
         return `<div class="room">
           <span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(r.hostName.trim()) : c ? c.name : r.hostChar}</b>의 방</span>
           <span class="rmap">${arenaRoom ? '투기장' : '던전'}</span>
-          <span class="rmode">${arenaRoom ? `${ROOM_MODE_LABEL[r.mode] ?? r.mode} · ${r.targetKills}킬` : `1막 · 죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`}</span>
+          <span class="rmode">${arenaRoom ? `${ROOM_MODE_LABEL[r.mode] ?? r.mode} · ${r.targetKills}킬` : `${TIER_LABEL[r.tier ?? 0] ?? '보통'} · 죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`}</span>
           <span class="rkill">${m}</span>
           <span class="rcount">${r.count}/${r.max}명</span>
           <span class="rstate">${st}</span>
@@ -574,7 +598,22 @@ export class Lobby {
     const d = this.host.querySelector(sel) as HTMLElement | null
     if (!d) return
     d.hidden = false
+    this.syncTier()
     this.drawPreview()
+  }
+
+  /** 난이도 단추: 이 캐릭터가 연 것만 누를 수 있다 (앞 난이도의 심연의 군주를 쓰러뜨리면 열린다) */
+  private syncTier(): void {
+    const sheet = sheetOf(this.char)
+    if (!tierOpen(sheet, this.tier)) this.tier = 0
+    this.host.querySelectorAll<HTMLButtonElement>('#seg-tier button').forEach((b) => {
+      const t = Number(b.dataset.v)
+      b.disabled = !tierOpen(sheet, t)
+      b.classList.toggle('on', t === this.tier)
+      b.title = b.disabled ? '앞 난이도의 심연의 군주를 쓰러뜨리면 열린다' : ''
+    })
+    const d = this.host.querySelector('#tier-desc') as HTMLElement | null
+    if (d) d.textContent = TIER_DESC[this.tier]
   }
 
   private closeDlg(): void {
@@ -591,6 +630,7 @@ export class Lobby {
       targetKills: this.killsRoom,
       mode: this.roomMode,
       deathRule: this.deathRule,
+      tier: this.tier,
       kind: this.kind,
       count: this.members.length,
       max: this.roomSize,
@@ -771,6 +811,7 @@ export class Lobby {
           names: string[]
           targetKills: number
           deathRule?: number
+          tier?: number
           kind?: string
           seed: number
           map: string
@@ -797,6 +838,7 @@ export class Lobby {
           bots: c.bots,
           difficulty: c.difficulty,
           deathRule: (c.deathRule === 1 || c.deathRule === 2 ? c.deathRule : 0) as DeathRule,
+          tier: Math.max(0, Math.min(2, Number(c.tier) || 0)),
           kind: c.kind === 'arena' ? 'arena' : 'dungeon',
           resumeState: m.state,
           resumeTick: m.tick,
@@ -820,6 +862,7 @@ export class Lobby {
         this.roomMode = m.mode
         this.killsRoom = m.targetKills
         this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
+        this.tier = Math.max(0, Math.min(2, Number(m.tier) || 0))
         this.kind = m.kind === 'arena' ? 'arena' : 'dungeon'
         // 정원은 호스트가 정한다 — 안 받으면 게스트 화면에 제 기본값(4)이 보인다
         if (typeof m.size === 'number') this.roomSize = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, m.size))
@@ -843,6 +886,7 @@ export class Lobby {
       case 'start':
         if (this.role === 'guest' && from === this.hostId) {
           this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
+          this.tier = Math.max(0, Math.min(2, Number(m.tier) || 0))
           this.kind = m.kind === 'arena' ? 'arena' : 'dungeon'
           this.launchFrom(m.players, m.seed, m.delay, m.mode, m.map, m.targetKills, m.scale, m.botDiff)
         }
@@ -889,7 +933,7 @@ export class Lobby {
 
   private broadcastRoom(): void {
     if (this.role !== 'host' || !this.link) return
-    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, kind: this.kind })
+    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind })
   }
 
   private sendHello(to?: string): void {
@@ -968,7 +1012,7 @@ export class Lobby {
     const mode = this.roomMode
     const scale = MAPS[map].fixedScale ? 1 : scaleForPlayers(players.length)
     const botDiff = players.some((p) => p.bot) ? this.botDiff : undefined
-    link.sendCtl({ t: 'start', seed, targetKills: kills, delay, map, scale, mode, players, botDiff, deathRule: this.deathRule, kind: this.kind })
+    link.sendCtl({ t: 'start', seed, targetKills: kills, delay, map, scale, mode, players, botDiff, deathRule: this.deathRule, tier: this.tier, kind: this.kind })
     this.announce('playing')
     setTimeout(() => this.launchFrom(players, seed, delay, mode, map, kills, scale, botDiff), 150)
   }
@@ -1020,6 +1064,7 @@ export class Lobby {
       bots: players.some((p) => p.bot) ? players.map((p) => !!p.bot) : undefined,
       difficulty: botDiff === 'easy' || botDiff === 'hard' ? botDiff : 'normal',
       deathRule: this.deathRule,
+      tier: this.kind === 'arena' ? 0 : this.tier,
     })
   }
 
@@ -1032,7 +1077,7 @@ export class Lobby {
         cfg = {
           ...cfg,
           lobby: this.lobbyLink,
-          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, kind: this.kind },
+          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, tier: this.tier, kind: this.kind },
         }
       } else if (!this.sharedLobby) {
         this.lobbyLink.leave()
@@ -1074,7 +1119,7 @@ export class Lobby {
       <div class="setrow">
         ${this.kind === 'arena'
           ? `<span><b>투기장</b>${MAPS[this.arenaMap].name}</span><span><b>모드</b>${ROOM_MODE_LABEL[this.roomMode]}</span><span><b>목표</b>${this.killsRoom}킬</span>`
-          : `<span><b>던전</b>1막 · 순례자 야영지에서 시작</span><span><b>죽음 규칙</b>${DEATH_RULE_LABEL[this.deathRule]}</span>`}
+          : `<span><b>던전</b>방장이 연 막의 마을에서 시작</span><span><b>난이도</b>${TIER_LABEL[this.tier] ?? '보통'}</span><span><b>죽음 규칙</b>${DEATH_RULE_LABEL[this.deathRule]}</span>`}
         <span><b>인원</b>${this.members.length}/${this.roomSize}명</span>
         ${connected && link.peers.size > 0 ? `<span><b>핑</b>${link.rtt} ms</span>` : ''}
       </div>

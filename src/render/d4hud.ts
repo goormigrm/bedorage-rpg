@@ -12,7 +12,7 @@ import { CHARACTERS, CharacterDef } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
-import { EA_UNIQUE, MONSTER_LIST, isBossLike } from '../core/monsters'
+import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
 import { QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
@@ -498,7 +498,7 @@ export class D4Hud {
           ? a.boss !== undefined
             ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`
             : `◆ 우두머리 ${a.unique?.name ?? ''}`
-          : `◆ 지역 레벨 ${a.level} · T 타운 포털`
+          : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
       c.fillText(goal, x + 12, y + 46)
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53, W - 24, 4)

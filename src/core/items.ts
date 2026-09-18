@@ -213,8 +213,12 @@ export const LEVEL_CAP = 30
  * 다음 레벨까지 필요한 경험치. 캠페인(12원정 · 36층)을 85% 잡으며 한 번 돌면 27 안팎 (tools/xpcurve.ts).
  * 몬스터 경험치가 레벨마다 20% 오르므로 곡선은 완만하다(1레벨 360 · 10레벨 4530 · 29레벨 14600)
  */
+/** 1레벨 필요 경험치 (무리 수가 바뀌면 같이 맞춘다 — tools/xpcurve.ts) */
+export const XP_BASE = 560
 export function xpNeed(level: number): number {
-  return Math.round(360 * Math.pow(level, 1.1))
+  // 24 레벨부터 가파르게 (D7): 4막(지역 25~30)이 경험치가 많아 한 바퀴에 만렙이 됐다 → 4막 끝 27~28 · 만렙은 악몽에서
+  const tail = level >= 24 ? 1 + 0.35 * (level - 23) : 1
+  return Math.round(XP_BASE * Math.pow(level, 1.1) * tail)
 }
 
 /** 레벨마다 최대 체력 +6, 피해 +1.5% */
@@ -255,8 +259,14 @@ export type Sheet = {
   stash?: Item[]
   /** 스킬 트리 빌드 (skills.ts Build) */
   build?: { r: number[]; m3: number[]; m5: number[]; s: number[] }
-  /** 퀘스트 상태 (world.ts QUESTS 순서: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
+  /** 퀘스트 상태 (world.ts QUESTS 순서: 0 모름 · 1 받음 · 2 이룸 · 3 끝) — 보통 난이도 */
   quests?: number[]
+  /** 악몽 · 지옥의 퀘스트 상태 (tq[1] 악몽 · tq[2] 지옥 — 0 은 비워 둔다) */
+  tq?: number[][]
+  /** 악몽 · 지옥의 웨이포인트 (twps[1] · twps[2]) */
+  twps?: number[]
+  /** 플레이 시간(초) 막마다 — 보통 난이도 한 바퀴 시간을 실제 기록으로 맞추려고 (D7 · GUIDE 7장) */
+  playSec?: number[]
 }
 
 export function emptySheet(): Sheet {
@@ -280,6 +290,9 @@ export function sanitizeSheet(s: unknown): Sheet {
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
   if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
   e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0xffff
+  if (Array.isArray(o.playSec)) e.playSec = o.playSec.slice(0, 8).map((v) => Math.max(0, Math.floor(Number(v) || 0)))
+  if (Array.isArray(o.twps)) e.twps = o.twps.slice(0, 3).map((v) => Math.max(0, Math.floor(Number(v) || 0)) & 0xffff)
+  if (Array.isArray(o.tq)) e.tq = o.tq.slice(0, 3).map((q) => (Array.isArray(q) ? q.slice(0, 32).map((v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0)))) : []))
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)

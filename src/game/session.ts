@@ -7,12 +7,12 @@ import { Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs } from '../core/world'
+import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs, tierQuests } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
 import { showEnding } from '../ui/ending'
-import { LORD_KIND } from '../core/monsters'
+import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
@@ -44,6 +44,8 @@ export interface SessionConfig {
   targetKills?: number
   /** 죽음 규칙 (방장이 정한다, 기본 0 = 없음) */
   deathRule?: DeathRule
+  /** 난이도 0 보통 · 1 악몽 · 2 지옥 */
+  tier?: number
   /** 판 종류: 던전(협동) · 투기장(PvP — 덕의 대전 규칙). 기본 던전 */
   kind?: GameMode
   /** 자리별 캐릭터 기록 (레벨·장비·가방). 내 것은 세이브에서, 남의 것은 방 메시지로 온다 */
@@ -70,7 +72,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; kind?: string }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; tier?: number; kind?: string }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -176,6 +178,9 @@ export class Session {
   private inventory!: Inventory
   /** 마지막 자동 저장 시각 */
   private lastSave = performance.now()
+  /** 저장하지 않은 플레이 시간 (막마다 초) — 저장할 때 세이브에 더하고 비운다 */
+  private played: number[] = [0, 0, 0, 0]
+  private playedAt = performance.now()
   private ticker: Ticker
   private lastTick = performance.now()
   private lobbyBeacon = 0
@@ -256,6 +261,7 @@ export class Session {
         this.input.uiOpen = open || this.inventory?.open
         this.sfx.blip()
       },
+      () => tierOf(this.state.tier).lvl,
     )
     this.town = new TownPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
@@ -404,6 +410,7 @@ export class Session {
         mode: info.mode as never,
         targetKills: info.targetKills,
         deathRule: info.deathRule,
+        tier: info.tier,
         kind: info.kind,
         count,
         max: info.size,
@@ -483,7 +490,9 @@ export class Session {
   private areaBanner(): void {
     if (this.arena) return
     const a = areaDef(this.viewArea)
-    this.renderer.banner(a.name, a.kind === 'town' ? `${a.act + 1}막 · ${a.lore ?? '안전지대'}` : `지역 레벨 ${a.level}${a.lore ? ` · ${a.lore}` : ''}`)
+    const t = this.state.tier ?? 0
+    const tag = t > 0 ? `${TIER_LABEL[t]} · ` : ''
+    this.renderer.banner(a.name, a.kind === 'town' ? `${tag}${a.act + 1}막 · ${a.lore ?? '안전지대'}` : `${tag}지역 레벨 ${a.level + tierOf(t).lvl}${a.lore ? ` · ${a.lore}` : ''}`)
   }
 
   /** 계속 켜기 방식: 음성 켜기/끄기 (버튼 · B) */
@@ -555,6 +564,7 @@ export class Session {
       chars: this.cfg.chars,
       absent: this.cfg.absent,
       deathRule: this.cfg.deathRule,
+      tier: this.arena ? 0 : this.cfg.tier ?? 0,
       mode: this.arena ? 'arena' : 'dungeon',
       teams: this.arena ? this.cfg.teams : undefined,
       targetKills: this.cfg.targetKills,
@@ -571,9 +581,11 @@ export class Session {
   private sheetsFor(): (Sheet | undefined)[] {
     const mine = this.cfg.sheets?.[this.cfg.localPlayer]
     const lvl = mine?.level ?? 1
+    const tier = this.cfg.tier ?? 0
     return this.cfg.chars.map((_, i) => {
       const s = this.cfg.sheets?.[i]
-      if (s) return s
+      // 퀘스트·웨이포인트는 이 판의 난이도 것으로 (악몽·지옥은 따로 진행한다 — 디아블로 2)
+      if (s) return { ...s, quests: tierQuests(s, tier), wps: tier > 0 ? (s.twps?.[tier] ?? 0) : s.wps }
       const botSeat = this.cfg.mode === 'solo' || this.cfg.bots?.[i]
       return botSeat ? { ...emptySheet(), level: lvl } : undefined
     })
@@ -588,8 +600,20 @@ export class Session {
     if (!me || me.vacant || this.joiningIn) return
     void final
     if (this.state.mode === 'dungeon' && this.state.deathRule === 2 && (me.out || !isTown(me.area))) return
-    commitSheet(me)
+    this.notePlayed()
+    commitSheet(me, this.state.tier ?? 0, this.played.map((sec, act) => ({ act, sec })).filter((x) => x.sec > 0))
+    this.played = [0, 0, 0, 0]
     this.lastSave = performance.now()
+  }
+
+  /** 지난번부터 흐른 시간을 지금 내가 있는 막에 더한다 (창이 숨겨져 멈춘 시간·10초 넘는 틈은 빼고) */
+  private notePlayed(): void {
+    const now = performance.now()
+    const dt = (now - this.playedAt) / 1000
+    this.playedAt = now
+    const me = this.state?.players[this.cfg.localPlayer]
+    if (this.arena || !me || me.vacant || dt <= 0 || document.hidden) return
+    this.played[areaDef(me.area).act] += Math.min(dt, 60)
   }
 
   private makeBots(seed: number): void {
@@ -1212,7 +1236,7 @@ export class Session {
         // 최종 보스: 엔딩 (따라잡는 중에 본 것이면 띄우지 않는다)
         else if (e.type === 'bossDown' && e.kind === LORD_KIND && !this.joiningIn) {
           this.saveMine(false)
-          showEnding(this.stage.querySelector('.game-ui') as HTMLElement, () => this.sfx.blip())
+          showEnding(this.stage.querySelector('.game-ui') as HTMLElement, this.state.tier ?? 0, () => this.sfx.blip())
         }
         // 마을에 들어설 때 저장 (하드코어는 이때만 저장된다)
         else if (e.type === 'areaEnter' && e.p === this.cfg.localPlayer && isTown(e.area)) this.saveMine(false)
@@ -1235,6 +1259,7 @@ export class Session {
     if (this.acc < 0) this.acc = 0
     // 30초마다 자동 저장 (탭이 갑자기 닫혀도 잃는 게 작게)
     if (now - this.lastSave > 30000) this.saveMine(false)
+    else if (now - this.playedAt > 5000) this.notePlayed()
   }
 
   private frame = (now: number): void => {
@@ -1481,6 +1506,7 @@ export class Session {
         names: this.cfg.names ?? [],
         targetKills: this.cfg.targetKills ?? 0,
         deathRule: this.cfg.deathRule ?? 0,
+        tier: this.cfg.tier ?? 0,
         kind: this.cfg.kind ?? 'dungeon',
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
@@ -1563,7 +1589,9 @@ export class Session {
     const keep: typeof this.pendingJoins = []
     for (const j of this.pendingJoins) {
       if (j.tick <= t) {
-        joinPlayer(this.state, this.mapOf, j.p, j.char, j.team, j.sheet ? sanitizeSheet(j.sheet) : undefined)
+        const js = j.sheet ? sanitizeSheet(j.sheet) : undefined
+        const jt = this.state.tier ?? 0
+        joinPlayer(this.state, this.mapOf, j.p, j.char, j.team, js ? { ...js, quests: tierQuests(js, jt), wps: jt > 0 ? (js.twps?.[jt] ?? 0) : js.wps } : undefined)
         this.cfg.chars[j.p] = j.char
         if (this.cfg.names) this.cfg.names[j.p] = j.name
         if (this.cfg.teams) this.cfg.teams[j.p] = j.team

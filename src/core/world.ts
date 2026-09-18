@@ -6,6 +6,7 @@
 
 import { GameMap, TILE, TILE_FLOOR, buildMap, walkField } from './map'
 import { MapId } from './maps'
+import { tierOf } from './monsters'
 
 /** 무리 틀: 원형 [종류, 최소, 최대(포함)] 묶음. w = 뽑힐 비중 (틀 목록 안에서 합 1) */
 export interface PackDef {
@@ -65,12 +66,18 @@ export interface ActDef {
   /** 마을 지역 번호 */
   town: number
   packs: PackDef[]
+  /**
+   * 막의 무리 수 배율. 뒤 막 맵일수록 벽이 많아 바닥이 좁다(지역당 몬스터 1막 130 · 2막 100 · 3막 78 · 4막 85) —
+   * 막마다 몬스터 수·걸리는 시간이 비슷하게 맞춘다 (D7 계측)
+   */
+  density: number
 }
 
 export const ACTS: ActDef[] = [
   {
     name: '무너진 성당',
     town: 0,
+    density: 1.15,
     packs: [
       // 구울 떼 + 궁수 한둘
       { w: 0.55, groups: [[GHOUL, 5, 9], [ARCHER, 0, 2]] },
@@ -83,6 +90,7 @@ export const ACTS: ActDef[] = [
   {
     name: '안개 숲',
     town: 10,
+    density: 1.45,
     packs: [
       // 늑대 떼 — 빠르게 둘러싼다
       { w: 0.4, groups: [[WOLF, 5, 8]] },
@@ -97,6 +105,7 @@ export const ACTS: ActDef[] = [
   {
     name: '잠긴 지하도',
     town: 19,
+    density: 1.6,
     packs: [
       // 방패 줄 뒤에서 토사꾼이 뱉는다 — 옆으로 돌아 들어가라
       { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
@@ -111,9 +120,10 @@ export const ACTS: ActDef[] = [
   {
     name: '심연',
     town: 28,
+    density: 1.5,
     packs: [
       // 그림자 떼 — 도망쳐도 등 뒤에 나타난다
-      { w: 0.3, groups: [[SHADE, 4, 6]] },
+      { w: 0.3, groups: [[SHADE, 3, 5]] },
       // 방패 줄 뒤의 포격 악마
       { w: 0.25, groups: [[DEMON, 1, 2], [SHIELD, 2, 3]] },
       // 그림자가 붙잡고 악마가 쏜다
@@ -135,7 +145,7 @@ const SPORES: PackDef[] = [
 ]
 
 const GUARDS: PackDef[] = [
-  { w: 0.6, groups: [[SHIELD, 3, 5], [ARCHER, 1, 2]] },
+  { w: 0.6, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2], [GHOUL, 1, 2]] },
   { w: 0.4, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
 ]
 const SPITTERS: PackDef[] = [
@@ -148,7 +158,7 @@ const FIRES: PackDef[] = [
   { w: 0.45, groups: [[DEMON, 1, 1], [SPITTER, 1, 2], [SHIELD, 1, 2]] },
 ]
 const SHADOWS: PackDef[] = [
-  { w: 0.6, groups: [[SHADE, 5, 7]] },
+  { w: 0.6, groups: [[SHADE, 3, 5], [GHOUL, 1, 2]] },
   { w: 0.4, groups: [[SHADE, 3, 4], [NECRO, 1, 1]] },
 ]
 // 강령술사는 무리 열에 넷쯤 — 모두에게 붙이면 일으킨 구울이 지역을 덮는다(브라우저 확인: 2층에 강령술사 24)
@@ -228,8 +238,8 @@ export function wpBit(area: number): number {
 }
 
 /** 이 지역의 몬스터 레벨: 지역 레벨 (파티가 훨씬 높으면 (파티 − 3) 까지 따라 올라온다 — 다시 와도 너무 쉽지 않게) */
-export function areaLevel(area: number, partyLevel: number): number {
-  return Math.max(areaDef(area).level, partyLevel - 3)
+export function areaLevel(area: number, partyLevel: number, tier = 0): number {
+  return Math.max(areaDef(area).level + tierOf(tier).lvl, partyLevel - 3)
 }
 
 /** 지역 맵의 시드: 게임마다 다른 세계, 같은 게임이면 모든 브라우저에서 같은 맵 */
@@ -401,6 +411,18 @@ export function actBossQuest(act: number): number {
     if (d.act === act) last = i
   })
   return last
+}
+
+/** 난이도 t 가 이 캐릭터에게 열렸나: 앞 난이도의 마지막 퀘스트(심연의 군주)를 이뤘으면 */
+export function tierOpen(sheet: { quests?: number[]; tq?: number[][] }, t: number): boolean {
+  if (t <= 0) return true
+  const prev = t === 1 ? sheet.quests : sheet.tq?.[t - 1]
+  return (prev?.[actBossQuest(ACTS.length - 1)] ?? 0) >= 2
+}
+
+/** 난이도 t 의 퀘스트 상태 (보통은 quests, 악몽·지옥은 tq[t]) */
+export function tierQuests(sheet: { quests?: number[]; tq?: number[][] }, t: number): number[] {
+  return (t <= 0 ? sheet.quests : sheet.tq?.[t]) ?? []
 }
 
 /** 이 캐릭터가 갈 수 있는 가장 뒤 막: 앞 막의 보스를 쓰러뜨렸으면 (퀘스트 이룸 이상) 다음 막이 열린다 */

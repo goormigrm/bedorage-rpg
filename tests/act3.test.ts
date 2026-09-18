@@ -46,10 +46,11 @@ function duel(id: string, mapId: 'ruins' | 'sewer' | 'rite', gap: number, seed =
 }
 
 describe('3막 잠긴 지하도 (D6)', () => {
-  it('방패병: 정면에서 쏜 탄은 방패에 막혀 15% 만 — 등 뒤에서 쏘면 제대로 들어간다', () => {
+  it('방패병: 정면에서 쏜 탄은 방패에 막혀 40% 만 — 등 뒤에서 쏘면 제대로 들어간다', () => {
     const shoot = (facing: number) => {
       const g = duel('shield', 'ruins', 5)
       const m: Monster = g.m
+      m.maxHp = m.hp = 5000
       let blocks = 0
       g.run(
         90,
@@ -69,8 +70,8 @@ describe('3막 잠긴 지하도 (D6)', () => {
     const back = shoot(0) // 등을 보인다
     expect(front.blocks).toBeGreaterThan(0)
     expect(back.blocks).toBe(0)
-    expect(back.lost).toBeGreaterThan(front.lost * 4)
-    expect(GUARD.mult).toBeLessThan(0.2)
+    expect(back.lost).toBeGreaterThan(front.lost * 2)
+    expect(GUARD.mult).toBeLessThan(0.5)
   })
 
   it('산성 토사꾼: 예고 때 정한 자리(사람 발밑)에 웅덩이 — 서 있으면 계속 다친다', () => {

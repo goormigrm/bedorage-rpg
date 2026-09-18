@@ -6,10 +6,10 @@
 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_USE, Input, SKILL_BTNS } from './input'
-import { GameMap, TILE, rayBlocked } from './map'
-import { MONSTER_LIST } from './monsters'
+import { GameMap, TILE, isWallAt, rayBlocked } from './map'
+import { ACID, MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
-import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, isActive } from './state'
+import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, ZONE_ACID, ZONE_FUSE, isActive } from './state'
 import { WEAPONS, WeaponId } from './weapons'
 import { SKILLS, focusCost, nodeSkill, slotNode } from './skills'
 import { flowField, flowStep } from './flow'
@@ -117,6 +117,13 @@ function findMonster(state: GameState, id: number): Monster | null {
   return null
 }
 
+/** 방패병이 방패를 이쪽으로 들고 있나 (정면이면 탄이 막힌다) */
+function guarding(m: Monster, me: PlayerState): boolean {
+  const g = MONSTER_LIST[m.kind].guard
+  if (!g || m.st === MS_SLEEP || m.stun > 0) return false
+  return Math.abs(angleDiff(atan2A(me.y - m.y, me.x - m.x), m.aim)) <= g
+}
+
 /** 이끄는 사람: 0번(방장·혼자 하기의 나). 내가 0번이거나 0번이 못 움직이면 없음 → 스스로 던전을 돈다 */
 function leaderOf(state: GameState, me: PlayerState): PlayerState | null {
   const p0 = state.players[0]
@@ -148,9 +155,12 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     let bestD = Infinity
     for (const m of state.monsters) {
       if (m.hp <= 0) continue
-      const d = len(m.x - me.x, m.y - me.y)
-      if (d > range || d >= bestD) continue
-      if (m.st === MS_SLEEP && d > range * 0.7) continue
+      const raw = len(m.x - me.x, m.y - me.y)
+      if (raw > range) continue
+      // 방패를 이쪽으로 든 방패병은 뒤로 미룬다 (다른 표적이 있으면 그쪽부터)
+      const d = raw * (guarding(m, me) ? 2.5 : 1)
+      if (d >= bestD) continue
+      if (m.st === MS_SLEEP && raw > range * 0.7) continue
       if (rayBlocked(map, me.x, me.y, m.x, m.y)) continue
       best = m
       bestD = d
@@ -177,9 +187,12 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     const err = Math.abs(angleDiff(want, mem.aim))
     if (mem.seen && err < deg(10) && rand(mem.rng) < diff.fireChance && d < range) out.buttons |= BTN_FIRE
     if (w.scope && d > 220 && mem.seen) out.buttons |= BTN_ADS
-    // 거리 유지
+    // 거리 유지 (방패가 이쪽을 보면 옆으로 돌아 들어간다)
     const pref = PREFERRED_RANGE[me.weapon]
-    if (w.melee || d > pref * 1.15) {
+    if (guarding(target, me) && !w.melee) {
+      fx = -(target.y - me.y) * mem.strafeDir + (target.x - me.x) * 0.3
+      fy = (target.x - me.x) * mem.strafeDir + (target.y - me.y) * 0.3
+    } else if (w.melee || d > pref * 1.15) {
       const dir = pathDir(state, map, me.x, me.y, target.x, target.y)
       fx = dir.x
       fy = dir.y
@@ -225,7 +238,7 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
       let best: Monster | null = null
       let bestD = Infinity
       for (const m of state.monsters) {
-        if (m.hp <= 0) continue
+        if (m.hp <= 0 || isWallAt(map, m.x, m.y)) continue
         const d = (m.x - me.x) ** 2 + (m.y - me.y) ** 2
         if (d < bestD) {
           bestD = d
@@ -260,6 +273,29 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     }
     out.buttons |= BTN_DASH
     break
+  }
+
+  // 5-2) 땅 위험: 산성 웅덩이 · 폭발 예고 원 · 떨어질 자리(토사꾼·포격 악마 예고) 안이면 밖으로 (터지기 직전이면 구른다)
+  if (rand(mem.rng) < 0.3 + diff.dodge) {
+    for (const z of state.zones) {
+      if (z.owner !== -1 || (z.kind !== ZONE_ACID && z.kind !== ZONE_FUSE)) continue
+      const d = len(me.x - z.x, me.y - z.y)
+      if (d > z.r + 18) continue
+      fx = me.x - z.x || 1
+      fy = me.y - z.y
+      if (z.kind === ZONE_FUSE && z.t < 14 && rand(mem.rng) < diff.dodge) out.buttons |= BTN_DASH
+      break
+    }
+    for (const m of state.monsters) {
+      if (m.hp <= 0 || m.st !== MS_WINDUP || m.mode !== 0) continue
+      const def = MONSTER_LIST[m.kind]
+      if (def.attack !== 'lob') continue
+      const r = (def.blast ?? ACID.r) + 18
+      if (len(me.x - m.ax, me.y - m.ay) > r) continue
+      fx = me.x - m.ax || 1
+      fy = me.y - m.ay
+      break
+    }
   }
 
   // 6) 끼였으면 조금 비킨다

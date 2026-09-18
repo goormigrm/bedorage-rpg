@@ -40,7 +40,16 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-09-18 · v0.16.0 — D1~D6 끝(4막 · 엔딩) · 다음은 D7 마감)
+## 현재 상태 (2026-09-18 · v0.17.0 — D1~D6 끝 · D7 계측·난이도 · 다음은 D7 나머지 캐릭터 · 4인 검증 · 문서)
+
+**D7 자가 점검 (진행 중 — 완료 기준 "실제 플레이 5~7시간")**
+- ✅ `tools/campaign.ts` 로 잰 값(혼자 · 보통 봇 · 시드 2): 1막 24분 · 2막 26분 · 3막 39분 · 4막 29분.
+  - 사람 어림(봇 × 2 + 지역마다 2분)은 **약 5시간**이다.
+  - 레벨 흐름: 1막 끝 9 · 2막 15 · 3막 25 · 4막 28.
+- ✅ 악몽 · 지옥이 들어갔다. 퀘스트·웨이포인트는 난이도별이고, 방 만들기에서 고른다. 브라우저에서 악몽 판을 확인했다(지역 레벨 11 · 배너 · 추적 · 웨이포인트).
+- ⚠ 사람 어림의 두 배수(×2 · 2분)는 가정이다. 캐릭터마다 막별 플레이 시간(`playSec`)을 쌓게 했으니, 오픈 베타 기록으로 고친다.
+- ⚠ 3막에서 봇이 여전히 지역마다 약 5번 죽는다(수로 12 · 시장 15 · 광장 10). 원인은 방패병과 그 뒤의 궁수다. 사람은 옆으로 돌 수 있지만 계속 볼 것.
+- ⚠ 둘·넷 파티 계측은 아직이다(`party=2` · `party=4`).
 
 **D6 자가 점검 (완료 기준: "지역 30개 · 몬스터 9종 · 보스 3 · 마을 3 · 엔딩 · 보통 난이도 한 바퀴")**
 - ✅ 지역 36개(마을 넷 포함) · 새 몬스터 11종 · 막 보스 넷(도살자 · 거미 여왕 · 관리인 · 심연의 군주) · 막마다 퀘스트 넷 · 엔딩 글 장면.
@@ -104,6 +113,7 @@ npm run build      # tsc --noEmit + vite build → dist/
 | 성장·전투 | ✅ D4 | 집중(`focus`) · 스킬 트리(`skills.ts` TREE_ACTIVE/PASSIVES/Build, `ui/skilltree.ts`, CMD_SKILL_*) · 스킬 칸 다섯(`slotNode`) · 구르기 충전(`dashCharges`) · 용병(`hireCommand`, sim 안 봇 `p.bot`) · 밀도 1.25배 |
 | 퀘스트 | ✅ D5 (1막) | world.ts `QUESTS` · `PlayerState.quests` · `questGoal`(모두에게) · `CMD_QUEST`(촌장) · 촌장 창 · 기록(J) · 추적 · !/? 표시 |
 | 음성 | ✅ 코드 | `net/voice.ts` — 눌러서 말하기 · 계속 켜기, Trystero 스트림. 실제 두 기기 통화는 미확인 |
+| 계측 · 난이도 | ✅ D7 | `tools/campaign.ts`(봇 캠페인 · 받은 피해 출처) · `tools/xpcurve.ts` · `TIERS`(monsters.ts) · `tierOpen`/`tierQuests`(world.ts) · `Sheet.tq`/`twps`/`playSec` · 방 만들기 난이도 · `levelHp`/`levelPow`/`HP_BASE` · `XP_BASE` |
 | 4막 · 엔딩 | ✅ D6 | 지역 28~35 · `ACTS[3]` · 그림자(13, special `blink`) · 포격 악마(14, lob + `blast` → `ZONE_FUSE`) · 심연의 군주(15, special `lord`: `lordStage` 분노 · `lordNova` · `lordMeteors` · 그림자 부르기, `Monster.stage`) · 퀘스트 12~15 · `ui/ending.ts`(session 이 `bossDown` + `LORD_KIND` 에 띄운다) |
 | 3막 | ✅ D6 | 지역 19~27 · `ACTS[2]` · 방패병(9, `guard` → `applyHit` 이 막으면 true) · 강령술사(10, special `raise`) · 산성 토사꾼(11, attack `lob` → `ZONE_ACID`) · 관리인(12, special `warden`: mode 2 내려찍기 `booms` by −2 · mode 3 부르기) · `summonKind` · 퀘스트 8~11 |
 | 2막 | ✅ D6 | 지역 10~18(`AREAS`) · `ACTS[1]` · 늑대(5)·독거미(6)·버섯 주술사(7)·거미 여왕(8) · 퀘스트 4~7 · 막 이동 `CMD_QUEST` arg 100+막 · `state.act`(가 본 가장 뒤 막 → 난입 마을) · 숲 모습(world3d `tree` 벽 · `shroom` 소품) |
@@ -121,7 +131,7 @@ npm run build      # tsc --noEmit + vite build → dist/
 | 세이브 | ✅ | 캐릭터 = 세이브 칸 (localStorage `brpg.save.v1` + 직전 한 벌 `.bak`), 파일 내보내기/가져오기 (`game/save.ts`). 죽음 규칙 소실·하드코어 적용 |
 | 성능 | ✅ | 4인 · 146마리 전부 깸 틱당 0.12ms. 렌더 프레임 3.8ms(524마리). 매 틱 복사는 위치만(`interpSnapshot`), 판 전체 JSON 40KB |
 | P2P | ✅ 두 탭 | 방 만들기·참가·시작 → 해시 일치 · 리싱크 0 (v0.4.1). **게임 중 난입(캐릭터 기록 포함)** → 해시 일치 (v0.5.2 — 따라잡기 고침). **탭 넷 · 투기장 P2P 는 아직** |
-| 시험 | ✅ 86개 | dungeon · combat · skills · items · elites · world · join · camera |
+| 시험 | ✅ 89개 | dungeon · combat · skills · items · elites · world · join · camera |
 | 도구 | ✅ | `npx vite-node tools/xpcurve.ts` — 세계 한 바퀴의 레벨 곡선(지역마다 실제 맵을 만들어 경험치 합산 · 2~4막은 1막을 빌린 계획치) |
 
 ## 확정된 결정 (2026-09-18, 자세한 근거는 PLAN 10장)
@@ -198,11 +208,11 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
 
 ## 다음 할 일
 
-**다음은 D7 마감** (GUIDE 14장):
-1. **봇 계측으로 6시간 맞추기**: 보통 봇 파티(seeds=5)로 막마다 시간 · 죽음 · 도착 레벨을 잰다. `tools/xpcurve.ts` 는 이제 실제 4막 지역 표를 쓴다 — 레벨 곡선도 다시 맞출 것.
-2. **악몽 · 지옥 난이도**: 엔딩 뒤에 열린다. 몬스터 레벨과 체력을 올리고, 전리품 등급도 올린다.
-3. **나머지 캐릭터**와 **4탭 P2P 검증**.
-4. 가이드·공지 문서를 쓴다. 마을이 어둡다는 점도 손본다.
+**다음은 D7 나머지**:
+1. **나머지 캐릭터**: 덕의 12명 중 1차 6명을 뺀 여섯이다. 스킬 트리 · 봇 무기 거리 · 초상을 붙인다.
+2. **4탭 P2P 검증**: 넷이 서로 다른 지역 · 난입 · 악몽.
+3. 둘·넷 파티 계측으로 인원 보정(체력 ×0.6/명)을 확인한다.
+4. **가이드·공지 문서**를 쓴다. 마을이 어두운 것도 손본다.
 그다음 D7 마감(악몽·지옥 · 봇 계측으로 6시간 맞추기 · 나머지 캐릭터 · 4인 검증 · 가이드·공지).
 그다음 D4 성장·전투 → D5 퀘스트 → D6 2~4막 → D7 마감(GUIDE 14장).
 - D1 에서 남긴 것: 지역 입구가 맵 모서리라 들판도 던전처럼 보인다(D2 에서 지역마다 입구 자리를 생성기와 함께 손본다) · 경험치 곡선은 2~4막이 실제로 들어오는 D6 에서 다시(`tools/xpcurve.ts`) · 웨이포인트 창이 열려 있어도 게임은 돈다(협동이라 멈추지 않는다 — 디아블로 2 와 같다).

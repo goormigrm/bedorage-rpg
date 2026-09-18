@@ -44,6 +44,8 @@ export interface RoomInfo {
   max: number
   /** 죽음 규칙 (0 없음 · 1 소실 · 2 하드코어). 방장이 정한다 */
   deathRule?: number
+  /** 난이도 (0 보통 · 1 악몽 · 2 지옥) */
+  tier?: number
   /** 판 종류: dungeon(협동) · arena(투기장 PvP) */
   kind?: string
   /** open = 참가 가능, full = 정원 참, playing = 게임 중 */
@@ -140,11 +142,11 @@ export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; kind?: string }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */
-  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; kind?: string }
+  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; tier?: number; kind?: string }
   | { t: 'ping'; s: number }
   | { t: 'pong'; s: number }
   | { t: 'hash'; tick: number; h: number }

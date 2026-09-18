@@ -136,17 +136,20 @@ export const MONSTER_LIST: MonsterDef[] = [
   {
     // 보스 — 거미 여왕: 가까우면 물기, 번갈아 **거미줄 부채**(7갈래 · 맞으면 느려짐 · 예고선)와 **새끼 거미 부르기**
     id: 'queen', idx: 8, name: '거미 여왕',
-    hp: 1700, speed: 1.9, r: 26,
+    hp: 2200, speed: 1.9, r: 26,
     attack: 'melee', dmg: 38, range: 18, windup: 22, recover: 30, cooldown: 50, arc: deg(60),
     shotSpeed: 5, shotLife: 84, shotR: 9, shotSlow: 150, shotColor: 0xd8f0c8,
     knockRes: 0.95, globe: 1, xp: 300, loot: 1, boss: true, special: 'queen',
   },
   // ---------------- 3막 잠긴 지하도 ----------------
   {
-    // 방패병: 큰 방패로 앞을 막는다(정면 ±55° 에서 온 탄은 15% 만). 옆·뒤로 돌거나, 폭발·스킬·근접으로 친다. 잠들어 있을 땐 못 막는다
+    // 방패병: 큰 방패로 앞을 막는다(정면 ±50° 에서 온 탄은 40% 만). 방패가 무거워 **천천히 돈다**(GUARD.turn) — 옆·뒤로 돌아 들어가거나,
+    // 폭발·스킬·근접으로 친다. 잠들어 있을 땐 못 막는다.
+    // D7 계측(2026-09-18): 피해 24 · 간격 44 · 속도 2.1 · 15% 면 보통 봇이 무너진 시장에서 76번 죽고 우두머리를 20분에 못 잡았다.
+    // 무리를 늘린 뒤에도 3막 받은 피해의 50~90% 가 방패병이었다 → 피해 12 · 막힌 탄 40%
     id: 'shield', idx: 9, name: '방패병',
-    hp: 150, speed: 2.1, r: 15,
-    attack: 'melee', dmg: 24, range: 14, windup: 20, recover: 26, cooldown: 44, arc: deg(70), guard: deg(55),
+    hp: 110, speed: 1.8, r: 15,
+    attack: 'melee', dmg: 12, range: 14, windup: 22, recover: 30, cooldown: 60, arc: deg(70), guard: deg(50),
     knockRes: 0.7, globe: 0.08, xp: 12, loot: 0.14,
   },
   {
@@ -161,36 +164,38 @@ export const MONSTER_LIST: MonsterDef[] = [
     // 산성 토사꾼: 조준한 자리에 산을 뱉는다(예고 원 — 그 안에서 비켜라) → 3초 동안 산성 웅덩이(밟고 있으면 계속 다친다)
     id: 'spitter', idx: 11, name: '산성 토사꾼',
     hp: 120, speed: 1.6, r: 15,
-    attack: 'lob', dmg: 8, range: 300, windup: 36, recover: 30, cooldown: 130, keepDist: 220,
+    attack: 'lob', dmg: 6, range: 300, windup: 36, recover: 30, cooldown: 130, keepDist: 220,
     knockRes: 0.4, globe: 0.1, xp: 13, loot: 0.16,
   },
   {
     // 보스 — 관리인: 지하도의 문지기. 쇠곤봉 휘두르기 + 번갈아 **내려찍기**(주위 원 · 예고) · **방패병 부르기**
     id: 'warden', idx: 12, name: '관리인',
-    hp: 2100, speed: 2.0, r: 26,
+    hp: 2800, speed: 2.0, r: 26,
     attack: 'melee', dmg: 46, range: 20, windup: 26, recover: 32, cooldown: 55, arc: deg(90),
     knockRes: 0.95, globe: 1, xp: 380, loot: 1, boss: true, special: 'warden',
   },
   // ---------------- 4막 심연 ----------------
   {
     // 그림자: 떨어진 표적의 **등 뒤로 순간이동**(예고: 나타날 자리에 보랏빛 원)하고 곧장 할퀸다. 멀리 도망쳐도 소용없다
+    // D7 계측: 피해 20 · 떼 5~7 · 4초마다면 그림자 미궁에서 보통 봇 혼자 16~23번 죽었다(받은 피해의 57~66%) → 피해 14 · 6초
     id: 'shade', idx: 13, name: '그림자',
     hp: 90, speed: 2.6, r: 13,
-    attack: 'melee', dmg: 20, range: 12, windup: 12, recover: 20, cooldown: 34, arc: deg(70),
+    attack: 'melee', dmg: 14, range: 12, windup: 12, recover: 20, cooldown: 34, arc: deg(70),
     knockRes: 0.1, globe: 0.06, xp: 13, loot: 0.16, special: 'blink',
   },
   {
     // 포격 악마: 멀리서 불덩이를 쏘아 올린다 → 떨어질 자리에 붉은 원이 차오르다 터진다(두 번 예고 — 원 밖으로)
     id: 'demon', idx: 14, name: '포격 악마',
     hp: 170, speed: 1.7, r: 17,
-    attack: 'lob', dmg: 34, range: 380, windup: 22, recover: 30, cooldown: 120, keepDist: 280, blast: 72,
+    // D7 계측: 피해 34 · 폭발 예고 46틱이면 재의 들판 받은 피해의 91% 가 불덩이였다 → 26 · 56틱
+    attack: 'lob', dmg: 26, range: 380, windup: 22, recover: 30, cooldown: 120, keepDist: 280, blast: 72,
     knockRes: 0.6, globe: 0.12, xp: 18, loot: 0.2,
   },
   {
     // 최종 보스 — 심연의 군주: 휘두르기 + 번갈아 **불꽃 고리**(사방 탄) · **불비**(사람마다 폭발 예고 둘) · (분노 뒤) **그림자 부르기**.
     // 체력 2/3 · 1/3 에서 분노 — 그림자를 부르고, 마지막 단계는 빨라지고 더 자주 쓴다
     id: 'lord', idx: 15, name: '심연의 군주',
-    hp: 3200, speed: 2.1, r: 30,
+    hp: 4800, speed: 2.1, r: 30,
     attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
     shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
     knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
@@ -215,18 +220,18 @@ export const SPIDER_KIND = 6
 export const GHOUL_KIND = 0
 export const SHIELD_KIND = 9
 /** 방패병: 정면에서 막은 탄의 피해 배율 */
-export const GUARD = { mult: 0.15 }
+export const GUARD = { mult: 0.4, turn: 0.25 }
 /** 강령술사: 한 번에 일으키는 구울 · 무리 상한 · 체력 배율 · 예고 · 간격 */
 export const RAISE = { n: 2, max: 6, hp: 0.5, windup: 40, every: 60 * 6 }
 /** 산성 웅덩이: 반경 · 지속 틱 · 피해 간격(틱) */
-export const ACID = { r: 58, ticks: 180, every: 20 }
+export const ACID = { r: 58, ticks: 180, every: 30 }
 /** 관리인: 내려찍기(예고 · 반경 · 피해 배율) · 방패병 부르기(수 · 상한 · 체력 배율 · 예고) · 특수 간격 */
 /** 그림자 순간이동: 표적과의 거리(최소·최대) · 등 뒤 거리 · 예고 · 간격 */
-export const BLINK = { min: 110, max: 420, behind: 50, windup: 22, every: 60 * 4 }
+export const BLINK = { min: 110, max: 420, behind: 50, windup: 22, every: 60 * 6 }
 export const SHADE_KIND = 13
 export const LORD_KIND = 15
 /** 포격 악마: 떨어질 자리의 폭발 예고 틱 */
-export const DEMON_FUSE = 46
+export const DEMON_FUSE = 56
 /** 심연의 군주: 불꽃 고리(갈래 · 분노 갈래 · 피해 배율 · 예고) · 불비(예고 · 반경 · 폭발 예고 · 피해 배율) · 그림자(수 · 상한 · 체력) · 간격 · 분노 간격 · 분노 속도 */
 export const LORD = {
   nova: 16, novaRage: 24, novaDmg: 0.5, novaWindup: 40,
@@ -275,7 +280,33 @@ export const AFFIX_TUNE = {
  * 몬스터 레벨마다 경험치 +20% (tools/xpcurve.ts 로 맞춘 값 — 원정마다 지역 레벨 안팎으로 도착하고,
  * 캠페인 끝에 27 안팎이 되게 — 만렙 30 은 다시 돌며 채운다). 정예 ×4 · 우두머리 ×12.
  */
-export const XP_PER_MLEVEL = 0.2
+// D7(2026-09-18): 0.2 면 2막 끝 13 · 3막 끝 19 로 지역 레벨보다 3~5 낮았다 → 0.3 (tools/xpcurve.ts)
+export const XP_PER_MLEVEL = 0.3
+
+/**
+ * 몬스터 레벨 보정: 레벨마다 체력 +7.5% · 피해 +4.5%.
+ * 2026-09-18 D7 계측: 체력 +10% 이면 플레이어 피해(레벨 1.5% + 무기 기본 2.2/ilvl + 옵션)보다 빨리 자라
+ * 3막부터 한 마리 잡는 데 1막의 1.6배가 걸렸다 → 7.5% (4막 끝에서 1.35배 — 조금씩만 어려워진다)
+ */
+export const LEVEL_HP = 0.075
+// 피해 +6% 면 3·4막에서 보통 봇 혼자 지역마다 10~36번 죽었다(무리를 1.8배로 늘린 뒤) → 4.5%
+export const LEVEL_POW = 0.045
+/** 모든 몬스터 체력 배율 (D7 계측: 소총 세 발 구울 → 네 발 — 싸움 한 번이 너무 짧았다) */
+export const HP_BASE = 1.35
+/**
+ * 난이도 (GUIDE 5장 — 디아블로 2 의 보통 · 악몽 · 지옥): 같은 세계를 지역 레벨을 통째로 올려 다시 돈다.
+ * lvl = 지역 레벨에 더함 · hp = 체력 배율(레벨 보정 위에) · affix = 정예·우두머리 접두 능력 더 · loot = 전리품 등급 올림 · gold = 골드 배율.
+ * 보통 4막을 끝내면 악몽, 악몽 4막을 끝내면 지옥이 열린다(캐릭터마다 · 퀘스트는 난이도마다 따로).
+ */
+export const TIERS = [
+  { lvl: 0, hp: 1, affix: 0, loot: 0, gold: 1 },
+  { lvl: 10, hp: 1.3, affix: 1, loot: 0.08, gold: 1.6 },
+  { lvl: 20, hp: 1.7, affix: 2, loot: 0.16, gold: 2.2 },
+]
+export const TIER_LABEL = ['보통', '악몽', '지옥']
+export const tierOf = (t: number | undefined) => TIERS[Math.max(0, Math.min(TIERS.length - 1, t ?? 0))]
+export const levelHp = (level: number) => HP_BASE * (1 + LEVEL_HP * (level - 1))
+export const levelPow = (level: number) => Math.round(100 * (1 + LEVEL_POW * (level - 1)))
 export function xpFor(m: { kind: number; elite: number; lvl: number }): number {
   const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1
   return MONSTER_LIST[m.kind].xp * k * (1 + XP_PER_MLEVEL * (Math.max(1, m.lvl) - 1))

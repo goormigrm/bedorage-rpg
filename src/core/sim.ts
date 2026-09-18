@@ -17,13 +17,13 @@ import {
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
 import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
-import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
+import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
-  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
-import { makeMonster, populate, rollAffixes } from './dungeon'
+import { affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
 import { botInput, makeBot } from './bot'
 import { ACTS, AreaLayout, QUESTS, WAYPOINTS, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
@@ -212,9 +212,9 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   const def = areaDef(id)
   if (def.kind === 'town') return
   const l = areaLayout(id, map)
-  const lvl = areaLevel(id, partyLevel(state))
+  const lvl = areaLevel(id, partyLevel(state), state.tier)
   const seats = state.players.length
-  populate(state, map, areaSeed(seed, id), seats, lvl, def.density ?? 1, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l))
+  populate(state, map, areaSeed(seed, id), seats, lvl, (def.density ?? 1) * ACTS[def.act].density, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l))
   placeObjects(state, map, id, areaSeed(seed, id), safeSpots(l))
   // 보물 고블린: 가끔 한 마리 (지역 시드로 정한다)
   {
@@ -234,8 +234,8 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
     }
   }
   if (state.killed.includes(id)) return
-  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
-  const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp
+  const pow = levelPow(lvl)
   const at = l.special
   if (def.boss !== undefined) {
     // 막 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
@@ -245,7 +245,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
     // 우두머리: 평범한 원형을 크게 키우고 접두 능력 셋. 같은 원형 셋이 지킨다
     const rng = makeRng((areaSeed(seed, id) ^ 0x7a11e) >>> 0)
     const u = makeMonster(state, def.unique.kind, at.x, at.y, 9998, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
-    u.elite = rollAffixes(rng, 1 | EA_UNIQUE, UNIQUE.affixes)
+    u.elite = rollAffixes(rng, 1 | EA_UNIQUE, Math.min(4, UNIQUE.affixes + tierOf(state.tier).affix), affixSkip(u.kind))
     state.monsters.push(u)
     const r = MONSTER_LIST[def.unique.kind].r
     for (let i = 0; i < 3; i++) {
@@ -519,7 +519,7 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
   const qd = QUESTS[i]
   if (qd.legend) {
     // 전설 하나 (가방이 차 있으면 발밑에)
-    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level), p.weapon, 0, 3)
+    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 0, 3)
     if (p.bag.length < BAG_SIZE) p.bag.push(it)
     else state.drops.push({ id: state.nextDropId++, owner: p.id, x: p.x, y: p.y + 30, item: it, gold: 0, pot: 0, ttl: 60 * 600, lock: 30 })
   }
@@ -647,7 +647,7 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
   if (state.mode !== 'dungeon') return
   for (const q of state.players) {
     if (!q.alive || q.left || q.out || len(q.x - o.x, q.y - o.y) > SHARE_RANGE) continue
-    const lvl = Math.max(1, areaLevel(state.curArea, q.level))
+    const lvl = Math.max(1, areaLevel(state.curArea, q.level, state.tier))
     if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 1, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 0.2, 2)
     else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, rand(state.rng) < 0.3 ? 1 : 0, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 0.05, 0)
     else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.08 ? 1 : 0, rand(state.rng) < 0.04 ? 1 : 0, 0, 0)
@@ -781,6 +781,7 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
     mode,
     targetKills: mode === 'arena' ? Math.max(1, cfg.targetKills ?? 10) : 0,
     deathRule: cfg.deathRule ?? 0,
+    tier: Math.max(0, Math.min(2, cfg.tier ?? 0)),
     players,
     bullets: [],
     nextBulletId: 1,
@@ -2407,14 +2408,15 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 물약 4% · 아이템 10~16% / 정예는 골드 둘 · 아이템 1~2 · 물약 25% /
     // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 물약 둘 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상.
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
-    const lvl = Math.max(1, areaLevel(state.curArea, p.level))
+    const lvl = Math.max(1, areaLevel(state.curArea, p.level, state.tier))
     const boss = !!def.boss
     const fountain = boss || unique || m.kind === GOBLIN_KIND
     const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
     const pots = fountain ? 2 : m.elite ? (rand(state.rng) < 0.25 ? 1 : 0) : rand(state.rng) < 0.04 ? 1 : 0
     const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
-    const bonus = fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0
-    spill(state, p, m.x, m.y, lvl, golds, fountain ? 3 : m.elite ? 2 : 1, pots, items, bonus, fountain ? 2 : 0)
+    const tier = tierOf(state.tier)
+    const bonus = (fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0) + tier.loot
+    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, pots, items, bonus, fountain ? 2 : 0)
   }
 }
 
@@ -2682,7 +2684,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       continue
     }
     if (m.st === MS_CHASE) {
-      m.aim = turnToward(m.aim, face, TURN)
+      m.aim = turnToward(m.aim, face, def.guard ? Math.max(1, Math.round(TURN * GUARD.turn)) : TURN)
       // 거미 여왕: 거미줄 부채(mode 2)와 새끼 부르기(mode 3)를 번갈아
       if (def.special === 'queen' && m.scd === 0 && m.los === 1 && d < 460) {
         const brood = m.phase % 2 === 1
@@ -2699,6 +2701,10 @@ function stepMonsters(state: GameState, map: GameMap): void {
       // 그림자: 떨어진 표적의 등 뒤로 순간이동 (mode 2 — 나타날 자리는 예고 때 정한다: 표적 자리에서 등 쪽으로 밀어 벽을 피한다)
       if (def.special === 'blink' && m.scd === 0 && m.los === 1 && d > BLINK.min && d < BLINK.max) {
         const to = moveCircle(map, tp.x, tp.y, def.r, (dx / d) * BLINK.behind, (dy / d) * BLINK.behind)
+        // 벽에 겹치거나 표적에게서 안 보이는 자리면 건너뛴다 (벽 속에 나타나면 쏠 수도 닿을 수도 없게 된다 — D7 계측에서 봇이 멈췄다)
+        if (isWallAt(map, to.x, to.y) || rayBlocked(map, tp.x, tp.y, to.x, to.y) || circleHitsWall(map, to.x, to.y, def.r)) {
+          m.scd = 60
+        } else {
         m.st = MS_WINDUP
         m.mode = 2
         m.t = BLINK.windup
@@ -2707,6 +2713,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
         m.ay = to.y
         state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
         continue
+        }
       }
       // 심연의 군주: 불꽃 고리(mode 2) · 불비(mode 3) · (분노 뒤) 그림자 부르기(mode 4) 를 차례로
       if (def.special === 'lord' && m.scd === 0 && m.los === 1 && d < 520) {

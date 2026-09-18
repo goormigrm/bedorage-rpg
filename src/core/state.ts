@@ -570,6 +570,8 @@ export interface MatchConfig {
   absent?: boolean[]
   /** 죽음 규칙 (기본 0) */
   deathRule?: DeathRule
+  /** 난이도 0 보통 · 1 악몽 · 2 지옥 (monsters.ts TIERS) */
+  tier?: number
   /** 몬스터 배치를 끈다 (시험용) */
   noMonsters?: boolean
   /** 자리별 캐릭터 기록 (레벨·장비·가방·골드). 없으면 1레벨 맨몸 */
@@ -591,6 +593,8 @@ export interface GameState {
   /** 투기장 목표 킬 (던전은 0) */
   targetKills: number
   deathRule: DeathRule
+  /** 난이도 (MatchConfig.tier) */
+  tier: number
   players: PlayerState[]
   bullets: Bullet[]
   nextBulletId: number

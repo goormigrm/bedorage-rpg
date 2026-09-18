@@ -51,13 +51,37 @@ export function sheetOf(char: CharacterId): Sheet {
   return sanitizeSheet({ ...(d.chars[char] ?? emptySheet()), stash: d.stash ?? [] })
 }
 
-/** 판의 플레이어 상태를 세이브에 적는다 */
-export function commitSheet(p: PlayerState): void {
+/** 판의 플레이어 상태를 세이브에 적는다. 퀘스트는 그 판의 난이도 칸에 (보통 = quests · 악몽·지옥 = tq[난이도]) */
+export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; sec: number }[]): void {
   const d = loadSave()
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: p.wps, potMax: p.potMax, build: p.build, quests: p.quests })
+  const prev = d.chars[p.char]
+  const tq = (prev?.tq ?? []).slice()
+  const twps = (prev?.twps ?? []).slice()
+  if (tier > 0) {
+    tq[tier] = p.quests
+    twps[tier] = p.wps
+  }
+  for (let i = 0; i < twps.length; i++) twps[i] = twps[i] ?? 0
+  // 플레이 시간: 막마다 쌓는다 (악몽·지옥은 4~6 칸, 보통은 0~3 — 보통 한 바퀴 시간을 따로 보려고)
+  const playSec = (prev?.playSec ?? []).slice()
+  for (const x of played ?? []) {
+    const k = Math.min(7, Math.max(0, x.act + (tier > 0 ? 4 : 0)))
+    playSec[k] = (playSec[k] ?? 0) + Math.round(x.sec)
+  }
+  for (let i = 0; i < playSec.length; i++) playSec[i] = playSec[i] ?? 0
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
   delete d.chars[p.char]!.stash
   d.stash = sanitizeSheet({ stash: p.stash }).stash
   write(d)
+}
+
+/** 로비 표시용: 캐릭터의 플레이 시간 ("3시간 12분") — 없으면 빈 글 */
+export function playTimeOf(char: CharacterId): string {
+  const sec = (sheetOf(char).playSec ?? []).reduce((a, b) => a + b, 0)
+  if (sec < 60) return ''
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`
 }
 
 /** 로비 표시용: 캐릭터별 레벨 */

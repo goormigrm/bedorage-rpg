@@ -14,6 +14,8 @@ export class WaypointPanel {
     private me: () => PlayerState,
     private send: (cmd: number, arg: number) => void,
     private onToggle: (open: boolean) => void,
+    /** 난이도의 지역 레벨 더하기 (악몽 +10 · 지옥 +20) */
+    private levelAdd: () => number = () => 0,
   ) {
     this.el = document.createElement('div')
     this.el.className = 'wpp'
@@ -37,7 +39,7 @@ export class WaypointPanel {
           const here = me.area === id
           const a = AREAS[id]
           return `<button data-a="${id}" class="${here ? 'here' : ''}" ${known && !here ? '' : 'disabled'}>
-            <span>${known ? a.name : '— 아직 찾지 못함 —'}</span>${known && a.level ? `<small>지역 레벨 ${a.level}</small>` : here ? '<small>지금 여기</small>' : ''}</button>`
+            <span>${known ? a.name : '— 아직 찾지 못함 —'}</span>${known && a.level ? `<small>지역 레벨 ${a.level + this.levelAdd()}</small>` : here ? '<small>지금 여기</small>' : ''}</button>`
         })
         .join('')
       return `<div class="wpp-act"><div class="wpp-actn">${ai + 1}막 · ${act.name}</div>${rows}</div>`
