@@ -210,6 +210,9 @@ export interface PlayerState {
   shrineT: number
   /** 보관함 (캐릭터 공유 · 마을의 보관함 곁에서 넣고 꺼낸다) */
   stash: Item[]
+  /** 낀 전설 효과 비트 묶음 (items.ts LEGENDS) · 불굴 재사용 대기 */
+  legs: number
+  legCd: number
   /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
   away?: boolean
 }
@@ -471,6 +474,9 @@ export type SimEvent =
   | { type: 'shrine'; p: number; kind: number; x: number; y: number }
   /** 마을 NPC 와 거래했다 (what: sell · buy · potup · reroll · gamble · stash) */
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }
+  /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */
+  | { type: 'goblinGone'; x: number; y: number }
+  | { type: 'chain'; x: number; y: number; x2: number; y2: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
   /** 주웠다 */

@@ -38,6 +38,8 @@ export type Item = {
   ilvl: number
   /** 옵션: [번호, 값, 번호, 값 …] */
   aff: number[]
+  /** 전설 고유 효과 번호 (LEGENDS · 전설만) */
+  leg?: number
 }
 
 /** 능력치 번호 (PlayerState.st 배열) */
@@ -95,6 +97,40 @@ const PREFIX = [
   ['야차의', '침착맨의', '배도라지의'],
 ]
 
+/**
+ * 전설 고유 효과 (GUIDE 8장 — "빌드의 나머지 절반"). 전설 아이템마다 하나. 같은 효과를 둘 껴도 한 번만.
+ * 효과는 sim 의 해당 자리에서 `hasLeg(p, 번호)` 로 본다.
+ */
+export const LEGENDS: { name: string; desc: string }[] = [
+  { name: '피의 갈증', desc: '적중 피해의 3% 만큼 체력을 회복한다' },
+  { name: '시체 폭탄', desc: '처치하면 25% 확률로 시체가 터진다 (주위 적에게 그 적 최대 체력의 30%)' },
+  { name: '서리탄', desc: '명중하면 20% 확률로 적이 1.5초 느려진다' },
+  { name: '연쇄 번개', desc: '치명타가 가장 가까운 다른 적에게 번개로 튄다 (피해 50%)' },
+  { name: '불굴', desc: '체력이 30% 아래로 떨어지면 2초 무적 (40초에 한 번)' },
+  { name: '광란', desc: '처치하면 3초 동안 연사 속도 +25%' },
+  { name: '수호자', desc: '받는 피해 -8% · 쓰러진 동료를 두 배 빨리 일으킨다' },
+  { name: '탄약 주머니', desc: '처치하면 탄창의 20% 가 찬다' },
+  { name: '집중', desc: '스킬 재사용 대기 -15%' },
+  { name: '황금 손', desc: '골드 +50% · 골드를 주우면 체력 2% 회복' },
+]
+export const LEG_BLOOD = 0
+export const LEG_CORPSE = 1
+export const LEG_FROST = 2
+export const LEG_CHAIN = 3
+export const LEG_UNDYING = 4
+export const LEG_FRENZY = 5
+export const LEG_GUARD = 6
+export const LEG_AMMO = 7
+export const LEG_FOCUS = 8
+export const LEG_GOLD = 9
+
+/** 낀 장비의 전설 효과 비트 묶음 */
+export function legMask(equip: (Item | null)[]): number {
+  let m = 0
+  for (const it of equip) if (it && it.rarity === 3 && it.leg !== undefined && it.leg >= 0) m |= 1 << it.leg
+  return m
+}
+
 export function itemName(it: Item): string {
   const base = it.slot === SLOT_WEAPON ? WEAPON_NAMES[WEAPON_IDS[it.wt] ?? 'rifle'] : BASE_NAMES[it.slot]
   const pre = PREFIX[it.rarity][it.uid % 3]
@@ -124,6 +160,7 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
   const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
   const r = rand(rng) - bonus
   const rarity = Math.max(minRarity, r < 0.02 ? 3 : r < 0.13 ? 2 : r < 0.45 ? 1 : 0)
+  const leg = rarity === 3 ? randInt(rng, 0, LEGENDS.length) : undefined
   let wt = -1
   if (slot === SLOT_WEAPON) {
     wt = rand(rng) < 0.85 ? WEAPON_IDS.indexOf(myWeapon) : randInt(rng, 0, WEAPON_IDS.length)
@@ -139,7 +176,7 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
     const v = Math.max(1, Math.round(max * (lo + rand(rng) * (1 - lo))))
     aff.push(pick.i, v)
   }
-  return { uid, slot, wt, rarity, ilvl, aff }
+  return leg === undefined ? { uid, slot, wt, rarity, ilvl, aff } : { uid, slot, wt, rarity, ilvl, aff, leg }
 }
 
 /** 상인에게 파는 값 (골드): 아이템 레벨 × 등급 */
@@ -230,6 +267,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   const okItem = (it: unknown): it is Item => {
     if (!it || typeof it !== 'object') return false
     const x = it as Item
+    if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
     return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= 3 && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 8 && x.aff.every((v) => Number.isFinite(v))
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))

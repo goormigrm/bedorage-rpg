@@ -3,10 +3,10 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
-export type Attack = 'melee' | 'ranged' | 'explode'
+export type Attack = 'melee' | 'ranged' | 'explode' | 'flee'
 
 export interface MonsterDef {
   id: MonsterKindId
@@ -89,7 +89,19 @@ export const MONSTER_LIST: MonsterDef[] = [
     attack: 'melee', dmg: 42, range: 20, windup: 26, recover: 34, cooldown: 55, arc: deg(90),
     knockRes: 0.92, globe: 1, xp: 240, loot: 1, boss: true,
   },
+  {
+    // 보물 고블린 (디아블로 3): 싸우지 않고 **도망친다** — 뛰면서 골드를 흘리고, 20초 안에 못 잡으면 문을 열고 사라진다.
+    // 잡으면 전리품 분수 (골드 여덟 · 아이템 셋 · 물약)
+    id: 'goblin', idx: 4, name: '보물 고블린',
+    hp: 260, speed: 3.0, r: 12,
+    attack: 'flee', dmg: 0, range: 0, windup: 0, recover: 0, cooldown: 0,
+    knockRes: 0.3, globe: 0.3, xp: 30, loot: 0,
+  },
 ]
+
+/** 보물 고블린: 깨어 있는 틱 상한(20초) · 골드를 흘리는 간격 · 지역에 나올 확률 */
+export const GOBLIN = { escape: 60 * 20, trail: 70, chance: 0.14 }
+export const GOBLIN_KIND = 4
 
 export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MONSTER_LIST.map((m) => [m.id, m])) as Record<MonsterKindId, MonsterDef>
 

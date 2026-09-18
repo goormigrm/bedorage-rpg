@@ -4,7 +4,7 @@
 
 import { CMD_BUY, CMD_GAMBLE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
 import {
-  Item, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
+  Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
 import { NPC_NAMES, NpcId } from '../core/world'
@@ -17,6 +17,7 @@ function esc(t: string): string {
 function row(it: Item, right: string, data: string, disabled = false): string {
   const affs = []
   for (let k = 0; k < it.aff.length; k += 2) affs.push(affixText(it.aff[k], it.aff[k + 1]))
+  if (it.rarity === 3 && it.leg !== undefined && LEGENDS[it.leg]) affs.push(`✦ ${LEGENDS[it.leg].name}`)
   return `<button class="tp-row" ${data} ${disabled ? 'disabled' : ''}>
     <span class="tp-n" style="color:${RARITY_COLORS[it.rarity]}">${esc(itemName(it))}<small>${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
     <span class="tp-a">${affs.map(esc).join(' · ') || '옵션 없음'}</span>

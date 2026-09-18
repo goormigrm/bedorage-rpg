@@ -6,7 +6,7 @@
 import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_UNEQUIP } from '../core/input'
 import {
-  AFFIXES, BAG_SIZE, Item, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
+  AFFIXES, BAG_SIZE, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
   affixText, armorBase, computeStats, itemName, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
@@ -26,6 +26,7 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   const arm = armorBase(it)
   if (arm) lines.push(`<div class="base">받는 피해 -${arm}%</div>`)
   for (let k = 0; k < it.aff.length; k += 2) lines.push(`<div class="aff">◆ ${affixText(it.aff[k], it.aff[k + 1])}</div>`)
+  if (it.rarity === 3 && it.leg !== undefined && LEGENDS[it.leg]) lines.push(`<div class="leg">✦ ${LEGENDS[it.leg].name} — ${LEGENDS[it.leg].desc}</div>`)
   let warn = ''
   if (me && it.slot === SLOT_WEAPON && WEAPON_IDS[it.wt] !== me.weapon) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
   return `<div class="it-name" style="color:${color}">${esc(itemName(it))}</div>

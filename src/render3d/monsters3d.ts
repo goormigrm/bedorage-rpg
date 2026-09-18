@@ -266,11 +266,58 @@ function butcherParts(): Part[] {
   return parts
 }
 
+/** 보물 고블린: 작고 구부정한 초록 몸 · 등에 불룩한 금 자루 (반짝) · 큰 귀 */
+function goblinParts(): Part[] {
+  const skin = lambert(0x6a8a4a)
+  const sack = lambert(0xc89a3a)
+  const gold = glow(0xffd84a)
+  const eye = glow(0xffe05c)
+  return [
+    part(new THREE.SphereGeometry(0.5, 10, 8), skin, true, (a, o) => {
+      o.position.set(0, 0.42 + Math.abs(sin(a.walk)) * 0.06 * a.move, 0.04)
+      o.rotation.set(0.5, 0, sin(a.walk) * 0.12 * a.move)
+      o.scale.set(0.3, 0.34, 0.28)
+    }),
+    part(new THREE.SphereGeometry(0.5, 10, 8), skin, true, (a, o) => {
+      o.position.set(0, 0.66 + a.wind * 0, 0.2)
+      o.rotation.set(0.2, 0, 0)
+      o.scale.set(0.3, 0.26, 0.3)
+    }),
+    part(mergeGeometries([new THREE.ConeGeometry(0.06, 0.3, 5).rotateZ(1.2).translate(-0.2, 0, 0), new THREE.ConeGeometry(0.06, 0.3, 5).rotateZ(-1.2).translate(0.2, 0, 0)])!, skin, true, (a, o) => {
+      o.position.set(0, 0.72, 0.2)
+      o.scale.setScalar(1)
+      void a
+    }),
+    part(mergeGeometries([new THREE.SphereGeometry(0.03, 6, 5).translate(-0.06, 0, 0), new THREE.SphereGeometry(0.03, 6, 5).translate(0.06, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 0.7, 0.34)
+      o.scale.setScalar(1)
+      void a
+    }, false),
+    // 금 자루: 등 뒤에서 흔들린다
+    part(new THREE.SphereGeometry(0.5, 12, 10), sack, true, (a, o) => {
+      o.position.set(0, 0.62 + sin(a.walk * 2) * 0.03 * a.move, -0.22)
+      o.rotation.set(0, 0, sin(a.walk) * 0.2 * a.move)
+      o.scale.set(0.34, 0.38, 0.3)
+    }),
+    part(new THREE.SphereGeometry(0.05, 6, 5), gold, false, (a, o) => {
+      o.position.set(0.08, 0.95, -0.2)
+      o.scale.setScalar(1 + sin(a.walk * 3) * 0.3)
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(cap(0.05, 0.16), skin, false, (a, o) => {
+        o.position.set(side * 0.1, 0.16, 0)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.9 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
-const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts]
+const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1]
 
 export class MonsterView {
   readonly group = new THREE.Group()

@@ -11,7 +11,7 @@ import {
   CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, TOWN_BLOCKED,
 } from './input'
 import {
-  BAG_SIZE, LEVEL_CAP, STASH_SIZE, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
+  BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
   ST_STAMINA, ST_XP, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -19,7 +19,7 @@ import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
-  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 import { makeMonster, populate, rollAffixes } from './dungeon'
 import { ACTS, AreaLayout, WAYPOINTS, npcNear, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
@@ -57,7 +57,8 @@ const COVER_REACH = COVER_DIST + TILE * 3
 const CHARGE_SPEED = 12
 
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
-const booms: { x: number; y: number; r: number; dmg: number; by: number }[] = []
+/** safe = 플레이어는 다치지 않는다 (전설 "시체 폭탄") */
+const booms: { x: number; y: number; r: number; dmg: number; by: number; safe?: boolean }[] = []
 /** 분열 정예가 낳을 구울 (이번 틱 끝에 넣는다 — 몬스터 배열을 도는 중에 늘리지 않게) */
 const spawns: { x: number; y: number; pack: number; hpMul: number; pow: number; lvl: number }[] = []
 const grids = new WeakMap<GameMap, Grid>()
@@ -212,6 +213,23 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   const seats = state.players.length
   populate(state, map, areaSeed(seed, id), seats, lvl, def.density ?? 1, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l))
   placeObjects(state, map, id, areaSeed(seed, id), safeSpots(l))
+  // 보물 고블린: 가끔 한 마리 (지역 시드로 정한다)
+  {
+    const grng = makeRng((areaSeed(seed, id) ^ 0x60b1) >>> 0)
+    if (def.kind !== 'boss' && rand(grng) < GOBLIN.chance) {
+      for (let t = 0; t < 60; t++) {
+        const tx = randInt(grng, 3, map.w - 3)
+        const ty = randInt(grng, 3, map.h - 3)
+        if (map.tiles[ty * map.w + tx] !== 0) continue
+        const x = tx * TILE + TILE / 2
+        const y = ty * TILE + TILE / 2
+        if (safeSpots(l).some((q) => (q.x - x) ** 2 + (q.y - y) ** 2 < (10 * TILE) ** 2)) continue
+        state.monsters.push(makeMonster(state, GOBLIN_KIND, x, y, 9997, 1 + 0.6 * Math.max(0, seats - 1), 100, lvl))
+        state.monstersTotal++
+        break
+      }
+    }
+  }
   if (state.killed.includes(id)) return
   const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
   const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
@@ -364,6 +382,7 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     if (p.exitLock > 0) p.exitLock--
     if (p.potCd > 0) p.potCd--
     if (p.shrineT > 0) p.shrineT--
+    if (p.legCd > 0) p.legCd--
     // 물약: 3초에 걸쳐 채운다 (쓰러지면 끊긴다)
     if (p.potHot > 0) {
       if (isActive(p)) p.hp = Math.min(p.maxHp, p.hp + (p.maxHp * 0.35) / POT_TICKS)
@@ -813,14 +832,24 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     shrine: 0,
     shrineT: 0,
     stash: (sh.stash ?? []).map((it) => ({ ...it, aff: [...it.aff] })),
+    legs: legMask(equip),
+    legCd: 0,
   }
 }
 
 /** 장비·레벨이 바뀌면 능력치를 다시 낸다. 최대 체력이 늘면 그만큼 체력도 는다 */
+/** 전설 효과를 끼고 있나 */
+function hasLeg(p: PlayerState | null | undefined, leg: number): boolean {
+  return !!p && (p.legs & (1 << leg)) !== 0
+}
+
 function recalc(p: PlayerState): void {
   const c = CHARACTERS[p.char]
   const w = WEAPONS[p.weapon]
   p.st = computeStats(p.level, p.equip)
+  p.legs = legMask(p.equip)
+  // 전설 "집중": 스킬 재사용 대기 -15% (옵션 상한과 따로 더한다)
+  if (hasLeg(p, LEG_FOCUS)) p.st[ST_CDR] += 15
   const maxHp = c.maxHp + p.st[ST_HP]
   if (maxHp > p.maxHp && p.alive) p.hp += maxHp - p.maxHp
   p.maxHp = maxHp
@@ -1183,7 +1212,7 @@ function stepDowned(state: GameState, inputs: Input[]): void {
       if (!helper && (btn & BTN_USE) !== 0 && len(q.x - p.x, q.y - p.y) <= REVIVE_RANGE) helper = q
     }
     if (helper) {
-      p.revive++
+      p.revive += hasLeg(helper, LEG_GUARD) ? 2 : 1
       if (p.revive >= REVIVE_TICKS) {
         raise(state, p, Math.round(p.maxHp * REVIVE_HP_FRAC), 90)
         helper.revives++
@@ -1279,6 +1308,7 @@ function takenMul(p: PlayerState): number {
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
   if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
+  if (hasLeg(p, LEG_GUARD)) k *= 0.92
   return k
 }
 
@@ -1309,6 +1339,12 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
   p.dmgTaken += dmg
   p.lastHitTick = state.tick
   p.portalCast = 0
+  // 전설 "불굴": 체력이 30% 아래로 떨어지는 순간 2초 무적 (40초에 한 번) — 쓰러질 만큼 맞았으면 1 을 남긴다
+  if (hasLeg(p, LEG_UNDYING) && p.legCd === 0 && p.hp < p.maxHp * 0.3) {
+    p.hp = Math.max(1, p.hp)
+    p.invuln = Math.max(p.invuln, 120)
+    p.legCd = 60 * 40
+  }
   state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg })
   // 흡혈 정예: 때린 만큼 회복 (by = 몬스터 id)
   if (by >= 0) {
@@ -2046,6 +2082,27 @@ function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit
   m.hp -= dmg
   m.hitTick = state.tick
   if (by >= 0) m.lastBy = by
+  if (shooter && state.mode === 'dungeon') {
+    // 전설: 피의 갈증 · 서리탄 · 연쇄 번개 (연쇄는 치명타에서만 — 번개는 치명타가 아니라 다시 튀지 않는다)
+    if (hasLeg(shooter, LEG_BLOOD) && isActive(shooter)) shooter.hp = Math.min(shooter.maxHp, shooter.hp + dmg * 0.03)
+    if (hasLeg(shooter, LEG_FROST) && rand(state.rng) < 0.2) m.slow = Math.max(m.slow, 90)
+    if (crit && hasLeg(shooter, LEG_CHAIN)) {
+      let best: Monster | null = null
+      let bd = 150 * 150
+      for (const o of state.monsters) {
+        if (o === m || o.hp <= 0) continue
+        const d2 = (o.x - m.x) ** 2 + (o.y - m.y) ** 2
+        if (d2 < bd || (d2 === bd && best && o.id < best.id)) {
+          bd = d2
+          best = o
+        }
+      }
+      if (best) {
+        state.events.push({ type: 'chain', x: m.x, y: m.y, x2: best.x, y2: best.y })
+        hurtMonster(state, best, Math.round(dmg * 0.5), by, false, best.x, best.y)
+      }
+    }
+  }
   if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
   state.events.push({ type: 'mhit', m: m.id, by, x, y, dmg, crit })
   if (m.hp <= 0) killMonster(state, m, by, false)
@@ -2067,6 +2124,9 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
       killer.killStreak++
       if (killer.killStreak > killer.bestStreak) killer.bestStreak = killer.killStreak
       if (killer.st[ST_LIFEKILL] > 0 && isActive(killer)) killer.hp = Math.min(killer.maxHp, killer.hp + killer.st[ST_LIFEKILL])
+      if (hasLeg(killer, LEG_CORPSE) && rand(state.rng) < 0.25) booms.push({ x: m.x, y: m.y, r: 70, dmg: Math.round(m.maxHp * 0.3), by: killer.id, safe: true })
+      if (hasLeg(killer, LEG_FRENZY)) buffRate(killer, 180, 1.25)
+      if (hasLeg(killer, LEG_AMMO) && killer.magSize > 0) killer.ammo = Math.min(killer.magSize, killer.ammo + Math.ceil(killer.magSize * 0.2))
     }
     reward(state, m, def)
     if (rand(state.rng) < def.globe) {
@@ -2141,8 +2201,8 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
     const lvl = Math.max(1, areaLevel(state.curArea, p.level))
     const boss = !!def.boss
-    const fountain = boss || unique
-    const golds = fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
+    const fountain = boss || unique || m.kind === GOBLIN_KIND
+    const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
     const pots = fountain ? 2 : m.elite ? (rand(state.rng) < 0.25 ? 1 : 0) : rand(state.rng) < 0.04 ? 1 : 0
     const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
     const bonus = fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0
@@ -2177,9 +2237,11 @@ function pickUp(state: GameState, p: PlayerState): void {
     if (d.item || d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
     if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
     if (d.gold > 0) {
-      p.gold += d.gold
-      p.goldGain += d.gold
-      state.events.push({ type: 'gold', p: p.id, n: d.gold, x: d.x, y: d.y })
+      const g = hasLeg(p, LEG_GOLD) ? Math.round(d.gold * 1.5) : d.gold
+      p.gold += g
+      p.goldGain += g
+      if (hasLeg(p, LEG_GOLD)) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.02)
+      state.events.push({ type: 'gold', p: p.id, n: g, x: d.x, y: d.y })
     } else if (d.pot > 0) {
       if (p.potions >= p.potMax) continue
       p.potions++
@@ -2275,7 +2337,7 @@ function runBooms(state: GameState, map: GameMap, grid: Grid): void {
     const b = booms.shift()!
     state.events.push({ type: 'boom', x: b.x, y: b.y, r: b.r })
     for (const p of state.players) {
-      if (!isActive(p)) continue
+      if (!isActive(p) || b.safe) continue
       if (len(p.x - b.x, p.y - b.y) > b.r + PLAYER_RADIUS) continue
       if (rayBlocked(map, b.x, b.y, p.x, p.y)) continue
       hurtPlayer(state, p, b.dmg, -1, b.x, b.y)
@@ -2423,6 +2485,16 @@ function stepMonsters(state: GameState, map: GameMap): void {
         const keep = def.keepDist ?? 200
         if (m.los === 1 && d < keep * 0.65) away = true
         else if (m.los === 1 && d <= keep) hold = true
+      } else if (def.attack === 'flee') {
+        // 보물 고블린: 늘 도망친다. 골드를 흘리고, 오래 버티면 사라진다 (t = 깨어 있던 틱 — 예고·회복 상태를 쓰지 않아 비어 있다)
+        away = true
+        m.t++
+        if (m.t % GOBLIN.trail === 0) state.drops.push({ id: state.nextDropId++, owner: -1, x: m.x, y: m.y, item: null, gold: Math.max(1, Math.round(3 + m.lvl * 1.5)), pot: 0, ttl: 60 * 60, lock: 10 })
+        if (m.t >= GOBLIN.escape) {
+          m.hp = 0
+          state.events.push({ type: 'goblinGone', x: m.x, y: m.y })
+          continue
+        }
       } else {
         attack = m.los === 1 && d <= def.range
       }

@@ -645,3 +645,6 @@ body { background: var(--bg); }
 .tp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tp-h { font: 700 12px "Nanum Myeongjo", serif; color: #b8a67e; margin-bottom: 6px; }
 .tp-hint { margin: 10px 0 0; font-size: 11px; color: #6a6050; }
+
+/* 전설 고유 효과 줄 (툴팁) */
+.inv-tip .leg { color: #ff9a3a; margin-top: 6px; font-weight: 700; line-height: 1.45; }

@@ -6,7 +6,11 @@ import { createState, step } from '../src/core/sim'
 import { OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS } from '../src/core/state'
 import { buildAreaMap, townNpcs } from '../src/core/world'
 import { CMD_BUY, CMD_GAMBLE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../src/core/input'
-import { buyPrice, emptySheet, itemValue, potUpPrice } from '../src/core/items'
+import { LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue, potUpPrice } from '../src/core/items'
+import { CMD_EQUIP } from '../src/core/input'
+import { makeMonster } from '../src/core/dungeon'
+import { GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
+import { MS_CHASE } from '../src/core/state'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 
@@ -142,5 +146,49 @@ describe('전리품 · 경제', () => {
     cmd(CMD_STASH_TAKE, 0)
     expect(p.bag.length).toBe(1)
     void pp
+  })
+
+  it('전설 고유 효과: 낀 전설의 효과가 켜진다 (피의 갈증 · 황금 손 · 불굴 · 집중)', () => {
+    const { s, map, run } = field(64)
+    const p = s.players[0]
+    const leg = (n: number, slot: number) => ({ uid: 700 + n, slot, wt: -1, rarity: 3, ilvl: 5, aff: [5, 10], leg: n })
+    p.bag.push(leg(LEG_GOLD, 3), leg(LEG_UNDYING, 2), leg(LEG_FOCUS, 1))
+    for (let k = 0; k < 3; k++) step(s, map, [{ ...idle(), cmd: CMD_EQUIP, arg: 0 }])
+    expect(p.legs & (1 << LEG_GOLD)).not.toBe(0)
+    expect(p.legs & (1 << LEG_UNDYING)).not.toBe(0)
+    // 황금 손: 골드 1.5배
+    const g0 = p.gold
+    s.drops.push({ id: 1, owner: 0, x: p.x, y: p.y, item: null, gold: 10, pot: 0, ttl: 999, lock: 0 })
+    run(2)
+    expect(p.gold).toBe(g0 + 15)
+    // 불굴: 체력이 30% 아래로 떨어지면 무적
+    s.monsters = []
+    p.hp = p.maxHp * 0.35
+    p.invuln = 0
+    const m = makeMonster(s, 0, p.x + 26, p.y, 800, 1, 400)
+    m.st = MS_CHASE
+    s.monsters.push(m)
+    for (let t = 0; t < 200 && p.legCd === 0; t++) run(1)
+    expect(p.legCd).toBeGreaterThan(0)
+    expect(p.alive && !p.downed).toBe(true)
+  })
+
+  it('보물 고블린: 도망치며 골드를 흘리고, 20초가 지나면 사라진다', () => {
+    const { s, run } = field(65)
+    const p = s.players[0]
+    const g = makeMonster(s, GOBLIN_KIND, p.x + 120, p.y, 9997, 1)
+    g.st = MS_CHASE
+    s.monsters.push(g)
+    const d0 = Math.hypot(g.x - p.x, g.y - p.y)
+    run(200)
+    expect(Math.hypot(g.x - p.x, g.y - p.y)).toBeGreaterThan(d0)
+    expect(s.drops.some((d) => d.owner === -1 && d.gold > 0)).toBe(true)
+    let gone = false
+    for (let t = 0; t < GOBLIN.escape && !gone; t++) {
+      run(1)
+      gone = s.events.some((e) => e.type === 'goblinGone')
+    }
+    expect(gone).toBe(true)
+    expect(s.monsters.some((q) => q.kind === GOBLIN_KIND)).toBe(false)
   })
 })

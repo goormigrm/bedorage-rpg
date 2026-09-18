@@ -461,6 +461,19 @@ export class Renderer3D {
           if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
           break
         }
+        case 'chain': {
+          // 연쇄 번개: 두 점 사이 번쩍
+          this.spawnRing(e.x2 * U, e.y2 * U, 0.1, 0.8, 0.3, 0x9ad8ff)
+          for (let k = 0; k <= 6; k++) {
+            const t = k / 6
+            this.spawnParticle((e.x + (e.x2 - e.x) * t) * U, 0.9, (e.y + (e.y2 - e.y) * t) * U, 0, 0.01, 0, 0.25, 0xbfe8ff, 0.5)
+          }
+          break
+        }
+        case 'goblinGone':
+          this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
+          this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
+          break
         case 'gold':
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${e.n} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
           break
@@ -2072,15 +2085,22 @@ export class Renderer3D {
         ctx.restore()
       }
       // 정예는 늘, 나머지는 맞은 뒤 3초만 (보스는 화면 위 큰 막대가 따로 있다)
-      if (isBossLike(m) || (!m.elite && curr.tick - m.hitTick > 180)) continue
+      const goblin = def.attack === 'flee'
+      if (isBossLike(m) || (!m.elite && !goblin && curr.tick - m.hitTick > 180)) continue
       const s0 = this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.15, at.z)
       const w = 30
       const k = Math.max(0, m.hp / m.maxHp)
       ctx.globalAlpha = m.elite ? 1 : Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
       ctx.fillStyle = 'rgba(0,0,0,0.6)'
       ctx.fillRect(s0.x - w / 2, s0.y, w, 4)
-      ctx.fillStyle = m.elite ? '#ffb84a' : '#e04a3a'
+      ctx.fillStyle = m.elite || goblin ? '#ffb84a' : '#e04a3a'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, 2)
+      if (goblin) {
+        ctx.font = '700 10px "Nanum Myeongjo", serif'
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#ffd86a'
+        ctx.fillText('보물 고블린', s0.x, s0.y - 4)
+      }
       if (m.elite) {
         ctx.font = '700 10px "Nanum Myeongjo", serif'
         ctx.textAlign = 'center'
