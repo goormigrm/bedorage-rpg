@@ -513,12 +513,18 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .inv-tip .up { color: #7ee0a0; }
 .inv-tip .down { color: #ff7a6a; }
 
-/* 캠페인 원정 고르기 (막마다 한 줄) */
-.stagerow { align-items: flex-start; }
-.stages { display: flex; flex-direction: column; gap: 6px; }
-.stages .actrow { display: flex; flex-direction: column; gap: 3px; }
-.stages .actn { font: 700 11px "Nanum Myeongjo", serif; color: #b8a67e; letter-spacing: 0.04em; }
-.stages .seg { flex-wrap: wrap; }
-.stages .seg button[disabled] { opacity: 0.35; cursor: not-allowed; }
-.stages .seg button.done:not(.on) { color: #cdbb8a; }
-.stagedesc { margin-top: 2px; }
+/* 웨이포인트 창 (F) */
+.wpp { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); width: 360px; pointer-events: auto; cursor: default; z-index: 20;
+  background: linear-gradient(180deg, rgba(28,24,21,0.97), rgba(10,9,8,0.97)); border: 1.5px solid rgba(201,162,74,0.6); border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 0 4px rgba(0,0,0,0.3); padding: 12px 14px; color: #d8cfbf; font: 500 13px "IBM Plex Sans KR", sans-serif; }
+.wpp[hidden] { display: none; }
+.wpp-head { display: flex; align-items: baseline; }
+.wpp-head b { font: 800 20px "Nanum Myeongjo", serif; color: #9ac8ff; margin-right: auto; }
+.wpp-hint { margin: 4px 0 10px; font-size: 11px; color: #8d8170; }
+.wpp-actn { font: 700 12px "Nanum Myeongjo", serif; color: #b8a67e; margin: 6px 0 4px; }
+.wpp-act button { display: flex; justify-content: space-between; align-items: baseline; width: 100%; margin: 3px 0; padding: 7px 10px; cursor: pointer;
+  background: rgba(58,108,255,0.08); border: 1px solid rgba(122,184,255,0.35); border-radius: 4px; color: #d8e6ff; font: 600 13px "Nanum Myeongjo", serif; }
+.wpp-act button:hover:not([disabled]) { background: rgba(58,108,255,0.22); border-color: #7ab8ff; }
+.wpp-act button[disabled] { opacity: 0.4; cursor: default; }
+.wpp-act button.here { opacity: 0.85; border-color: #c9a24a; color: #f1d58a; }
+.wpp-act button small { font: 500 10px "IBM Plex Sans KR", sans-serif; color: #8d8170; }

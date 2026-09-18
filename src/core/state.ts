@@ -188,6 +188,48 @@ export interface PlayerState {
   /** 이번 판에서 주운 아이템 수 · 그중 가장 높은 등급(-1 = 없음) */
   found: number
   bestFound: number
+  /** 지금 있는 지역 (world.ts). 투기장은 0 */
+  area: number
+  /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) — 세이브에 남는다 */
+  wps: number
+  /** 지난 틱의 버튼 (누른 순간을 가린다 — 포털 · F) */
+  btnPrev: number
+  /** 출구를 막 지나왔다 (틱) — 들어서자마자 되돌아가지 않게 */
+  exitLock: number
+  /** 타운 포털 시전 남은 틱 (0 = 안 함) */
+  portalCast: number
+  /** 따라가는 사람 (용병·동료 봇 — 그 사람이 다른 지역으로 가면 곁으로 따라간다). -1 = 없음 */
+  follow: number
+  /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
+  away?: boolean
+}
+
+/**
+ * 지역 하나의 움직이는 것 전부 (GUIDE 12장). 사람이 있는 지역만 틱을 돌리고, 나머지는 얼려 둔다(최근 셋까지).
+ * step 은 지역마다 이 배열들을 GameState 의 같은 이름 칸에 **묶어** 기존 전투 코드를 그대로 돌린다(`withArea`).
+ */
+export type MoveHow = 'exit' | 'wp' | 'portal' | 'town' | 'follow'
+
+export interface AreaState {
+  id: number
+  monsters: Monster[]
+  mshots: MShot[]
+  bullets: Bullet[]
+  globes: Globe[]
+  zones: Zone[]
+  throws: Throw[]
+  drops: Drop[]
+  monstersTotal: number
+  /** 마지막으로 사람이 있던 틱 (얼린 지역을 버리는 순서) */
+  seen: number
+}
+
+/** 타운 포털: 주인마다 하나. 들판 쪽은 (area, x, y), 마을 쪽은 마을의 포털 자리 */
+export interface Portal {
+  owner: number
+  area: number
+  x: number
+  y: number
 }
 
 export interface Bullet {
@@ -378,8 +420,13 @@ export type SimEvent =
   /** 스킬 사용 (slot 0=Q 1=E 2=X). tx·ty = 커서 지점 스킬의 목표 */
   | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number }
   /** 계단: 내려가기 시작 · 다음 층에 들어섬 */
-  | { type: 'descendStart'; p: number }
-  | { type: 'floor'; n: number }
+  /** 다른 지역으로 건너갔다 (출구 · 웨이포인트 · 포털 · 마을에서 되살아남 · 따라감) */
+  | { type: 'areaEnter'; p: number; area: number; from: number; how: MoveHow }
+  | { type: 'wpFound'; p: number; area: number }
+  | { type: 'portalCast'; p: number; x: number; y: number }
+  | { type: 'portalOpen'; p: number; area: number; x: number; y: number }
+  /** 우두머리·보스가 쓰러졌다 */
+  | { type: 'bossDown'; area: number; kind: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
   /** 주웠다 */
@@ -439,14 +486,16 @@ export interface MatchConfig {
   noMonsters?: boolean
   /** 자리별 캐릭터 기록 (레벨·장비·가방·골드). 없으면 1레벨 맨몸 */
   sheets?: (Sheet | undefined)[]
-  /** 원정 층 수 (기본 = 원정 표의 층 수). 시험용으로 줄일 수 있다 */
-  floors?: number
-  /** 캠페인 원정 번호 (campaign.ts STAGES, 기본 0) */
-  stage?: number
+  /** 시작 지역 (기본 = 1막 마을). 시험은 전투 지역에서 바로 시작한다 */
+  area?: number
+  /** 자리별로 따라가는 사람 (용병·동료 봇). 없거나 -1 이면 혼자 다닌다 */
+  follow?: number[]
 }
 
 export interface GameState {
   tick: number
+  /** 게임 시드 — 지역을 처음 채울 때 쓴다 (지역 맵과 같은 시드에서) */
+  seed: number
   rng: Rng
   phase: Phase
   phaseTimer: number
@@ -471,23 +520,22 @@ export interface GameState {
   nextItemUid: number
   /** 효과 번호 (구역·던진 것·돌진 태그) */
   nextFxId: number
-  /** 층 입구 (px) — 죽은 사람이 여기서 일어난다 */
-  entryX: number
-  entryY: number
-  /** 지금 층 (1부터) · 마지막 층(보스) */
-  floor: number
-  floorMax: number
-  /** 계단 (없으면 -1 — 보스 층) */
-  stairX: number
-  stairY: number
-  /** 내려가기 카운트다운 (틱, -1 = 아님) */
-  descend: number
-  /** 다음 층으로 넘어가야 한다 (세션이 새 맵을 만들어 enterFloor 를 부른다 — 모두 같은 틱에) */
-  pendingFloor: number
-  /** 이 층의 처음 몬스터 수 (진행 표시) */
+  /** 묶인 지역의 처음 몬스터 수 (진행 표시) */
   monstersTotal: number
-  /** 캠페인 원정 번호 — 몬스터 구성·지역 레벨·맵·끝의 보스가 여기서 나온다 */
-  stage: number
+  /**
+   * 지금 묶인 지역 (step 이 지역마다 그 배열들을 위의 칸에 묶는다). step 밖에서는 -1 이고 위의 칸들은 비어 있다 —
+   * 화면·봇은 `areaView(state, 지역)` 로 본다
+   */
+  curArea: number
+  /** 묶이지 않은 지역들 (번호 순) */
+  areas: AreaState[]
+  /** 지금 막 */
+  act: number
+  /** 우두머리·보스를 쓰러뜨린 지역 (지역을 다시 채워도 다시 나오지 않는다) */
+  killed: number[]
+  portals: Portal[]
+  /** 이벤트가 어느 지역 것인지: [시작, 끝, 지역] 셋씩. 해시·스냅샷 대상 아님 */
+  evSpans: number[]
   /** 0 = 층 정리, 1 = 전멸. -1 = 아직 */
   winner: number
   /** 살아있는 모래주머니: 타일 인덱스 → 남은 내구도 (던전에는 없다 — 덕 코드 호환) */

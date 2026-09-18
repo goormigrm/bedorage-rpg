@@ -44,8 +44,6 @@ export interface RoomInfo {
   max: number
   /** 죽음 규칙 (0 없음 · 1 소실 · 2 하드코어). 방장이 정한다 */
   deathRule?: number
-  /** 던전 원정 번호 (방 목록 표시 · 난입) */
-  stage?: number
   /** 판 종류: dungeon(협동) · arena(투기장 PvP) */
   kind?: string
   /** open = 참가 가능, full = 정원 참, playing = 게임 중 */
@@ -142,11 +140,11 @@ export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; kind?: string; stage?: number }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; kind?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */
-  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; kind?: string; stage?: number }
+  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; kind?: string }
   | { t: 'ping'; s: number }
   | { t: 'pong'; s: number }
   | { t: 'hash'; tick: number; h: number }
@@ -190,7 +188,7 @@ export type CtlMessage =
   | { t: 'resume'; p: number; tick: number; state: any; cfg: any }
   /** 호스트 → 돌아온 사람: 자리가 없다 */
   | { t: 'rejoinNo'; why: string }
-  | { t: 'rematch'; seed: number; stage?: number }
+  | { t: 'rematch'; seed: number }
   | { t: 'leave' }
 
 /** 재접속한 사람이 세션을 다시 만들 때 필요한 설정 (맵·인원·닉네임 등) */

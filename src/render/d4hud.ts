@@ -12,7 +12,7 @@ import { CHARACTERS, CharacterDef } from '../core/characters'
 import { CHAR_SKILLS, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, isBossLike } from '../core/monsters'
-import { ACTS, stageDef } from '../core/campaign'
+import { areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -419,10 +419,17 @@ export class D4Hud {
       c.fillText(opts.floorName ?? '던전', x + 12, y + 24)
       c.font = `600 12px ${SANS}`
       c.fillStyle = '#d8cfbf'
-      const last = s.floor >= s.floorMax
-      const sd = stageDef(s.stage)
-      const goal = sd.boss !== undefined ? `◆ ${MONSTER_LIST[sd.boss].name}을(를) 쓰러뜨려라` : `◆ 우두머리 ${sd.unique?.name ?? ''} 처치`
-      c.fillText(last ? goal : s.descend > 0 ? `◆ 내려가는 중… ${Math.ceil(s.descend / 60)}` : '◆ 계단(지도의 파란 원)에서 F', x + 12, y + 46)
+      const a = areaDef(s.curArea)
+      const town = isTown(s.curArea)
+      const bossHere = s.monsters.some((m) => m.hp > 0 && isBossLike(m))
+      const goal = town
+        ? '◆ 안전지대 · 성문은 동쪽'
+        : bossHere
+          ? a.boss !== undefined
+            ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`
+            : `◆ 우두머리 ${a.unique?.name ?? ''}`
+          : `◆ 지역 레벨 ${a.level} · T 타운 포털`
+      c.fillText(goal, x + 12, y + 46)
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53, W - 24, 4)
       c.fillStyle = GOLD
@@ -485,42 +492,41 @@ export class D4Hud {
     c.textAlign = 'center'
     c.textBaseline = 'alphabetic'
     c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
-    c.fillText(unique ? `${stageDef(s.stage).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
+    c.fillText(unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
   }
 
-  /**
-   * 원정 시작 화면: 막 이름 · 원정 이름 · 소개 두 줄. 첫 층 카운트다운부터 약 6초 동안 떠 있다가 사라진다.
-   * (판 안의 tick 만 보므로 난입·리싱크해도 같은 때 사라진다)
-   */
-  drawIntro(h: HudCtx, s: GameState): void {
-    if (s.mode !== 'dungeon' || s.floor !== 1 || s.tick > 420) return
-    const sd = stageDef(s.stage)
-    const k = s.tick < 30 ? s.tick / 30 : s.tick > 330 ? Math.max(0, (420 - s.tick) / 90) : 1
+  /** 배너 (hud.banner 가 넣는다) */
+  banner: { title: string; sub: string; color: string; t0: number } | null = null
+
+  /** 지역 이름 배너 (디아블로 — 들어설 때 화면 위에 크게, 천천히 사라진다) */
+  drawBanner(h: HudCtx): void {
+    const b = this.banner
+    if (!b) return
+    const t = (performance.now() - b.t0) / 1000
+    if (t > 4.5) {
+      this.banner = null
+      return
+    }
+    const k = t < 0.4 ? t / 0.4 : t > 3.2 ? Math.max(0, (4.5 - t) / 1.3) : 1
     const c = h.ctx
     c.save()
     c.globalAlpha = k
-    const cy = h.H * 0.19
-    const g = c.createLinearGradient(0, cy - 70, 0, cy + 80)
+    const cy = h.H * 0.2
+    const g = c.createLinearGradient(0, cy - 50, 0, cy + 50)
     g.addColorStop(0, 'rgba(0,0,0,0)')
-    g.addColorStop(0.3, 'rgba(0,0,0,0.62)')
-    g.addColorStop(0.7, 'rgba(0,0,0,0.62)')
+    g.addColorStop(0.35, 'rgba(0,0,0,0.55)')
+    g.addColorStop(0.65, 'rgba(0,0,0,0.55)')
     g.addColorStop(1, 'rgba(0,0,0,0)')
     c.fillStyle = g
-    c.fillRect(0, cy - 70, h.W, 150)
+    c.fillRect(0, cy - 50, h.W, 100)
     c.textAlign = 'center'
     c.textBaseline = 'alphabetic'
-    c.font = `700 13px ${SERIF}`
-    c.fillStyle = '#b8a67e'
-    c.fillText(`${sd.act + 1}막 · ${ACTS[sd.act].name}`, h.W / 2, cy - 30)
-    c.font = `800 30px ${SERIF}`
-    c.fillStyle = GOLD_HI
-    c.fillText(`${sd.act + 1}-${sd.n + 1}  ${sd.name}`, h.W / 2, cy + 6)
+    c.font = `800 32px ${SERIF}`
+    c.fillStyle = b.color
+    c.fillText(b.title, h.W / 2, cy + 6)
     c.font = `500 13px ${SERIF}`
     c.fillStyle = '#d8cfbf'
-    sd.intro.split('\n').forEach((line, i) => c.fillText(line, h.W / 2, cy + 32 + i * 19))
-    c.font = `600 11px ${SANS}`
-    c.fillStyle = '#8d8170'
-    c.fillText(`지역 레벨 ${sd.level} · ${sd.floors}층`, h.W / 2, cy + 32 + sd.intro.split('\n').length * 19 + 4)
+    c.fillText(b.sub, h.W / 2, cy + 30)
     c.restore()
   }
 

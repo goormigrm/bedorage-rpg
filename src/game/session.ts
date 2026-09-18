@@ -6,14 +6,15 @@ import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/c
 import { Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
-import { createState, dropPlayer, enterFloor, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { floorSeed } from '../core/dungeon'
+import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
+import { areaDef, areaLayout, buildAreaMap, isTown } from '../core/world'
+import { GameMap } from '../core/map'
+import { WaypointPanel } from '../ui/waypoints'
 import { angleToRad } from '../core/fixedmath'
-import { DEATH_RULE_LABEL, DeathRule, GameMode, GameState, PlayerState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
+import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { RARITY_COLORS, RARITY_NAMES, Sheet, emptySheet, sanitizeSheet } from '../core/items'
-import { commitProgress, commitSheet } from './save'
-import { ACTS, STAGE_COUNT, stageDef, stageLabel } from '../core/campaign'
+import { Sheet, emptySheet, sanitizeSheet } from '../core/items'
+import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
@@ -42,8 +43,6 @@ export interface SessionConfig {
   kind?: GameMode
   /** 자리별 캐릭터 기록 (레벨·장비·가방). 내 것은 세이브에서, 남의 것은 방 메시지로 온다 */
   sheets?: (Sheet | undefined)[]
-  /** 캠페인 원정 번호 (던전). 방장이 고른다 */
-  stage?: number
   seed: number
   localPlayer: number
   mapId?: MapId
@@ -66,7 +65,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; kind?: string; stage?: number }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; kind?: string }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -80,7 +79,11 @@ interface PendingDrop {
 }
 
 export class Session {
-  private map
+  /** 지역별 맵 (게임 시드 · 지역 번호로 만든다 — 모든 브라우저가 같은 세계). 투기장은 지역 0 하나 */
+  private maps = new Map<number, GameMap>()
+  /** 화면이 보는 지역 (내 캐릭터 — 죽어서 남을 보고 있으면 그 사람의 지역) */
+  private viewArea = 0
+  private waypoints!: WaypointPanel
   private state: GameState
   private prev: GameState
   private renderer: Renderer3D
@@ -171,15 +174,13 @@ export class Session {
     host: HTMLElement,
     private cfg: SessionConfig,
   ) {
-    this.map = buildMap(this.mapIdFor(), cfg.mapScale ?? scaleForPlayers(cfg.chars.length), cfg.seed)
-    this.state = createState(this.matchCfg(cfg.seed), this.map)
-    this.mapFloor = 1
-    // 재접속: 호스트가 보내 준 판으로 갈아 끼운다. 맵의 모래주머니 상태도 그때로 맞춘다
+    this.state = createState(this.matchCfg(cfg.seed), this.mapOf)
+    // 재접속: 호스트가 보내 준 판으로 갈아 끼운다. 맵의 모래주머니 상태도 그때로 맞춘다 (지역 맵은 시드로 다시 만든다)
     if (cfg.resumeState) {
       this.state = cfg.resumeState as GameState
       this.state.events = []
-      this.ensureFloorMap()
-      syncSandbags(this.state, this.map)
+      this.state.evSpans = []
+      if (this.arena) syncSandbags(this.state, this.mapOf(0))
       // 아무도 없는 자리(나갔거나 아직 안 온 자리)는 입력을 기다리면 안 된다.
       // 이걸 빠뜨려 난입한 사람이 빈 자리 입력을 기다리다 멈추고, 그 사람이 멈추니
       // 락스텝 특성상 방 전체가 함께 멈췄다(2026-09-06 제보).
@@ -224,7 +225,9 @@ export class Session {
       this.keysShown = true
     }
     this.applyKeys()
+    this.viewArea = this.wantedArea()
     this.renderer = new Renderer3D(this.stage, this.map)
+    this.areaBanner()
     // 캔버스가 UI 아래에 오도록 UI 를 맨 뒤로
     const ui = this.stage.querySelector('.game-ui') as HTMLElement
     this.stage.appendChild(ui)
@@ -235,6 +238,15 @@ export class Session {
       void enterLandscape()
     }
     this.input.attach(this.stage, this.touch)
+    this.waypoints = new WaypointPanel(
+      this.stage.querySelector('.game-ui') as HTMLElement,
+      () => this.state.players[this.cfg.localPlayer],
+      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (open) => {
+        this.input.uiOpen = open || this.inventory?.open
+        this.sfx.blip()
+      },
+    )
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
@@ -295,6 +307,11 @@ export class Session {
       phase: () => this.state.phase,
       state: () => this.state,
       map: () => this.map,
+      /** 내 지역 번호 · 그 지역의 판 (여러 지역이면 state() 의 몬스터 칸은 다른 지역일 수 있다) */
+      area: () => this.state.players[this.cfg.localPlayer]?.area,
+      view: () => areaView(this.state, this.viewArea),
+      /** 보는 지역의 자리들 (출구 · 웨이포인트 · 포털 자리) — 브라우저 확인용 */
+      layout: () => areaLayout(this.viewArea, this.map),
       others: () => this.state.players.filter((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i]).length,
       names: () => this.names,
       bots: () => this.cfg.bots ?? [],
@@ -330,7 +347,6 @@ export class Session {
         targetKills: info.targetKills,
         deathRule: info.deathRule,
         kind: info.kind,
-        stage: this.cfg.stage ?? 0,
         count,
         max: info.size,
         state: this.state.phase === 'over' || count >= info.size ? 'full' : 'playing',
@@ -371,40 +387,68 @@ export class Session {
     return ls
   }
 
-  /** 지금 맵이 몇 층 것인가 */
-  private mapFloor = 1
-
-  /** 상태의 층과 맵이 다르면(난입·리싱크로 판을 받았을 때) 그 층의 맵을 다시 만든다 */
-  private ensureFloorMap(): void {
-    const f = this.state.floor ?? 1
-    if (f === this.mapFloor || this.arena) return
-    this.map = buildMap(this.mapIdFor(), 1, floorSeed(this.cfg.seed, f))
-    this.mapFloor = f
-    this.renderer?.setMap(this.map)
+  /** 지역의 맵 (없으면 만든다) */
+  private mapOf = (area: number): GameMap => {
+    let m = this.maps.get(area)
+    if (!m) {
+      m = this.arena ? buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), this.cfg.seed) : buildAreaMap(this.cfg.seed, area)
+      this.maps.set(area, m)
+    }
+    return m
   }
 
-  /** 계단 카운트다운이 끝났다: 모두 같은 틱에 새 층 맵을 만들고 들어간다 */
-  private advanceFloor(): void {
-    const f = this.state.pendingFloor
-    this.map = buildMap(this.mapIdFor(), 1, floorSeed(this.cfg.seed, f))
-    this.mapFloor = f
-    enterFloor(this.state, this.map, f, this.cfg.seed)
+  /** 화면이 보는 지역의 맵 */
+  private get map(): GameMap {
+    return this.mapOf(this.viewArea)
+  }
+
+  /** 화면이 볼 지역: 살아 있으면 내 지역, 죽어서 남을 보고 있으면 그 사람의 지역 */
+  private wantedArea(): number {
+    const me = this.state.players[this.cfg.localPlayer]
+    const spec = this.spectate >= 0 ? this.state.players[this.spectate] : undefined
+    if (me && !me.alive && spec && spec.alive) return spec.area
+    return me?.area ?? 0
+  }
+
+  /** 지역이 바뀌었으면 3D 세계를 그 지역 맵으로 바꾼다 */
+  private syncView(): void {
+    const want = this.wantedArea()
+    if (want === this.viewArea) return
+    this.viewArea = want
     this.renderer.setMap(this.map)
-    this.prev = interpSnapshot(this.state)
-    this.saveMine(false)
+    this.prev = interpSnapshot(areaView(this.state, want))
+    if (this.waypoints?.open) this.waypoints.toggle(false)
+    this.areaBanner()
+  }
+
+  /** 지역 이름 배너 (들어설 때) */
+  private areaBanner(): void {
+    if (this.arena) return
+    const a = areaDef(this.viewArea)
+    this.renderer.banner(a.name, a.kind === 'town' ? `${a.act + 1}막 · ${a.lore ?? '안전지대'}` : `지역 레벨 ${a.level}${a.lore ? ` · ${a.lore}` : ''}`)
+  }
+
+  /** 내 캐릭터가 웨이포인트 곁에 서 있나 (창을 열 때) */
+  private nearWaypoint(): boolean {
+    const me = this.state.players[this.cfg.localPlayer]
+    if (!me || !me.alive || me.downed || me.left) return false
+    const l = areaLayout(me.area, this.mapOf(me.area))
+    return !!l.wp && Math.hypot(me.x - l.wp.x, me.y - l.wp.y) <= 60
+  }
+
+  /** 화면·소리가 보는 판 (내 지역) */
+  private view(): GameState {
+    return areaView(this.state, this.viewArea)
   }
 
   private get arena(): boolean {
     return this.cfg.kind === 'arena'
   }
 
-  /** 던전은 원정이 속한 막의 지역, 투기장은 방장이 고른 덕의 맵 */
+  /** 투기장 맵 (방장이 고른 덕의 맵). 던전은 지역마다 world.ts 가 정한다 */
   private mapIdFor(): MapId {
-    if (this.arena) {
-      const m = this.cfg.mapId && !MAPS[this.cfg.mapId]?.fixedScale ? this.cfg.mapId : 'studio'
-      return m
-    }
-    return ACTS[stageDef(this.cfg.stage ?? 0).act].map ?? DEFAULT_MAP
+    const m = this.cfg.mapId && !MAPS[this.cfg.mapId]?.fixedScale ? this.cfg.mapId : 'studio'
+    return m
   }
 
   private matchCfg(seed: number): Parameters<typeof createState>[0] {
@@ -417,7 +461,8 @@ export class Session {
       mode: this.arena ? 'arena' : 'dungeon',
       teams: this.arena ? this.cfg.teams : undefined,
       targetKills: this.cfg.targetKills,
-      stage: this.arena ? 0 : (this.cfg.stage ?? 0),
+      // 동료 봇 = 용병: 1번 자리(방장·혼자 하는 나)를 따라다닌다 (GUIDE 8장 — D4 에서 마을의 용병 대장으로 옮긴다)
+      follow: this.arena ? undefined : this.cfg.chars.map((_, i) => (i !== 0 && (this.cfg.mode === 'solo' || this.cfg.bots?.[i]) ? 0 : -1)),
     }
   }
 
@@ -436,13 +481,14 @@ export class Session {
   }
 
   /**
-   * 내 캐릭터를 세이브에 적는다. **하드코어는 원정이 끝날 때 한 번만** — 도중에 적으면 탈락해도 얻은 것이 남는다(결정 7).
-   * 탈락했으면 적지 않는다(이번 원정에서 얻은 것을 잃는다).
+   * 내 캐릭터를 세이브에 적는다. **하드코어는 마을에 있을 때만** — 던전에서 적으면 탈락해도 얻은 것이 남는다(GUIDE 5.3).
+   * 탈락했으면 적지 않는다(마지막으로 마을에 들어온 뒤 얻은 것을 잃는다).
    */
   private saveMine(final: boolean): void {
     const me = this.state.players[this.cfg.localPlayer]
     if (!me || me.vacant || this.joiningIn) return
-    if (this.state.mode === 'dungeon' && this.state.deathRule === 2 && (!final || me.out)) return
+    void final
+    if (this.state.mode === 'dungeon' && this.state.deathRule === 2 && (me.out || !isTown(me.area))) return
     commitSheet(me)
     this.lastSave = performance.now()
   }
@@ -457,9 +503,11 @@ export class Session {
 
   /** 봇 입력 (던전 동료 · 투기장 상대) */
   private botFor(i: number, diff: Difficulty): Input {
+    const a = this.state.players[i]?.area ?? 0
+    const v = areaView(this.state, a)
     return this.arena
-      ? pvpBotInput(this.state, this.map, i, this.bots[i] as PvpBotMemory, diff)
-      : botInput(this.state, this.map, i, this.bots[i] as BotMemory, diff)
+      ? pvpBotInput(v, this.mapOf(a), i, this.bots[i] as PvpBotMemory, diff)
+      : botInput(v, this.mapOf(a), i, this.bots[i] as BotMemory, diff)
   }
 
   private get isHost(): boolean {
@@ -497,6 +545,16 @@ export class Session {
     if (e.key === 'Escape' && this.inventory.open) {
       this.inventory.toggle(false)
       e.preventDefault()
+      return
+    }
+    // 웨이포인트: 곁에서 F 로 창을 연다 (닫을 때도 F · Esc)
+    if (this.waypoints.open && (k === 'f' || e.key === 'Escape')) {
+      this.waypoints.toggle(false)
+      e.preventDefault()
+      return
+    }
+    if (k === 'f' && !this.arena && this.nearWaypoint()) {
+      this.waypoints.toggle(true)
       return
     }
     if (this.spectate >= 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || k === 'a' || k === 'd')) {
@@ -813,14 +871,14 @@ export class Session {
         const snap = m.state as GameState
         this.state = snap
         this.state.events = []
-        this.ensureFloorMap()
-        syncSandbags(this.state, this.map)
+        this.state.evSpans = []
+        if (this.arena) syncSandbags(this.state, this.mapOf(0))
         while (this.state.tick < target && this.lockstep.hasAll(this.state.tick)) {
-          step(this.state, this.map, this.lockstep.get(this.state.tick))
-          if (this.state.pendingFloor > 0) this.advanceFloor()
+          step(this.state, this.mapOf, this.lockstep.get(this.state.tick))
           this.applyDrops()
         }
-        this.prev = interpSnapshot(this.state)
+        this.syncView()
+        this.prev = interpSnapshot(this.view())
         this.resyncs++
         this.message = '동기화됨'
         setTimeout(() => (this.message = ''), 1200)
@@ -883,7 +941,7 @@ export class Session {
         break
       }
       case 'rematch':
-        if (this.peerIndex.get(from) === 0) this.restart(m.seed, m.stage)
+        if (this.peerIndex.get(from) === 0) this.restart(m.seed)
         break
       case 'leave':
         this.onPeerGone(from)
@@ -893,22 +951,21 @@ export class Session {
     }
   }
 
-  private restart(seed: number, stage?: number): void {
+  /** 투기장 다시 하기 (던전에는 없다 — 세계가 이어져 있다) */
+  private restart(seed: number): void {
     // 다시 하기: 이번 판에서 키운 것을 들고 간다 (내 것은 세이브에도 적는다)
     this.saveMine(true)
-    // 다음 원정으로 (방장이 정해 보낸다)
-    if (stage !== undefined && !this.arena) this.cfg.stage = Math.max(0, Math.min(STAGE_COUNT - 1, stage | 0))
     this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
-    this.map = buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), seed)
     this.cfg.seed = seed
-    this.mapFloor = 1
+    this.maps.clear()
+    this.viewArea = 0
     this.renderer.setMap(this.map)
-    this.state = createState({ ...this.matchCfg(seed), absent: undefined }, this.map)
+    this.state = createState({ ...this.matchCfg(seed), absent: undefined }, this.mapOf)
     // 이미 나간 사람은 처음부터 빠진 채로
     for (const d of this.dropped) dropPlayer(this.state, d)
     this.state.events = []
-    this.prev = interpSnapshot(this.state)
+    this.prev = interpSnapshot(this.view())
     this.makeBots(seed)
     this.hashes.clear()
     this.pendingDrops = []
@@ -953,7 +1010,7 @@ export class Session {
             me.x,
             me.y,
             // 터치 조작이면 조준을 대신 해 준다 (스틱 두 개는 폰에서 무리)
-            this.touch ? { state: this.state, map: this.map, me: this.cfg.localPlayer } : undefined,
+            this.touch ? { state: this.view(), map: this.map, me: this.cfg.localPlayer } : undefined,
           )
       let inputs: Input[]
       if (this.lockstep) {
@@ -988,12 +1045,14 @@ export class Session {
           inputs[i] = i === lp ? localIn : this.botFor(i, this.cfg.difficulty ?? 'normal')
         }
       }
-      this.prev = interpSnapshot(this.state)
-      step(this.state, this.map, inputs)
-      if (this.state.pendingFloor > 0) this.advanceFloor()
+      this.prev = interpSnapshot(this.view())
+      step(this.state, this.mapOf, inputs)
       this.applyDrops()
-      this.renderer.onEvents(this.state.events, this.state, lp, this.names)
-      this.sfx.onEvents(this.state.events, this.state, lp)
+      // 지역을 건너갔으면 3D 세계를 바꾼 뒤에 이벤트를 그 지역 것만 보여 준다
+      this.syncView()
+      const view = this.view()
+      this.renderer.onEvents(view.events, view, lp, this.names)
+      this.sfx.onEvents(view.events, view, lp)
       if (this.lockstep && this.state.tick % 60 === 0) {
         const h = hashState(this.state)
         this.hashes.set(this.state.tick, h)
@@ -1008,6 +1067,8 @@ export class Session {
           this.saveMine(true)
           this.onOver()
         } else if (e.type === 'levelup' && e.p === this.cfg.localPlayer) this.saveMine(false)
+        // 마을에 들어설 때 저장 (하드코어는 이때만 저장된다)
+        else if (e.type === 'areaEnter' && e.p === this.cfg.localPlayer && isTown(e.area)) this.saveMine(false)
         // 내가 죽으면: 투기장 개인전은 나를 죽인 사람, 아니면 살아 있는 동료를 본다
         else if (e.type === 'death' && e.p === this.cfg.localPlayer) {
           this.spectate = this.arena && !isTeamMatch(this.state) && e.by >= 0 && e.by !== e.p ? e.by : this.nextAlive(-1)
@@ -1054,7 +1115,9 @@ export class Session {
     }
     const spec = !me.alive && !me.choosing && this.spectate >= 0 && this.state.players[this.spectate]?.alive ? this.spectate : -1
     if (spec < 0 && this.spectate >= 0 && me.alive) this.spectate = -1
-    this.renderer.draw(this.prev, this.state, alpha, dt, {
+    this.syncView()
+    const view = this.view()
+    this.renderer.draw(this.prev, view, alpha, dt, {
       showHud: true,
       localPlayer: lp,
       viewer: spec >= 0 ? spec : undefined,
@@ -1071,7 +1134,7 @@ export class Session {
       message,
       cursor: this.aimCursor(),
       touch: this.touch !== null,
-      floorName: this.arena ? `투기장 · ${this.map.name}` : `${stageLabel(this.state.stage)} · ${this.state.floor}/${this.state.floorMax}층`,
+      floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }
@@ -1115,45 +1178,9 @@ export class Session {
     this.showOverlay(title, desc, buttons, stats)
   }
 
-  /**
-   * 결과 화면 통계표. 수치는 전부 sim 안에서 센 것이라 모두의 화면에서 같다.
-   * 명중률은 **탄 단위**(산탄총 한 발 = 탄 7개)라 무기가 달라도 비교가 된다.
-   */
+  /** 결과 화면 통계표 (투기장만 — 던전에는 결과 화면이 없다) */
   private statsTable(): string {
-    if (this.arena) return this.arenaTable()
-    const rows = this.state.players
-      .map((p, i) => ({ p, i }))
-      .filter(({ p }) => !p.vacant)
-      .sort((a, b) => b.p.kills - a.p.kills || a.p.deaths - b.p.deaths)
-      .map(({ p, i }) => {
-        const acc = p.shots > 0 ? Math.round((p.hits / p.shots) * 100) : 0
-        const critPct = p.hits > 0 ? Math.round((p.heads / p.hits) * 100) : 0
-        const me = i === this.cfg.localPlayer ? ' class="me"' : ''
-        return `<tr${me}><td class="nick">${this.names[i]}</td><td>${CHARACTERS[p.char].name} <small>Lv ${p.level}</small></td>
-          <td class="n">${p.kills}</td><td class="n">${p.deaths}</td><td class="n">${p.revives}</td>
-          <td class="n">${acc}%</td><td class="n">${critPct}%</td>
-          <td class="n">${Math.round(p.dmgDealt)}</td><td class="n">${Math.round(p.dmgTaken)}</td>
-          <td class="n">+${p.xpGain}</td><td class="n">${p.goldGain >= 0 ? '+' : ''}${p.goldGain}</td>
-          <td class="n">${p.found}${p.bestFound >= 0 ? ` <small style="color:${RARITY_COLORS[p.bestFound]}">${RARITY_NAMES[p.bestFound]}</small>` : ''}</td></tr>`
-      })
-      .join('')
-    const alive = this.state.players.map((p, i) => ({ p, i })).filter(({ p }) => !p.vacant)
-    const top = (key: (p: PlayerState) => number, label: string, fmt: (v: number) => string) => {
-      let best = alive[0]
-      for (const r of alive) if (key(r.p) > key(best.p)) best = r
-      const v = key(best.p)
-      return v > 0 ? `${label} <b>${this.names[best.i]} ${fmt(v)}</b>` : ''
-    }
-    const mvp = [
-      top((p) => p.kills, '최다 처치', (v) => `${v}`),
-      top((p) => p.heads, '최다 치명타', (v) => `${v}`),
-      top((p) => p.revives, '최다 부활', (v) => `${v}`),
-    ].filter(Boolean)
-    const mvpLine = mvp.length ? `<p class="statsmvp">⭐ ${mvp.join(' · ')}</p>` : ''
-    return `<div class="stats">${mvpLine}<table>
-      <thead><tr><th>이름</th><th>캐릭터</th><th>처치</th><th>사망</th><th>부활</th><th>명중</th><th>치명</th><th>준 피해</th><th>받은 피해</th><th>경험치</th><th>골드</th><th>주운 것</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-      <p class="statsnote">명중률은 탄 단위입니다 (산탄총 한 발 = 탄 7개). 치명은 커서를 약점(몸 한가운데)에 올리고 맞힌 비율. 부활은 동료를 일으킨 횟수. 경험치·골드·주운 것은 이번 원정에서 얻은 것(소실 규칙이면 잃은 골드를 뺀 값, 주운 것 옆은 가장 높은 등급).${this.state.deathRule === 2 && this.state.players[this.cfg.localPlayer]?.out ? ' <b>하드코어 탈락 — 이번 원정에서 얻은 것은 저장되지 않았습니다.</b>' : ''}</p></div>`
+    return this.arenaTable()
   }
 
   /** 투기장 결과표 (덕 그대로): 킬 · 데스 · 연속 · 명중 · 헤드 · 준/받은 피해 */
@@ -1298,10 +1325,9 @@ export class Session {
         targetKills: this.cfg.targetKills ?? 0,
         deathRule: this.cfg.deathRule ?? 0,
         kind: this.cfg.kind ?? 'dungeon',
-        stage: this.cfg.stage ?? 0,
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
-        scale: this.map.scale,
+        scale: this.arena ? this.mapOf(0).scale : 1,
         delay: this.cfg.delay ?? 3,
         peerIds: this.cfg.peerIds ?? [],
         bots: this.cfg.bots,
@@ -1380,7 +1406,7 @@ export class Session {
     const keep: typeof this.pendingJoins = []
     for (const j of this.pendingJoins) {
       if (j.tick <= t) {
-        joinPlayer(this.state, this.map, j.p, j.char, j.team, j.sheet ? sanitizeSheet(j.sheet) : undefined)
+        joinPlayer(this.state, this.mapOf, j.p, j.char, j.team, j.sheet ? sanitizeSheet(j.sheet) : undefined)
         this.cfg.chars[j.p] = j.char
         if (this.cfg.names) this.cfg.names[j.p] = j.name
         if (this.cfg.teams) this.cfg.teams[j.p] = j.team
@@ -1431,43 +1457,33 @@ export class Session {
   private onOver(): void {
     const w = this.state.winner
     const lp = this.cfg.localPlayer
-    const cleared = this.arena ? this.state.players[lp].team === w : w === 0
-    const title = this.arena ? (cleared ? '승리!' : '패배') : cleared ? `${stageLabel(this.state.stage)} 완료!` : '전멸'
-    // 캠페인 진행: 원정을 깼으면 내 캐릭터의 다음 원정이 열린다 (하드코어 탈락은 빼고)
-    const meP = this.state.players[lp]
-    if (!this.arena && cleared && meP && !meP.vacant && !meP.out && !this.joiningIn) commitProgress(meP.char, this.state.stage)
-    const nextStage = !this.arena && cleared && this.state.stage + 1 < STAGE_COUNT ? this.state.stage + 1 : -1
-    const kills = this.state.players.reduce((a, p) => a + p.kills, 0)
-    const secs = Math.round(this.state.tick / 60)
-    const desc = this.arena
-      ? isTeamMatch(this.state)
-        ? `${w === 0 ? 'A팀' : 'B팀'} 승리 · A팀 ${teamKills(this.state, 0)} : ${teamKills(this.state, 1)} B팀`
-        : this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
-      : `${stageLabel(this.state.stage)} ${this.state.floor}층${cleared ? '' : ` / ${this.state.floorMax}층`} · 괴물 ${kills}마리 · ${Math.floor(secs / 60)}분 ${secs % 60}초 · 죽음 규칙 ${DEATH_RULE_LABEL[this.state.deathRule]}${
-          cleared && nextStage < 0 ? ' · 캠페인의 마지막 원정입니다' : ''
-        }`
-    const stats = this.statsTable()
     setTimeout(() => {
       if (this.disposed) return
-      const again = (stage: number) => {
+      // 던전은 끝이 없다 — 판이 끝나는 것은 하드코어로 모두 탈락했을 때뿐 (결과표 없이 로비로)
+      if (!this.arena) {
+        this.showOverlay('모두 쓰러졌다', '하드코어 — 마지막으로 마을에 들어온 뒤 얻은 것은 저장되지 않았습니다.', [{ label: '로비로', primary: true, onClick: () => this.exit() }])
+        return
+      }
+      const won = this.state.players[lp].team === w
+      const desc = isTeamMatch(this.state)
+        ? `${w === 0 ? 'A팀' : 'B팀'} 승리 · A팀 ${teamKills(this.state, 0)} : ${teamKills(this.state, 1)} B팀`
+        : this.state.players.map((p, i) => `${this.names[i]} ${p.kills}`).join(' · ')
+      const stats = this.statsTable()
+      const again = () => {
         const seed = (Math.random() * 0xffffffff) >>> 0
-        if (this.isHost) this.cfg.link?.sendCtl({ t: 'rematch', seed, stage })
-        this.restart(seed, stage)
+        if (this.isHost) this.cfg.link?.sendCtl({ t: 'rematch', seed })
+        this.restart(seed)
       }
       const btns = [
-        ...(nextStage >= 0 ? [{ label: `다음 원정 · ${stageLabel(nextStage)}`, primary: true, onClick: () => again(nextStage) }] : []),
-        { label: cleared && !this.arena ? '이 원정 다시' : '다시 하기', primary: nextStage < 0, onClick: () => again(this.state.stage) },
+        { label: '다시 하기', primary: true, onClick: again },
         { label: '로비로', primary: false, onClick: () => this.exit() },
       ]
-      if (this.cfg.mode === 'solo') {
-        this.showOverlay(title, desc, btns, stats)
-      } else if (this.isHost) {
-        this.showOverlayWithStats(title, desc, stats, btns)
-      } else {
-        this.showOverlay(title, desc + ' · 방장이 다시 시작하길 기다리는 중', [{ label: '로비로', primary: false, onClick: () => this.exit() }], stats)
-      }
+      if (this.cfg.mode === 'solo') this.showOverlay(won ? '승리!' : '패배', desc, btns, stats)
+      else if (this.isHost) this.showOverlayWithStats(won ? '승리!' : '패배', desc, stats, btns)
+      else this.showOverlay(won ? '승리!' : '패배', desc + ' · 방장이 다시 시작하길 기다리는 중', [{ label: '로비로', primary: false, onClick: () => this.exit() }], stats)
     }, 2200)
   }
+
 
   private exit(): void {
     this.saveMine(true)

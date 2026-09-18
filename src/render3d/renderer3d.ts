@@ -8,7 +8,8 @@ import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { DASH_TICKS, GameState, MS_WINDUP, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { MONSTER_LIST, affixNames, isBossLike } from '../core/monsters'
-import { stageDef } from '../core/campaign'
+import { AREAS, areaDef, areaLayout, isTown } from '../core/world'
+import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
@@ -150,7 +151,11 @@ export class Renderer3D {
   /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
   private lastKiller = -1
   /** 계단 (층마다) */
-  private stairMesh: THREE.Group | null = null
+  /** 지역의 붙박이 표시(출구 · 웨이포인트) — 맵이 바뀌면 새로 만든다 */
+  private markers: THREE.Group | null = null
+  private markersFor: GameMap | null = null
+  /** 타운 포털 (주인 → 푸른 문) */
+  private portalMeshes = new Map<number, THREE.Group>()
   /** 바닥 전리품 (id → 빛기둥). 내 것과 버려진 것만 보인다 (개인 전리품) */
   private dropMeshes = new Map<number, THREE.Group>()
   private localForDrops = -1
@@ -263,10 +268,17 @@ export class Renderer3D {
     this.emotes.set(i, { text, until: performance.now() + 2200 })
   }
 
+  /** 화면 위쪽 큰 배너 (지역 이름) */
+  banner(title: string, sub: string, color?: string): void {
+    this.hud.banner(title, sub, color)
+  }
+
   /** 새 판(새 맵)으로 교체 */
   setMap(map: GameMap): void {
     this.emotes.clear()
     this.hud.clearNotices()
+    for (const g of this.portalMeshes.values()) this.scene.remove(g)
+    this.portalMeshes.clear()
     this.scene.remove(this.world.group)
     this.world.dispose()
     this.scene.remove(this.vision.group)
@@ -445,16 +457,29 @@ export class Renderer3D {
           if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
           break
         }
-        case 'descendStart':
-          this.hud.notice(`${nm[e.p]} — 5초 뒤 모두 아래층으로`, '#6ab0ff')
-          break
-        case 'floor':
-          {
-            const sd = stageDef(state.stage)
-            const lastName = sd.boss !== undefined ? `${MONSTER_LIST[sd.boss].name}의 방` : `우두머리 ${sd.unique?.name ?? ''}`
-            this.hud.notice(e.n >= state.floorMax ? `${e.n}층 — ${lastName}` : `${e.n}층`, e.n >= state.floorMax ? '#ff5a4a' : '#e6d6b0')
+        case 'wpFound':
+          if (e.p === localPlayer) {
+            this.hud.notice(`웨이포인트 — ${areaDef(e.area).name}`, '#7ab8ff')
+            const l = areaLayout(e.area, this.map)
+            if (l.wp) this.spawnRing(l.wp.x * U, l.wp.y * U, 0.3, 2.4, 0.7, 0x7ab8ff)
           }
           break
+        case 'portalCast':
+          this.spawnRing(e.x * U, e.y * U, 0.2, 1.4, 1.5, 0x5a8cff)
+          break
+        case 'portalOpen':
+          if (e.p === localPlayer) this.hud.notice('타운 포털 — F 로 마을에 드나든다', '#7ab8ff')
+          else this.hud.notice(`${nm[e.p]} 의 타운 포털`, '#7ab8ff')
+          break
+        case 'areaEnter':
+          if (e.p !== localPlayer && e.how !== 'follow') this.hud.notice(`${nm[e.p]} — ${areaDef(e.area).name}`, '#a89878')
+          break
+        case 'bossDown': {
+          const a = areaDef(e.area)
+          if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 다음 막은 준비 중입니다`, '#ffcf6a')
+          else this.hud.notice(`우두머리 ${a.unique?.name ?? ''} 쓰러짐!`, '#ffb46a')
+          break
+        }
         case 'levelup': {
           const p = state.players[e.p]
           if (!p) break
@@ -771,7 +796,8 @@ export class Renderer3D {
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
     this.updateDrops(curr, opts.localPlayer)
-    this.updateStairs(curr)
+    this.updateMarkers(curr)
+    this.updatePortals(curr)
     this.updateZones(curr)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
@@ -790,6 +816,7 @@ export class Renderer3D {
     })
     this.drawMonsterBars(curr)
     this.drawDropLabels(curr, opts.localPlayer)
+    this.drawPlaceLabels(curr, opts.localPlayer)
     this.hud.drawTexts(st)
     this.drawPings()
     this.drawMarkArrows()
@@ -1086,19 +1113,32 @@ export class Renderer3D {
         ctx.fillRect(px - 1.7 * rp, py - 0.7 * rp, 3.4 * rp, 1.4 * rp)
       }
     }
-    // 계단: 파란 원 (알면 찾아간다 — 디아블로도 층 출구는 지도에 보인다)
-    if (curr.mode === 'dungeon' && curr.stairX >= 0) {
-      ctx.strokeStyle = '#6ab0ff'
-      ctx.lineWidth = 2 * rp
-      ctx.beginPath()
-      ctx.arc(curr.stairX / TILE, curr.stairY / TILE, 4 * rp, 0, Math.PI * 2)
-      ctx.stroke()
-    }
-    // 층 입구: 초록 네모 (던전)
-    if (curr.mode === 'dungeon') {
-      ctx.strokeStyle = '#7ee0a0'
-      ctx.lineWidth = 1.4 * rp
-      ctx.strokeRect(curr.entryX / TILE - 3 * rp, curr.entryY / TILE - 3 * rp, 6 * rp, 6 * rp)
+    // 출구(주황 네모 — 디아블로도 지역 출구는 지도에 보인다) · 웨이포인트(푸른 마름모) · 타운 포털(푸른 원)
+    if (curr.mode === 'dungeon' && curr.curArea >= 0) {
+      const l = areaLayout(curr.curArea, this.map)
+      for (const e of l.exits) {
+        ctx.strokeStyle = isTown(e.to) ? '#ffd88a' : '#ff9a5a'
+        ctx.lineWidth = 2 * rp
+        ctx.strokeRect(e.x / TILE - 3 * rp, e.y / TILE - 3 * rp, 6 * rp, 6 * rp)
+      }
+      if (l.wp) {
+        ctx.fillStyle = '#7ab8ff'
+        ctx.beginPath()
+        ctx.moveTo(l.wp.x / TILE, l.wp.y / TILE - 3.5 * rp)
+        ctx.lineTo(l.wp.x / TILE + 3.5 * rp, l.wp.y / TILE)
+        ctx.lineTo(l.wp.x / TILE, l.wp.y / TILE + 3.5 * rp)
+        ctx.lineTo(l.wp.x / TILE - 3.5 * rp, l.wp.y / TILE)
+        ctx.fill()
+      }
+      for (const q of curr.portals) {
+        const at = isTown(curr.curArea) ? townPortalSpot(l, q.owner) : q.area === curr.curArea ? q : null
+        if (!at) continue
+        ctx.strokeStyle = '#5a8cff'
+        ctx.lineWidth = 2 * rp
+        ctx.beginPath()
+        ctx.arc(at.x / TILE, at.y / TILE, 3 * rp, 0, Math.PI * 2)
+        ctx.stroke()
+      }
     }
     // 단군덕 패시브(중계): 시야 밖 총성 위치를 미니맵에도 찍는다(창 안이면). 화면 가장자리 화살표만으로는
     // 방향은 알아도 거리를 모른다 (2026-09-05 요청). 좌표는 이미 타일 단위(x·U)
@@ -1441,33 +1481,128 @@ export class Renderer3D {
     }
   }
 
-  /** 계단: 바닥에 뚫린 어두운 구멍 + 푸른 불빛 (다음 층으로) */
-  private updateStairs(curr: GameState): void {
-    const has = curr.mode === 'dungeon' && curr.stairX >= 0
-    if (!has) {
-      if (this.stairMesh) {
-        this.scene.remove(this.stairMesh)
-        this.stairMesh = null
-      }
+  /**
+   * 지역의 붙박이 표시: **출구**(바닥의 어두운 문턱 + 따뜻한 불빛 — 걸어 들어가면 건너간다)와
+   * **웨이포인트**(푸르게 빛나는 돌 원판). 맵이 바뀌면 새로 만든다.
+   */
+  private updateMarkers(curr: GameState): void {
+    if (this.markersFor === this.map && this.markers) {
+      const k = 1 + Math.sin(this.t * 2.2) * 0.06
+      for (const c of this.markers.children) if (c.userData.pulse) c.scale.setScalar(k)
       return
     }
-    if (!this.stairMesh) {
-      const g = new THREE.Group()
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), new THREE.MeshBasicMaterial({ color: 0x020203 }))
+    if (this.markers) {
+      this.scene.remove(this.markers)
+      this.markers = null
+    }
+    this.markersFor = this.map
+    if (curr.mode !== 'dungeon' || curr.curArea < 0) return
+    const g = new THREE.Group()
+    const l = areaLayout(curr.curArea, this.map)
+    for (const e of l.exits) {
+      const town = isTown(e.to)
+      const color = town ? 0xffc46a : 0xff8a4a
+      const ex = new THREE.Group()
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color: 0x010101 }))
       hole.rotation.x = -Math.PI / 2
       hole.position.y = 0.03
-      const rim = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.05, 32), new THREE.MeshBasicMaterial({ color: 0x6ab0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }))
+      const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 36), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide }))
       rim.rotation.x = -Math.PI / 2
       rim.position.y = 0.04
-      const light = new THREE.PointLight(0x6ab0ff, 8, 6, 1.5)
-      light.position.y = 1
-      g.add(hole, rim, light)
-      this.scene.add(g)
-      this.stairMesh = g
+      rim.userData.pulse = true
+      const light = new THREE.PointLight(color, 9, 7, 1.5)
+      light.position.y = 1.2
+      ex.add(hole, rim, light)
+      ex.position.set(e.x * U, 0, e.y * U)
+      g.add(ex)
     }
-    this.stairMesh.position.set(curr.stairX * U, 0, curr.stairY * U)
-    const k = curr.descend > 0 ? 1.3 + Math.sin(this.t * 12) * 0.2 : 1 + Math.sin(this.t * 2) * 0.05
-    this.stairMesh.children[1].scale.setScalar(k)
+    if (l.wp) {
+      const wp = new THREE.Group()
+      const stone = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x4a4e5a }))
+      stone.position.y = 0.06
+      const rune = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }))
+      rune.rotation.x = -Math.PI / 2
+      rune.position.y = 0.14
+      rune.userData.pulse = true
+      const light = new THREE.PointLight(0x6aa8ff, 7, 6, 1.5)
+      light.position.y = 1
+      wp.add(stone, rune, light)
+      wp.position.set(l.wp.x * U, 0, l.wp.y * U)
+      g.add(wp)
+    }
+    this.scene.add(g)
+    this.markers = g
+  }
+
+  /** 타운 포털: 푸른 타원 문. 들판 쪽은 연 자리, 마을 쪽은 마을의 포털 자리 (주인마다 옆으로) */
+  private updatePortals(curr: GameState): void {
+    const want = new Map<number, { x: number; y: number }>()
+    if (curr.mode === 'dungeon' && curr.curArea >= 0) {
+      const town = isTown(curr.curArea)
+      const l = town ? areaLayout(curr.curArea, this.map) : null
+      for (const q of curr.portals) {
+        const at = town ? (l ? townPortalSpot(l, q.owner) : null) : q.area === curr.curArea ? q : null
+        if (at) want.set(q.owner, at)
+      }
+    }
+    for (const [owner, g] of this.portalMeshes) {
+      if (want.has(owner)) continue
+      this.scene.remove(g)
+      this.portalMeshes.delete(owner)
+    }
+    for (const [owner, at] of want) {
+      let g = this.portalMeshes.get(owner)
+      if (!g) {
+        g = new THREE.Group()
+        const door = new THREE.Mesh(new THREE.CircleGeometry(0.62, 32), new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+        door.scale.set(1, 1.55, 1)
+        door.position.y = 1.05
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.05, 6, 32), new THREE.MeshBasicMaterial({ color: 0xaad0ff }))
+        rim.scale.set(1, 1.55, 1)
+        rim.position.y = 1.05
+        const light = new THREE.PointLight(0x5a8cff, 10, 7, 1.4)
+        light.position.y = 1.2
+        g.add(door, rim, light)
+        this.scene.add(g)
+        this.portalMeshes.set(owner, g)
+      }
+      g.position.set(at.x * U, 0, at.y * U)
+      // 늘 화면(카메라) 쪽을 보게
+      g.rotation.y = Math.PI / 4
+      ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.2 * Math.sin(this.t * 5 + owner)
+    }
+  }
+
+  /** 출구·웨이포인트·포털 이름표 (가까운 것만) */
+  private drawPlaceLabels(curr: GameState, lp: number): void {
+    if (curr.mode !== 'dungeon' || curr.curArea < 0 || lp < 0) return
+    const me = curr.players[lp]
+    const l = areaLayout(curr.curArea, this.map)
+    const ctx = this.hud.ctx
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const label = (x: number, y: number, text: string, color: string) => {
+      if (Math.hypot(x - me.x, y - me.y) > 12 * 32) return
+      const s = this.worldToScreen(x * U, 1.6, y * U)
+      ctx.font = '700 13px "Nanum Myeongjo", serif'
+      const w = ctx.measureText(text).width + 14
+      ctx.fillStyle = 'rgba(8,7,6,0.72)'
+      ctx.fillRect(s.x - w / 2, s.y - 10, w, 20)
+      ctx.fillStyle = color
+      ctx.fillText(text, s.x, s.y + 0.5)
+    }
+    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    if (l.wp) label(l.wp.x, l.wp.y, '웨이포인트 · F', '#9ac8ff')
+    if (isTown(curr.curArea)) {
+      for (const q of curr.portals) {
+        const at = townPortalSpot(l, q.owner)
+        if (at) label(at.x, at.y - 40, `타운 포털 → ${AREAS[q.area].name}`, '#9ac8ff')
+      }
+    } else {
+      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, '타운 포털 · F', '#9ac8ff')
+    }
+    ctx.restore()
   }
 
   // ---------- 전리품 ----------

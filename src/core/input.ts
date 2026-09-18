@@ -8,7 +8,7 @@ export const BTN_DASH = 1 << 3
 export const BTN_SWAP = 1 << 4
 /** 달리기 (Shift). 누르고 있는 동안 기력을 쓰며 빨라진다 */
 export const BTN_SPRINT = 1 << 5
-/** 상호작용 (F): 쓰러진 동료 일으키기 · (M3~) 줍기·계단 */
+/** 상호작용 (F): 쓰러진 동료 일으키기 · 타운 포털 들어가기 · 웨이포인트(창은 세션이 연다) */
 export const BTN_USE = 1 << 6
 /** 스킬 Q · E · 궁극기 X (2026-09-18 — 버튼이 8비트를 넘어 16비트로 늘렸다) */
 export const BTN_SKILL1 = 1 << 7
@@ -16,6 +16,10 @@ export const BTN_SKILL2 = 1 << 8
 export const BTN_ULT = 1 << 9
 /** 스킬 번호(0·1·2) → 버튼 */
 export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT]
+/** 타운 포털 (T): 1.5초 시전 — 움직이거나 쏘거나 맞으면 끊긴다 */
+export const BTN_PORTAL = 1 << 10
+/** 마을(안전지대)에서 막는 버튼: 사격·정조준·스킬·포털 */
+export const TOWN_BLOCKED = BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_PORTAL
 
 export interface Input {
   /** -1, 0, 1 */
@@ -45,6 +49,8 @@ export const CMD_EQUIP = 1
 export const CMD_UNEQUIP = 2
 /** 가방 arg 칸을 바닥에 버린다 (모두에게 보인다 — 선물) */
 export const CMD_DROP = 3
+/** 웨이포인트로 이동: arg = 가려는 지역 번호 (웨이포인트 곁에 서 있고, 그곳이 열려 있어야 한다) */
+export const CMD_WAYPOINT = 4
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

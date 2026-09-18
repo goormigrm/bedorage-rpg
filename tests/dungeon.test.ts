@@ -5,6 +5,7 @@ import { CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
+import { areaLayout } from '../src/core/world'
 import { createState, hashState, snapshot, step } from '../src/core/sim'
 import { GameState, MS_SLEEP } from '../src/core/state'
 import { GameMap } from '../src/core/map'
@@ -13,7 +14,7 @@ const PARTY: CharacterId[] = ['cheolmyeon', 'chim', 'magic', 'oknyang']
 
 function run(seed: number, chars: CharacterId[], ticks: number, onTick?: (s: GameState) => void): { state: GameState; map: GameMap; hashes: number[] } {
   const map = buildMap('crypt', 1, seed)
-  const state = createState({ seed, chars }, map)
+  const state = createState({ area: 4, seed, chars }, map)
   const bots = chars.map((_, i) => makeBot(seed * 31 + i))
   const hashes: number[] = []
   for (let t = 0; t < ticks; t++) {
@@ -30,7 +31,7 @@ describe('던전 배치', () => {
   it('입구에서 먼 곳에 무리가 잠들어 있고, 모두 바닥 위에 있다', () => {
     for (const seed of [1, 2, 3, 77]) {
       const map = buildMap('crypt', 1, seed)
-      const s = createState({ seed, chars: ['chim'] }, map)
+      const s = createState({ area: 4, seed, chars: ['chim'] }, map)
       expect(s.monsters.length).toBeGreaterThan(50)
       expect(s.monstersTotal).toBe(s.monsters.length)
       for (const m of s.monsters) {
@@ -38,8 +39,8 @@ describe('던전 배치', () => {
         const tx = Math.floor(m.x / TILE)
         const ty = Math.floor(m.y / TILE)
         expect(map.tiles[ty * map.w + tx]).toBe(TILE_FLOOR)
-        // 입구 바로 앞에는 없다
-        expect(Math.hypot(m.x - s.entryX, m.y - s.entryY)).toBeGreaterThan(8 * TILE)
+        // 입구·출구 바로 앞에는 없다
+        for (const e of areaLayout(4, map).exits) expect(Math.hypot(m.x - e.x, m.y - e.y)).toBeGreaterThan(4 * TILE)
       }
       // 무리가 여럿이고 원형이 섞여 있다
       expect(new Set(s.monsters.map((m) => m.pack)).size).toBeGreaterThan(10)
@@ -50,8 +51,8 @@ describe('던전 배치', () => {
 
   it('인원이 늘면 몬스터 체력이 는다 (4인 2.8배)', () => {
     const map = buildMap('crypt', 1, 5)
-    const one = createState({ seed: 5, chars: ['chim'] }, map)
-    const four = createState({ seed: 5, chars: PARTY }, map)
+    const one = createState({ area: 4, seed: 5, chars: ['chim'] }, map)
+    const four = createState({ area: 4, seed: 5, chars: PARTY }, map)
     expect(four.monsters[0].maxHp).toBe(Math.round(one.monsters[0].maxHp * 2.8))
   })
 })
@@ -67,7 +68,7 @@ describe('결정론', () => {
   it('스냅샷에서 이어 돌려도 같은 결과 (리싱크·난입과 같은 길)', () => {
     const seed = 21
     const map = buildMap('crypt', 1, seed)
-    const state = createState({ seed, chars: PARTY }, map)
+    const state = createState({ area: 4, seed, chars: PARTY }, map)
     const bots = PARTY.map((_, i) => makeBot(i + 1))
     const log: Input[][] = []
     for (let t = 0; t < 60 * 40; t++) {
@@ -106,7 +107,7 @@ describe('봇 파티', () => {
 
   it('틱 비용: 4인 · 몬스터 가득 · 평균 1.5ms 이하', () => {
     const map = buildMap('crypt', 1, 9)
-    const state = createState({ seed: 9, chars: PARTY }, map)
+    const state = createState({ area: 4, seed: 9, chars: PARTY }, map)
     const bots = PARTY.map((_, i) => makeBot(i + 7))
     // 모든 무리를 깨운 최악의 경우
     for (const m of state.monsters) m.st = 1
@@ -133,7 +134,7 @@ describe('층 크기', () => {
     const b = buildMap('crypt', 4, 3)
     expect(b.w).toBe(a.w)
     expect(b.h).toBe(a.h)
-    const s = createState({ seed: 3, chars: PARTY }, b)
+    const s = createState({ area: 4, seed: 3, chars: PARTY }, b)
     expect(s.monsters.length).toBeLessThan(200)
   })
 })

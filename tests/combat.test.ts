@@ -4,6 +4,7 @@ import { radToAngle } from '../src/core/fixedmath'
 import { BTN_FIRE, BTN_USE, Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap, GameMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
+import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
 import { createState, step } from '../src/core/sim'
 import { CharacterId } from '../src/core/characters'
 import { COUNTDOWN_TICKS, GameState, MS_CHASE, MS_SLEEP, REVIVE_TICKS, SOLO_BLEED_TICKS } from '../src/core/state'
@@ -13,7 +14,7 @@ const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist:
 /** 몬스터 없는 판 + 카운트다운 끝 */
 function arena(chars: CharacterId[], seed = 7): { s: GameState; map: GameMap } {
   const map = buildMap('crypt', 1, seed)
-  const s = createState({ seed, chars, noMonsters: true }, map)
+  const s = createState({ area: 4, seed, chars, noMonsters: true }, map)
   for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, chars.map(idle))
   return { s, map }
 }
@@ -90,8 +91,13 @@ describe('쓰러짐 · 부활', () => {
     expect(b.revives).toBe(1)
   })
 
-  it('혼자면 금방 숨이 끊기고, 입구에서 다시 일어난다 (죽음 규칙 없음)', () => {
-    const { s, map } = arena(['chim'])
+  it('혼자면 금방 숨이 끊기고, 마을에서 다시 일어난다 (죽음 규칙 없음)', () => {
+    // 지역을 오가므로 맵은 지역마다 (게임 시드 · 지역 번호)
+    const seed = 7
+    const maps = new Map<number, GameMap>()
+    const mapOf = (id: number) => maps.get(id) ?? maps.set(id, buildAreaMap(seed, id)).get(id)!
+    const s = createState({ area: 4, seed, chars: ['chim'], noMonsters: true }, mapOf)
+    const map = mapOf
     const p = s.players[0]
     p.hp = 0
     p.downed = true
@@ -108,12 +114,14 @@ describe('쓰러짐 · 부활', () => {
     expect(died).toBeGreaterThanOrEqual(0)
     expect(died).toBeLessThanOrEqual(SOLO_BLEED_TICKS + 2)
     expect(back).toBeGreaterThan(died)
-    expect(Math.hypot(p.x - s.entryX, p.y - s.entryY)).toBeLessThan(3 * TILE)
+    expect(p.area).toBe(ACTS[0].town)
+    const l = areaLayout(p.area, mapOf(p.area))
+    expect(Math.hypot(p.x - l.spawn.x, p.y - l.spawn.y)).toBeLessThan(3 * TILE)
   })
 
   it('하드코어: 죽으면 탈락, 모두 탈락하면 전멸', () => {
     const map = buildMap('crypt', 1, 4)
-    const s = createState({ seed: 4, chars: ['chim'], deathRule: 2 }, map)
+    const s = createState({ area: 4, seed: 4, chars: ['chim'], deathRule: 2 }, map)
     for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, [idle()])
     s.players[0].hp = 0
     s.players[0].downed = true

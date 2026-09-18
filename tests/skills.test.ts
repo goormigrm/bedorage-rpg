@@ -15,7 +15,7 @@ const press = (buttons: number, aim = 0, aimDist = 0): Input => ({ ...idle(), bu
 
 function ready(chars: CharacterId[], mode: 'dungeon' | 'arena' = 'dungeon', seed = 7): { s: GameState; map: GameMap } {
   const map = mode === 'arena' ? buildMap('yard', 1, seed) : buildMap('crypt', 1, seed)
-  const s = createState({ seed, chars, noMonsters: true, mode, targetKills: 3 }, map)
+  const s = createState({ area: 4, seed, chars, noMonsters: true, mode, targetKills: 3 }, map)
   for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, chars.map(idle))
   return { s, map }
 }
@@ -166,7 +166,7 @@ describe('투기장 (PvP)', () => {
 
   it('팀전: 같은 팀은 맞지 않는다', () => {
     const map = buildMap('yard', 1, 3)
-    const s = createState({ seed: 3, chars: ['chim', 'magic', 'cheolmyeon', 'dangun'], mode: 'arena', teams: [0, 0, 1, 1], targetKills: 5 }, map)
+    const s = createState({ area: 4, seed: 3, chars: ['chim', 'magic', 'cheolmyeon', 'dangun'], mode: 'arena', teams: [0, 0, 1, 1], targetKills: 5 }, map)
     for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, s.players.map(idle))
     const [a, b] = s.players
     expect(isEnemy(a, b)).toBe(false)
@@ -225,7 +225,7 @@ describe('투기장 (PvP)', () => {
     const run = () => {
       const map = buildMap('garage', 4, 12)
       const chars: CharacterId[] = ['chim', 'cheolmyeon', 'dangun', 'oknyang']
-      const s = createState({ seed: 12, chars, mode: 'arena', targetKills: 99 }, map)
+      const s = createState({ area: 4, seed: 12, chars, mode: 'arena', targetKills: 99 }, map)
       const bots = chars.map((_, i) => makePvpBot(i + 3))
       const hashes: number[] = []
       let kills = 0

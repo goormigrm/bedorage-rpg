@@ -6,7 +6,9 @@
 
 import { CHARACTERS, CharacterId, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_DROP, CMD_EQUIP, CMD_UNEQUIP, Input, SKILL_BTNS } from './input'
+import {
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_DROP, CMD_EQUIP, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, TOWN_BLOCKED,
+} from './input'
 import {
   BAG_SIZE, LEVEL_CAP, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
   ST_STAMINA, ST_XP, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
@@ -18,20 +20,20 @@ import { makeRng, rand, randInt } from './rng'
 import {
   AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
-import { entryOf, farPoint, floorSeed, makeMonster, populate, rollAffixes } from './dungeon'
-import { ACTS, areaLevel, stageDef } from './campaign'
+import { makeMonster, populate, rollAffixes } from './dungeon'
+import { ACTS, AreaLayout, WAYPOINTS, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
   SKILLS, SkillId, ULT_START_FRAC,
 } from './skills'
 import {
-  BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
+  AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
   COUNTDOWN_TICKS, CHIM, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
-  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills,
+  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -82,101 +84,382 @@ function buildGrid(state: GameState, map: GameMap): Grid {
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
 
-/** 계단에서 F 를 누르면 이만큼 뒤 모두 내려간다 */
-const DESCEND_TICKS = 60 * 5
+// ================================================================ 지역 (GUIDE 5·12장)
 
-/**
- * 층 채우기: 무리 + 계단. 마지막 층은 계단 대신 **막 보스**(3번째 원정) 또는 **우두머리**(1·2번째 원정)가 가장 깊은 곳에 있다.
- * 몬스터 레벨 = 원정의 지역 레벨 + (층 − 1) (파티가 훨씬 높으면 조금 따라 올라온다)
- */
-function fillFloor(state: GameState, map: GameMap, seed: number, seats: number, partyLevel: number): void {
-  const sd = stageDef(state.stage)
-  const last = state.floor >= state.floorMax
-  const lvl = areaLevel(state.stage, state.floor, partyLevel)
-  populate(state, map, seed, seats, lvl, last && sd.boss !== undefined, ACTS[sd.act].packs)
-  const far = farPoint(map)
-  if (last) {
-    const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
-    const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
-    if (sd.boss !== undefined) {
-      // 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
-      state.monsters.push(makeMonster(state, sd.boss, far.x, far.y, 9999, hpMul, pow, lvl))
-      state.monstersTotal++
-    } else if (sd.unique) {
-      // 우두머리: 평범한 원형을 크게 키우고 접두 능력 셋. 같은 원형 셋이 지킨다
-      const rng = makeRng((seed ^ 0x7a11e) >>> 0)
-      const u = makeMonster(state, sd.unique.kind, far.x, far.y, 9998, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
-      u.elite = rollAffixes(rng, 1 | EA_UNIQUE, UNIQUE.affixes)
-      state.monsters.push(u)
-      const r = MONSTER_LIST[sd.unique.kind].r
-      for (let i = 0; i < 3; i++) {
-        const a = (i * 341 + 100) & 1023
-        const at = moveCircle(map, far.x, far.y, r, cosA(a) * 40, sinA(a) * 40)
-        state.monsters.push(makeMonster(state, sd.unique.kind, at.x, at.y, 9998, hpMul, pow, lvl))
-      }
-      state.monstersTotal += 4
-    }
-    state.stairX = -1
-    state.stairY = -1
-  } else {
-    state.stairX = far.x
-    state.stairY = far.y
+/** 판이 받는 맵: 지역 번호 → 맵. 지역이 하나뿐인 판(투기장·시험)은 맵 하나를 그대로 넘겨도 된다 */
+export type MapSource = GameMap | ((area: number) => GameMap)
+
+function mapFn(maps: MapSource): (area: number) => GameMap {
+  return typeof maps === 'function' ? maps : () => maps
+}
+
+/** 출구에 이만큼 다가서면 건너간다 · 웨이포인트를 밟으면 열린다 · 포털에 이만큼 가까이서 F */
+const EXIT_R = 30
+const WP_R = 44
+const PORTAL_R = 40
+/** 타운 포털 시전 (틱) */
+export const PORTAL_CAST = 90
+/** 사람이 없는 지역을 얼려 두는 수 (넘으면 가장 오래된 것부터 버린다 — 다시 가면 새로 채워진다) */
+const FROZEN_KEEP = 3
+
+function newArea(id: number, tick: number): AreaState {
+  return { id, monsters: [], mshots: [], bullets: [], globes: [], zones: [], throws: [], drops: [], monstersTotal: 0, seen: tick }
+}
+
+function findArea(state: GameState, id: number): AreaState | undefined {
+  return state.areas.find((a) => a.id === id)
+}
+
+/** step 이 도는 중인가 (도는 동안에는 지역을 하나씩 묶고, 끝나면 "기본 지역" 을 다시 묶는다) */
+let stepping = false
+
+/** 묶인 칸(GameState.monsters …)을 그 지역으로 되돌린다 — 묶인 동안에는 칸 쪽이 정본이다 */
+function unbind(state: GameState): void {
+  if (state.curArea < 0) return
+  const a = findArea(state, state.curArea)
+  if (a) {
+    a.monsters = state.monsters
+    a.mshots = state.mshots
+    a.bullets = state.bullets
+    a.globes = state.globes
+    a.zones = state.zones
+    a.throws = state.throws
+    a.drops = state.drops
+    a.monstersTotal = state.monstersTotal
   }
+  state.curArea = -1
+}
+
+function bind(state: GameState, a: AreaState): void {
+  state.curArea = a.id
+  state.monsters = a.monsters
+  state.mshots = a.mshots
+  state.bullets = a.bullets
+  state.globes = a.globes
+  state.zones = a.zones
+  state.throws = a.throws
+  state.drops = a.drops
+  state.monstersTotal = a.monstersTotal
 }
 
 /**
- * 다음 층으로 (세션이 새 맵을 만든 뒤 **모두 같은 틱에** 부른다). 몬스터·탄·바닥 것은 치우고, 모두 새 입구에 모인다.
- * 쓰러졌거나 죽어 있던 사람도 일어난다(하드코어 탈락은 그대로). 판은 2초 카운트다운 뒤 이어진다.
+ * step 밖에서는 **사람이 있는 지역 중 번호가 가장 작은 곳**을 칸에 묶어 둔다. 지역이 하나뿐인 판(투기장·시험)은
+ * 예전처럼 `state.monsters` 를 바로 보고 만질 수 있다. 여러 지역이면 화면·봇은 반드시 `areaView` 로 본다.
  */
-export function enterFloor(state: GameState, map: GameMap, floor: number, seed: number): void {
-  state.floor = floor
-  state.pendingFloor = 0
-  state.descend = -1
+function bindPrimary(state: GameState): void {
+  unbind(state)
+  const live = liveAreas(state)
+  const a = findArea(state, live[0] ?? -1) ?? state.areas[0]
+  if (a) {
+    bind(state, a)
+    return
+  }
   state.monsters = []
   state.mshots = []
   state.bullets = []
+  state.globes = []
   state.zones = []
   state.throws = []
   state.drops = []
-  state.globes = []
   state.monstersTotal = 0
-  const entry = entryOf(map)
-  state.entryX = entry.x
-  state.entryY = entry.y
-  for (const i of map.sandbagIdx) state.sandbags[i] = SANDBAG_HP
-  map.version++
+}
+
+/**
+ * 지역 하나를 묶고 fn 을 돌린다: 그 지역의 배열을 GameState 의 칸에 걸고, **다른 지역에 있는 사람은 잠시 `left`** 로 둔다 —
+ * 그러면 2천 줄의 전투 코드가 "이 지역에 있는 사람과 몬스터만" 보고 그대로 돈다. 끝나면 되돌린다.
+ */
+function withArea<T>(state: GameState, a: AreaState, fn: () => T): T {
+  unbind(state)
+  const hidden: PlayerState[] = []
   for (const p of state.players) {
-    if (p.left || p.out) continue
-    if (!p.alive || p.downed) {
-      p.alive = true
-      p.downed = false
-      p.hp = p.maxHp
-      p.respawnTimer = 0
+    if (!p.left && p.area !== a.id) {
+      p.left = true
+      hidden.push(p)
     }
-    const s = spotNear(state, map, entry.x, entry.y, p.id)
-    p.x = s.x
-    p.y = s.y
-    p.dashTimer = 0
-    p.fx[FX_CHARGE] = 0
-    p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
   }
-  const seated = state.players.filter((p) => !p.vacant && !p.left)
-  const lvl = seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
-  fillFloor(state, map, floorSeed(seed, floor), state.players.length, lvl)
-  state.phase = 'countdown'
-  state.phaseTimer = 120
-  state.events.push({ type: 'floor', n: floor })
+  bind(state, a)
+  try {
+    return fn()
+  } finally {
+    // 전투 코드가 배열을 새로 만들어 끼우기도 한다(쓰러진 몬스터 걸러 내기) → 칸에 걸린 것을 도로 가져온다
+    unbind(state)
+    for (const p of hidden) p.left = false
+    if (!stepping) bindPrimary(state)
+  }
+}
+
+/** 판에 앉은 사람들의 평균 레벨 (몬스터 레벨의 바닥) */
+function partyLevel(state: GameState): number {
+  const seated = state.players.filter((p) => !p.vacant)
+  return seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
+}
+
+/**
+ * 지역 채우기: 무리 + (지역에 있으면) 우두머리 또는 막 보스. 이미 쓰러뜨린 우두머리·보스는 다시 나오지 않는다.
+ * 몬스터 레벨 = 지역 레벨 (파티가 훨씬 높으면 파티 − 3 까지)
+ */
+function fillArea(state: GameState, map: GameMap, id: number, seed: number): void {
+  const def = areaDef(id)
+  if (def.kind === 'town') return
+  const l = areaLayout(id, map)
+  const lvl = areaLevel(id, partyLevel(state))
+  const seats = state.players.length
+  populate(state, map, areaSeed(seed, id), seats, lvl, def.density ?? 1, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l))
+  if (state.killed.includes(id)) return
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * (1 + 0.1 * (lvl - 1))
+  const pow = Math.round(100 * (1 + 0.06 * (lvl - 1)))
+  const at = l.special
+  if (def.boss !== undefined) {
+    // 막 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
+    state.monsters.push(makeMonster(state, def.boss, at.x, at.y, 9999, hpMul, pow, lvl))
+    state.monstersTotal++
+  } else if (def.unique) {
+    // 우두머리: 평범한 원형을 크게 키우고 접두 능력 셋. 같은 원형 셋이 지킨다
+    const rng = makeRng((areaSeed(seed, id) ^ 0x7a11e) >>> 0)
+    const u = makeMonster(state, def.unique.kind, at.x, at.y, 9998, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
+    u.elite = rollAffixes(rng, 1 | EA_UNIQUE, UNIQUE.affixes)
+    state.monsters.push(u)
+    const r = MONSTER_LIST[def.unique.kind].r
+    for (let i = 0; i < 3; i++) {
+      const a = (i * 341 + 100) & 1023
+      const g = moveCircle(map, at.x, at.y, r, cosA(a) * 40, sinA(a) * 40)
+      state.monsters.push(makeMonster(state, def.unique.kind, g.x, g.y, 9998, hpMul, pow, lvl))
+    }
+    state.monstersTotal += 4
+  }
+}
+
+/** 지역이 없으면 만들어 채운다 (처음 들어설 때 · 버린 뒤 다시 올 때) */
+function ensureArea(state: GameState, id: number, map: GameMap, fill = true): AreaState {
+  let a = findArea(state, id)
+  if (a) return a
+  a = newArea(id, state.tick)
+  unbind(state)
+  state.areas.push(a)
+  state.areas.sort((x, y) => x.id - y.id)
+  const seed = state.seed
+  if (fill) withArea(state, a, () => fillArea(state, map, id, seed))
+  else if (!stepping) bindPrimary(state)
+  return a
+}
+
+/** 사람이 있는 지역 (번호 순) — 이 지역들만 틱을 돈다 */
+function liveAreas(state: GameState): number[] {
+  const ids: number[] = []
+  for (const p of state.players) if (!p.left && !ids.includes(p.area)) ids.push(p.area)
+  return ids.sort((a, b) => a - b)
+}
+
+interface Move {
+  p: number
+  to: number
+  how: MoveHow
+  x?: number
+  y?: number
+  /** 포털 주인이 마을에서 자기 포털로 돌아갔다 → 포털이 닫힌다 (디아블로 2) */
+  closePortal?: boolean
+}
+/** 이번 틱에 다른 지역으로 건너갈 사람 (지역을 다 돈 뒤에 한꺼번에 옮긴다 — 도는 중에 지역이 바뀌지 않게) */
+const moves: Move[] = []
+
+function queueMove(p: PlayerState, m: Omit<Move, 'p'>): void {
+  if (moves.some((q) => q.p === p.id)) return
+  moves.push({ p: p.id, ...m })
+}
+
+/** 사람을 지역 to 의 (x, y) 곁 빈자리에 세운다 */
+function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: number, y: number, how: MoveHow): void {
+  const a = ensureArea(state, to, map)
+  const from = p.area
+  const spot = withArea(state, a, () => spotNear(state, map, x, y, p.id))
+  p.area = to
+  p.x = spot.x
+  p.y = spot.y
+  p.dashTimer = 0
+  p.portalCast = 0
+  p.exitLock = 30
+  p.ads = false
+  p.fx[FX_CHARGE] = 0
+  p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
+  state.events.push({ type: 'areaEnter', p: p.id, area: to, from, how })
+}
+
+function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
+  moves.sort((a, b) => a.p - b.p)
+  for (const m of moves) {
+    const p = state.players[m.p]
+    if (!p || p.left) continue
+    const map = mapOf(m.to)
+    const l = areaLayout(m.to, map)
+    let at: { x: number; y: number }
+    if (m.x !== undefined && m.y !== undefined) at = { x: m.x, y: m.y }
+    else if (m.how === 'exit') at = l.exits.find((e) => e.to === p.area)?.arrive ?? l.spawn
+    else if (m.how === 'wp') at = l.wpArrive ?? l.spawn
+    else at = l.spawn
+    placeIn(state, map, p, m.to, at.x, at.y, m.how)
+    if (m.closePortal) state.portals = state.portals.filter((q) => q.owner !== p.id)
+  }
+  moves.length = 0
+}
+
+/** 맵 하나짜리 판: 건너가기는 버리고, 되살아나는 사람만 그 지역의 처음 자리로 */
+function stayMoves(state: GameState, mapOf: (area: number) => GameMap): void {
+  for (const m of moves) {
+    const p = state.players[m.p]
+    if (!p || p.left || m.how !== 'town') continue
+    const map = mapOf(p.area)
+    const l = areaLayout(p.area, map)
+    placeIn(state, map, p, p.area, l.spawn.x, l.spawn.y, 'town')
+  }
+  moves.length = 0
+}
+
+/** 용병·동료 봇: 따라가는 사람이 다른 지역에 있으면 곁으로 간다 (디아블로 2 의 용병처럼) */
+function followLeaders(state: GameState, mapOf: (area: number) => GameMap): void {
+  for (const f of state.players) {
+    if (f.left || f.follow < 0 || !f.alive || f.downed) continue
+    const lead = state.players[f.follow]
+    if (!lead || lead.left || !lead.alive || lead.area === f.area) continue
+    placeIn(state, mapOf(lead.area), f, lead.area, lead.x, lead.y, 'follow')
+  }
+}
+
+/** 사람이 없는 지역: 날아다니던 것은 치우고 얼린다. 얼린 지역이 많으면 오래된 것부터 버린다 */
+function freezeAreas(state: GameState): void {
+  const live = liveAreas(state)
+  const frozen = state.areas.filter((a) => !live.includes(a.id))
+  for (const a of frozen) {
+    a.bullets = []
+    a.mshots = []
+    a.zones = []
+    a.throws = []
+  }
+  if (frozen.length <= FROZEN_KEEP) return
+  frozen.sort((a, b) => b.seen - a.seen || a.id - b.id)
+  const drop = new Set(frozen.slice(FROZEN_KEEP).map((a) => a.id))
+  state.areas = state.areas.filter((a) => !drop.has(a.id))
+}
+
+/**
+ * 지역 안의 상호작용 (던전만, 묶인 지역에서): 출구로 건너가기 · 웨이포인트 열기 · 타운 포털 시전과 드나들기.
+ * 누른 순간(btnPrev 와 비교)만 본다.
+ */
+function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
+  const area = state.curArea
+  const l = areaLayout(area, map)
+  const town = isTown(area)
+  for (const p of state.players) {
+    if (p.left) continue
+    const inp = inputs[p.id]
+    const btn = inp?.buttons ?? 0
+    const pressed = btn & ~p.btnPrev
+    p.btnPrev = btn
+    if (p.exitLock > 0) p.exitLock--
+    if (!isActive(p) || state.phase !== 'playing') {
+      p.portalCast = 0
+      continue
+    }
+    // 출구: 걸어 들어가면 그 사람만 건너간다
+    if (p.exitLock === 0) {
+      for (const e of l.exits) {
+        if (len(p.x - e.x, p.y - e.y) > EXIT_R) continue
+        queueMove(p, { to: e.to, how: 'exit' })
+        break
+      }
+    }
+    // 웨이포인트: 밟으면 열린다 (캐릭터에 남는다)
+    if (l.wp && len(p.x - l.wp.x, p.y - l.wp.y) <= WP_R) {
+      const bit = wpBit(area)
+      if (bit && (p.wps & bit) === 0) {
+        p.wps |= bit
+        state.events.push({ type: 'wpFound', p: p.id, area })
+      }
+    }
+    // 타운 포털 시전: 움직이거나 쏘거나 스킬을 쓰면 끊긴다 (맞으면 hurtPlayer 가 끊는다)
+    if (!town && (pressed & BTN_PORTAL) !== 0 && p.portalCast === 0) {
+      p.portalCast = PORTAL_CAST
+      state.events.push({ type: 'portalCast', p: p.id, x: p.x, y: p.y })
+    } else if (p.portalCast > 0) {
+      const busy = (inp && (inp.mx !== 0 || inp.my !== 0)) || (btn & (BTN_FIRE | BTN_DASH)) !== 0 || SKILL_BTNS.some((b) => (btn & b) !== 0)
+      if (busy) p.portalCast = 0
+      else if (--p.portalCast === 0) {
+        state.portals = state.portals.filter((q) => q.owner !== p.id)
+        state.portals.push({ owner: p.id, area, x: p.x, y: p.y })
+        state.events.push({ type: 'portalOpen', p: p.id, area, x: p.x, y: p.y })
+      }
+    }
+    // 포털 드나들기 (F)
+    if ((pressed & BTN_USE) !== 0) {
+      for (const q of state.portals) {
+        if (town) {
+          const at = townPortalSpot(l, q.owner)
+          if (!at || len(p.x - at.x, p.y - at.y) > PORTAL_R) continue
+          queueMove(p, { to: q.area, how: 'portal', x: q.x, y: q.y + 44, closePortal: q.owner === p.id })
+        } else {
+          if (q.area !== area || len(p.x - q.x, p.y - q.y) > PORTAL_R) continue
+          const t = ACTS[areaDef(area).act].town
+          queueMove(p, { to: t, how: 'portal' })
+        }
+        break
+      }
+    }
+  }
+}
+
+/** 마을 쪽 포털 자리 (주인마다 옆으로 두 칸씩) */
+export function townPortalSpot(l: AreaLayout, owner: number): { x: number; y: number } | null {
+  return l.portal ? { x: l.portal.x + owner * 2 * TILE, y: l.portal.y } : null
+}
+
+/**
+ * 화면·봇이 보는 판: 지역 하나를 묶은 **얕은 사본**. 다른 지역에 있는 사람은 `left` + `away` 인 사본으로 바꾼다
+ * (원본을 건드리지 않는다). 이벤트는 그 지역 것 + 지역 밖(건너가기·난입 등)의 것.
+ */
+export function areaView(state: GameState, id: number): GameState {
+  const a = state.curArea === id ? state : findArea(state, id)
+  const players = state.players.map((p) => (p.left || p.area === id ? p : { ...p, left: true, away: true }))
+  return {
+    ...state,
+    players,
+    curArea: id,
+    monsters: a?.monsters ?? [],
+    mshots: a?.mshots ?? [],
+    bullets: a?.bullets ?? [],
+    globes: a?.globes ?? [],
+    zones: a?.zones ?? [],
+    throws: a?.throws ?? [],
+    drops: a?.drops ?? [],
+    monstersTotal: a?.monstersTotal ?? 0,
+    events: eventsIn(state, id),
+  }
+}
+
+function eventsIn(state: GameState, id: number): SimEvent[] {
+  const sp = state.evSpans
+  if (sp.length === 0) return state.events
+  const ev = state.events
+  const out: SimEvent[] = []
+  let at = 0
+  for (let i = 0; i < sp.length; i += 3) {
+    for (let k = at; k < sp[i]; k++) out.push(ev[k])
+    if (sp[i + 2] === id) for (let k = sp[i]; k < sp[i + 1]; k++) out.push(ev[k])
+    at = sp[i + 1]
+  }
+  for (let k = at; k < ev.length; k++) out.push(ev[k])
+  return out
 }
 
 // ================================================================ 만들기
 
-export function createState(cfg: MatchConfig, map: GameMap): GameState {
+export function createState(cfg: MatchConfig, maps: MapSource): GameState {
+  const mapOf = mapFn(maps)
   const rng = makeRng(cfg.seed)
   const mode = cfg.mode ?? 'dungeon'
   const n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, cfg.chars.length))
   const players: PlayerState[] = []
   for (let i = 0; i < n; i++) {
     const p = makePlayer(i, cfg.chars[i], mode === 'arena' ? (cfg.teams?.[i] ?? i) : 0, cfg.sheets?.[i])
+    p.follow = mode === 'dungeon' ? (cfg.follow?.[i] ?? -1) : -1
     // 아직 아무도 안 들어온 자리는 판에 나오지 않는다 (난입하면 그때 채운다)
     if (cfg.absent?.[i]) {
       p.left = true
@@ -186,12 +469,16 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     }
     players.push(p)
   }
-  const entry = entryOf(map)
+  // 던전은 카운트다운 없이 바로 마을에 서 있다 (GUIDE 4장). 투기장만 덕의 카운트다운
+  const start = mode === 'arena' ? 0 : (cfg.area ?? ACTS[0].town)
+  for (const p of players) p.area = start
+  const map = mapOf(start)
   const state: GameState = {
     tick: 0,
+    seed: cfg.seed,
     rng,
-    phase: 'countdown',
-    phaseTimer: COUNTDOWN_TICKS,
+    phase: mode === 'arena' ? 'countdown' : 'playing',
+    phaseTimer: mode === 'arena' ? COUNTDOWN_TICKS : 0,
     mode,
     targetKills: mode === 'arena' ? Math.max(1, cfg.targetKills ?? 10) : 0,
     deathRule: cfg.deathRule ?? 0,
@@ -211,16 +498,13 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
     // 판마다 다른 큰 수에서 시작 — 세이브에 있던 아이템 번호와 겹치지 않게
     nextItemUid: 1_000_000 + (cfg.seed % 1_000_000) * 1000,
     nextFxId: 1,
-    entryX: entry.x,
-    entryY: entry.y,
-    floor: 1,
-    floorMax: cfg.floors ?? stageDef(cfg.stage ?? 0).floors,
-    stairX: -1,
-    stairY: -1,
-    descend: -1,
-    pendingFloor: 0,
     monstersTotal: 0,
-    stage: Math.max(0, cfg.stage ?? 0),
+    curArea: -1,
+    areas: [],
+    act: 0,
+    killed: [],
+    portals: [],
+    evSpans: [],
     winner: -1,
     sandbags: {},
     events: [],
@@ -232,7 +516,8 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
   }
   map.version++
   if (mode === 'arena') {
-    // 투기장: 덕 그대로 — 첫 사람은 무작위, 다음 사람은 이미 놓인 모두에게서 가장 먼 곳
+    // 투기장: 지역 하나(0). 덕 그대로 — 첫 사람은 무작위, 다음 사람은 이미 놓인 모두에게서 가장 먼 곳
+    state.areas.push(newArea(0, 0))
     const used: { x: number; y: number }[] = []
     for (const p of players) {
       if (p.left) continue
@@ -242,19 +527,23 @@ export function createState(cfg: MatchConfig, map: GameMap): GameState {
       used.push(s)
     }
   } else {
-    // 던전: 모두 입구에 모여서 시작한다 (협동)
-    for (const p of players) {
-      if (p.left) continue
-      const s = spotNear(state, map, entry.x, entry.y, p.id)
-      p.x = s.x
-      p.y = s.y
-    }
-    // 몬스터는 파티 평균 레벨에 맞춰 세진다 (빈 자리 제외)
-    const seated = players.filter((p) => !p.vacant)
-    const lvl = seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
-    if (!cfg.noMonsters) fillFloor(state, map, cfg.seed, n, lvl)
+    // 던전: 모두 시작 지역(마을)에 모여 선다. 전투 지역에서 시작하면(시험) 웨이포인트 곁 또는 입구
+    const a = ensureArea(state, start, map, !cfg.noMonsters)
+    const l = areaLayout(start, map)
+    const at = isTown(start) ? l.spawn : (l.wpArrive ?? l.exits[0]?.arrive ?? l.spawn)
+    withArea(state, a, () => {
+      for (const p of players) {
+        if (p.left) continue
+        const s = spotNear(state, map, at.x, at.y, p.id)
+        p.x = s.x
+        p.y = s.y
+      }
+    })
+    // 마을 웨이포인트는 처음부터 열려 있다
+    for (const p of players) p.wps |= wpBit(ACTS[0].town)
   }
   for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
+  bindPrimary(state)
   return state
 }
 
@@ -262,7 +551,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   const c = CHARACTERS[char]
   const w = WEAPONS[c.weapon]
   const ult = SKILLS[CHAR_SKILLS[char][2]]
-  const sh = sheet ?? { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }
+  const sh: Sheet = sheet ?? { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }
   // 세이브에서 온 것은 복사해 둔다 (상태가 세이브 객체를 건드리지 않게)
   const equip = sh.equip.map((it) => (it ? { ...it, aff: [...it.aff] } : null))
   const bag = sh.bag.map((it) => ({ ...it, aff: [...it.aff] }))
@@ -336,6 +625,12 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     goldGain: 0,
     found: 0,
     bestFound: -1,
+    area: 0,
+    wps: (sh.wps ?? 0) & ((1 << WAYPOINTS.length) - 1),
+    btnPrev: 0,
+    exitLock: 0,
+    portalCast: 0,
+    follow: -1,
   }
 }
 
@@ -400,9 +695,23 @@ function farthestSpawn(map: GameMap, from: { x: number; y: number }[], rng: Game
 
 // ================================================================ 틱
 
-export function step(state: GameState, map: GameMap, inputs: Input[]): void {
+export function step(state: GameState, maps: MapSource, inputs: Input[]): void {
+  const mapOf = mapFn(maps)
+  unbind(state)
+  stepping = true
+  try {
+    stepAll(state, mapOf, inputs, typeof maps !== 'function')
+  } finally {
+    stepping = false
+    bindPrimary(state)
+  }
+}
+
+/** single = 맵 하나만 받은 판(투기장·시험): 다른 지역으로 건너가지 않고, 죽으면 그 지역의 처음 자리에서 일어난다 */
+function stepAll(state: GameState, mapOf: (area: number) => GameMap, inputs: Input[], single: boolean): void {
   const ev = state.events
   ev.length = 0
+  state.evSpans.length = 0
 
   if (state.phase === 'countdown') {
     state.phaseTimer--
@@ -412,12 +721,35 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
     }
   }
 
+  // 사람이 있는 지역만, 번호 순으로 (결정론)
+  for (const id of liveAreas(state)) {
+    const map = mapOf(id)
+    const a = ensureArea(state, id, map)
+    a.seen = state.tick
+    const from = ev.length
+    withArea(state, a, () => stepArea(state, map, inputs))
+    state.evSpans.push(from, ev.length, id)
+  }
+  if (state.mode === 'dungeon') {
+    if (single) stayMoves(state, mapOf)
+    else {
+      runMoves(state, mapOf)
+      followLeaders(state, mapOf)
+    }
+    freezeAreas(state)
+  }
+  checkOver(state)
+  state.tick++
+}
+
+/** 묶인 지역 하나의 한 틱 (예전의 step 몸통) */
+function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   // 근접 휘두르기·조준 판정·스킬이 쓸 격자 (몬스터가 움직이기 전 위치)
   buildGrid(state, map)
   for (let i = 0; i < state.players.length; i++) stepPlayer(state, map, state.players[i], inputs[i])
   if (state.mode === 'dungeon') {
     stepDowned(state, inputs)
-    stepStairs(state, inputs)
+    stepInteract(state, map, inputs)
   }
   if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
   const grid = buildGrid(state, map)
@@ -432,38 +764,11 @@ export function step(state: GameState, map: GameMap, inputs: Input[]): void {
   if (state.monsters.some((m) => m.hp <= 0)) state.monsters = state.monsters.filter((m) => m.hp > 0)
   stepGlobes(state)
   stepDrops(state)
-  checkOver(state)
-  state.tick++
-}
-
-/** 계단 위에서 누가 F 를 누르면 5초 뒤 모두 내려간다 (따로 다니면 층이 두 개가 돼야 해서 전원 같이 — PLAN 4.4) */
-function stepStairs(state: GameState, inputs: Input[]): void {
-  if (state.phase !== 'playing' || state.stairX < 0 || state.pendingFloor > 0) return
-  if (state.descend < 0) {
-    for (const p of state.players) {
-      if (!isActive(p) || ((inputs[p.id]?.buttons ?? 0) & BTN_USE) === 0) continue
-      if (len(p.x - state.stairX, p.y - state.stairY) > 48) continue
-      state.descend = DESCEND_TICKS
-      state.events.push({ type: 'descendStart', p: p.id })
-      break
-    }
-    return
-  }
-  if (--state.descend <= 0) state.pendingFloor = state.floor + 1
 }
 
 function checkOver(state: GameState): void {
   if (state.phase !== 'playing' || state.mode !== 'dungeon') return
-  // 원정 완료: 마지막 층에서 보스(또는 우두머리)가 쓰러지면 (또는 그 층의 몬스터를 다 잡으면)
-  const last = state.floor >= state.floorMax
-  const bossAlive = state.monsters.some((m) => m.hp > 0 && isBossLike(m))
-  if (last && state.monstersTotal > 0 && (!bossAlive || state.monsters.length === 0)) {
-    state.phase = 'over'
-    state.winner = 0
-    state.events.push({ type: 'over', winner: 0 })
-    return
-  }
-  // 하드코어: 모두가 탈락하면 전멸 (다른 규칙은 입구에서 다시 일어나므로 끝나지 않는다)
+  // 던전에는 끝이 없다(디아블로 2 — 나가면 캐릭터만 남는다). 하드코어로 모두 탈락했을 때만 판이 끝난다
   const seated = state.players.filter((p) => !p.left)
   if (seated.length > 0 && seated.every((p) => p.out)) {
     state.phase = 'over'
@@ -478,15 +783,24 @@ function checkOver(state: GameState): void {
  * 빈 자리에 사람을 넣는다 (난입). 호스트가 정한 틱에 **모두가 같이** 호출해야 결정론이 유지된다.
  * 던전은 동료 곁에, 투기장은 적에게서 먼 곳에.
  */
-export function joinPlayer(state: GameState, map: GameMap, idx: number, char: CharacterId, team = 0, sheet?: Sheet): void {
+export function joinPlayer(state: GameState, maps: MapSource, idx: number, char: CharacterId, team = 0, sheet?: Sheet): void {
+  const mapOf = mapFn(maps)
   const p = state.players[idx]
   if (!p) return
   Object.assign(p, makePlayer(idx, char, state.mode === 'arena' ? team : 0, sheet))
   if (state.mode === 'arena') {
-    respawn(state, map, p)
+    p.area = 0
+    const a = ensureArea(state, 0, mapOf(0), false)
+    withArea(state, a, () => respawn(state, mapOf(0), p))
   } else {
-    const buddy = state.players.find((o) => o.id !== idx && isActive(o))
-    const s = spotNear(state, map, buddy ? buddy.x : state.entryX, buddy ? buddy.y : state.entryY, idx)
+    // 난입한 사람은 지금 막의 마을에서 시작한다 (GUIDE 5.3)
+    const t = ACTS[state.act].town
+    const map = mapOf(t)
+    const a = ensureArea(state, t, map)
+    const l = areaLayout(t, map)
+    p.area = t
+    p.wps |= wpBit(t)
+    const s = withArea(state, a, () => spotNear(state, map, l.spawn.x, l.spawn.y, idx))
     p.x = s.x
     p.y = s.y
   }
@@ -512,7 +826,12 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (p.left) return
   if (!input) input = { mx: 0, my: 0, aim: p.aim, buttons: 0, char: 0 }
   const playing = state.phase === 'playing'
-  if (input.cmd) runCommand(state, p, input.cmd, input.arg ?? 0)
+  if (input.cmd) runCommand(state, map, p, input.cmd, input.arg ?? 0)
+  // 마을은 안전지대: 쏘지도 스킬을 쓰지도 않고, 체력이 가득 찬다 (GUIDE 5.2)
+  if (state.mode === 'dungeon' && isTown(p.area)) {
+    input = { ...input, buttons: input.buttons & ~TOWN_BLOCKED }
+    if (p.alive && !p.downed) p.hp = p.maxHp
+  }
 
   if (!p.alive) {
     if (state.phase === 'over' || p.out) return
@@ -742,9 +1061,8 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
     p.x = spot.x
     p.y = spot.y
   } else {
-    const s = spotNear(state, map, state.entryX, state.entryY, p.id)
-    p.x = s.x
-    p.y = s.y
+    // 던전: 마을에서 되살아난다 (이번 틱이 끝나면 옮겨진다)
+    queueMove(p, { to: ACTS[areaDef(p.area).act].town, how: 'town' })
   }
   p.maxHp = c.maxHp + p.st[ST_HP]
   p.hp = p.maxHp
@@ -806,6 +1124,7 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
   p.hp -= dmg
   p.dmgTaken += dmg
   p.lastHitTick = state.tick
+  p.portalCast = 0
   state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg })
   // 흡혈 정예: 때린 만큼 회복 (by = 몬스터 id)
   if (by >= 0) {
@@ -1544,6 +1863,10 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
   const def = MONSTER_LIST[m.kind]
   m.hp = 0
   state.events.push({ type: 'mdeath', m: m.id, kind: m.kind, by: suicide ? -1 : by, x: m.x, y: m.y, aim: m.aim })
+  if (state.mode === 'dungeon' && isBossLike(m) && !state.killed.includes(state.curArea)) {
+    state.killed.push(state.curArea)
+    state.events.push({ type: 'bossDown', area: state.curArea, kind: m.kind })
+  }
   if (!suicide) {
     const killer = by >= 0 ? state.players[by] : null
     if (killer) {
@@ -1605,7 +1928,7 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     // 전리품: 사람마다 따로 굴린다. 주인에게만 보이고 주인만 줍는다
     // 정예·우두머리·보스는 확정 + 등급이 오른다 (우두머리·보스는 둘). 아이템 레벨 = 이 층의 지역 레벨
     const drops = def.boss ? 2 : unique ? UNIQUE.drops : m.elite || rand(state.rng) < def.loot ? 1 : 0
-    const ilvl = Math.max(1, areaLevel(state.stage, state.floor, p.level))
+    const ilvl = Math.max(1, areaLevel(state.curArea, p.level))
     for (let k = 0; k < drops; k++) {
       const item = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, def.boss ? 0.3 : unique ? UNIQUE.lootBonus : m.elite ? ELITE.lootBonus : 0)
       const ox = (rand(state.rng) - 0.5) * 36
@@ -1652,8 +1975,17 @@ function pickUp(state: GameState, p: PlayerState): void {
 }
 
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
-function runCommand(state: GameState, p: PlayerState, cmd: number, arg: number): void {
+function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
+  if (cmd === CMD_WAYPOINT) {
+    // 웨이포인트 곁에 서 있고, 가려는 곳의 웨이포인트가 열려 있어야 한다
+    if (state.mode !== 'dungeon' || !isActive(p) || arg === p.area) return
+    const l = areaLayout(p.area, map)
+    const bit = wpBit(arg)
+    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0) return
+    queueMove(p, { to: arg, how: 'wp' })
+    return
+  }
   if (cmd === CMD_EQUIP) {
     const it = p.bag[arg]
     if (!it) return
@@ -2074,15 +2406,16 @@ export function interpSnapshot(state: GameState): GameState {
 
 /** 스냅샷 (events 제외) */
 export function snapshot(state: GameState): GameState {
-  const { events: _e, ...rest } = state
+  const { events: _e, evSpans: _s, ...rest } = state
   const copy = structuredClone(rest) as GameState
   copy.events = []
+  copy.evSpans = []
   return copy
 }
 
 /** FNV-1a 32비트 해시. 결정론 검증용. */
 export function hashState(state: GameState): number {
-  const { events: _e, ...rest } = state
+  const { events: _e, evSpans: _s, ...rest } = state
   const s = JSON.stringify(rest)
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {

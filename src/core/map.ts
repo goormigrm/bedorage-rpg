@@ -57,18 +57,20 @@ export function buildMap(idOrDef: MapId | MapDef = DEFAULT_MAP, scaleArg: MapSca
   const h = rows.length
   const w = rows[0].length
   const tiles = new Uint8Array(w * h)
-  // 테두리만 문자 그리드에서 가져온다 (안쪽은 아래에서 생성)
+  const fixed = def.gen.style === 'fixed'
+  // 테두리만 문자 그리드에서 가져온다 (안쪽은 아래에서 생성). 고정 배치(마을)는 전부 문자 그대로
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const edge = x === 0 || y === 0 || x === w - 1 || y === h - 1
-      tiles[y * w + x] = edge ? TILE_WALL : TILE_FLOOR
+      const ch = rows[y][x]
+      tiles[y * w + x] = fixed ? (ch === '#' ? TILE_WALL : ch === 'c' ? TILE_CRATE : TILE_FLOOR) : edge ? TILE_WALL : TILE_FLOOR
     }
   }
   const map: GameMap = {
     id: def.id, name: def.name, theme: def.theme, scale, seed,
     w, h, tiles, sandbagIdx: [], spawns: [], pw: w * TILE, ph: h * TILE, version: 0,
   }
-  generate(map, def, seed)
+  if (!fixed) generate(map, def, seed)
   for (let i = 0; i < tiles.length; i++) if (tiles[i] === TILE_SANDBAG) map.sandbagIdx.push(i)
   map.spawns = pickSpawns(map)
   return map

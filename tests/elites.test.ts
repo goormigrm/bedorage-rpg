@@ -20,7 +20,7 @@ const bits = (e: number) => {
 /** 혼자 · 카운트다운 끝 · 몬스터 없음 */
 function setup(seed = 41): { s: GameState; map: GameMap } {
   const map = buildMap('crypt', 1, seed)
-  const s = createState({ seed, chars: ['chim'] }, map)
+  const s = createState({ area: 4, seed, chars: ['chim'] }, map)
   for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, [idle()])
   s.monsters = []
   s.players[0].invuln = 0
@@ -52,12 +52,12 @@ describe('정예 접두 능력', () => {
     expect([1, 11, 12, 21, 22, 30].map(affixCount)).toEqual([1, 1, 2, 2, 3, 3])
     const seed = 42
     const map = buildMap('crypt', 1, seed)
-    const low = createState({ seed, chars: ['chim'] }, map)
+    const low = createState({ area: 4, seed, chars: ['chim'] }, map)
     const e1 = low.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
     expect(e1.length).toBeGreaterThan(2)
     for (const m of e1) expect(bits(m.elite)).toBe(1)
     // 레벨 15 파티는 1막에서도 지역 레벨이 12 로 따라 올라온다 → 둘
-    const high = createState({ seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 15 }] }, map)
+    const high = createState({ area: 4, seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 15 }] }, map)
     const e2 = high.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
     for (const m of e2) expect(bits(m.elite)).toBe(2)
   })

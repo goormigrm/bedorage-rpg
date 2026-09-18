@@ -4,7 +4,7 @@
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
 import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor } from './monsters'
-import { PackDef } from './campaign'
+import { PackDef } from './world'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
 
@@ -95,38 +95,15 @@ export function rollAffixes(rng: Rng, elite: number, n: number): number {
 }
 
 /**
- * 층에 몬스터를 채운다. state.monsters 에 넣고 monstersTotal 을 정한다.
- * players = 자리 수 (인원 보정용).
+ * 지역에 몬스터 무리를 채운다. state.monsters(묶인 지역)에 넣고 monstersTotal 을 정한다. players = 자리 수 (인원 보정용).
+ * entry 에서 걸어서 SAFE_STEPS 안 · safe 자리(출구·웨이포인트) 7칸 안에는 두지 않는다.
+ * density = 무리 수 배율 (보스 방은 절반 — 보스에게 힘을 남겨 두게)
  */
-/** 층마다 맵 시드 (모든 브라우저가 같은 층을 만든다) */
-export function floorSeed(seed: number, floor: number): number {
-  return floor <= 1 ? seed : (seed ^ Math.imul(floor, 0x9e3779b1)) >>> 0
-}
-
-/** 계단(또는 보스) 자리: 입구에서 걸어서 가장 먼 트인 칸 */
-export function farPoint(map: GameMap): { x: number; y: number } {
-  const entry = entryOf(map)
-  const d = walkField(map, Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE))
-  let best = -1
-  let bestD = -1
-  for (let ty = 2; ty < map.h - 2; ty++) {
-    for (let tx = 2; tx < map.w - 2; tx++) {
-      const i = ty * map.w + tx
-      if (d[i] <= bestD) continue
-      let open = true
-      for (let dy = -1; dy <= 1 && open; dy++) for (let dx = -1; dx <= 1; dx++) if (map.tiles[(ty + dy) * map.w + tx + dx] !== TILE_FLOOR) open = false
-      if (!open) continue
-      bestD = d[i]
-      best = i
-    }
-  }
-  if (best < 0) return { x: map.pw / 2, y: map.ph / 2 }
-  return { x: (best % map.w) * TILE + TILE / 2, y: ((best / map.w) | 0) * TILE + TILE / 2 }
-}
-
-export function populate(state: GameState, map: GameMap, seed: number, players: number, level: number, fewer: boolean, packs: PackDef[]): void {
+export function populate(
+  state: GameState, map: GameMap, seed: number, players: number, level: number, density: number, packs: PackDef[],
+  entry: { x: number; y: number }, safe: { x: number; y: number }[],
+): void {
   const rng = makeRng((seed ^ 0x51ed27) >>> 0)
-  const entry = entryOf(map)
   const et = Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE)
   const steps = walkField(map, et)
   const open3 = (tx: number, ty: number) => {
@@ -145,6 +122,9 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
     for (let tx = 2; tx < map.w - 2; tx++) {
       const i = ty * map.w + tx
       if (steps[i] < SAFE_STEPS) continue
+      const px = tx * TILE + TILE / 2
+      const py = ty * TILE + TILE / 2
+      if (safe.some((q) => (q.x - px) ** 2 + (q.y - py) ** 2 < (7 * TILE) ** 2)) continue
       if (open3(tx, ty)) cand.push(i)
     }
   }
@@ -157,8 +137,7 @@ export function populate(state: GameState, map: GameMap, seed: number, players: 
   }
   let floor = 0
   for (let i = 0; i < map.tiles.length; i++) if (map.tiles[i] === TILE_FLOOR) floor++
-  // 보스 층은 무리가 절반 (보스에게 힘을 남겨 두게)
-  const want = Math.max(3, Math.round(floor / TILES_PER_PACK / (fewer ? 2 : 1)))
+  const want = Math.max(3, Math.round((floor / TILES_PER_PACK) * density))
   const centers: number[] = []
   for (const c of cand) {
     if (centers.length >= want) break

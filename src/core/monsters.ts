@@ -110,7 +110,7 @@ export const EA_STOUT = 4
 export const EA_VOLATILE = 8
 export const EA_SPLIT = 16
 export const EA_VAMP = 32
-/** 접두 능력이 아니라 표시: 원정 끝의 **우두머리** (이름은 campaign 의 원정 표에서) */
+/** 접두 능력이 아니라 표시: 이름 있는 **우두머리** (이름은 world.ts 의 지역 표에서) */
 export const EA_UNIQUE = 64
 /** 우두머리: 체력·공격·경험치 배율 · 접두 능력 수 · 전리품 등급 보너스 · 전리품 수 */
 export const UNIQUE = { hp: 9, pow: 1.5, xp: 12, affixes: 3, lootBonus: 0.3, drops: 2 }

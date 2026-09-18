@@ -192,9 +192,14 @@ export class Hud {
   }
 
   /** 가운데 알림 한 줄 (쓰러짐·부활·사망) */
-  /** 새 판·새 층: 지난 알림을 지운다 (다음 원정의 시작 화면 위에 남지 않게) */
+  /** 새 지역: 지난 알림을 지운다 (새 지역 배너 위에 남지 않게) */
   clearNotices(): void {
     this.notices = []
+  }
+
+  /** 화면 위쪽의 큰 배너 (지역 이름 · 막을 끝냄). 4.5초 동안 떠 있다가 사라진다 */
+  banner(title: string, sub: string, color = '#f1d58a'): void {
+    this.d4.banner = { title, sub, color, t0: performance.now() }
   }
 
   notice(text: string, color: string): void {
@@ -265,7 +270,7 @@ export class Hud {
     this.d4.drawTracker(h, s, opts)
     if (s.mode === 'dungeon') {
       this.d4.drawBoss(h, s)
-      this.d4.drawIntro(h, s)
+      this.d4.drawBanner(h)
     }
     this.d4.drawParty(h, s, opts)
     if (lp !== -1) this.d4.drawBottom(h, s.players[lp], opts.cursor, this.lastDt)
@@ -294,7 +299,8 @@ export class Hud {
       ctx.fillStyle = '#e6edf3'
       ctx.textAlign = 'center'
       ctx.fillText('준비', VIEW_W / 2, VIEW_H / 2 + 70)
-    } else if (s.phase === 'playing' && s.tick < 240) {
+    } else if (s.phase === 'playing' && s.tick < 240 && s.mode === 'arena') {
+      // 대전 게임의 "시작!" 은 투기장에만 (던전은 마을에 서 있을 뿐 — GUIDE 15장 3)
       const k = 1 - (s.tick - 180) / 60
       ctx.globalAlpha = Math.max(0, k)
       ctx.font = '400 96px "Black Han Sans", "IBM Plex Sans KR", sans-serif'

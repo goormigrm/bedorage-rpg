@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage' | 'crypt'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -34,7 +34,8 @@ export interface MapTheme {
  * - pillars: 기둥을 격자로 세운다 (주차장, 일정한 엄폐)
  */
 export interface MapGen {
-  style: 'rooms' | 'scatter' | 'pillars'
+  /** fixed = rows 를 그대로 쓴다 (마을처럼 손으로 짠 곳: '#' 벽 · 'c' 상자 · '.' 바닥) */
+  style: 'rooms' | 'scatter' | 'pillars' | 'fixed'
   /** rooms = 분할 깊이 · scatter = 벽 덩어리 수 · pillars = 기둥 간격(타일) */
   density: number
   /** 상자 군집 수 (40x30 기준, 맵이 넓어지면 비례) */
@@ -57,6 +58,41 @@ export interface MapDef {
   fixedScale?: boolean
   gen: MapGen
   theme: MapTheme
+}
+
+/**
+ * 1막 마을 "순례자 야영지" (46×34, 손으로 짠 배치). 목책 안에 천막(벽)·수레(상자)·가운데 모닥불.
+ * 동쪽 목책 가운데가 성문 — 거기로 걸어 나가면 핏빛 들판(world.ts 의 TOWNS 에 자리 좌표가 있다)
+ */
+function town1Rows(): string[] {
+  const W = 46
+  const H = 34
+  const g: string[][] = []
+  for (let y = 0; y < H; y++) g.push(Array.from({ length: W }, (_, x) => (x === 0 || y === 0 || x === W - 1 || y === H - 1 ? '#' : '.')))
+  const box = (x0: number, y0: number, w: number, h: number, ch: string) => {
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) g[y][x] = ch
+  }
+  // 목책 안쪽 모서리를 조금 막아 둥근 야영지처럼
+  box(1, 1, 3, 3, '#')
+  box(W - 4, 1, 3, 3, '#')
+  box(1, H - 4, 3, 3, '#')
+  box(W - 4, H - 4, 3, 3, '#')
+  // 천막 (4×3) — 상인 · 대장장이 · 도박꾼 · 촌장 · 용병 대장 자리 곁
+  box(8, 5, 4, 3, '#')
+  box(20, 4, 5, 3, '#')
+  box(32, 5, 4, 3, '#')
+  box(8, 25, 4, 3, '#')
+  box(32, 25, 5, 3, '#')
+  // 수레 · 짐 더미
+  box(15, 8, 2, 1, 'c')
+  box(28, 9, 1, 2, 'c')
+  box(14, 24, 2, 1, 'c')
+  box(27, 26, 2, 1, 'c')
+  box(39, 11, 1, 2, 'c')
+  box(39, 21, 1, 2, 'c')
+  // 모닥불 (2×2)
+  box(22, 16, 2, 2, 'c')
+  return g.map((r) => r.join(''))
 }
 
 /** 테두리만 있는 빈 격자 (크기 정의용) */
@@ -97,7 +133,7 @@ export const MAPS: Record<MapId, MapDef> = {
     id: 'crypt',
     name: '지하 묘지',
     desc: '무너진 성당 아래. 방과 복도마다 굶주린 것들이 잠들어 있다.',
-    rows: frame(84, 62),
+    rows: frame(72, 54),
     fixedScale: true,
     gen: { style: 'rooms', density: 7, crates: 10, sandbags: 0, maxLen: 5, forts: false },
     theme: {
@@ -107,6 +143,78 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4b463f, wallTop: 0x5d574e, crate: 0x77706a, outside: 0x040405,
       sunColor: 0x8aa0c8, ambientColor: 0x4a4868, fog: 0x050507,
       dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+    },
+  },
+  // ---------------- 1막 무너진 성당 (GUIDE 5.1) ----------------
+  town1: {
+    id: 'town1',
+    name: '순례자 야영지',
+    desc: '성당 아래에서 도망쳐 나온 사람들의 야영지. 모닥불만이 밤을 버틴다.',
+    rows: town1Rows(),
+    fixedScale: true,
+    gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
+    theme: {
+      floor: 0x3b352c, floorAlt: 0x363027, floorLine: 0x2b2620,
+      wall: 0x4a3a2a, wallTop: 0x6a5238, crate: 0x6e5236, outside: 0x040403,
+      sunColor: 0x8aa0c8, ambientColor: 0x4a4458, fog: 0x050505,
+      dark: { sun: 0.7, hemi: 0.6, fogAlpha: 0.85, lantern: 2.8 },
+    },
+  },
+  fields: {
+    id: 'fields',
+    name: '핏빛 들판',
+    desc: '야영지 밖 들판. 마른 풀과 무너진 돌담 사이로 시체들이 떼 지어 떠돈다.',
+    rows: frame(72, 54),
+    fixedScale: true,
+    // 흩어진 돌담·바위 (트인 시야 — 무리가 멀리서 몰려온다)
+    gen: { style: 'scatter', density: 9, crates: 9, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x3a3428, floorAlt: 0x353024, floorLine: 0x2a261d,
+      wall: 0x49443c, wallTop: 0x5b554b, crate: 0x5a534a, outside: 0x030303,
+      sunColor: 0x9aa8c8, ambientColor: 0x464a5a, fog: 0x050506,
+      dark: { sun: 0.62, hemi: 0.52, fogAlpha: 0.9, lantern: 2.6 },
+    },
+  },
+  cave: {
+    id: 'cave',
+    name: '굶주린 굴',
+    desc: '들판 옆 바위굴. 좁고 굽은 굴마다 굶주린 것들이 웅크리고 있다.',
+    rows: frame(52, 40),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a3026, floorAlt: 0x342b22, floorLine: 0x2a221b,
+      wall: 0x4a3b2c, wallTop: 0x5c4a38, crate: 0x6a5a48, outside: 0x030202,
+      sunColor: 0x8a90a8, ambientColor: 0x4a3e38, fog: 0x050403,
+      dark: { sun: 0.5, hemi: 0.45, fogAlpha: 0.92, lantern: 2.6 },
+    },
+  },
+  cathedral: {
+    id: 'cathedral',
+    name: '무너진 성당',
+    desc: '종이 멈춘 성당. 줄지은 기둥 사이로 해골 궁수들이 겨눈다.',
+    rows: frame(64, 46),
+    fixedScale: true,
+    gen: { style: 'pillars', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3c3a40, floorAlt: 0x37353a, floorLine: 0x2c2a30,
+      wall: 0x4e4a55, wallTop: 0x625d6a, crate: 0x6b6470, outside: 0x040405,
+      sunColor: 0x9aa0d0, ambientColor: 0x4a4868, fog: 0x050507,
+      dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.9, lantern: 2.6 },
+    },
+  },
+  butchery: {
+    id: 'butchery',
+    name: '도살장',
+    desc: '피 냄새가 가장 짙은 곳. 갈고리에 걸린 것들 사이로 무언가 칼을 간다.',
+    rows: frame(44, 34),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a2c28, floorAlt: 0x352824, floorLine: 0x2a1e1b,
+      wall: 0x4b3530, wallTop: 0x5e433c, crate: 0x6a4a40, outside: 0x040202,
+      sunColor: 0xa08880, ambientColor: 0x503838, fog: 0x060303,
+      dark: { sun: 0.5, hemi: 0.45, fogAlpha: 0.92, lantern: 2.6 },
     },
   },
   garage: {

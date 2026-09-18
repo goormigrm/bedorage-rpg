@@ -184,12 +184,12 @@ export type Sheet = {
   gold: number
   equip: (Item | null)[]
   bag: Item[]
-  /** 캠페인: 깬 원정 수 (다음에 열리는 원정 번호). 옛 세이브에는 없다 */
-  prog?: number
+  /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) */
+  wps?: number
 }
 
 export function emptySheet(): Sheet {
-  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], prog: 0 }
+  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], wps: 0 }
 }
 
 /** 받은 기록이 말이 되는가 (깨진 데이터로 판이 어긋나지 않게 — 치트 방지가 아니라 사고 방지, PLAN 4.5) */
@@ -207,6 +207,6 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.gold = Math.max(0, Math.floor(Number(o.gold) || 0))
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
   if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
-  e.prog = Math.max(0, Math.min(99, Math.floor(Number(o.prog) || 0)))
+  e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0xffff
   return e
 }

@@ -15,7 +15,7 @@ const cmd = (c: number, arg: number): Input => ({ ...idle(), cmd: c, arg })
 
 function ready(chars: ('chim' | 'magic' | 'cheolmyeon')[], sheets?: ReturnType<typeof emptySheet>[], deathRule: 0 | 1 | 2 = 0) {
   const map = buildMap('crypt', 1, 9)
-  const s = createState({ seed: 9, chars, noMonsters: true, sheets, deathRule }, map)
+  const s = createState({ area: 4, seed: 9, chars, noMonsters: true, sheets, deathRule }, map)
   for (let i = 0; i < COUNTDOWN_TICKS + 1; i++) step(s, map, chars.map(idle))
   return { s, map }
 }
