@@ -3,13 +3,13 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
-export type Attack = 'melee' | 'ranged' | 'explode' | 'flee' | 'heal'
+export type Attack = 'melee' | 'ranged' | 'explode' | 'flee' | 'heal' | 'lob'
 
 /** 보스 특수 패턴 (MS_CHASE 에서 특수 재사용 대기 scd 가 0 이면) */
-export type Special = 'charge' | 'queen'
+export type Special = 'charge' | 'queen' | 'raise' | 'warden'
 
 export interface MonsterDef {
   id: MonsterKindId
@@ -62,6 +62,8 @@ export interface MonsterDef {
   shotColor?: number
   /** heal: 한 번에 주위 동료 체력의 이 비율을 채운다 (반경 = range) */
   heal?: number
+  /** 방패: 정면 ±guard(1024 단위)에서 온 탄은 막는다 (GUARD.mult 만 들어간다) */
+  guard?: number
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -139,6 +141,36 @@ export const MONSTER_LIST: MonsterDef[] = [
     shotSpeed: 5, shotLife: 84, shotR: 9, shotSlow: 150, shotColor: 0xd8f0c8,
     knockRes: 0.95, globe: 1, xp: 300, loot: 1, boss: true, special: 'queen',
   },
+  // ---------------- 3막 잠긴 지하도 ----------------
+  {
+    // 방패병: 큰 방패로 앞을 막는다(정면 ±55° 에서 온 탄은 15% 만). 옆·뒤로 돌거나, 폭발·스킬·근접으로 친다. 잠들어 있을 땐 못 막는다
+    id: 'shield', idx: 9, name: '방패병',
+    hp: 150, speed: 2.1, r: 15,
+    attack: 'melee', dmg: 24, range: 14, windup: 20, recover: 26, cooldown: 44, arc: deg(70), guard: deg(55),
+    knockRes: 0.7, globe: 0.08, xp: 12, loot: 0.14,
+  },
+  {
+    // 강령술사: 멀리서 보랏빛 저주탄 · 6초마다 구울 둘을 일으킨다(무리에 여섯까지). 먼저 잡아라
+    id: 'necro', idx: 10, name: '강령술사',
+    hp: 95, speed: 1.7, r: 13,
+    attack: 'ranged', dmg: 14, range: 320, windup: 30, recover: 26, cooldown: 100,
+    shotSpeed: 4.6, shotLife: 80, shotR: 8, keepDist: 250, shotColor: 0xb07aff,
+    knockRes: 0.2, globe: 0.1, xp: 15, loot: 0.2, special: 'raise',
+  },
+  {
+    // 산성 토사꾼: 조준한 자리에 산을 뱉는다(예고 원 — 그 안에서 비켜라) → 3초 동안 산성 웅덩이(밟고 있으면 계속 다친다)
+    id: 'spitter', idx: 11, name: '산성 토사꾼',
+    hp: 120, speed: 1.6, r: 15,
+    attack: 'lob', dmg: 8, range: 300, windup: 36, recover: 30, cooldown: 130, keepDist: 220,
+    knockRes: 0.4, globe: 0.1, xp: 13, loot: 0.16,
+  },
+  {
+    // 보스 — 관리인: 지하도의 문지기. 쇠곤봉 휘두르기 + 번갈아 **내려찍기**(주위 원 · 예고) · **방패병 부르기**
+    id: 'warden', idx: 12, name: '관리인',
+    hp: 2100, speed: 2.0, r: 26,
+    attack: 'melee', dmg: 46, range: 20, windup: 26, recover: 32, cooldown: 55, arc: deg(90),
+    knockRes: 0.95, globe: 1, xp: 380, loot: 1, boss: true, special: 'warden',
+  },
 ]
 
 /** 보물 고블린: 깨어 있는 틱 상한(20초) · 골드를 흘리는 간격 · 지역에 나올 확률 */
@@ -156,6 +188,16 @@ export const CHARGE = { windup: 48, speed: 10, ticks: 30, dmg: 55, every: 60 * 7
 /** 거미 여왕: 부채(갈래 · 벌어짐 · 예고 · 피해 배율)와 새끼(한 번에 · 상한 · 체력 배율), 특수 간격. 둘을 번갈아 (Monster.phase) */
 export const QUEEN = { fan: 7, spread: 36, fanWindup: 40, fanDmg: 0.45, brood: 4, broodMax: 8, broodHp: 0.4, broodWindup: 34, every: 60 * 4 }
 export const SPIDER_KIND = 6
+export const GHOUL_KIND = 0
+export const SHIELD_KIND = 9
+/** 방패병: 정면에서 막은 탄의 피해 배율 */
+export const GUARD = { mult: 0.15 }
+/** 강령술사: 한 번에 일으키는 구울 · 무리 상한 · 체력 배율 · 예고 · 간격 */
+export const RAISE = { n: 2, max: 6, hp: 0.5, windup: 40, every: 60 * 6 }
+/** 산성 웅덩이: 반경 · 지속 틱 · 피해 간격(틱) */
+export const ACID = { r: 58, ticks: 180, every: 20 }
+/** 관리인: 내려찍기(예고 · 반경 · 피해 배율) · 방패병 부르기(수 · 상한 · 체력 배율 · 예고) · 특수 간격 */
+export const WARDEN = { slamWindup: 44, slamR: 150, slamDmg: 1.1, guards: 2, guardMax: 4, guardHp: 0.5, callWindup: 36, every: 60 * 4 }
 /** 정예: 무리 다섯에 하나, 우두머리가 된다 — 체력 4배 · 공격 1.4배 · 전리품 확정(등급 올림) · 경험치·골드 4배 */
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 

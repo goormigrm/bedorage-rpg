@@ -450,6 +450,8 @@ export interface Zone {
 export const ZONE_SPOTLIGHT = 0
 /** 폭발 정예가 죽은 자리: t 가 0 이 되면 터진다 (몬스터 편 — 플레이어만 다친다) */
 export const ZONE_FUSE = 1
+/** 산성 웅덩이(토사꾼): 안에 선 사람이 ACID.every 틱마다 다친다 (몬스터 편) */
+export const ZONE_ACID = 2
 
 /** 던진 것 (수류탄) — t 가 0 이 되면 터진다 */
 export interface Throw {
@@ -540,6 +542,8 @@ export type SimEvent =
   /** 주술사가 주위 동료를 고쳤다 (초록 고리) · 보스가 새끼를 불렀다 */
   | { type: 'mheal'; m: number; x: number; y: number; r: number }
   | { type: 'summon'; m: number; x: number; y: number }
+  /** 방패병이 탄을 막았다 */
+  | { type: 'mblock'; m: number; x: number; y: number }
   | { type: 'drop'; x: number; y: number }
   | { type: 'heal'; p: number; x: number; y: number; amount: number }
   | { type: 'start' }

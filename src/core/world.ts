@@ -52,6 +52,10 @@ const WOLF = 5
 const SPIDER = 6
 const SHAMAN = 7
 const QUEEN = 8
+const SHIELD = 9
+const NECRO = 10
+const SPITTER = 11
+const WARDEN = 12
 
 export interface ActDef {
   name: string
@@ -87,6 +91,20 @@ export const ACTS: ActDef[] = [
       { w: 0.15, groups: [[GHOUL, 4, 6], [BLOATER, 1, 2]] },
     ],
   },
+  {
+    name: '잠긴 지하도',
+    town: 19,
+    packs: [
+      // 방패 줄 뒤에서 토사꾼이 뱉는다 — 옆으로 돌아 들어가라
+      { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
+      // 강령술사가 구울을 일으킨다 — 먼저 잡아라
+      { w: 0.25, groups: [[NECRO, 1, 1], [GHOUL, 4, 6], [SHIELD, 0, 1]] },
+      // 토사꾼 떼 — 웅덩이를 피해 다녀야 한다
+      { w: 0.2, groups: [[SPITTER, 2, 3], [GHOUL, 2, 4]] },
+      // 방패 뒤의 궁수
+      { w: 0.25, groups: [[SHIELD, 2, 3], [ARCHER, 2, 3]] },
+    ],
+  },
 ]
 
 const WOLVES: PackDef[] = [
@@ -97,6 +115,21 @@ const SPORES: PackDef[] = [
   { w: 0.45, groups: [[SHAMAN, 1, 1], [GHOUL, 3, 5], [SPIDER, 1, 2]] },
   { w: 0.35, groups: [[SPIDER, 3, 5], [SHAMAN, 0, 1]] },
   { w: 0.2, groups: [[BLOATER, 2, 3], [SHAMAN, 1, 1]] },
+]
+
+const GUARDS: PackDef[] = [
+  { w: 0.6, groups: [[SHIELD, 3, 5], [ARCHER, 1, 2]] },
+  { w: 0.4, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
+]
+const SPITTERS: PackDef[] = [
+  { w: 0.6, groups: [[SPITTER, 3, 4], [GHOUL, 2, 3]] },
+  { w: 0.4, groups: [[SPITTER, 2, 3], [BLOATER, 1, 2]] },
+]
+// 강령술사는 무리 열에 넷쯤 — 모두에게 붙이면 일으킨 구울이 지역을 덮는다(브라우저 확인: 2층에 강령술사 24)
+const RITES: PackDef[] = [
+  { w: 0.4, groups: [[NECRO, 1, 1], [GHOUL, 4, 6]] },
+  { w: 0.35, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2]] },
+  { w: 0.25, groups: [[GHOUL, 5, 7], [SPITTER, 0, 1]] },
 ]
 
 const GHOULS: PackDef[] = [
@@ -131,6 +164,16 @@ export const AREAS: AreaDef[] = [
   { id: 16, act: 1, name: '버섯 동굴 2층', kind: 'dungeon', map: 'hollow', level: 14, links: [15, 17], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
   { id: 17, act: 1, name: '거미 숲', kind: 'field', map: 'forest', level: 15, links: [16, 18], wp: true, lore: '나무마다 흰 실이 드리웠다' },
   { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], boss: QUEEN, density: 0.5, lore: '여왕이 실을 당긴다' },
+  // ---------------- 3막 잠긴 지하도 (지역 레벨 17~24) ----------------
+  { id: 19, act: 2, name: '수문 야영지', kind: 'town', map: 'town3', level: 0, links: [20], wp: true, lore: '누런 등불 아래, 물 떨어지는 소리만 들린다' },
+  { id: 20, act: 2, name: '잠긴 수로', kind: 'field', map: 'sewer', level: 17, links: [19, 22, 21], wp: true, lore: '도시의 오물이 흐르던 길 — 이제는 무언가 거슬러 올라온다' },
+  { id: 21, act: 2, name: '저수조', kind: 'dungeon', map: 'cistern', level: 18, links: [20], packs: SPITTERS, density: 1.2, lore: '고인 물이 부글거린다' },
+  { id: 22, act: 2, name: '무너진 시장', kind: 'field', map: 'ruins', level: 19, links: [20, 23], packs: GUARDS, unique: { kind: SHIELD, name: '철문 브론' }, lore: '무너진 기둥 사이로 방패가 줄지어 섰다' },
+  { id: 23, act: 2, name: '하수 광장', kind: 'field', map: 'sewer', level: 20, links: [22, 24], wp: true, lore: '광장의 분수가 검은 물을 뿜는다' },
+  { id: 24, act: 2, name: '의식의 회랑 1층', kind: 'dungeon', map: 'rite', level: 21, links: [23, 25], packs: RITES, lore: '촛불이 저절로 켜진다' },
+  { id: 25, act: 2, name: '의식의 회랑 2층', kind: 'dungeon', map: 'rite', level: 22, links: [24, 26], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
+  { id: 26, act: 2, name: '봉인된 문서고', kind: 'dungeon', map: 'archive', level: 23, links: [25, 27], wp: true, lore: '누군가 봉인을 뜯었다' },
+  { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], boss: WARDEN, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
 ]
 
 export function areaDef(id: number): AreaDef {
@@ -243,8 +286,37 @@ export const QUESTS: QuestDef[] = [
     name: '거미 여왕', act: 1, area: 18, goal: 'kill', sp: 1, gold: 1500,
     task: '거미 숲 끝 거미 둥지의 여왕을 쓰러뜨려라',
     ask: '숲의 심장에 여왕이 있소. 늑대도, 포자도 모두 그 실에 매여 있지. 여왕을 끊어 주시오.',
-    thanks: '숲이 숨을 쉬는군… 하지만 도시 아래에서 종이 다시 울린다는구려. (3막은 준비 중입니다)',
-    reward: '스킬 포인트 1 · 골드 1500',
+    thanks: '숲이 숨을 쉬는군… 하지만 도시 아래에서 종이 다시 울린다는구려. 준비가 되면 말하시오 — 지하도 수문까지 길을 내 주겠소.',
+    reward: '스킬 포인트 1 · 골드 1500 · 3막',
+  },
+  // ---------------- 3막 ----------------
+  {
+    name: '막힌 저수조', act: 2, area: 21, goal: 'clear', sp: 1,
+    task: '잠긴 수로 옆 저수조를 비워라',
+    ask: '수문이 막힌 건 저수조 때문이오. 산을 뱉는 것들이 그 안에 둥지를 틀었지. 저수조를 비우면 물길이 다시 트일 거요.',
+    thanks: '물이 다시 흐르는 소리가 들리는구려. 고맙소 — 이걸 익혀 두시오.',
+    reward: '스킬 포인트 1',
+  },
+  {
+    name: '철문 브론', act: 2, area: 22, goal: 'kill', gold: 2000,
+    task: '무너진 시장의 철문 브론을 쓰러뜨려라',
+    ask: '브론은 지하도 경비대장이었소. 방패를 한 번도 내려놓지 않았다지 — 죽어서도. 정면으로는 안 되오. 옆으로 돌아가시오.',
+    thanks: '브론의 방패가 마침내 내려졌군. 경비대가 모아 둔 돈이오. 받으시오.',
+    reward: '골드 2000',
+  },
+  {
+    name: '검은 사제', act: 2, area: 25, goal: 'kill', legend: true,
+    task: '의식의 회랑 2층의 검은 사제 모르가를 쓰러뜨려라',
+    ask: '회랑에서 종소리가 나는 건 모르가가 의식을 올리기 때문이오. 쓰러진 것들을 일으켜 세우는 의식 — 그를 멈추시오.',
+    thanks: '의식이 끊겼구려. 모르가의 제단에서 이것이 나왔소. 조심해서 쓰시오.',
+    reward: '전설 아이템 하나',
+  },
+  {
+    name: '관리인', act: 2, area: 27, goal: 'kill', sp: 1, gold: 2500,
+    task: '봉인된 문서고 끝, 관리인의 방의 관리인을 쓰러뜨려라',
+    ask: '모든 문의 열쇠는 관리인이 쥐고 있소. 그가 지키는 문 너머에 — 종이 처음 울린 곳이 있다오.',
+    thanks: '열쇠 꾸러미로군… 이 문 너머가 심연이오. 누구도 돌아오지 못했소. (4막은 준비 중입니다)',
+    reward: '스킬 포인트 1 · 골드 2500',
   },
 ]
 
@@ -305,7 +377,7 @@ const CAMP: TownSpots = {
   npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
 }
 /** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
-const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP }
+const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP, 19: CAMP }
 
 /** 마을이면 NPC 자리 (px) */
 export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {

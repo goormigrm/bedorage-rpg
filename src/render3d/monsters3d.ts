@@ -420,11 +420,182 @@ function shamanParts(): Part[] {
   ]
 }
 
+/** 방패병: 녹슨 갑옷 · 투구의 빛나는 눈 틈 · 앞을 가리는 큰 방패. 예고 때 방패를 밀어 친다 */
+function shieldParts(): Part[] {
+  const iron = lambert(0x6a6a70)
+  const dark = lambert(0x3a3a40)
+  const wood = lambert(0x6a4a2a)
+  const eye = glow(0xffb84a)
+  return [
+    part(new THREE.CylinderGeometry(0.26, 0.3, 0.62, 10), iron, true, (a, o) => {
+      o.position.set(0, 0.62 + Math.abs(sin(a.walk)) * 0.03 * a.move, 0)
+      o.rotation.set(0.08 + a.wind * 0.1, 0, sin(a.walk) * 0.05 * a.move)
+      o.scale.set(1 + a.squash * 0.2, 1 - a.squash * 0.2, 1)
+    }),
+    part(new THREE.CylinderGeometry(0.17, 0.2, 0.3, 10), dark, true, (_a, o) => {
+      o.position.set(0, 1.08, 0.02)
+      o.rotation.set(0.05, 0, 0)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.BoxGeometry(0.22, 0.03, 0.02), eye, false, (_a, o) => {
+      o.position.set(0, 1.1, 0.2)
+      o.scale.setScalar(1)
+    }, false),
+    // 방패 (몸 앞) — 겉은 나무, 테두리는 쇠
+    part(mergeGeometries([new THREE.BoxGeometry(0.66, 0.86, 0.06), new THREE.BoxGeometry(0.72, 0.08, 0.08).translate(0, 0.41, 0), new THREE.BoxGeometry(0.72, 0.08, 0.08).translate(0, -0.41, 0)])!, wood, true, (a, o) => {
+      o.position.set(0.04, 0.62 - a.wind * 0.05, 0.36 + a.swing * 0.22 - a.wind * 0.06)
+      o.rotation.set(-0.05 - a.swing * 0.2, 0, 0)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 10).rotateX(Math.PI / 2), iron, false, (a, o) => {
+      o.position.set(0.04, 0.64 - a.wind * 0.05, 0.41 + a.swing * 0.22 - a.wind * 0.06)
+      o.scale.setScalar(1)
+    }),
+    ...[-1, 1].map((side) =>
+      part(cap(0.07, 0.24), dark, false, (a, o) => {
+        o.position.set(side * 0.13, 0.2, 0)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.5 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
+/** 강령술사: 긴 보랏빛 두건 옷 · 어둠 속 보랏빛 눈 · 해골 구슬이 달린 지팡이. 일으킬 때 지팡이를 치켜든다 */
+function necroParts(): Part[] {
+  const robe = lambert(0x3a2a44)
+  const trim = lambert(0x6a5a3a)
+  const bone = lambert(0xd8d0bc)
+  const eye = glow(0xc08aff)
+  const orb = glow(0xb07aff)
+  return [
+    part(new THREE.ConeGeometry(0.32, 1.1, 10), robe, true, (a, o) => {
+      o.position.set(0, 0.55, 0)
+      o.rotation.set(0.04, 0, sin(a.walk) * 0.04 * a.move)
+      o.scale.set(1 + a.squash * 0.2, 1 - a.squash * 0.15, 1)
+    }),
+    part(new THREE.TorusGeometry(0.2, 0.03, 4, 16).rotateX(Math.PI / 2), trim, false, (_a, o) => {
+      o.position.set(0, 0.62, 0)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.SphereGeometry(0.19, 10, 8), robe, true, (a, o) => {
+      o.position.set(0, 1.18, 0.02)
+      o.rotation.set(0.2 - a.wind * 0.3, 0, 0)
+      o.scale.set(1, 1.15, 1)
+    }),
+    part(mergeGeometries([new THREE.SphereGeometry(0.03, 6, 5).translate(-0.06, 0, 0), new THREE.SphereGeometry(0.03, 6, 5).translate(0.06, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 1.16, 0.17)
+      o.scale.setScalar(1 + a.wind * 0.8)
+    }, false),
+    part(cap(0.025, 1.3), trim, false, (a, o) => {
+      o.position.set(0.3, 0.75 + a.wind * 0.25, 0.1)
+      o.rotation.set(-a.wind * 0.3, 0, -0.08)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.SphereGeometry(0.09, 8, 6), bone, false, (a, o) => {
+      o.position.set(0.3, 1.45 + a.wind * 0.3, 0.1 - a.wind * 0.1)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.SphereGeometry(0.13, 10, 8), orb, false, (a, o) => {
+      o.position.set(0.3, 1.45 + a.wind * 0.3, 0.1 - a.wind * 0.1)
+      o.scale.setScalar(0.6 + a.wind * 0.9)
+    }, false),
+  ]
+}
+
+/** 산성 토사꾼: 굽은 부은 몸 · 목의 빛나는 산 주머니(예고 동안 부푼다) · 짧은 다리 */
+function spitterParts(): Part[] {
+  const skin = lambert(0x7a8458)
+  const dark = lambert(0x3e4430)
+  const sac = glow(0x9aff3a)
+  const eye = glow(0xffe05c)
+  return [
+    part(new THREE.SphereGeometry(0.5, 12, 10), skin, true, (a, o) => {
+      o.position.set(0, 0.5 + Math.abs(sin(a.walk)) * 0.03 * a.move, -0.04)
+      o.rotation.set(0.35 - a.wind * 0.2 + a.swing * 0.4, 0, sin(a.walk) * 0.06 * a.move)
+      o.scale.set(0.42 * (1 + a.squash * 0.3), 0.44 * (1 - a.squash * 0.3), 0.4)
+    }),
+    part(new THREE.SphereGeometry(0.5, 10, 8), skin, true, (a, o) => {
+      o.position.set(0, 0.8 - a.wind * 0.06, 0.2 + a.swing * 0.1)
+      o.rotation.set(0.2 - a.wind * 0.5, 0, 0)
+      o.scale.set(0.28, 0.24, 0.3)
+    }),
+    part(new THREE.SphereGeometry(0.5, 10, 8), sac, false, (a, o) => {
+      o.position.set(0, 0.64 - a.wind * 0.04, 0.3 + a.swing * 0.1)
+      o.scale.setScalar(0.16 + a.wind * 0.14)
+    }, false),
+    part(mergeGeometries([new THREE.SphereGeometry(0.03, 6, 5).translate(-0.07, 0, 0), new THREE.SphereGeometry(0.03, 6, 5).translate(0.07, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 0.84 - a.wind * 0.06, 0.34 + a.swing * 0.1)
+      o.scale.setScalar(1)
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(cap(0.08, 0.18), dark, false, (a, o) => {
+        o.position.set(side * 0.16, 0.16, -0.02)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.5 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
+/** 관리인(보스): 검은 쇠 갑옷 거인 · 빛나는 눈 틈 · 오른손 쇠곤봉 · 왼손 등불. 내려찍기 예고 때 곤봉을 머리 위로 */
+function wardenParts(): Part[] {
+  const iron = lambert(0x4a4448)
+  const rust = lambert(0x6a4a34)
+  const dark = lambert(0x2a2628)
+  const eye = glow(0xff7a2a)
+  const lamp = glow(0xffd070)
+  return [
+    part(new THREE.SphereGeometry(0.5, 12, 10), iron, true, (a, o) => {
+      o.position.set(0, 0.62 + Math.abs(sin(a.walk)) * 0.03 * a.move, 0)
+      o.rotation.set(0.12 - a.wind * 0.15 + a.swing * 0.3, 0, sin(a.walk) * 0.05 * a.move)
+      o.scale.set(0.44 * (1 + a.squash * 0.2), 0.46 * (1 - a.squash * 0.2), 0.36)
+    }),
+    part(new THREE.CylinderGeometry(0.15, 0.17, 0.26, 10), dark, true, (a, o) => {
+      o.position.set(0, 1.02 - a.wind * 0.03, 0.04)
+      o.rotation.set(-a.wind * 0.2, 0, 0)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.BoxGeometry(0.2, 0.03, 0.02), eye, false, (a, o) => {
+      o.position.set(0, 1.04 - a.wind * 0.03, 0.2)
+      o.scale.setScalar(1 + a.wind * 0.4)
+    }, false),
+    // 어깨 판
+    part(mergeGeometries([new THREE.SphereGeometry(0.14, 8, 6).translate(-0.3, 0, 0), new THREE.SphereGeometry(0.14, 8, 6).translate(0.3, 0, 0)])!, rust, false, (a, o) => {
+      o.position.set(0, 0.86 + a.swing * 0.04, 0)
+      o.scale.set(1, 0.7, 1)
+    }),
+    // 쇠곤봉 (오른손) — 예고 때 뒤로 치켜들고, 휘두르면 앞으로 내리친다
+    part(mergeGeometries([cap(0.04, 0.5).translate(0, -0.2, 0), new THREE.CylinderGeometry(0.1, 0.1, 0.26, 8).translate(0, 0.14, 0)])!, rust, true, (a, o) => {
+      o.position.set(0.34, 0.86, 0.1)
+      o.rotation.set(0.9 - a.wind * 2.5 + a.swing * 2.2, 0, -0.2)
+      o.scale.setScalar(1)
+      o.translateY(0.3)
+    }),
+    // 등불 (왼손)
+    part(new THREE.SphereGeometry(0.08, 8, 6), lamp, false, (a, o) => {
+      o.position.set(-0.36, 0.52 + sin(a.walk) * 0.03 * a.move, 0.16)
+      o.scale.setScalar(1 + sin(a.walk * 0.5) * 0.05)
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(cap(0.09, 0.26), dark, false, (a, o) => {
+        o.position.set(side * 0.16, 0.22, 0)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.45 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
-const BUILDERS = [() => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts, wolfParts, () => spiderParts(), shamanParts, () => spiderParts(true)]
+const BUILDERS = [
+  () => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts,
+  wolfParts, () => spiderParts(), shamanParts, () => spiderParts(true),
+  shieldParts, necroParts, spitterParts, wardenParts,
+]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25]
 
 export class MonsterView {
   readonly group = new THREE.Group()

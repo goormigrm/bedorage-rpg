@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery' | 'town2' | 'forest' | 'swamp' | 'hollow' | 'nest'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery' | 'town2' | 'forest' | 'swamp' | 'hollow' | 'nest' | 'town3' | 'sewer' | 'cistern' | 'ruins' | 'rite' | 'archive' | 'wardroom'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -307,6 +307,113 @@ export const MAPS: Record<MapId, MapDef> = {
       sunColor: 0xa8a8c0, ambientColor: 0x44444e, fog: 0x040404,
       dark: { sun: 0.5, hemi: 0.5, fogAlpha: 0.92, lantern: 2.6 },
       style: 'cave',
+    },
+  },
+  // ---------------- 3막 잠긴 지하도 (누런 등불) ----------------
+  town3: {
+    id: 'town3',
+    name: '수문 야영지',
+    desc: '지하도로 내려가는 수문 옆 야영지. 누런 등불 아래 물 떨어지는 소리만 들린다.',
+    rows: town1Rows(),
+    fixedScale: true,
+    fire: [22, 16],
+    gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
+    theme: {
+      floor: 0x3a3630, floorAlt: 0x35312b, floorLine: 0x2a2722,
+      wall: 0x4a4238, wallTop: 0x625846, crate: 0x6a5a40, outside: 0x040403,
+      sunColor: 0xc8b088, ambientColor: 0x5a5040, fog: 0x050403,
+      dark: { sun: 1.0, hemi: 0.95, fogAlpha: 0.8, lantern: 2.8 },
+      style: 'town',
+    },
+  },
+  sewer: {
+    id: 'sewer',
+    name: '잠긴 수로',
+    desc: '도시의 물길이 흐르던 굽은 굴. 방패를 든 것들이 줄지어 거슬러 올라온다.',
+    rows: frame(70, 50),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 6, crates: 10, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x3a3a32, floorAlt: 0x35352d, floorLine: 0x2a2a24,
+      wall: 0x4e4a3e, wallTop: 0x625c4c, crate: 0x6a6250, outside: 0x030302,
+      sunColor: 0xc8b890, ambientColor: 0x5a5444, fog: 0x050504,
+      dark: { sun: 0.7, hemi: 0.65, fogAlpha: 0.9, lantern: 2.7 },
+      style: 'crypt',
+    },
+  },
+  cistern: {
+    id: 'cistern',
+    name: '저수조',
+    desc: '고인 물이 부글거리는 저수조. 벽마다 산이 흘러내린다.',
+    rows: frame(54, 40),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x34382c, floorAlt: 0x303428, floorLine: 0x262a20,
+      wall: 0x444a38, wallTop: 0x566048, crate: 0x5a6a48, outside: 0x020302,
+      sunColor: 0xb8c890, ambientColor: 0x4e5a40, fog: 0x040503,
+      dark: { sun: 0.6, hemi: 0.6, fogAlpha: 0.91, lantern: 2.6 },
+      style: 'cave',
+    },
+  },
+  ruins: {
+    id: 'ruins',
+    name: '무너진 시장',
+    desc: '도시 밑에 묻힌 옛 시장. 무너진 기둥 사이로 방패가 줄지어 섰다.',
+    rows: frame(70, 52),
+    fixedScale: true,
+    gen: { style: 'pillars', density: 6, crates: 12, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x403a30, floorAlt: 0x3a342b, floorLine: 0x2e2922,
+      wall: 0x564c3e, wallTop: 0x6a5e4c, crate: 0x74644a, outside: 0x040302,
+      sunColor: 0xd0b888, ambientColor: 0x5e5444, fog: 0x050403,
+      dark: { sun: 0.75, hemi: 0.7, fogAlpha: 0.88, lantern: 2.7 },
+      style: 'cathedral',
+    },
+  },
+  rite: {
+    id: 'rite',
+    name: '의식의 회랑',
+    desc: '검은 사제들이 의식을 올리던 회랑. 촛불 사이로 쓰러진 것들이 다시 일어난다.',
+    rows: frame(64, 46),
+    fixedScale: true,
+    gen: { style: 'pillars', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a3438, floorAlt: 0x352f33, floorLine: 0x2a2528,
+      wall: 0x4e4448, wallTop: 0x62565a, crate: 0x6a5a60, outside: 0x040304,
+      sunColor: 0xc0a898, ambientColor: 0x564a4e, fog: 0x050405,
+      dark: { sun: 0.6, hemi: 0.55, fogAlpha: 0.9, lantern: 2.6 },
+      style: 'cathedral',
+    },
+  },
+  archive: {
+    id: 'archive',
+    name: '봉인된 문서고',
+    desc: '의식의 기록을 봉인해 둔 방들. 누군가 봉인을 뜯었다.',
+    rows: frame(62, 46),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 6, crates: 12, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3c3630, floorAlt: 0x37312b, floorLine: 0x2b2621,
+      wall: 0x50463a, wallTop: 0x645848, crate: 0x6e5a40, outside: 0x040302,
+      sunColor: 0xc8b088, ambientColor: 0x5a5040, fog: 0x050403,
+      dark: { sun: 0.55, hemi: 0.55, fogAlpha: 0.91, lantern: 2.6 },
+      style: 'crypt',
+    },
+  },
+  wardroom: {
+    id: 'wardroom',
+    name: '관리인의 방',
+    desc: '지하도의 모든 문 열쇠가 걸린 방. 열쇠 꾸러미가 짤랑거린다.',
+    rows: frame(46, 36),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a3430, floorAlt: 0x35302b, floorLine: 0x2a2521,
+      wall: 0x4e443a, wallTop: 0x62564a, crate: 0x6a5846, outside: 0x040302,
+      sunColor: 0xd0a878, ambientColor: 0x5a4a3a, fog: 0x050403,
+      dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'butchery',
     },
   },
   garage: {

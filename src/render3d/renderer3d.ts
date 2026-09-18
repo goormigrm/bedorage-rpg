@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_FUSE, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { MONSTER_LIST, affixNames, isBossLike } from '../core/monsters'
+import { ACID, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
 import { AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
@@ -721,6 +721,16 @@ export class Renderer3D {
             const sp = 0.02 + Math.random() * 0.05
             this.spawnParticle(e.x * U, 0.5, e.y * U, Math.cos(a) * sp, 0.07 + Math.random() * 0.05, Math.sin(a) * sp, 0.7, 0x7ef0a0, 0.7)
           }
+          break
+        }
+        case 'mblock': {
+          // 방패병이 탄을 막았다: 쇳소리 불꽃
+          for (let i = 0; i < 4; i++) {
+            const a = Math.random() * Math.PI * 2
+            const sp = 0.04 + Math.random() * 0.08
+            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.06, Math.sin(a) * sp, 0.25, 0xffe0a0, 0.6)
+          }
+          this.spawnImpact(e.x * U, GUN_H, e.y * U, 0xffd080, 0.9)
           break
         }
         case 'block': {
@@ -1916,14 +1926,15 @@ export class Renderer3D {
       live.add(zn.id)
       let g = this.zoneMeshes.get(zn.id)
       const fuse = zn.kind === ZONE_FUSE
+      const acid = zn.kind === ZONE_ACID
       if (!g) {
         g = new THREE.Group()
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: fuse ? 0xff3a1a : 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: acid ? 0x6aff2a : fuse ? 0xff3a1a : 0xfff0b0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: fuse ? 0xff5a2a : 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: acid ? 0x9aff3a : fuse ? 0xff5a2a : 0xffe07a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        const beam = new THREE.PointLight(fuse ? 0xff4a20 : 0xfff0c0, fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
+        const beam = new THREE.PointLight(acid ? 0x8aff4a : fuse ? 0xff4a20 : 0xfff0c0, acid ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
         beam.position.y = 3
         g.add(beam)
         this.scene.add(g)
@@ -1931,6 +1942,18 @@ export class Renderer3D {
       }
       g.position.set(zn.x * U, 0.04, zn.y * U)
       g.scale.set(zn.r * U, 1, zn.r * U)
+      if (acid) {
+        // 산성 웅덩이: 부글거리며, 끝나 갈수록 옅어진다
+        const fade = Math.min(1, zn.t / 40)
+        ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (0.3 + 0.08 * Math.sin(this.t * 9 + zn.id)) * fade
+        ;((g.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.7 * fade
+        if (Math.random() < 0.15) {
+          const a = Math.random() * Math.PI * 2
+          const d = Math.random() * zn.r * U * 0.8
+          this.spawnParticle(zn.x * U + Math.cos(a) * d, 0.05, zn.y * U + Math.sin(a) * d, 0, 0.03 + Math.random() * 0.03, 0, 0.5, 0x9aff3a, 0.5)
+        }
+        continue
+      }
       if (fuse) {
         // 폭발 예고: 안쪽 원이 바깥 테두리까지 차오르면 터진다
         const k = 1 - zn.t / zn.max
@@ -2077,6 +2100,24 @@ export class Renderer3D {
     }
   }
 
+  /** 땅 위 원 (예고): 월드 중심 (x, z) · 반지름 r (타일 단위) 을 화면에 점선으로 */
+  private groundCircle(ctx: CanvasRenderingContext2D, x: number, z: number, r: number, color: string, alpha: number): void {
+    ctx.save()
+    ctx.strokeStyle = color
+    ctx.globalAlpha = Math.min(1, alpha)
+    ctx.lineWidth = 2
+    ctx.setLineDash([7, 5])
+    ctx.beginPath()
+    for (let k = 0; k <= 36; k++) {
+      const a = (k / 36) * Math.PI * 2
+      const q = this.worldToScreen(x + Math.cos(a) * r, 0.05, z + Math.sin(a) * r)
+      if (k === 0) ctx.moveTo(q.x, q.y)
+      else ctx.lineTo(q.x, q.y)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
   /**
    * 몬스터 머리 위 체력 바 (최근 3초 안에 맞은 것만) + 궁수 조준선(예고 동안 붉은 선 — 피할 때라는 신호)
    */
@@ -2087,7 +2128,15 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const def = MONSTER_LIST[m.kind]
-      if (m.st === MS_WINDUP && m.mode === 2) {
+      if (m.st === MS_WINDUP && def.special === 'warden' && m.mode === 2) {
+        // 관리인 내려찍기 예고: 둘레 원이 차오른다
+        this.groundCircle(ctx, at.x, at.z, WARDEN.slamR * U, '#ff8a4a', 0.35 + 0.5 * (1 - m.t / WARDEN.slamWindup))
+      }
+      if (m.st === MS_WINDUP && def.attack === 'lob' && m.mode === 0) {
+        // 산성 예고: 떨어질 자리
+        this.groundCircle(ctx, m.ax * U, m.ay * U, ACID.r * U, '#9aff3a', 0.3 + 0.5 * (1 - m.t / def.windup))
+      }
+      if (m.st === MS_WINDUP && def.special === 'queen' && m.mode === 2) {
         // 거미줄 부채 예고: 일곱 갈래
         const a0 = Math.atan2(m.ay - m.y, m.ax - m.x)
         ctx.save()
@@ -2105,7 +2154,7 @@ export class Renderer3D {
         }
         ctx.restore()
       }
-      if (m.st === MS_WINDUP && (def.attack === 'ranged' || m.mode === 1)) {
+      if (m.st === MS_WINDUP && ((def.attack === 'ranged' && m.mode === 0) || m.mode === 1)) {
         const k = 1 - m.t / def.windup
         const a = this.worldToScreen(at.x, 0.9, at.z)
         const b = this.worldToScreen(m.ax * U, 0.9, m.ay * U)

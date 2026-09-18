@@ -20,7 +20,7 @@ import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
-  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { makeMonster, populate, rollAffixes } from './dungeon'
@@ -37,7 +37,7 @@ import {
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
-  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills, MoveHow, SimEvent,
+  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, isActive, isEnemy, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -2025,7 +2025,15 @@ function stepZones(state: GameState): void {
       if (z.kind === ZONE_FUSE) booms.push({ x: z.x, y: z.y, r: z.r, dmg: z.dmg, by: -2 })
       continue
     }
-    if (z.kind === ZONE_SPOTLIGHT) {
+    if (z.kind === ZONE_ACID) {
+      // 산성 웅덩이: 안에 선 사람이 주기마다 다친다 (구르는 중·무적이면 hurtPlayer 가 거른다)
+      if (z.t % ACID.every === 0) {
+        for (const q of state.players) {
+          if (!isActive(q) || len(q.x - z.x, q.y - z.y) > z.r + PLAYER_RADIUS * 0.5) continue
+          hurtPlayer(state, q, z.dmg, -1, z.x, z.y)
+        }
+      }
+    } else if (z.kind === ZONE_SPOTLIGHT) {
       for (const m of state.monsters) {
         if (m.hp <= 0 || len(m.x - z.x, m.y - z.y) > z.r) continue
         m.slow = Math.max(m.slow, 6)
@@ -2128,8 +2136,9 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
       }
       if (bestM) {
         const m: Monster = bestM
-        applyHit(state, b, m, pointLineDistance(m.x, m.y, b.px, b.py, b.vx, b.vy))
-        if (b.pierce > 0) {
+        const blocked = applyHit(state, b, m, pointLineDistance(m.x, m.y, b.px, b.py, b.vx, b.vy))
+        if (blocked) dead = true
+        else if (b.pierce > 0) {
           b.pierce--
           b.lastHit = m.id
         } else dead = true
@@ -2151,10 +2160,17 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
   bullets.length = write
 }
 
-/** 탄이 몬스터를 맞혔다. dOff = 탄 궤적과 몬스터 중심 사이 거리 */
-function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): void {
+/** 탄이 몬스터를 맞혔다. dOff = 탄 궤적과 몬스터 중심 사이 거리. 방패에 막혔으면 true (탄이 멈춘다 — 관통도 안 된다) */
+function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolean {
   const w = WEAPONS[b.weapon]
   const def = MONSTER_LIST[m.kind]
+  // 방패병: 깨어 있고 기절하지 않았으면 정면(±guard)에서 온 탄을 방패로 막는다 — 피해 조금 · 치명타·넉백·집중 없음
+  if (def.guard && m.st !== MS_SLEEP && m.stun === 0 && Math.abs(angleDiff(atan2A(-b.vy, -b.vx), m.aim)) <= def.guard) {
+    b.hitSomeone = true
+    state.events.push({ type: 'mblock', m: m.id, x: b.x, y: b.y })
+    hurtMonster(state, m, Math.max(1, Math.round(b.damage * b.mul * GUARD.mult)), b.owner, false, b.x, b.y)
+    return true
+  }
   const dist = len(m.x - b.ox, m.y - b.oy)
   // 치명타 = 덕의 헤드샷: 쏠 때 커서가 이 몬스터의 약점 위였고, 그 탄이 이 몬스터를 맞혔다.
   // 산탄은 정중앙을 지나는 탄만 (일곱 개가 전부 치명타가 되면 과하다). 침착 모드는 전부
@@ -2177,6 +2193,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): void {
     const sh = state.players[b.owner]
     if (sh) sh.focus = Math.min(100, sh.focus + (crit ? 4 : 2) * (1 + 0.1 * (sh.build.r[9] ?? 0)))
   }
+  return false
 }
 
 /**
@@ -2678,6 +2695,32 @@ function stepMonsters(state: GameState, map: GameMap): void {
         state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
         continue
       }
+      // 강령술사: 무리가 줄었으면 구울을 일으킨다 (mode 3)
+      if (def.special === 'raise' && m.scd === 0 && m.los === 1 && d < 420 && packAlive(state, m) < RAISE.max) {
+        m.st = MS_WINDUP
+        m.mode = 3
+        m.t = RAISE.windup
+        m.aim = face
+        m.ax = tp.x
+        m.ay = tp.y
+        state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+        continue
+      }
+      // 관리인: 가까우면 내려찍기(mode 2), 멀거나 번갈아 방패병 부르기(mode 3)
+      if (def.special === 'warden' && m.scd === 0 && m.los === 1 && d < 420) {
+        const call = packAlive(state, m) < WARDEN.guardMax && (m.phase % 2 === 1 || d >= WARDEN.slamR + 30)
+        if (call || d < WARDEN.slamR + 30) {
+          m.st = MS_WINDUP
+          m.mode = call ? 3 : 2
+          m.t = call ? WARDEN.callWindup : WARDEN.slamWindup
+          m.aim = face
+          m.ax = tp.x
+          m.ay = tp.y
+          m.phase++
+          state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+          continue
+        }
+      }
       // 도살자: 멀리 있는 표적에게 예고선을 긋고 돌진
       if (def.special === 'charge' && m.scd === 0 && m.los === 1 && d > 140 && d < 520) {
         m.st = MS_WINDUP
@@ -2694,7 +2737,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       let hold = false
       if (def.attack === 'melee') {
         attack = m.cd === 0 && m.los === 1 && d - def.r - PLAYER_RADIUS <= def.range
-      } else if (def.attack === 'ranged') {
+      } else if (def.attack === 'ranged' || def.attack === 'lob') {
         attack = m.cd === 0 && m.los === 1 && d <= def.range
         const keep = def.keepDist ?? 200
         if (m.los === 1 && d < keep * 0.65) away = true
@@ -2738,12 +2781,23 @@ function stepMonsters(state: GameState, map: GameMap): void {
     } else if (m.st === MS_WINDUP && m.mode >= 2) {
       // 보스 특수 예고: 끝나면 부채 · 새끼 (방향은 예고 시작 때 정했다 — 예고선 밖으로 비키면 산다)
       if (--m.t <= 0) {
-        if (m.mode === 2) queenFan(state, m, def)
-        else if (m.mode === 3) queenBrood(state, m)
+        if (def.special === 'queen') {
+          if (m.mode === 2) queenFan(state, m, def)
+          else summonKind(state, m, SPIDER_KIND, QUEEN.brood, QUEEN.broodMax, QUEEN.broodHp)
+          m.scd = QUEEN.every
+        } else if (def.special === 'warden') {
+          if (m.mode === 2) {
+            // 내려찍기: 관리인 둘레 원 안의 사람만 (몬스터는 안 다친다 — by -2)
+            booms.push({ x: m.x, y: m.y, r: WARDEN.slamR, dmg: Math.round((def.dmg * WARDEN.slamDmg * m.pow) / 100), by: -2 })
+          } else summonKind(state, m, SHIELD_KIND, WARDEN.guards, WARDEN.guardMax, WARDEN.guardHp)
+          m.scd = WARDEN.every
+        } else {
+          summonKind(state, m, GHOUL_KIND, RAISE.n, RAISE.max, RAISE.hp)
+          m.scd = RAISE.every
+        }
         m.mode = 0
         m.st = MS_RECOVER
         m.t = 30
-        m.scd = QUEEN.every
       }
     } else if (m.st === MS_WINDUP) {
       if (def.attack === 'melee') m.aim = turnToward(m.aim, face, TURN_WINDUP)
@@ -2809,13 +2863,23 @@ function queenFan(state: GameState, m: Monster, def: MonsterDef): void {
   state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
 }
 
-/** 거미 여왕의 새끼: 독거미를 약하게 몇 마리 (살아 있는 새끼가 많으면 덜) */
-function queenBrood(state: GameState, m: Monster): void {
+/** 같은 무리에서 살아 있는 동료 수 (자기 빼고) */
+function packAlive(state: GameState, m: Monster): number {
   let alive = 0
   for (const o of state.monsters) if (o.hp > 0 && o.pack === m.pack && o !== m) alive++
-  const n = Math.min(QUEEN.brood, QUEEN.broodMax - alive)
-  const hpMul = (m.maxHp / MONSTER_LIST[m.kind].hp) * QUEEN.broodHp
-  for (let i = 0; i < n; i++) spawns.push({ kind: SPIDER_KIND, x: m.x, y: m.y, pack: m.pack, hpMul, pow: Math.round(m.pow * 0.8), lvl: m.lvl })
+  return alive
+}
+
+/**
+ * 부르기 (여왕의 새끼 · 관리인의 방패병 · 강령술사의 구울): kind 를 n 마리, 무리가 max 를 넘지 않게.
+ * 체력은 부른 이의 층·인원 보정(정예·우두머리 배율은 뺀다) × hpFrac, 공격은 부른 이의 0.8배
+ */
+function summonKind(state: GameState, m: Monster, kind: number, n: number, max: number, hpFrac: number): void {
+  const k = Math.min(n, max - packAlive(state, m))
+  if (k <= 0) return
+  const rank = m.elite & EA_UNIQUE ? UNIQUE.hp : m.elite ? ELITE.hp : 1
+  const hpMul = (m.maxHp / MONSTER_LIST[m.kind].hp / rank) * hpFrac
+  for (let i = 0; i < k; i++) spawns.push({ kind, x: m.x, y: m.y, pack: m.pack, hpMul, pow: Math.round(m.pow * 0.8), lvl: m.lvl })
   state.events.push({ type: 'summon', m: m.id, x: m.x, y: m.y })
 }
 
@@ -2845,6 +2909,13 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
       if (Math.abs(angleDiff(atan2A(dy, dx), m.aim)) > (def.arc ?? 180)) continue
       hurtPlayer(state, p, Math.round((def.dmg * m.pow) / 100), m.id, m.x, m.y)
     }
+    m.st = MS_RECOVER
+    m.t = def.recover
+    m.cd = def.cooldown
+  } else if (def.attack === 'lob') {
+    // 산성: 예고 때 정한 자리에 웅덩이 (몬스터 편 — 사람만 다친다). 예고 원 밖으로 비키면 산다
+    state.zones.push({ id: state.nextFxId++, kind: ZONE_ACID, owner: -1, x: m.ax, y: m.ay, r: ACID.r, t: ACID.ticks, max: ACID.ticks, dmg: Math.round((def.dmg * m.pow) / 100) })
+    state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
     m.st = MS_RECOVER
     m.t = def.recover
     m.cd = def.cooldown
