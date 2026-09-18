@@ -49,6 +49,8 @@ describe('스킬 — 캐릭터마다 셋', () => {
       const p = s.players[0]
       const seen: string[] = []
       for (const [slot, btn] of [[0, BTN_SKILL1], [1, BTN_SKILL2]] as const) {
+        // 스킬은 집중이 든다 (D4) — 넉넉히
+        p.focus = 100
         step(s, map, [press(btn)])
         for (const e of s.events) if (e.type === 'skill') seen.push(e.id)
         expect(p.cd[slot]).toBeGreaterThan(0)

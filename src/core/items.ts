@@ -253,6 +253,8 @@ export type Sheet = {
   potMax?: number
   /** 보관함 (캐릭터끼리 공유 — 세이브는 따로 두고, 판에 들어올 때 내 기록에 실어 온다) */
   stash?: Item[]
+  /** 스킬 트리 빌드 (skills.ts Build) */
+  build?: { r: number[]; m3: number[]; m5: number[]; s: number[] }
 }
 
 export function emptySheet(): Sheet {
@@ -278,5 +280,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0xffff
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
+  // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
+  if (o.build && typeof o.build === 'object') e.build = o.build
   return e
 }

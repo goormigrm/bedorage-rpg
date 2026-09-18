@@ -2,7 +2,9 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
-import { CMD_BUY, CMD_GAMBLE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
+import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
+import { CHARACTERS, PLAYABLE } from '../core/characters'
+import { mercPrice } from '../core/sim'
 import {
   Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
 } from '../core/items'
@@ -30,7 +32,7 @@ const LINES: Record<NpcId, string> = {
   gambler: '안을 들여다보지 않고 사는 재미를 알아? 뭐가 나올지는 나도 몰라.',
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
   elder: '성당 종이 멈춘 밤부터 모든 게 틀어졌소… (촌장의 부탁은 곧 들을 수 있다)',
-  captain: '칼 쓰는 녀석이 필요하면 말해. (용병 고용은 곧)',
+  captain: '혼자 가기 무서우면 말해. 쓸 만한 녀석을 붙여 주지.',
 }
 
 export class TownPanel {
@@ -94,6 +96,17 @@ export class TownPanel {
     } else if (npc === 'stash') {
       body = `<div class="tp-cols"><div><div class="tp-h">가방 (${me.bag.length}) — 누르면 넣기</div><div class="tp-list">${me.bag.map((it, i) => row(it, '→', `data-cmd="${CMD_STASH_PUT}" data-arg="${i}"`, me.stash.length >= STASH_SIZE)).join('') || '<p class="tp-empty">비었다</p>'}</div></div>
         <div><div class="tp-h">보관함 (${me.stash.length}/${STASH_SIZE}) — 누르면 꺼내기</div><div class="tp-list">${me.stash.map((it, i) => row(it, '←', `data-cmd="${CMD_STASH_TAKE}" data-arg="${i}"`)).join('') || '<p class="tp-empty">비었다</p>'}</div></div></div>`
+    } else if (npc === 'captain') {
+      const mine = s.players.find((q) => q.merc === me.id && !q.left)
+      const price = mercPrice(me.level)
+      const free = s.players.some((q) => q.vacant && q.left)
+      body = mine
+        ? `<p class="tp-note">지금 <b>${CHARACTERS[mine.char].name}</b>(레벨 ${mine.level})이 따라다닌다. 쓰러지면 마을에서 다시 일어나 곁으로 온다.</p><button class="btn" data-cmd="${CMD_HIRE}" data-arg="255">내보내기</button>`
+        : !free
+          ? '<p class="tp-empty">게임 자리가 다 찼다 — 용병을 앉힐 자리가 없다 (최대 4명).</p>'
+          : `<p class="tp-note">빈 자리에 용병 하나 (내 레벨 · 나를 따라다닌다) — ${price} 골드.</p><div class="tp-slots">${PLAYABLE.filter((id) => id !== me.char)
+              .map((id) => `<button class="btn" data-cmd="${CMD_HIRE}" data-arg="${PLAYABLE.indexOf(id)}" ${me.gold < price ? 'disabled' : ''}>${CHARACTERS[id].name}</button>`)
+              .join('')}</div>`
     } else {
       body = ''
     }

@@ -90,6 +90,15 @@
 - 보물 고블린(kind 4, `attack: 'flee'`): 지역 시드로 14%. 깨어나면 늘 달아나고(`away`) `m.t` 로 깨어 있던 틱을 세며 70틱마다 공용 골드를 흘리고 20초에 사라진다(`goblinGone`). 잡으면 분수.
 - 음성(`net/voice.ts`): 게임 연결에 마이크 스트림을 얹는다(`RoomLink.setVoice/onVoice`). 눌러서 말하기는 트랙 `enabled` 를 누르는 동안만 켠다. sim 과 무관.
 
+## 3.8 성장 · 전투 (D4)
+
+- 집중 `PlayerState.focus`(0~100): 총알 명중(`applyHit`) +2(치명타 +4) × 정신 집중, 저절로 +0.03/틱. 스킬 비용 `focusCost` = 재사용 초×2.5(15~40), 궁극기 0, 절약 변형 ×0.65. 던전만(투기장은 예전처럼).
+- 스킬 칸: `cd[0..4]` = Q · E · X · 1 · 2 (`SKILL_BTNS` 같은 순서). `slotNode(p, 칸)` → 트리 칸, `nodeSkill` → 스킬. 캐스팅 때 `skillPow = nodePow` 를 걸어 `aoe` 피해에 곱한다(투척·장판처럼 나중에 터지는 것에는 아직 안 곱한다).
+- 빌드 `Build {r, m3, m5, s}`: 랭크 · 3랭크 변형 · 5랭크 변형 · 칸에 건 트리 칸. 명령 CMD_SKILL_UP/MOD/SLOT · CMD_RESPEC(마을). 포인트 = 레벨 − 1 + `spBonus`(퀘스트) − (랭크 합 − 3).
+  패시브: 총기 숙련 ST_DMG +4 · 강인함 체력 +6% · 민첩 이동 +2% · 구르기 충전 −6% · 정신 집중 집중 +10% · CDR +2 (랭크마다, `recalc`).
+- 구르기(던전): `dashCharges` 최대 2, `dashCooldown` 이 하나 다시 차는 시간(캐릭터 값 × 1.6 × 민첩).
+- 용병: `CMD_HIRE` → 빈 자리(`vacant`)에 `makePlayer` + `merc = 고용인` · `follow` · `bot = makeBot(…)`. `stepAll` 이 지역마다 돌기 전에 용병 입력을 `botInput(areaView(…), …)` 로 만든다 — 봇 기억이 상태에 있어 결정론이고 해시·스냅샷에 들어간다. 난입자는 용병 자리를 차지하지 않는다(left 가 아니므로).
+
 ## 4. 몬스터
 
 `monsters.ts` 가 정의표, 행동은 `sim.ts stepMonsters`, 모습은 `render3d/monsters3d.ts`.

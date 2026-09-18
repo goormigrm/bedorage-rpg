@@ -1,7 +1,7 @@
 // 키보드·마우스 → Input. 화면 좌표는 1280x720 논리 프레임.
 
 import { ANGLE_MASK, angleDiff, radToAngle } from '../core/fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SKILL1, BTN_SKILL2, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
 import { GameMap } from '../core/map'
 import { GameState } from '../core/state'
 import { WEAPONS } from '../core/weapons'
@@ -65,7 +65,7 @@ export class LocalInput {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '3', 'q', 'e', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '1', '2', '3', 'q', 'e', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
         if (down) this.keys.add(k)
         else this.keys.delete(k)
         e.preventDefault()
@@ -214,11 +214,13 @@ export class LocalInput {
     if (k.has('q')) buttons |= BTN_SKILL1
     if (k.has('e')) buttons |= BTN_SKILL2
     if (k.has('x')) buttons |= BTN_ULT
+    if (k.has('1')) buttons |= BTN_SKILL3
+    if (k.has('2')) buttons |= BTN_SKILL4
     t?.takeSwap()
     const char = this.pendingChar
     this.pendingChar = 0
     // 창이 열려 있으면 사격·정조준·스킬은 막는다 (움직이고 구르는 것은 그대로 — 판은 멈추지 않는다)
-    if (this.uiOpen) buttons &= ~(BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT)
+    if (this.uiOpen) buttons &= ~(BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_SKILL3 | BTN_SKILL4)
     const c = this.cmds.shift()
     return { mx, my, aim: this.lastAim, buttons, char, aimDist: Math.min(255, Math.round(this.lastDist / 4)), cmd: c?.cmd ?? 0, arg: c?.arg ?? 0 }
   }

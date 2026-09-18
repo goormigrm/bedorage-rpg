@@ -1,3 +1,4 @@
+import type { BotMemory } from './bot'
 import { CharacterId } from './characters'
 import type { Item, Sheet } from './items'
 import { Rng } from './rng'
@@ -213,6 +214,17 @@ export interface PlayerState {
   /** 낀 전설 효과 비트 묶음 (items.ts LEGENDS) · 불굴 재사용 대기 */
   legs: number
   legCd: number
+  /** 자원 "집중" (0~100): 총이 맞으면 차고, 스킬(궁극기 빼고)이 쓴다 (GUIDE 7장) */
+  focus: number
+  /** 구르기 충전 (던전 — 최대 2, dashCooldown 이 다시 차는 시간) */
+  dashCharges: number
+  /** 스킬 트리 빌드 */
+  build: { r: number[]; m3: number[]; m5: number[]; s: number[] }
+  /** 퀘스트로 받은 스킬 포인트 (D5) */
+  spBonus: number
+  /** 용병이면 고용한 사람 (-1 = 사람) · 용병의 봇 기억 (sim 안에서 결정론으로 움직인다) */
+  merc: number
+  bot?: BotMemory
   /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
   away?: boolean
 }
@@ -476,6 +488,8 @@ export type SimEvent =
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }
   /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */
   | { type: 'goblinGone'; x: number; y: number }
+  /** 용병 고용 · 내보냄 */
+  | { type: 'hire'; p: number; by: number; on: boolean }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }

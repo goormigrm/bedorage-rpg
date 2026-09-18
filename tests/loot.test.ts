@@ -11,6 +11,10 @@ import { CMD_EQUIP } from '../src/core/input'
 import { makeMonster } from '../src/core/dungeon'
 import { GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
 import { MS_CHASE } from '../src/core/state'
+import { BTN_DASH, BTN_SKILL1, CMD_HIRE, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP } from '../src/core/input'
+import { freePoints, nodeCd, nodePow, slotNode } from '../src/core/skills'
+import { hashState, mercPrice } from '../src/core/sim'
+import { areaLayout } from '../src/core/world'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 
@@ -190,5 +194,96 @@ describe('전리품 · 경제', () => {
     }
     expect(gone).toBe(true)
     expect(s.monsters.some((q) => q.kind === GOBLIN_KIND)).toBe(false)
+  })
+})
+
+describe('성장 · 전투 (D4)', () => {
+  it('스킬 트리: 레벨마다 포인트 · 랭크를 올리면 위력이 오르고 · 3랭크 변형 · 배운 스킬을 1 칸에 건다', () => {
+    const { s, run } = field(66)
+    const p = s.players[0]
+    p.level = 6
+    const cmd = (c: number, arg: number) => run(1, { ...idle(), cmd: c, arg })
+    expect(freePoints(p.level, p.build, p.spBonus)).toBe(5)
+    cmd(CMD_SKILL_UP, 2)
+    expect(p.build.r[2]).toBe(1)
+    expect(slotNode(p, 3)).toBe(2)
+    for (let k = 0; k < 2; k++) cmd(CMD_SKILL_UP, 0)
+    expect(p.build.r[0]).toBe(3)
+    expect(nodePow(p.build, 0)).toBeCloseTo(1.3)
+    cmd(CMD_SKILL_MOD, 0 * 4 + 0 * 2 + 1)
+    expect(p.build.m3[0]).toBe(2)
+    expect(nodeCd(p.build, 0)).toBeCloseTo((1 - 0.08) * 0.8)
+    // 칸 바꾸기: Q 에 배운 스킬을 걸면 원래 것은 1 칸으로
+    cmd(CMD_SKILL_SLOT, 0 * 16 + 2)
+    expect(p.build.s[0]).toBe(2)
+    expect(p.build.s[2]).toBe(0)
+    // 포인트가 없으면 못 올린다
+    cmd(CMD_SKILL_UP, 6)
+    cmd(CMD_SKILL_UP, 6)
+    const r = p.build.r[6]
+    cmd(CMD_SKILL_UP, 6)
+    expect(p.build.r[6]).toBe(r)
+    expect(freePoints(p.level, p.build, p.spBonus)).toBe(0)
+  })
+
+  it('집중: 총이 맞으면 차고, 스킬이 쓴다 · 모자라면 못 쓴다', () => {
+    const { s, run } = field(67)
+    const p = s.players[0]
+    const m = makeMonster(s, 0, p.x + 70, p.y, 801, 50)
+    m.st = MS_CHASE
+    m.cd = 999
+    s.monsters.push(m)
+    p.focus = 10
+    run(40, { ...idle(), buttons: BTN_FIRE, aim: 0, aimDist: 18 })
+    expect(p.focus).toBeGreaterThan(10.5)
+    p.focus = 0
+    run(1, { ...idle(), buttons: BTN_SKILL1 })
+    expect(p.cd[0]).toBe(0)
+    p.focus = 100
+    run(1, { ...idle(), buttons: BTN_SKILL1 })
+    expect(p.cd[0]).toBeGreaterThan(0)
+    expect(p.focus).toBeLessThan(100)
+  })
+
+  it('구르기는 두 번까지 모아 두고 쓴다 (던전)', () => {
+    const { s, run } = field(68)
+    const p = s.players[0]
+    expect(p.dashCharges).toBe(2)
+    run(1, { ...idle(), mx: 1, buttons: BTN_DASH })
+    run(30, { ...idle(), mx: 1 })
+    run(1, { ...idle(), mx: 1, buttons: BTN_DASH })
+    expect(p.dashCharges).toBe(0)
+    run(30, { ...idle(), mx: 1 })
+    run(1, { ...idle(), mx: 1, buttons: BTN_DASH })
+    expect(p.dashTimer).toBe(0)
+    run(60 * 5)
+    expect(p.dashCharges).toBe(2)
+  })
+
+  it('용병 대장: 골드를 내면 빈 자리에 용병이 앉아 나를 따라다닌다 (sim 안의 봇 — 두 번 돌려 같다)', () => {
+    const play = () => {
+      const seed = 69
+      const maps = new Map<number, GameMap>()
+      const mapOf = (id: number) => maps.get(id) ?? maps.set(id, buildAreaMap(seed, id)).get(id)!
+      const s = createState({ seed, chars: ['chim', 'magic'], absent: [false, true], sheets: [{ ...emptySheet(), level: 4, gold: 2000 }] }, mapOf)
+      const p = s.players[0]
+      const cap = townNpcs(0).find((q) => q.id === 'captain')!
+      p.x = cap.x + 30
+      p.y = cap.y
+      step(s, mapOf, [{ ...idle(), cmd: CMD_HIRE, arg: 1 }, idle()])
+      const merc = s.players[1]
+      expect(merc.merc).toBe(0)
+      expect(merc.left).toBe(false)
+      expect(p.gold).toBe(2000 - mercPrice(4))
+      // 성문 밖으로 나가면 따라온다
+      const gate = areaLayout(0, mapOf(0)).exits[0]
+      p.x = gate.x
+      p.y = gate.y
+      p.exitLock = 0
+      for (let t = 0; t < 400; t++) step(s, mapOf, [idle(), idle()])
+      expect(merc.area).toBe(1)
+      return hashState(s)
+    }
+    expect(play()).toBe(play())
   })
 })

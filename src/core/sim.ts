@@ -4,11 +4,12 @@
 // 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·X)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
-import { CHARACTERS, CharacterId, headHitScale } from './characters'
+import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
-  CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, TOWN_BLOCKED,
+  CMD_HIRE, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  TOWN_BLOCKED,
 } from './input'
 import {
   BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
@@ -21,12 +22,14 @@ import { makeRng, rand, randInt } from './rng'
 import {
   AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
+export { nodeSkill, slotNode } from './skills'
 import { makeMonster, populate, rollAffixes } from './dungeon'
+import { botInput, makeBot } from './bot'
 import { ACTS, AreaLayout, WAYPOINTS, npcNear, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL,
-  SKILLS, SkillId, ULT_START_FRAC,
+  MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
 import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
@@ -453,6 +456,81 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
 
 const POT_TICKS = 180
 
+/** 스킬 트리 명령 (어디서나) · 재분배 · 용병 (마을에서만) */
+function buildCommand(state: GameState, p: PlayerState, cmd: number, arg: number): void {
+  const b = p.build
+  if (cmd === CMD_SKILL_UP) {
+    if (arg < 0 || arg >= b.r.length || b.r[arg] >= MAX_RANK || freePoints(p.level, b, p.spBonus) <= 0) return
+    b.r[arg]++
+    recalc(p)
+  } else if (cmd === CMD_SKILL_MOD) {
+    const node = arg >> 2
+    const tier = (arg >> 1) & 1
+    const pick = (arg & 1) + 1
+    if (node < 0 || node >= b.r.length) return
+    if (tier === 0 && b.r[node] >= 3 && b.m3[node] === 0) b.m3[node] = pick
+    if (tier === 1 && b.r[node] >= 5 && b.m5[node] === 0) b.m5[node] = pick
+  } else if (cmd === CMD_SKILL_SLOT) {
+    const slot = arg >> 4
+    const node = arg & 15
+    if (slot < 0 || slot > 3 || node < 0 || node > 4 || b.r[node] === 0) return
+    // 이미 다른 칸에 걸려 있으면 자리를 바꾼다
+    const other = b.s.indexOf(node)
+    if (other >= 0) b.s[other] = b.s[slot]
+    b.s[slot] = node
+  } else if (cmd === CMD_RESPEC) {
+    // 재분배: 마을에서 골드로 (레벨 × 50)
+    const g = 50 * p.level
+    if (state.mode !== 'dungeon' || !isTown(p.area) || p.gold < g) return
+    p.gold -= g
+    const s0 = b.s.slice()
+    Object.assign(b, sanitizeBuild(null))
+    b.s = s0.map((n, k) => (b.r[n] > 0 ? n : k))
+    recalc(p)
+    state.events.push({ type: 'trade', p: p.id, what: 'respec', gold: -g, uid: 0 })
+  } else if (cmd === CMD_HIRE) {
+    hireCommand(state, p, arg)
+  }
+}
+
+/** 용병 값: 150 + 레벨 × 40 */
+export const mercPrice = (level: number) => 150 + level * 40
+
+/**
+ * 용병 대장 (GUIDE 8장 — 디아블로 2): 빈 자리에 용병 하나를 앉힌다. 용병은 **sim 안의 봇**(결정론 — 봇 기억이 상태에 있다)이라
+ * 네트워크로 입력을 보내지 않는다. 고용한 사람을 따라다닌다. 한 사람에 하나. arg = 캐릭터 번호, 255 = 내보내기.
+ */
+function hireCommand(state: GameState, p: PlayerState, arg: number): void {
+  if (state.mode !== 'dungeon' || p.merc >= 0 || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'captain') return
+  const mine = state.players.find((q) => q.merc === p.id && !q.left)
+  if (arg === 255) {
+    if (!mine) return
+    mine.left = true
+    mine.vacant = true
+    mine.alive = false
+    mine.merc = -1
+    mine.follow = -1
+    mine.bot = undefined
+    state.events.push({ type: 'hire', p: mine.id, by: p.id, on: false })
+    return
+  }
+  const char = PLAYABLE[arg]
+  const g = mercPrice(p.level)
+  if (mine || !char || p.gold < g) return
+  const seat = state.players.find((q) => q.vacant && q.left)
+  if (!seat) return
+  p.gold -= g
+  const idx = seat.id
+  Object.assign(seat, makePlayer(idx, char, 0, { level: p.level, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }))
+  seat.merc = p.id
+  seat.follow = p.id
+  seat.area = p.area
+  seat.bot = makeBot((state.seed ^ Math.imul(state.tick + 1, 0x2545f491) ^ idx) >>> 0)
+  seat.x = p.x + 30
+  seat.y = p.y
+  state.events.push({ type: 'hire', p: idx, by: p.id, on: true })
+}
+
 /**
  * 마을 NPC 명령 (GUIDE 9장). 그 NPC 곁에 서 있어야 하고, 골드가 모자라면 아무 일도 없다.
  * 모든 추첨은 state.rng — 모두의 화면에서 같은 결과.
@@ -802,7 +880,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     bestStreak: 0,
     killStreak: 0,
     revives: 0,
-    cd: [0, 0, Math.round(ult.cd * ULT_START_FRAC)],
+    cd: [0, 0, Math.round(ult.cd * ULT_START_FRAC), 0, 0],
     fx: new Array(FX_COUNT).fill(0),
     rateMul: 1,
     pierceShots: 0,
@@ -834,10 +912,21 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     stash: (sh.stash ?? []).map((it) => ({ ...it, aff: [...it.aff] })),
     legs: legMask(equip),
     legCd: 0,
+    focus: 50,
+    dashCharges: 2,
+    build: sanitizeBuild(sh.build),
+    spBonus: 0,
+    merc: -1,
   }
 }
 
 /** 장비·레벨이 바뀌면 능력치를 다시 낸다. 최대 체력이 늘면 그만큼 체력도 는다 */
+/** 던전 구르기: 두 번까지 모아 두고, 한 번 다시 차는 데 걸리는 틱 (민첩 랭크마다 -6%) */
+const DASH_MAX = 2
+function dashRecharge(p: PlayerState): number {
+  return Math.round(CHARACTERS[p.char].dashCooldown * 1.6 * (1 - 0.06 * (p.build.r[8] ?? 0)))
+}
+
 /** 전설 효과를 끼고 있나 */
 function hasLeg(p: PlayerState | null | undefined, leg: number): boolean {
   return !!p && (p.legs & (1 << leg)) !== 0
@@ -850,6 +939,10 @@ function recalc(p: PlayerState): void {
   p.legs = legMask(p.equip)
   // 전설 "집중": 스킬 재사용 대기 -15% (옵션 상한과 따로 더한다)
   if (hasLeg(p, LEG_FOCUS)) p.st[ST_CDR] += 15
+  // 스킬 트리 패시브: 총기 숙련 · 강인함 · (민첩은 이동에서) · 정신 집중
+  p.st[ST_DMG] += 4 * p.build.r[6]
+  p.st[ST_HP] += Math.round(c.maxHp * 0.06 * p.build.r[7])
+  p.st[ST_CDR] += 2 * p.build.r[9]
   const maxHp = c.maxHp + p.st[ST_HP]
   if (maxHp > p.maxHp && p.alive) p.hp += maxHp - p.maxHp
   p.maxHp = maxHp
@@ -932,6 +1025,14 @@ function stepAll(state: GameState, mapOf: (area: number) => GameMap, inputs: Inp
     }
   }
 
+  // 용병: 입력을 sim 안에서 만든다 (봇 기억이 상태에 있어 결정론) — 네트워크 입력은 쓰지 않는다
+  if (state.players.some((q) => q.merc >= 0 && !q.left)) {
+    inputs = inputs.slice()
+    for (const q of state.players) {
+      if (q.merc < 0 || q.left || !q.bot) continue
+      inputs[q.id] = botInput(areaView(state, q.area), mapOf(q.area), q.id, q.bot, 'normal')
+    }
+  }
   // 사람이 있는 지역만, 번호 순으로 (결정론)
   for (const id of liveAreas(state)) {
     const map = mapOf(id)
@@ -1060,9 +1161,18 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
 
   if (playing) p.aliveTicks++
   if (p.fireCooldown > 0) p.fireCooldown--
-  if (p.dashCooldown > 0) p.dashCooldown--
+  if (p.dashCooldown > 0) {
+    p.dashCooldown--
+    // 던전: 구르기는 충전식 (다 차면 멈춘다)
+    if (state.mode === 'dungeon' && p.dashCooldown === 0 && p.dashCharges < DASH_MAX) {
+      p.dashCharges++
+      if (p.dashCharges < DASH_MAX) p.dashCooldown = dashRecharge(p)
+    }
+  }
   if (p.blockLock > 0) p.blockLock--
-  for (let k = 0; k < 3; k++) if (p.cd[k] > 0) p.cd[k]--
+  for (let k = 0; k < p.cd.length; k++) if (p.cd[k] > 0) p.cd[k]--
+  // 집중: 조금씩 저절로 찬다 (1.8/초) — 대부분은 총이 맞아서 찬다
+  p.focus = Math.min(100, p.focus + 0.03)
   for (let k = 0; k < FX_COUNT; k++) if (p.fx[k] > 0) p.fx[k]--
   if (p.fx[FX_RATE] === 0) p.rateMul = 1
   // 달리기: 회복보다 먼저 계산해야 달리는 동안 기력이 차지 않는다 (덕 그대로)
@@ -1129,6 +1239,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥덕 패시브: 정조준해도 느려지지 않음
     if (p.legInjury > 0) speed *= 0.7
     if (p.shrineT > 0 && p.shrine === 3) speed *= 1.2
+    if (p.build.r[8] > 0) speed *= 1 + 0.02 * p.build.r[8]
     if (p.fx[FX_WHIRL] > 0) speed *= 1.3
     speed *= 1 + p.st[ST_SPEED] / 100
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, mx * inv * speed, my * inv * speed)
@@ -1139,22 +1250,29 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
 
   // 구르기
   const dashCost = c.id === 'pungwol' ? PUNGWOL.dashCost : DASH_COST
-  if (playing && input.buttons & BTN_DASH && p.dashCooldown === 0 && p.dashTimer === 0 && p.stamina >= dashCost && (mx !== 0 || my !== 0)) {
-    p.stamina -= dashCost
+  const dungeon = state.mode === 'dungeon'
+  const canDash = dungeon ? p.dashCharges > 0 && p.dashCooldown < dashRecharge(p) - 20 : p.dashCooldown === 0 && p.stamina >= dashCost
+  if (playing && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
+    if (dungeon) p.dashCharges--
+    else p.stamina -= dashCost
     const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
     p.dashDx = mx * inv
     p.dashDy = my * inv
     p.dashTimer = c.id === 'juwoojae' ? Math.round(DASH_TICKS * 1.3) : DASH_TICKS
-    p.dashCooldown = c.dashCooldown
+    p.dashCooldown = dungeon ? (p.dashCooldown > 0 ? p.dashCooldown : dashRecharge(p)) : c.dashCooldown
     p.ads = false
     if (c.id === 'uwon') p.invuln = Math.max(p.invuln, p.dashTimer + UWON.invulnAfterDash)
     state.events.push({ type: 'dash', p: p.id })
   }
 
-  // 스킬 Q · E · X (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼)
+  // 스킬 Q · E · X · 1 · 2 (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼). 궁극기 빼고는 집중이 든다
   if (playing && p.dashTimer === 0) {
-    for (let k = 0; k < 3; k++) {
-      if ((input.buttons & SKILL_BTNS[k]) === 0 || p.cd[k] > 0) continue
+    for (let k = 0; k < SKILL_BTNS.length; k++) {
+      if ((input.buttons & SKILL_BTNS[k]) === 0 || (p.cd[k] ?? 0) > 0) continue
+      const node = slotNode(p, k)
+      if (node < 0) continue
+      const id = nodeSkill(p, node)
+      if (state.mode === 'dungeon' && p.focus < focusCost(SKILLS[id], p.build, node)) continue
       castSkill(state, map, p, k)
       break
     }
@@ -1471,7 +1589,7 @@ interface AoeOpts {
  */
 function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: number, r: number, dmg: number, o: AoeOpts): number {
   if (!o.quiet) state.events.push({ type: 'aoe', p: caster.id, id: o.id, x, y, r })
-  dmg = Math.round(dmg * dmgMul(caster))
+  dmg = Math.round(dmg * dmgMul(caster) * skillPow)
   let n = 0
   const inArc = (tx: number, ty: number) => {
     if (o.arc === undefined || o.arcAim === undefined) return true
@@ -1689,10 +1807,24 @@ function buffRate(p: PlayerState, ticks: number, mul: number): void {
   p.fx[FX_RATE] = Math.max(p.fx[FX_RATE], ticks)
 }
 
+/** 지금 쓰는 스킬의 위력 배율 (aoe 가 피해에 곱한다) */
+let skillPow = 1
+
 function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number): void {
-  const id: SkillId = CHAR_SKILLS[p.char][slot]
+  const node = slotNode(p, slot)
+  const id: SkillId = nodeSkill(p, node < 0 ? 0 : node)
   const def = SKILLS[id]
-  p.cd[slot] = Math.round(def.cd * (1 - p.st[ST_CDR] / 100))
+  p.cd[slot] = Math.round(def.cd * (1 - p.st[ST_CDR] / 100) * (node >= 0 ? nodeCd(p.build, node) : 1))
+  if (state.mode === 'dungeon' && node >= 0) p.focus = Math.max(0, p.focus - focusCost(def, p.build, node))
+  skillPow = node >= 0 ? nodePow(p.build, node) : 1
+  try {
+    castSkillBody(state, map, p, slot, id, def)
+  } finally {
+    skillPow = 1
+  }
+}
+
+function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: number, id: SkillId, def: (typeof SKILLS)[SkillId]): void {
   let tx = p.x
   let ty = p.y
   if (def.reach) {
@@ -1988,6 +2120,10 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): void {
   // 탄막(철면덕 E): 맞은 괴물은 잠깐 느려진다
   if (shooter.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 30)
   hurtMonster(state, m, dmg, b.owner, crit, b.x, b.y)
+  {
+    const sh = state.players[b.owner]
+    if (sh) sh.focus = Math.min(100, sh.focus + (crit ? 4 : 2) * (1 + 0.1 * (sh.build.r[9] ?? 0)))
+  }
 }
 
 /**
@@ -2281,6 +2417,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   if (p.left) return
   if (cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) {
     townCommand(state, p, cmd, arg)
+    return
+  }
+  if (cmd >= CMD_SKILL_UP && cmd <= CMD_HIRE) {
+    buildCommand(state, p, cmd, arg)
     return
   }
   if (cmd === CMD_WAYPOINT) {

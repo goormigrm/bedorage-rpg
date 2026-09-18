@@ -63,7 +63,7 @@ const deg = (d: number) => Math.round((d / 360) * 1024)
 export const MONSTER_LIST: MonsterDef[] = [
   {
     id: 'ghoul', idx: 0, name: '구울',
-    hp: 70, speed: 2.7, r: 13,
+    hp: 60, speed: 2.7, r: 13,
     attack: 'melee', dmg: 16, range: 14, windup: 14, recover: 22, cooldown: 36, arc: deg(70),
     knockRes: 0, globe: 0.05, xp: 6, loot: 0.07,
   },

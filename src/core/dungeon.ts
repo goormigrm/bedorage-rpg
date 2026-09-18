@@ -12,8 +12,8 @@ import { GameState, MS_SLEEP, Monster } from './state'
 const SAFE_STEPS = 16
 /** 무리 사이 최소 간격 (타일) */
 const PACK_GAP = 9
-/** 바닥 몇 칸당 무리 하나 (84×62 층이면 약 24무리 · 130마리 남짓) */
-const TILES_PER_PACK = 200
+/** 바닥 몇 칸당 무리 하나 (D4 — GUIDE 7장 "무리를 쓸어 담는다": 200 → 160, 72×54 지역이면 약 22무리 · 140마리) */
+const TILES_PER_PACK = 160
 
 /** 층 입구: 3×3 이 트인 칸 중 맨 왼쪽 위 (map.spawns[0] 이 그것이다) */
 export function entryOf(map: GameMap): { x: number; y: number } {

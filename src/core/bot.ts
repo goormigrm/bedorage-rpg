@@ -11,7 +11,7 @@ import { MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
 import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, isActive } from './state'
 import { WEAPONS, WeaponId } from './weapons'
-import { CHAR_SKILLS } from './skills'
+import { SKILLS, focusCost, nodeSkill, slotNode } from './skills'
 import { flowField, flowStep } from './flow'
 
 export type Difficulty = 'easy' | 'normal' | 'hard'
@@ -286,13 +286,15 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
  * 치유 스킬(응급 처치)은 누가 다쳤을 때만. 너무 기계적으로 쓰지 않게 틱마다 작은 확률로 누른다.
  */
 function useSkills(state: GameState, me: PlayerState, mem: BotMemory, out: Input, target: Monster | null, downed: PlayerState | null): void {
-  const ids = CHAR_SKILLS[me.char]
   let near = 0
   for (const m of state.monsters) if (m.hp > 0 && m.st !== MS_SLEEP && len(m.x - me.x, m.y - me.y) < 300) near++
   const hurt = state.players.some((p) => p.alive && !p.downed && !p.left && p.hp < p.maxHp * 0.6 && len(p.x - me.x, p.y - me.y) < 190)
-  for (let k = 0; k < 3; k++) {
-    if (me.cd[k] > 0) continue
-    const id = ids[k]
+  for (let k = 0; k < SKILL_BTNS.length; k++) {
+    if ((me.cd[k] ?? 0) > 0) continue
+    const node = slotNode(me, k)
+    if (node < 0) continue
+    const id = nodeSkill(me, node)
+    if (k !== 2 && state.mode === 'dungeon' && me.focus < focusCost(SKILLS[id], me.build, node)) continue
     let want: boolean
     if (id === 'firstaid') want = hurt
     else if (id === 'surgery') want = !!downed || (hurt && near >= 4)

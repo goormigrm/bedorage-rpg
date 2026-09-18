@@ -269,6 +269,7 @@ export class Hud {
     const h: HudCtx = { ctx, W: VIEW_W, H: VIEW_H, t: this.t }
     const lp = opts.localPlayer
     if (lp !== -1) this.d4.drawLowHealth(h, s.players[lp])
+    this.d4.dungeon = s.mode === 'dungeon'
     this.d4.drawTracker(h, s, opts)
     if (s.mode === 'dungeon') {
       this.d4.drawBoss(h, s)

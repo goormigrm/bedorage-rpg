@@ -9,7 +9,8 @@
 // 모양은 어두운 쇠 바탕 + 바랜 금테 + 명조체 제목. 수치는 읽기 쉬운 고딕.
 
 import { CHARACTERS, CharacterDef } from '../core/characters'
-import { CHAR_SKILLS, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
+import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
+import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, isBossLike } from '../core/monsters'
 import { areaDef, isTown } from '../core/world'
@@ -272,8 +273,7 @@ export class D4Hud {
     // ---- 스킬 바
     const S = 50
     const GAP = 9
-    const ids = CHAR_SKILLS[me.char]
-    const n = 5
+    const n = 7
     const barW = n * S + (n - 1) * GAP + 40
     const bx = cx - barW / 2
     const by = baseY - S / 2 - 12
@@ -313,25 +313,57 @@ export class D4Hud {
     const x0 = bx + 20
     const slotX = (i: number) => x0 + i * (S + GAP)
     const rects: { x: number; y: number; id?: SkillId; i: number }[] = []
-    for (let k = 0; k < 3; k++) {
-      const id = ids[k]
+    // 칸 순서: Q · E · 1 · 2 · X (스킬 칸 번호 0 · 1 · 3 · 4 · 2) — 궁극기는 오른쪽 끝
+    const order = [0, 1, 3, 4, 2]
+    order.forEach((k, pos) => {
+      const node = slotNode(me, k)
+      if (node < 0) {
+        slot(h, slotX(pos), by, S, SKILL_KEYS[k], 0, 0, () => {
+          c.save()
+          c.fillStyle = 'rgba(255,255,255,0.12)'
+          c.font = `700 11px ${SANS}`
+          c.textAlign = 'center'
+          c.fillText('K', slotX(pos) + S / 2, by + S / 2 + 4)
+          c.restore()
+        })
+        return
+      }
+      const id = nodeSkill(me, node)
       const def = SKILLS[id]
-      const cdK = me.cd[k] / def.cd
+      const cdTotal = def.cd * nodeCd(me.build, node)
+      const cdK = (me.cd[k] ?? 0) / cdTotal
+      const cost = focusCost(def, me.build, node)
+      const poor = !def.ult && me.focus < cost
       const active = this.activeFor(id, me)
-      slot(h, slotX(k), by, S, SKILL_KEYS[k], cdK, me.cd[k] / 60, (dim) => drawSkillIcon(c, id, slotX(k) + S / 2, by + S / 2, S * 0.62, dim), def.ult === true, active)
-      rects.push({ x: slotX(k), y: by, id, i: k })
+      slot(h, slotX(pos), by, S, SKILL_KEYS[k], poor && cdK <= 0 ? 1 : cdK, (me.cd[k] ?? 0) / 60, (dim) => drawSkillIcon(c, id, slotX(pos) + S / 2, by + S / 2, S * 0.62, dim || poor), def.ult === true, active)
+      rects.push({ x: slotX(pos), y: by, id, i: k })
+    })
+    // 구르기: 던전은 충전 2 (작은 점), 투기장은 기력
+    const dashCd = me.dashCooldown / Math.max(1, CHARACTERS[me.char].dashCooldown * 1.6)
+    const dungeon = me.dashCharges !== undefined && this.dungeon
+    slot(h, slotX(5), by, S, 'Space', dungeon ? (me.dashCharges > 0 ? 0 : dashCd) : me.stamina < 34 ? 1 : dashCd, me.dashCooldown / 60, (dim) => drawDashIcon(c, slotX(5) + S / 2, by + S / 2, S * 0.62, dim))
+    if (dungeon) {
+      for (let q = 0; q < 2; q++) {
+        c.fillStyle = q < me.dashCharges ? '#7fd0f0' : 'rgba(255,255,255,0.15)'
+        c.beginPath()
+        c.arc(slotX(5) + S / 2 - 6 + q * 12, by + S - 6, 3, 0, Math.PI * 2)
+        c.fill()
+      }
     }
-    // 구르기: 대기(dashCooldown) 또는 기력 부족이면 어둡다
-    const dashCd = me.dashCooldown / Math.max(1, CHARACTERS[me.char].dashCooldown)
-    slot(h, slotX(3), by, S, 'Space', me.stamina < 34 ? 1 : dashCd, me.dashCooldown / 60, (dim) => drawDashIcon(c, slotX(3) + S / 2, by + S / 2, S * 0.62, dim))
-    // 무기: 재장전 중이면 그 진행
+    // 무기: 재장전 중이면 그 진행 · 탄약 수
     const relK = me.reloadTimer > 0 && w.reloadTicks > 0 ? me.reloadTimer / w.reloadTicks : 0
-    slot(h, slotX(4), by, S, '좌클릭', relK, me.reloadTimer / 60, (dim) => {
+    slot(h, slotX(6), by, S, '좌클릭', relK, me.reloadTimer / 60, (dim) => {
       c.save()
       c.globalAlpha = dim ? 0.4 : 1
-      drawWeaponGlyph(c, slotX(4) + S / 2, by + S / 2, me.weapon)
+      drawWeaponGlyph(c, slotX(6) + S / 2, by + S / 2, me.weapon)
       c.restore()
     })
+    c.save()
+    c.font = `700 11px ${SANS}`
+    c.textAlign = 'right'
+    c.fillStyle = w.magSize > 0 && me.ammo <= Math.ceil(w.magSize * 0.2) ? '#ff8a6a' : '#efe4cf'
+    c.fillText(w.magSize === 0 ? '∞' : me.fx[FX_FREEAMMO] > 0 ? '∞' : `${me.ammo}/${me.magSize}`, slotX(6) + S - 3, by + S - 4)
+    c.restore()
     // 경험치 (아래 가는 막대)
     const xpK = Math.min(1, me.xp / xpNeed(me.level))
     c.fillStyle = 'rgba(255,255,255,0.06)'
@@ -353,7 +385,10 @@ export class D4Hud {
     const lowPulse = me.alive && !me.downed && hpK < 0.3 ? 0.5 + 0.5 * Math.sin(h.t * 6) : 0
     const hpLabel = me.downed ? '쓰러짐' : !me.alive ? (me.out ? '탈락' : '사망') : `${Math.ceil(me.hp)}`
     orb(h, bx - R - 26, baseY - 6, R, me.alive ? hpK : 0, me.downed ? ['#5a5050', '#2a2424'] : ['#d8382a', '#5a0a0a'], hpLabel, me.alive && !me.downed ? `/ ${me.maxHp}` : '', lowPulse)
-    // ---- 탄약 오브 (오른쪽): 탄창이 곧 자원. 재장전하면 차오른다
+    // ---- 집중 오브 (오른쪽, D4): 총이 맞으면 차고 스킬이 쓴다 (던전). 투기장은 예전처럼 탄약
+    if (this.dungeon) {
+      orb(h, bx + barW + R + 26, baseY - 6, R, me.focus / 100, ['#4a8aff', '#0a1a5a'], `${Math.floor(me.focus)}`, '집중', 0)
+    } else {
     let ammoK: number
     let ammoLabel: string
     let ammoSub: string
@@ -372,6 +407,7 @@ export class D4Hud {
     }
     const lowAmmo = w.magSize > 0 && me.reloadTimer === 0 && me.ammo <= Math.max(1, Math.ceil(w.magSize * 0.2)) ? 0.5 + 0.5 * Math.sin(h.t * 8) : 0
     orb(h, bx + barW + R + 26, baseY - 6, R, ammoK, ['#e2b24a', '#5a3a0c'], ammoLabel, ammoSub, lowAmmo)
+    }
 
     // ---- 툴팁: 스킬 칸에 커서를 잠시 올리면 이름·설명 (디아블로처럼)
     let over = -1
@@ -519,6 +555,9 @@ export class D4Hud {
     c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
     c.fillText(unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
   }
+
+  /** 지금 판이 던전인가 (집중 구슬 · 구르기 충전) — hud 가 매 프레임 넣는다 */
+  dungeon = true
 
   /** 배너 (hud.banner 가 넣는다) */
   banner: { title: string; sub: string; color: string; t0: number } | null = null

@@ -11,6 +11,7 @@ import { NPC_RANGE, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { TownPanel } from '../ui/town'
+import { SkillPanel } from '../ui/skilltree'
 import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
@@ -87,6 +88,7 @@ export class Session {
   private viewArea = 0
   private waypoints!: WaypointPanel
   private town!: TownPanel
+  private skills!: SkillPanel
   /** 음성 대화 (방이 있을 때만) */
   private voice: Voice | null = null
   private state: GameState
@@ -212,7 +214,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>X</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>R</b> 재장전 · <b>3</b> 물약 · <b>F</b> 줍기·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>X</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>R</b> 재장전 · <b>3</b> 물약 · <b>F</b> 줍기·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -259,6 +261,15 @@ export class Session {
       (cmd, arg) => this.input.queueCmd(cmd, arg),
       (open) => {
         this.input.uiOpen = open || this.inventory?.open || this.waypoints?.open
+        this.sfx.blip()
+      },
+    )
+    this.skills = new SkillPanel(
+      this.stage.querySelector('.game-ui') as HTMLElement,
+      () => this.state.players[this.cfg.localPlayer],
+      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (open) => {
+        this.input.uiOpen = open || this.inventory?.open || this.town?.open !== null
         this.sfx.blip()
       },
     )
@@ -626,6 +637,17 @@ export class Session {
     }
     if (e.key === 'Escape' && this.inventory.open) {
       this.inventory.toggle(false)
+      e.preventDefault()
+      return
+    }
+    // 스킬 창: K (Esc 로도 닫힌다)
+    if (k === 'k') {
+      if (this.overlay.hidden) this.skills.toggle()
+      e.preventDefault()
+      return
+    }
+    if (e.key === 'Escape' && this.skills.open) {
+      this.skills.toggle(false)
       e.preventDefault()
       return
     }
@@ -1220,6 +1242,7 @@ export class Session {
     if (spec < 0 && this.spectate >= 0 && me.alive) this.spectate = -1
     this.syncView()
     const view = this.view()
+    this.skills.refresh()
     // NPC 창: 멀어지면 닫고, 거래가 끝나면 다시 그린다
     if (this.town.open) {
       const me = this.state.players[this.cfg.localPlayer]

@@ -85,6 +85,8 @@ describe('이어진 세계', () => {
       // 한 명은 들판으로 나가 싸우고, 한 명은 마을에
       standOnExit(g.s, g.mapOf, 0, 1)
       g.run(1)
+      // 들판에서 죽어 마을로 돌아가면 "두 지역" 이 아니게 된다 — 이 시험은 결정론이 목적이라 죽지 않게
+      g.s.players[0].invuln = 1e9
       for (const m of areaView(g.s, 1).monsters) m.st = 1
       g.run(600, (i, t) => (i === 0 ? { ...idle(), buttons: t % 3 === 0 ? BTN_FIRE : 0, aim: (t * 7) & 1023, mx: t % 200 < 100 ? 1 : -1 } : { ...idle(), mx: t % 60 < 30 ? 1 : 0 }))
       return g

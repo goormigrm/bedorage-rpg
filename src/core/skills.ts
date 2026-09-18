@@ -58,6 +58,92 @@ export const SKILLS: Record<SkillId, SkillDef> = {
 }
 
 /** 캐릭터별 [Q, E, X]. 1차 6명 밖의 캐릭터는 무기가 같은 1차 캐릭터 것을 빌린다(M7 에서 제 것을 준다) */
+/**
+ * 스킬 트리 (GUIDE 8장 — D4). 캐릭터마다 10칸: 0~4 액티브(자기 Q·E + 다른 캐릭터에게서 배우는 셋) · 5 궁극기 · 6~9 패시브.
+ * 랭크 1~5 — 레벨마다 포인트 하나. 액티브·궁극기는 랭크마다 위력 +15% · 재사용 -4%.
+ * 3랭크에서 [위력 +25% | 재사용 -20%], 5랭크에서 [위력 +25% | 집중 -35%] 중 하나를 고른다.
+ */
+export const TREE_ACTIVE: Record<string, SkillId[]> = {
+  cheolmyeon: ['ironwall', 'barrage', 'pancharge', 'grenade', 'firstaid'],
+  chim: ['pierce', 'grenade', 'fanfire', 'broadcast', 'catstep'],
+  dangun: ['broadcast', 'fanfire', 'catstep', 'oil', 'pierce'],
+  magic: ['firstaid', 'flame', 'ironwall', 'broadcast', 'grenade'],
+  seungwoo: ['pancharge', 'oil', 'ironwall', 'flame', 'barrage'],
+  oknyang: ['catstep', 'railshot', 'pierce', 'oil', 'fanfire'],
+}
+export const PASSIVES: { name: string; desc: string }[] = [
+  { name: '총기 숙련', desc: '피해 +4% / 랭크' },
+  { name: '강인함', desc: '최대 체력 +6% / 랭크' },
+  { name: '민첩', desc: '이동 +2% · 구르기 충전 -6% / 랭크' },
+  { name: '정신 집중', desc: '집중 획득 +10% · 재사용 대기 -2% / 랭크' },
+]
+export const TREE_SIZE = 10
+export const ULT_NODE = 5
+export const MAX_RANK = 5
+export const MOD_NAMES = [['위력 (+25%)', '신속 (재사용 -20%)'], ['극대화 (+25%)', '절약 (집중 -35%)']]
+
+/** 스킬 빌드 (세이브 · 판에 들어간다): 칸별 랭크 · 3·5랭크 변형(0 안 고름, 1·2) · 스킬 칸 Q·E·1·2 에 건 칸 번호 */
+export type Build = { r: number[]; m3: number[]; m5: number[]; s: number[] }
+
+export function defaultBuild(): Build {
+  const r = new Array(TREE_SIZE).fill(0)
+  r[0] = 1
+  r[1] = 1
+  r[ULT_NODE] = 1
+  return { r, m3: new Array(TREE_SIZE).fill(0), m5: new Array(TREE_SIZE).fill(0), s: [0, 1, 2, 3] }
+}
+
+/** 받은 빌드가 말이 되는가 (사고 방지) */
+export function sanitizeBuild(b: unknown): Build {
+  const d = defaultBuild()
+  if (!b || typeof b !== 'object') return d
+  const o = b as Partial<Build>
+  const num = (v: unknown, lo: number, hi: number, def: number) => (Number.isInteger(v) ? Math.max(lo, Math.min(hi, v as number)) : def)
+  for (let i = 0; i < TREE_SIZE; i++) {
+    d.r[i] = num(o.r?.[i], i === 0 || i === 1 || i === ULT_NODE ? 1 : 0, MAX_RANK, d.r[i])
+    d.m3[i] = d.r[i] >= 3 ? num(o.m3?.[i], 0, 2, 0) : 0
+    d.m5[i] = d.r[i] >= 5 ? num(o.m5?.[i], 0, 2, 0) : 0
+  }
+  for (let k = 0; k < 4; k++) d.s[k] = num(o.s?.[k], 0, 4, k)
+  return d
+}
+
+/** 쓴 포인트 (처음 공짜 셋은 빼고) */
+export function spentPoints(b: Build): number {
+  return b.r.reduce((a, v) => a + v, 0) - 3
+}
+
+/** 쓸 수 있는 포인트: 레벨마다 하나 + 퀘스트 보상 */
+export function freePoints(level: number, b: Build, bonus = 0): number {
+  return level - 1 + bonus - spentPoints(b)
+}
+
+/** 칸의 위력 배율 · 재사용 배율 · 집중 비용 배율 */
+export function nodePow(b: Build, n: number): number {
+  return 1 + 0.15 * Math.max(0, b.r[n] - 1) + (b.m3[n] === 1 ? 0.25 : 0) + (b.m5[n] === 1 ? 0.25 : 0)
+}
+export function nodeCd(b: Build, n: number): number {
+  return (1 - 0.04 * Math.max(0, b.r[n] - 1)) * (b.m3[n] === 2 ? 0.8 : 1)
+}
+export function focusCost(def: SkillDef, b: Build, n: number): number {
+  if (def.ult) return 0
+  const base = Math.max(15, Math.min(40, Math.round((def.cd / 60) * 2.5)))
+  return Math.round(base * (b.m5[n] === 2 ? 0.65 : 1))
+}
+
+/** 스킬 칸(0 Q · 1 E · 2 X · 3 [1] · 4 [2]) → 트리 칸 번호 (배우지 않았으면 -1) */
+export function slotNode(p: { build: Build }, slot: number): number {
+  if (slot === 2) return ULT_NODE
+  const n = p.build.s[slot < 2 ? slot : slot - 1] ?? -1
+  return n >= 0 && n < 5 && p.build.r[n] > 0 ? n : -1
+}
+
+/** 트리 칸 → 스킬 */
+export function nodeSkill(p: { char: CharacterId }, node: number): SkillId {
+  if (node === ULT_NODE) return CHAR_SKILLS[p.char][2]
+  return (TREE_ACTIVE[p.char] ?? CHAR_SKILLS[p.char])[node] ?? CHAR_SKILLS[p.char][0]
+}
+
 export const CHAR_SKILLS: Record<CharacterId, [SkillId, SkillId, SkillId]> = {
   cheolmyeon: ['ironwall', 'barrage', 'roar'],
   chim: ['pierce', 'grenade', 'composure'],
@@ -74,7 +160,8 @@ export const CHAR_SKILLS: Record<CharacterId, [SkillId, SkillId, SkillId]> = {
   juwoojae: ['pierce', 'grenade', 'composure'],
 }
 
-export const SKILL_KEYS = ['Q', 'E', 'X'] as const
+/** 스킬 칸 키 (칸 번호 = PlayerState.cd 번호: 0 Q · 1 E · 2 X · 3 [1] · 4 [2]) */
+export const SKILL_KEYS = ['Q', 'E', 'X', '1', '2'] as const
 
 /** 판이 시작될 때 궁극기는 절반쯤 차 있다 — 첫 큰 싸움에서 한 번은 쓸 수 있게 */
 export const ULT_START_FRAC = 0.5

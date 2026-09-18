@@ -14,14 +14,17 @@ export const BTN_USE = 1 << 6
 export const BTN_SKILL1 = 1 << 7
 export const BTN_SKILL2 = 1 << 8
 export const BTN_ULT = 1 << 9
-/** 스킬 번호(0·1·2) → 버튼 */
-export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT]
+/** 스킬 칸 1 · 2 (D4 — 스킬 트리에서 배운 스킬) */
+export const BTN_SKILL3 = 1 << 12
+export const BTN_SKILL4 = 1 << 13
+/** 스킬 칸(0 Q · 1 E · 2 X 궁극기 · 3 [1] · 4 [2]) → 버튼. 칸 번호는 PlayerState.cd 번호와 같다 */
+export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT, BTN_SKILL3, BTN_SKILL4]
 /** 타운 포털 (T): 1.5초 시전 — 움직이거나 쏘거나 맞으면 끊긴다 */
 export const BTN_PORTAL = 1 << 10
 /** 물약 (3): 최대 체력 35% 를 3초에 걸쳐 채운다. 충전식 (디아블로 4) */
 export const BTN_POTION = 1 << 11
 /** 마을(안전지대)에서 막는 버튼: 사격·정조준·스킬·포털 */
-export const TOWN_BLOCKED = BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_PORTAL
+export const TOWN_BLOCKED = BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_SKILL3 | BTN_SKILL4 | BTN_PORTAL
 
 export interface Input {
   /** -1, 0, 1 */
@@ -62,6 +65,12 @@ export const CMD_REROLL = 8
 export const CMD_GAMBLE = 9
 export const CMD_STASH_PUT = 10
 export const CMD_STASH_TAKE = 11
+/** 스킬 트리 (D4): 랭크 올리기(칸) · 변형 고르기(칸×4 + 단계×2 + (고른 것−1)) · 칸에 걸기(칸자리×16 + 칸) · 재분배(마을) · 용병(캐릭터 번호, 255 = 내보내기) */
+export const CMD_SKILL_UP = 12
+export const CMD_SKILL_MOD = 13
+export const CMD_SKILL_SLOT = 14
+export const CMD_RESPEC = 15
+export const CMD_HIRE = 16
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 
