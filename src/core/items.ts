@@ -6,7 +6,7 @@
 // 아이템은 숫자만으로 된 작은 객체다(상태·해시·세이브가 가볍게). 생성은 sim 의 rng 로만(결정론).
 
 import { Rng, rand, randInt } from './rng'
-import { WeaponId } from './weapons'
+import { WeaponId, familyOf } from './weapons'
 
 export const SLOT_WEAPON = 0
 export const SLOT_HELM = 1
@@ -18,7 +18,10 @@ export const SLOT_NAMES = ['무기', '투구', '갑옷', '반지', '목걸이']
 /** 가방 칸 수 */
 export const BAG_SIZE = 30
 
-export const WEAPON_IDS: WeaponId[] = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'pan']
+// 뒤에만 붙인다 — 세이브의 아이템이 번호(wt)로 무기 종류를 들고 있다
+export const WEAPON_IDS: WeaponId[] = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'pan', 'revolver', 'flamer', 'crossbow', 'doublebarrel', 'railgun', 'launcher', 'wok']
+/** 변형 무기(리볼버 · 화염방사기 …)가 떨어지기 시작하는 아이템 레벨 */
+export const VARIANT_ILVL = 6
 
 /** 등급: 일반 · 마법 · 희귀 · 전설 (디아블로 색: 흰 · 파랑 · 노랑 · 주황) */
 export const RARITY_NAMES = ['일반', '마법', '희귀', '전설']
@@ -45,8 +48,9 @@ export type Item = {
 /** 능력치 번호 (PlayerState.st 배열) */
 export const ST_DMG = 0 // 피해 +%
 export const ST_RATE = 1 // 연사 +%
-export const ST_RELOAD = 2 // 재장전 속도 +%
-export const ST_MAG = 3 // 탄창 +%
+// 2026-09-19 재장전·탄창을 없애며 이 두 칸을 바꿨다 (번호는 그대로 — 세이브의 옵션이 번호로 남아 있다)
+export const ST_SKILLPOW = 2 // 스킬 위력 +% (옛 재장전 속도)
+export const ST_ELITEDMG = 3 // 정예·우두머리·보스에게 주는 피해 +% (옛 탄창)
 export const ST_CRIT = 4 // 치명타 피해 +%
 export const ST_HP = 5 // 최대 체력 +
 export const ST_DR = 6 // 받는 피해 -%
@@ -73,8 +77,8 @@ interface AffixDef {
 export const AFFIXES: AffixDef[] = [
   { name: '피해', pct: true, base: 6, per: 0.8, slots: [SLOT_WEAPON, SLOT_RING], cap: 150 },
   { name: '연사 속도', pct: true, base: 4, per: 0.4, slots: [SLOT_WEAPON, SLOT_RING], cap: 60 },
-  { name: '재장전 속도', pct: true, base: 8, per: 0.6, slots: [SLOT_WEAPON, SLOT_HELM], cap: 70 },
-  { name: '탄창', pct: true, base: 10, per: 1, slots: [SLOT_WEAPON], cap: 100 },
+  { name: '스킬 위력', pct: true, base: 4, per: 0.5, slots: [SLOT_WEAPON, SLOT_HELM], cap: 60 },
+  { name: '정예·보스 피해', pct: true, base: 6, per: 0.8, slots: [SLOT_WEAPON], cap: 100 },
   { name: '치명타 피해', pct: true, base: 10, per: 1.5, slots: [SLOT_WEAPON, SLOT_RING, SLOT_HELM], cap: 200 },
   { name: '최대 체력', pct: false, base: 14, per: 3, slots: [SLOT_HELM, SLOT_ARMOR, SLOT_RING, SLOT_AMULET], cap: 400 },
   { name: '받는 피해 감소', pct: true, base: 3, per: 0.25, slots: [SLOT_ARMOR, SLOT_HELM], cap: 45 },
@@ -89,6 +93,7 @@ export const AFFIXES: AffixDef[] = [
 const BASE_NAMES = ['', '투구', '갑옷', '반지', '목걸이']
 const WEAPON_NAMES: Record<WeaponId, string> = {
   pistol: '권총', smg: 'SMG', rifle: '소총', shotgun: '산탄총', sniper: '저격총', mg: '기관총', pan: '후라이팬',
+  revolver: '리볼버', flamer: '화염방사기', crossbow: '석궁', doublebarrel: '더블배럴', railgun: '레일건', launcher: '유탄발사기', wok: '대형 웍',
 }
 const PREFIX = [
   ['낡은', '녹슨', '평범한'],
@@ -109,7 +114,7 @@ export const LEGENDS: { name: string; desc: string }[] = [
   { name: '불굴', desc: '체력이 30% 아래로 떨어지면 2초 무적 (40초에 한 번)' },
   { name: '광란', desc: '처치하면 3초 동안 연사 속도 +25%' },
   { name: '수호자', desc: '받는 피해 -8% · 쓰러진 동료를 두 배 빨리 일으킨다' },
-  { name: '탄약 주머니', desc: '처치하면 탄창의 20% 가 찬다' },
+  { name: '관통 탄띠', desc: '처치하면 다음 3발이 3마리를 꿰뚫고 피해 +30%' },
   { name: '집중', desc: '스킬 재사용 대기 -15%' },
   { name: '황금 손', desc: '골드 +50% · 골드를 주우면 체력 2% 회복' },
 ]
@@ -163,7 +168,12 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
   const leg = rarity === 3 ? randInt(rng, 0, LEGENDS.length) : undefined
   let wt = -1
   if (slot === SLOT_WEAPON) {
-    wt = rand(rng) < 0.85 ? WEAPON_IDS.indexOf(myWeapon) : randInt(rng, 0, WEAPON_IDS.length)
+    // 스마트 루트 85%: 내 계열 무기 — 아이템 레벨 6 부터는 계열의 변형도 (절반쯤). 나머지 15% 는 아무 종류(팔거나 동료에게)
+    if (rand(rng) < 0.85) {
+      const fam = familyOf(myWeapon)
+      const pool = ilvl >= VARIANT_ILVL ? fam : fam.slice(0, 1)
+      wt = WEAPON_IDS.indexOf(pool[randInt(rng, 0, pool.length)])
+    } else wt = randInt(rng, 0, WEAPON_IDS.length)
   }
   const aff: number[] = []
   const pool = AFFIXES.map((a, i) => ({ a, i })).filter(({ a }) => a.slots.includes(slot))

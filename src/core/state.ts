@@ -263,6 +263,8 @@ export interface Portal {
 }
 
 export interface Bullet {
+  /** 폭발 반경 (유탄 — 0 이면 안 터진다) */
+  boom: number
   id: number
   owner: number
   x: number

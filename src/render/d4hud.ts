@@ -350,9 +350,8 @@ export class D4Hud {
         c.fill()
       }
     }
-    // 무기: 재장전 중이면 그 진행 · 탄약 수
-    const relK = me.reloadTimer > 0 && w.reloadTicks > 0 ? me.reloadTimer / w.reloadTicks : 0
-    slot(h, slotX(6), by, S, '좌클릭', relK, me.reloadTimer / 60, (dim) => {
+    // 무기 (재장전이 없다 — 2026-09-19): 그림과 이름만
+    slot(h, slotX(6), by, S, '좌클릭', 0, 0, (dim) => {
       c.save()
       c.globalAlpha = dim ? 0.4 : 1
       drawWeaponGlyph(c, slotX(6) + S / 2, by + S / 2, me.weapon)
@@ -361,8 +360,9 @@ export class D4Hud {
     c.save()
     c.font = `700 11px ${SANS}`
     c.textAlign = 'right'
-    c.fillStyle = w.magSize > 0 && me.ammo <= Math.ceil(w.magSize * 0.2) ? '#ff8a6a' : '#efe4cf'
-    c.fillText(w.magSize === 0 ? '∞' : me.fx[FX_FREEAMMO] > 0 ? '∞' : `${me.ammo}/${me.magSize}`, slotX(6) + S - 3, by + S - 4)
+    c.fillStyle = '#efe4cf'
+    c.font = `600 9px ${SANS}`
+    c.fillText(w.name, slotX(6) + S - 3, by + S - 4)
     c.restore()
     // 경험치 (아래 가는 막대)
     const xpK = Math.min(1, me.xp / xpNeed(me.level))
@@ -389,24 +389,8 @@ export class D4Hud {
     if (this.dungeon) {
       orb(h, bx + barW + R + 26, baseY - 6, R, me.focus / 100, ['#4a8aff', '#0a1a5a'], `${Math.floor(me.focus)}`, '집중', 0)
     } else {
-    let ammoK: number
-    let ammoLabel: string
-    let ammoSub: string
-    if (w.magSize === 0) {
-      ammoK = stK
-      ammoLabel = '∞'
-      ammoSub = '근접'
-    } else if (me.reloadTimer > 0) {
-      ammoK = 1 - me.reloadTimer / w.reloadTicks
-      ammoLabel = '재장전'
-      ammoSub = w.name
-    } else {
-      ammoK = me.ammo / w.magSize
-      ammoLabel = me.fx[FX_FREEAMMO] > 0 ? '∞' : `${me.ammo}`
-      ammoSub = `/ ${w.magSize} · ${w.name}`
-    }
-    const lowAmmo = w.magSize > 0 && me.reloadTimer === 0 && me.ammo <= Math.max(1, Math.ceil(w.magSize * 0.2)) ? 0.5 + 0.5 * Math.sin(h.t * 8) : 0
-    orb(h, bx + barW + R + 26, baseY - 6, R, ammoK, ['#e2b24a', '#5a3a0c'], ammoLabel, ammoSub, lowAmmo)
+    // 투기장: 탄약이 없어졌으니 오른쪽 오브는 기력(구르기·달리기)
+    orb(h, bx + barW + R + 26, baseY - 6, R, stK, ['#e2b24a', '#5a3a0c'], `${Math.floor(me.stamina)}`, `기력 · ${w.name}`, 0)
     }
 
     // ---- 툴팁: 스킬 칸에 커서를 잠시 올리면 이름·설명 (디아블로처럼)

@@ -7,16 +7,16 @@
 import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
   CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_MAG, ST_RATE, ST_RELOAD, ST_SPEED,
-  ST_STAMINA, ST_XP, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
+  BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
-import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
+import { SNIPER_GRAZE_FRAC, WeaponId } from './weapons'
 import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
@@ -854,9 +854,16 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
   return state
 }
 
+/** 쏘는 무기: 무기 칸 아이템의 종류가 캐릭터 기본 무기와 같은 계열이면 그것, 아니면 기본 (2026-09-19 변형 무기) */
+export function weaponFor(char: CharacterId, equip: (Item | null)[]): WeaponId {
+  const base = CHARACTERS[char].weapon
+  const it = equip[SLOT_WEAPON]
+  const id = it ? WEAPON_IDS[it.wt] : undefined
+  return id && WEAPONS[id] && WEAPONS[id].family === WEAPONS[base].family ? id : base
+}
+
 function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet): PlayerState {
   const c = CHARACTERS[char]
-  const w = WEAPONS[c.weapon]
   const ult = SKILLS[CHAR_SKILLS[char][2]]
   const sh: Sheet = sheet ?? { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }
   // 세이브에서 온 것은 복사해 둔다 (상태가 세이브 객체를 건드리지 않게)
@@ -864,7 +871,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   const bag = sh.bag.map((it) => ({ ...it, aff: [...it.aff] }))
   const st = computeStats(sh.level, equip)
   const maxHp = c.maxHp + st[ST_HP]
-  const magSize = w.magSize > 0 ? Math.round(w.magSize * (1 + st[ST_MAG] / 100)) : 0
+  const weapon = weaponFor(char, equip)
+  const magSize = 0
   return {
     id,
     team,
@@ -880,7 +888,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     revive: 0,
     out: false,
     respawnTimer: 0,
-    weapon: c.weapon,
+    weapon,
     ammo: magSize,
     reloadTimer: 0,
     fireCooldown: 0,
@@ -971,7 +979,7 @@ function hasLeg(p: PlayerState | null | undefined, leg: number): boolean {
 
 function recalc(p: PlayerState): void {
   const c = CHARACTERS[p.char]
-  const w = WEAPONS[p.weapon]
+  p.weapon = weaponFor(p.char, p.equip)
   p.st = computeStats(p.level, p.equip)
   p.legs = legMask(p.equip)
   // 전설 "집중": 스킬 재사용 대기 -15% (옵션 상한과 따로 더한다)
@@ -984,8 +992,9 @@ function recalc(p: PlayerState): void {
   if (maxHp > p.maxHp && p.alive) p.hp += maxHp - p.maxHp
   p.maxHp = maxHp
   p.hp = Math.min(p.hp, p.maxHp)
-  p.magSize = w.magSize > 0 ? Math.round(w.magSize * (1 + p.st[ST_MAG] / 100)) : 0
-  p.ammo = Math.min(p.ammo, p.magSize)
+  // 재장전이 없다 (2026-09-19) — 탄창 칸은 0
+  p.magSize = 0
+  p.ammo = 0
 }
 
 /** 피해 배율 (레벨 + 장비) */
@@ -1245,12 +1254,6 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   }
   if (p.invuln > 0) p.invuln--
   if (p.legInjury > 0) p.legInjury--
-  if (p.reloadTimer > 0) {
-    // 아홉 목숨: 재장전 즉시
-    if (p.fx[FX_SNIPE] > 0) p.reloadTimer = 1
-    p.reloadTimer--
-    if (p.reloadTimer === 0) p.ammo = p.magSize
-  }
   const recover = c.id === 'chim' ? w.recoilRecover * CHIM.recoverMul : w.recoilRecover
   p.recoil = p.fx[FX_CRIT] > 0 ? 0 : Math.max(0, p.recoil - recover)
 
@@ -1347,30 +1350,12 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 줍기: 내 전리품·버려진 것 위를 지나가면 줍는다 (디아블로처럼 한 번 클릭 대신 — 슈터는 손이 바쁘다)
   if (state.drops.length > 0) pickUp(state, p)
 
-  // 재장전
-  if (playing && input.buttons & BTN_RELOAD && p.reloadTimer === 0 && p.ammo < p.magSize) {
-    p.reloadTimer = reloadTicks(p)
-    state.events.push({ type: 'reload', p: p.id })
-  }
-
   // 사격
   const firePressed = (input.buttons & BTN_FIRE) !== 0
   const trigger = w.auto ? firePressed : firePressed && !p.prevFire
   p.prevFire = firePressed
-  if (playing && trigger && p.dashTimer === 0 && p.fx[FX_WHIRL] === 0) {
-    // 저격총을 조준경 없이 쏘면 개머리판 후려치기 (아홉 목숨 중에는 그냥 쏜다)
-    if (w.bash && !p.ads && p.fx[FX_SNIPE] === 0) {
-      if (p.fireCooldown === 0) bashSwing(state, map, p, w.bash)
-    } else {
-      const infinite = w.magSize === 0
-      if (!infinite && p.ammo === 0 && p.reloadTimer === 0) {
-        p.reloadTimer = reloadTicks(p)
-        state.events.push({ type: 'reload', p: p.id })
-      } else if (p.fireCooldown === 0 && p.reloadTimer === 0 && (infinite || p.ammo > 0)) {
-        fire(state, map, p)
-      }
-    }
-  }
+  // 재장전이 없다 (2026-09-19 사용자 — 시원한 슈팅): 누르고 있으면 발사 간격마다 끝없이 쏜다
+  if (playing && trigger && p.dashTimer === 0 && p.fx[FX_WHIRL] === 0 && p.fireCooldown === 0) fire(state, map, p)
 }
 
 /**
@@ -1744,13 +1729,6 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
   return n
 }
 
-function bashSwing(state: GameState, map: GameMap, p: PlayerState, bash: BashDef): void {
-  p.fireCooldown = bash.interval
-  state.events.push({ type: 'bash', p: p.id, x: p.x, y: p.y, aim: p.aim })
-  p.shots++
-  swingAt(state, map, p, bash.range, bash.arc, bash.damage, 3)
-}
-
 /** 탄 하나를 만든다 (사격·난사·관통 저격 공용) */
 function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a: number, weapon: PlayerState['weapon'], o: { speed?: number; damage?: number; life?: number; pierce?: number; mul?: number; headTarget: number; critMon: number; over: boolean; overR: number }): void {
   const w = WEAPONS[weapon]
@@ -1779,6 +1757,7 @@ function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a
     pierce: (o.pierce ?? 0) + (p.fx[FX_KING] > 0 ? 2 : 0),
     lastHit: 0,
     mul: (o.mul ?? 1) * (p.fx[FX_KING] > 0 ? 1.3 : 1),
+    boom: WEAPONS[weapon].boom ? WEAPONS[weapon].boom!.r : 0,
     forceCrit: p.fx[FX_CRIT] > 0,
   }
   state.bullets.push(b)
@@ -1818,7 +1797,8 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
     mul *= 1.3
   }
   if (snipe) pierce = Math.max(pierce, 2)
-  if (p.empowerShots > 0 && w.scope) {
+  pierce += w.pierce ?? 0
+  if (p.empowerShots > 0) {
     p.empowerShots--
     mul *= 2
   }
@@ -1827,21 +1807,11 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
     const a = (p.aim + off) & 1023
     spawnBullet(state, p, mx, my, a, p.weapon, { headTarget, critMon, over: aimsAtHead(state, map, p, mx, my, a, headTarget), overR, pierce, mul })
   }
-  if (w.magSize > 0 && p.fx[FX_FREEAMMO] === 0) p.ammo--
   if (state.mode === 'dungeon' && !w.suppressed) noise(state, p.x, p.y)
   p.shots += w.pellets // 명중률을 탄 단위로 재야 산탄총이 왜곡되지 않는다
   p.fireCooldown = interval
   if (p.fx[FX_CRIT] === 0) p.recoil = Math.min(w.recoil * MAX_RECOIL_MUL * 2, p.recoil + w.recoil * (p.char === 'chim' ? CHIM.recoilMul : 1))
   state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: p.weapon })
-  if (w.magSize > 0 && p.ammo === 0) {
-    p.reloadTimer = reloadTicks(p)
-    state.events.push({ type: 'reload', p: p.id })
-  }
-}
-
-/** 재장전 시간 (재장전 속도 옵션 반영) */
-function reloadTicks(p: PlayerState): number {
-  return Math.max(10, Math.round(WEAPONS[p.weapon].reloadTicks / (1 + p.st[ST_RELOAD] / 100)))
 }
 
 // ================================================================ 스킬
@@ -1883,7 +1853,7 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
   const def = SKILLS[id]
   p.cd[slot] = Math.round(def.cd * (1 - p.st[ST_CDR] / 100) * (node >= 0 ? nodeCd(p.build, node) : 1))
   if (state.mode === 'dungeon' && node >= 0) p.focus = Math.max(0, p.focus - focusCost(def, p.build, node))
-  skillPow = node >= 0 ? nodePow(p.build, node) : 1
+  skillPow = (node >= 0 ? nodePow(p.build, node) : 1) * (1 + p.st[ST_SKILLPOW] / 100)
   try {
     castSkillBody(state, map, p, slot, id, def)
   } finally {
@@ -2294,6 +2264,12 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
     }
 
     if (!dead && b.life <= 0) dead = true
+    // 유탄: 맞거나 벽에 닿거나 멈추면 그 자리에서 터진다 (몬스터만 — 사람은 안 다친다)
+    if (dead && b.boom > 0) {
+      const bw = WEAPONS[b.weapon]
+      booms.push({ x: b.x, y: b.y, r: b.boom, dmg: Math.round(b.damage * b.mul * (bw.boom?.mul ?? 1)), by: b.owner, safe: true })
+      state.events.push({ type: 'aoe', p: b.owner, id: 'grenade', x: b.x, y: b.y, r: b.boom })
+    }
     // 맞히지 못하고 사라진 탄 → 기열덕 연속 명중 한 단계 내림
     if (dead && !b.hitSomeone) state.players[b.owner].streak = Math.max(0, state.players[b.owner].streak - 1)
     if (!dead) bullets[write++] = b
@@ -2417,6 +2393,9 @@ function noise(state: GameState, x: number, y: number): void {
 
 function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit: boolean, x: number, y: number): void {
   if (m.hp <= 0 || dmg <= 0) return
+  // 정예·보스 피해 옵션 (옛 탄창 칸)
+  const hitter = by >= 0 ? state.players[by] : undefined
+  if (hitter && hitter.st[ST_ELITEDMG] > 0 && (m.elite || MONSTER_LIST[m.kind].boss)) dmg = Math.round(dmg * (1 + hitter.st[ST_ELITEDMG] / 100))
   // 약화(생중계·스포트라이트): 받는 피해 증가
   if (m.vuln > 0 && m.vulnPct > 0) dmg = Math.round(dmg * (1 + m.vulnPct / 100))
   if (m.elite & EA_STOUT) dmg = Math.max(1, Math.round(dmg * AFFIX_TUNE.stout))
@@ -2474,7 +2453,7 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
       if (killer.st[ST_LIFEKILL] > 0 && isActive(killer)) killer.hp = Math.min(killer.maxHp, killer.hp + killer.st[ST_LIFEKILL])
       if (hasLeg(killer, LEG_CORPSE) && rand(state.rng) < 0.25) booms.push({ x: m.x, y: m.y, r: 70, dmg: Math.round(m.maxHp * 0.3), by: killer.id, safe: true })
       if (hasLeg(killer, LEG_FRENZY)) buffRate(killer, 180, 1.25)
-      if (hasLeg(killer, LEG_AMMO) && killer.magSize > 0) killer.ammo = Math.min(killer.magSize, killer.ammo + Math.ceil(killer.magSize * 0.2))
+      if (hasLeg(killer, LEG_AMMO)) killer.pierceShots = Math.min(6, killer.pierceShots + 3)
     }
     reward(state, m, def)
     if (rand(state.rng) < def.globe) {
@@ -2653,7 +2632,7 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   if (cmd === CMD_EQUIP) {
     const it = p.bag[arg]
     if (!it) return
-    if (it.slot === SLOT_WEAPON && WEAPON_IDS[it.wt] !== p.weapon) return
+    if (it.slot === SLOT_WEAPON && WEAPONS[WEAPON_IDS[it.wt]]?.family !== WEAPONS[CHARACTERS[p.char].weapon].family) return
     const old = p.equip[it.slot]
     p.equip[it.slot] = it
     if (old) p.bag[arg] = old

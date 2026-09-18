@@ -1,6 +1,7 @@
 // HUD 오버레이 (2D 캔버스). 3D 씬 위에 투명하게 겹친다. sim 을 바꾸지 않는다.
 // 협동: 위 가운데 층 목표(남은 몬스터), 왼쪽 아래 내 카드, 오른쪽 아래 파티(동료 체력은 늘 보인다), 가운데 알림.
 
+import { WEAPONS } from '../core/weapons'
 import { CHARACTERS } from '../core/characters'
 import { GameState, PlayerState } from '../core/state'
 import { WeaponId } from '../core/weapons'
@@ -473,7 +474,9 @@ export class Hud {
  * 무기 그림 (덕의 킬 배너에서 가져옴 — 아이템 아이콘·캐릭터 창에 다시 쓴다). (cx, cy) 가운데, 폭 약 50px, 총구는 오른쪽(죽은 사람 쪽).
  * 화살표 "▶" 대신 무엇으로 죽였는지 보여 준다 (2026-09-05 요청). 선 몇 개로 그린 실루엣이라 폰트가 없어도 같다.
  */
-export function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: WeaponId): void {
+export function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, w0: WeaponId): void {
+  // 변형 무기는 계열의 실루엣으로 그리고 오른쪽 위에 작은 별을 단다 (리볼버 → 권총 모양 ★)
+  const w = WEAPONS[w0]?.family ?? w0
   ctx.save()
   ctx.translate(cx, cy + 1)
   ctx.scale(1.25, 1.25) // 34px 글자 옆에서 눈에 들어오는 크기
@@ -556,6 +559,11 @@ export function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: nu
       ctx.arc(8, -3.5, 2.6, 0, Math.PI * 2)
       ctx.fill()
       break
+  }
+  if (w !== w0) {
+    ctx.fillStyle = '#ffd86a'
+    ctx.font = '700 9px sans-serif'
+    ctx.fillText('★', 10, -8)
   }
   ctx.restore()
 }

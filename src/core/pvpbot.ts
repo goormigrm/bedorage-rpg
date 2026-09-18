@@ -5,7 +5,7 @@
 // 여러 명이 있으면 보이는 적 중 가장 가까운 사람을 표적으로 삼고, 안 보이면 마지막으로 본 곳을 뒤진다.
 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_SPRINT, BTN_SWAP, Input, SKILL_BTNS } from './input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_SPRINT, BTN_SWAP, Input, SKILL_BTNS } from './input'
 import { CHARACTER_LIST } from './characters'
 import { GameMap, TILE, isWall, rayBlocked } from './map'
 import { Rng, makeRng, rand, randInt, randSigned } from './rng'
@@ -49,6 +49,13 @@ const PREFERRED_RANGE: Record<WeaponId, number> = {
   sniper: 380,
   mg: 200,
   pan: 42,
+  revolver: 230,
+  flamer: 110,
+  crossbow: 280,
+  doublebarrel: 95,
+  railgun: 400,
+  launcher: 260,
+  wok: 48,
 }
 
 /** 봇이 죽었을 때 캐릭터를 바꿀 확률 (2026-09-06 사용자: 봇전에서 봇도 게임 중에 캐릭터를 바꾸게). 계측·시험은 swap 을 끈 봇을 쓴다 */
@@ -253,7 +260,6 @@ export function pvpBotInput(
     // 저격총은 조준경 없이는 개머리판이라, 난이도와 상관없이 후려칠 거리 밖이면 조준경을 켠다
     if (((d.useAds && dist > 180) || (w.bash && dist > (w.bash.range + 20))) && me.dashTimer === 0) out.buttons |= BTN_ADS
   }
-  if (!los && me.ammo < w.magSize * 0.4 && me.reloadTimer === 0) out.buttons |= BTN_RELOAD
 
   // ---- 이동 ----
   let goalX = -1

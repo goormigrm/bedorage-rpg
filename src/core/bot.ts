@@ -5,7 +5,7 @@
 // 봇의 기억(BotMemory)은 상태 밖이라 P2P 에서는 호스트가 봇 입력을 만들어 보낸다(덕 DESIGN 8.6 그대로).
 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_RELOAD, BTN_USE, Input, SKILL_BTNS } from './input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_USE, Input, SKILL_BTNS } from './input'
 import { GameMap, TILE, isWallAt, rayBlocked } from './map'
 import { ACID, MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
@@ -47,6 +47,13 @@ const PREFERRED_RANGE: Record<WeaponId, number> = {
   sniper: 330,
   mg: 190,
   pan: 30,
+  revolver: 220,
+  flamer: 110,
+  crossbow: 260,
+  doublebarrel: 90,
+  railgun: 360,
+  launcher: 240,
+  wok: 36,
 }
 
 export interface BotMemory {
@@ -186,7 +193,7 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     out.aimDist = Math.min(255, Math.round(d / 4))
     const err = Math.abs(angleDiff(want, mem.aim))
     if (mem.seen && err < deg(10) && rand(mem.rng) < diff.fireChance && d < range) out.buttons |= BTN_FIRE
-    if (w.scope && d > 220 && mem.seen) out.buttons |= BTN_ADS
+    if (w.family === 'sniper' && d > 220 && mem.seen) out.buttons |= BTN_ADS
     // 거리 유지 (방패가 이쪽을 보면 옆으로 돌아 들어간다)
     const pref = PREFERRED_RANGE[me.weapon]
     if (guarding(target, me) && !w.melee) {
@@ -209,7 +216,6 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
       fy = (target.x - me.x) * mem.strafeDir
     }
   } else {
-    if (me.ammo < w.magSize * 0.6 && me.reloadTimer === 0 && w.magSize > 0) out.buttons |= BTN_RELOAD
   }
 
   // 4) 표적이 없을 때: 쓰러진 동료 → 이끄는 사람 → (없으면) 가장 가까운 몬스터를 찾아간다

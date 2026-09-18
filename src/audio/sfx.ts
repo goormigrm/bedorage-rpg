@@ -501,6 +501,40 @@ export class Sfx {
         for (const f of [520, 780, 1170, 1560]) this.tone(node, t0, 0.5, 'sine', f, f * 0.96, 0.2, 0.002)
         this.noiseBurst(node, t0, 0.05, 'highpass', 4000, 2500, 0.5)
         break
+      case 'revolver':
+        // 소음기 없는 한 발: 크고 굵게
+        this.noiseBurst(node, t0, 0.12, 'bandpass', 1200, 350, 1.0, 0.7)
+        this.tone(node, t0, 0.14, 'sine', 160, 45, 1.0)
+        break
+      case 'flamer':
+        // 불길: 쉬익 하는 잡음
+        this.noiseBurst(node, t0, 0.09, 'bandpass', 700, 900, 0.35, 0.4)
+        break
+      case 'crossbow':
+        // 시위: 퉁 + 짧은 윙
+        this.tone(node, t0, 0.08, 'triangle', 320, 140, 0.6)
+        this.noiseBurst(node, t0, 0.04, 'highpass', 2500, 1500, 0.35)
+        break
+      case 'doublebarrel':
+        this.noiseBurst(node, t0, 0.32, 'lowpass', 1400, 250, 1.2)
+        this.tone(node, t0, 0.24, 'sine', 110, 32, 1.2)
+        this.noiseBurst(node, t0 + 0.03, 0.2, 'lowpass', 1000, 200, 0.8)
+        break
+      case 'railgun':
+        // 전기: 올라가는 윙 + 크랙
+        this.tone(node, t0, 0.18, 'sawtooth', 300, 2400, 0.35)
+        this.noiseBurst(node, t0 + 0.05, 0.1, 'highpass', 3500, 2200, 1.0)
+        this.tone(node, t0 + 0.05, 0.4, 'sine', 90, 30, 1.0)
+        break
+      case 'launcher':
+        // 퐁 (유탄이 나가는 소리 — 터지는 소리는 aoe 가 낸다)
+        this.tone(node, t0, 0.12, 'sine', 220, 90, 0.9)
+        this.noiseBurst(node, t0, 0.08, 'lowpass', 800, 300, 0.6)
+        break
+      case 'wok':
+        for (const f of [330, 495, 740, 990]) this.tone(node, t0, 0.6, 'sine', f, f * 0.95, 0.22, 0.002)
+        this.noiseBurst(node, t0, 0.06, 'highpass', 3000, 2000, 0.5)
+        break
       case 'sniper':
         // 크랙(날카롭고 길게) + 몸을 치는 저음 + 메아리 꼬리 + 0.25초 뒤 노리쇠 — 조준경 안에서도 "쐈다" 가 들리게
         this.noiseBurst(node, t0, 0.09, 'highpass', 3200, 1800, 1.2)

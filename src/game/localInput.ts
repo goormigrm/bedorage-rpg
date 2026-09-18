@@ -1,7 +1,7 @@
 // 키보드·마우스 → Input. 화면 좌표는 1280x720 논리 프레임.
 
 import { ANGLE_MASK, angleDiff, radToAngle } from '../core/fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_RELOAD, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
+import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, BTN_SPRINT, BTN_ULT, BTN_USE, Input } from '../core/input'
 import { GameMap } from '../core/map'
 import { GameState } from '../core/state'
 import { WEAPONS } from '../core/weapons'
@@ -205,7 +205,6 @@ export class LocalInput {
     if (k.has(' ') || t?.takeDash()) buttons |= BTN_DASH
     // 폰은 달리기 버튼으로 켜고 끈다 (스틱 끝까지 밀기는 늘 켜져 있어 무조건 달리는 꼴이었다)
     if (k.has('shift') || t?.sprint) buttons |= BTN_SPRINT
-    if (k.has('r') || t?.reload) buttons |= BTN_RELOAD
     // F: 쓰러진 동료 일으키기 (누르고 있는 동안)
     if (k.has('f')) buttons |= BTN_USE
     if (k.has('t')) buttons |= BTN_PORTAL

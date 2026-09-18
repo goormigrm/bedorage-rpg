@@ -222,7 +222,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>X</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>R</b> 재장전 · <b>3</b> 물약 · <b>F</b> 줍기·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>X</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>3</b> 물약 · <b>F</b> 줍기·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -373,6 +373,8 @@ export class Session {
       map: () => this.map,
       /** 내 지역 번호 · 그 지역의 판 (여러 지역이면 state() 의 몬스터 칸은 다른 지역일 수 있다) */
       area: () => this.state.players[this.cfg.localPlayer]?.area,
+      /** 내 자리 번호 (여러 탭 P2P 확인에서 내 캐릭터를 찾는다) */
+      me: () => this.cfg.localPlayer,
       view: () => areaView(this.state, this.viewArea),
       /** 보는 지역의 자리들 (출구 · 웨이포인트 · 포털 자리) — 브라우저 확인용 */
       layout: () => areaLayout(this.viewArea, this.map),

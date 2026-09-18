@@ -39,7 +39,7 @@ const s = (sec: number) => Math.round(sec * 60)
 export const SKILLS: Record<SkillId, SkillDef> = {
   // 철면덕 — 탱커: 맞아 주고 끌어모은다
   ironwall: { id: 'ironwall', name: '철벽', desc: '4초간 받는 피해 -50%, 7칸 안의 괴물이 나만 노린다.', cd: s(14) },
-  barrage: { id: 'barrage', name: '탄막', desc: '4초간 연사 2배 · 탄을 쓰지 않는다. 맞은 괴물은 느려진다.', cd: s(16) },
+  barrage: { id: 'barrage', name: '탄막', desc: '4초간 연사 2배. 맞은 괴물은 느려진다.', cd: s(16) },
   roar: { id: 'roar', name: '야차의 포효', desc: '주변 5칸에 120 피해 · 밀쳐 내고 2초 기절. 8칸 안 동료는 6초간 받는 피해 -30%.', cd: s(70), ult: true },
   // 침착덕 — 원거리: 정확하게, 줄지어 선 것을 꿰뚫는다
   pierce: { id: 'pierce', name: '관통탄', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.', cd: s(10) },
@@ -58,9 +58,9 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   oil: { id: 'oil', name: '기름 튀기기', desc: '주변 3칸에 50 피해 · 2.5초간 절반 속도.', cd: s(10) },
   kitchen: { id: 'kitchen', name: '주방 대참사', desc: '5초간 회전하며 0.25초마다 주변 2.4칸에 35 피해. 이동 +30% · 받는 피해 -50%.', cd: s(60), ult: true },
   // 옥냥덕 — 보스 딜: 한 방을 크게
-  catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 저격 한 발 피해 2배.', cd: s(9) },
+  catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배.', cd: s(9) },
   railshot: { id: 'railshot', name: '관통 저격', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타.', cd: s(12) },
-  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 저격 연사 3배 · 재장전 즉시 · 탄이 2마리를 꿰뚫고 조준경 없이도 정확.', cd: s(70), ult: true },
+  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 연사 3배 · 탄이 2마리를 더 꿰뚫고 퍼짐이 거의 없다.', cd: s(70), ult: true },
   // ---- D7 나머지 여섯 (2026-09-18) ----
   // 주펄덕 — 빛: 붙어서 눈부시게
   flash: { id: 'flash', name: '섬광', desc: '주변 3.5칸에 25 피해 · 1.5초 기절.', cd: s(11) },
@@ -211,7 +211,7 @@ export function skillsOf(char: CharacterId): SkillDef[] {
 export const FX_GUARD = 0
 /** 연사 배율이 걸린 시간 (탄막 2배 · 침착 1.5배 · 스포트라이트 1.3배 · 아홉 목숨 3배 — 가장 큰 것) */
 export const FX_RATE = 1
-/** 탄을 쓰지 않는다 (탄막) */
+/** 탄막(철면덕 E) 중 — 맞은 괴물이 느려진다 (재장전이 없어진 뒤로 "탄을 안 씀" 은 뜻이 없다) */
 export const FX_FREEAMMO = 2
 /** 모든 탄이 치명타 · 반동 없음 (침착 모드) */
 export const FX_CRIT = 3
@@ -219,7 +219,7 @@ export const FX_CRIT = 3
 export const FX_WHIRL = 4
 /** 파티 받는 피해 -30% (야차의 포효) */
 export const FX_PARTYDR = 5
-/** 저격 강화 (아홉 목숨) — 재장전 즉시 · 관통 2 · 조준경 없이 정확 */
+/** 저격 강화 (아홉 목숨) — 관통 2 · 정조준 퍼짐 */
 export const FX_SNIPE = 6
 /** 돌진·도약 중 (움직임은 dashTimer 가 맡고, 이 값은 돌진 피해를 준다) */
 export const FX_CHARGE = 7

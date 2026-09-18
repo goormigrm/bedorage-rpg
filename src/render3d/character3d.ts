@@ -104,6 +104,8 @@ export interface CharacterRig {
   flashMats: THREE.MeshLambertMaterial[]
   /** 피격 플래시. tint 는 색(기본 흰색) — 몸통은 빨강, 머리는 금색 */
   setFlash(k: number, tint?: number): void
+  /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 …) */
+  setWeapon(w: WeaponDef): void
 }
 
 export function buildCharacter(def: CharacterDef): CharacterRig {
@@ -185,7 +187,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   }
   arms.add(mkArm(-1), mkArm(1))
   const weapon = WEAPONS[def.weapon]
-  const gun = buildGun(weapon, R)
+  let gun = buildGun(weapon, R)
   gun.group.position.set(0.02, -0.02, armLen * 0.55)
   arms.add(gun.group)
 
@@ -198,6 +200,15 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
     setFlash(k: number, tint = 0xffffff) {
       const e = k > 0 ? new THREE.Color(tint).multiplyScalar(k) : new THREE.Color(0, 0, 0)
       for (const m of flashMats) m.emissive.copy(e)
+    },
+    setWeapon(w: WeaponDef) {
+      if (rig.weapon.id === w.id) return
+      arms.remove(gun.group)
+      gun = buildGun(w, R)
+      gun.group.position.set(0.02, -0.02, armLen * 0.55)
+      arms.add(gun.group)
+      rig.gunTip = gun.tip
+      rig.weapon = w
     },
   }
   return rig

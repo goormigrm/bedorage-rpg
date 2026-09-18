@@ -1,8 +1,18 @@
 // 무기 밸런스 테이블. 시간 단위는 틱(60Hz), 거리는 px.
-// 밸런스 원칙 (2026-09-04): 체력이 2배(170~300)라 총으로 여러 발 주고받아야 죽는다.
-// 저격총만 한 방(몸 120, 머리 240)에 죽일 수 있고, 나머지는 한 번의 사격으로 죽지 않는다.
+//
+// 2026-09-19 사용자: "시원한 슈팅 RPG 를 위해서 재장전을 없애고, 저격총은 오른쪽 마우스 줌을 없애자. 대신 각 총들 간에 밸런스를 맞춰줘.
+// 더 다양한 무기 종류가 있다면 적용시켜줘" →
+//   - **재장전·탄창 없음**: 꾹 누르면 발사 간격마다 끝없이 쏜다. 무기의 개성은 연사 · 사거리 · 퍼짐 · 관통 · 폭발 · 넉백으로 낸다.
+//   - **저격총 조준경 없음**: 우클릭은 다른 총처럼 정조준(퍼짐↓ · 이동↓)만. 한 방 판정·개머리판도 없앴다. 대신 탄이 하나를 꿰뚫는다.
+//   - **밸런스 기준 = 지속 DPS**(피해 × 탄 수 ÷ 발사 간격, 레벨·장비 배율 전). 예전 "탄창 + 재장전" 한 주기의 평균(약 1.6~2.0)을
+//     그대로 두고(분량 6시간을 지키려고), 역할마다 조금씩 벌린다: 가까이 붙는 무기는 높게 · 멀리서 안전한 무기 · 여럿을 꿰뚫는 무기는 낮게.
+//   - **계열(family) 안의 변형 무기**: 캐릭터는 제 계열 무기만 낀다(정체성 유지). 무기 칸 아이템의 종류가 곧 쏘는 총이다.
+//     계열마다 기본 + 변형 하나 — 권총/리볼버 · SMG/화염방사기 · 소총/석궁 · 산탄총/더블배럴 · 저격총/레일건 · 기관총/유탄발사기 · 후라이팬/대형 웍.
+//     변형은 아이템 레벨 6 부터 떨어진다(tools/weapons.ts 로 DPS 표를 본다).
 
-export type WeaponId = 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'sniper' | 'mg' | 'pan'
+export type WeaponId =
+  | 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'sniper' | 'mg' | 'pan'
+  | 'revolver' | 'flamer' | 'crossbow' | 'doublebarrel' | 'railgun' | 'launcher' | 'wok'
 
 /** 저격 조준경 탄이 반지름의 이 비율 바깥으로 지나가면 '스침' — 죽이지 않고 체력 grazeLeave 를 남긴다 */
 export const SNIPER_GRAZE_FRAC = 0.7
@@ -18,6 +28,14 @@ export interface BashDef {
 export interface WeaponDef {
   id: WeaponId
   name: string
+  /** 계열 (캐릭터가 낄 수 있는지 — 캐릭터 기본 무기의 계열과 같아야 한다) */
+  family: WeaponId
+  /** 한 줄 설명 (가방 창 툴팁) */
+  desc: string
+  /** 탄이 기본으로 꿰뚫는 수 (석궁 · 저격 · 레일건 · 화염) */
+  pierce?: number
+  /** 맞거나 끝나면 터진다 (유탄): 반경 px · 폭발 피해 배율(탄 피해 기준) */
+  boom?: { r: number; mul: number }
   damage: number
   /** 조준경(ADS)으로 맞히면 한 방 — 스치면(반지름 바깥 SNIPER_GRAZE_FRAC) 체력을 grazeLeave 만 남긴다 (저격총, 2026-09-05) */
   lethalAds?: boolean
@@ -27,11 +45,11 @@ export interface WeaponDef {
   pellets: number
   /** 발사 간격 (틱) */
   fireInterval: number
-  /** 자동 연사 여부. 모든 무기가 꾹 누르면 발사 간격마다 계속 쏜다 (탄이 떨어지면 자동 재장전) */
+  /** 자동 연사 여부. 모든 무기가 꾹 누르면 발사 간격마다 계속 쏜다 */
   auto: boolean
-  /** 0 이면 무한 (근접 무기) */
+  /** 탄창 — 2026-09-19 재장전을 없애 모두 0(무한). 투기장 옛 규칙의 흔적이라 자리만 남긴다 */
   magSize: number
-  /** 재장전 틱 */
+  /** 재장전 틱 — 모두 0 */
   reloadTicks: number
   /** 지향/조준 탄퍼짐 (1024 단계 각도 단위, ±) */
   spreadHip: number
@@ -77,67 +95,128 @@ export function falloff(w: WeaponDef, dist: number): number {
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
 
+/** 무기 계열 공통 값 (모두 무한 탄) */
+const INF = { magSize: 0, reloadTicks: 0, auto: true }
+
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  // ---------------- 권총 계열 (단군덕 · 우원덕) — 중거리 · 정확 · 소음기 ----------------
+  // DPS 20/11 = 1.82. 소음기라 총소리가 무리를 깨우지 않는다(정찰)
   pistol: {
-    // 2026-09-05 오픈 베타: 소음기 달린 권총 — 발소리 없음·총소리 아주 작음, 피해 27 → 30 (보통 봇 표에서 권총 둘이 37~40% 바닥)
-    id: 'pistol', knock: 1.2, name: '권총', damage: 30, suppressed: true, pellets: 1, fireInterval: 11, auto: true,
-    magSize: 14, reloadTicks: 90, spreadHip: deg(5), spreadAds: deg(1.6), recoil: deg(2.2),
-    recoilRecover: deg(0.55), speed: 15, life: 60, moveMul: 1.0, length: 14, color: 0x9aa0a6,
-    falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    ...INF, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
+    knock: 1.2, damage: 20, suppressed: true, pellets: 1, fireInterval: 11,
+    spreadHip: deg(4), spreadAds: deg(1.4), recoil: deg(1.8), recoilRecover: deg(0.55),
+    speed: 15, life: 60, moveMul: 1.0, length: 14, color: 0x9aa0a6, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
+  // 리볼버: 느리고 한 발이 크다(46). 소음기가 없어 시끄럽다. DPS 1.92
+  revolver: {
+    ...INF, id: 'revolver', family: 'pistol', name: '리볼버', desc: '한 발 한 발이 크다(권총의 두 배 남짓). 대신 느리고 시끄럽다.',
+    knock: 2.4, damage: 46, pellets: 1, fireInterval: 24,
+    spreadHip: deg(3), spreadAds: deg(0.9), recoil: deg(4), recoilRecover: deg(0.6),
+    speed: 18, life: 55, moveMul: 1.0, length: 16, color: 0xb08a50, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+  },
+  // ---------------- SMG 계열 (주펄덕) — 근접 난사 ----------------
+  // DPS 11/5 = 2.2 (가까이). 멀면 0.62 배
   smg: {
-    id: 'smg', knock: 0.6, name: 'SMG', damage: 16, pellets: 1, fireInterval: 5, auto: true,
-    magSize: 32, reloadTicks: 110, spreadHip: deg(8), spreadAds: deg(4.2), recoil: deg(1.4),
-    recoilRecover: deg(0.5), speed: 14, life: 55, moveMul: 0.96, length: 18, color: 0x7c8590,
-    falloffStart: 320, falloffEnd: 700, falloffMin: 0.62,
+    ...INF, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
+    knock: 0.6, damage: 11, pellets: 1, fireInterval: 5,
+    spreadHip: deg(7), spreadAds: deg(4), recoil: deg(1.2), recoilRecover: deg(0.5),
+    speed: 14, life: 55, moveMul: 0.96, length: 18, color: 0x7c8590, falloffStart: 320, falloffEnd: 700, falloffMin: 0.62,
   },
-  // 2026-09-05 탄속 17 → 24 (사용자: 소총 밸런스 — 더 빠르게). 수명은 사거리(약 1200px)가 그대로이도록 70 → 50.
-  // 빨라진 만큼 피해 23 → 20 (계측: 23 이면 소총 셋이 62~67% 로 최상위, 20 이면 48~58% 로 가운데)
+  // 화염방사기: 약 4칸만 닿지만 불길이 셋을 꿰뚫는다. 한 마리 DPS 2.5 · 무리에 강하다. 가까이 붙어야 해서 위험하다
+  flamer: {
+    ...INF, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
+    knock: 0.3, damage: 5, pellets: 2, fireInterval: 4, pierce: 2,
+    spreadHip: deg(10), spreadAds: deg(7), recoil: 0, recoilRecover: 0,
+    speed: 9, life: 17, moveMul: 0.95, length: 20, color: 0xff7a2a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+  },
+  // ---------------- 소총 계열 (침착덕 · 기열덕 · 우재덕) — 멀리서 정확 ----------------
+  // DPS 18/10 = 1.8, 멀어도 0.78 배까지만 준다
   rifle: {
-    // 2026-09-05 보통 봇 기준 재조정: 20 → 23 (소총 셋이 29~37% 로 바닥). 탄속 24 는 유지
-    id: 'rifle', knock: 1.0, name: '소총', damage: 23, pellets: 1, fireInterval: 10, auto: true,
-    magSize: 30, reloadTicks: 130, spreadHip: deg(6.5), spreadAds: deg(1.4), recoil: deg(2.6),
-    recoilRecover: deg(0.5), speed: 24, life: 50, moveMul: 0.92, length: 24, color: 0x5f6b48,
-    falloffStart: 420, falloffEnd: 820, falloffMin: 0.78,
+    ...INF, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
+    knock: 1.0, damage: 18, pellets: 1, fireInterval: 10,
+    spreadHip: deg(5.5), spreadAds: deg(1.4), recoil: deg(2.2), recoilRecover: deg(0.5),
+    speed: 24, life: 50, moveMul: 0.92, length: 24, color: 0x5f6b48, falloffStart: 420, falloffEnd: 820, falloffMin: 0.78,
   },
-  // 근접에서 압도적(탄당 17×7 = 119), 멀면 급감. 한 방에 죽이지는 못한다
+  // 석궁: 느린 화살(44)이 둘을 더 꿰뚫는다. 한 마리 DPS 1.69 · 줄 선 무리에 강하다
+  crossbow: {
+    ...INF, id: 'crossbow', family: 'rifle', name: '석궁', desc: '느린 화살이 둘을 더 꿰뚫는다. 줄지어 오는 무리에 강하다.',
+    knock: 1.8, damage: 44, pellets: 1, fireInterval: 26, pierce: 2,
+    spreadHip: deg(3), spreadAds: deg(0.8), recoil: deg(2), recoilRecover: deg(0.5),
+    speed: 20, life: 60, moveMul: 0.95, length: 22, color: 0x7a5a38, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+  },
+  // ---------------- 산탄 계열 (매직덕 · 풍월덕) — 근접 폭발력 ----------------
+  // DPS 12×7/38 = 2.21 (가까이). 멀면 0.35 배
   shotgun: {
-    id: 'shotgun', knock: 0.9, name: '산탄총', damage: 17, pellets: 7, fireInterval: 38, auto: true,
-    magSize: 6, reloadTicks: 150, spreadHip: deg(7.5), spreadAds: deg(5), recoil: deg(4),
-    recoilRecover: deg(0.4), speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b,
-    falloffStart: 200, falloffEnd: 500, falloffMin: 0.35,
+    ...INF, id: 'shotgun', family: 'shotgun', name: '산탄총', desc: '가까이서 한 번에 크게. 멀면 급격히 약해진다.',
+    knock: 0.9, damage: 12, pellets: 7, fireInterval: 38,
+    spreadHip: deg(7.5), spreadAds: deg(5), recoil: deg(4), recoilRecover: deg(0.4),
+    speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b, falloffStart: 200, falloffEnd: 500, falloffMin: 0.35,
   },
-  // 유일하게 한 방이 나오는 무기. 대신 재장전이 길고, 정조준(우클릭) 없이는 거의 맞지 않는다.
-  // 2026-09-06: 112/260 → 120/225. 봇 1:1 1100판에서 통천덕이 38.0% 로 계속 바닥이었다.
-  // 연사 간격(78)과 이동 배율(0.7)은 그대로 둔다 — 그쪽을 건드리면 저격이 단숨에 최상위로 올라간다(계측).
-  // 2026-09-05 오픈 베타 제보 "저격이 너무 어렵다(기력이 늘어 다들 빠르다)": **조준경으로 맞히면 한 방**, 스치면 체력 10 남김,
-  // 조준경 없이는 개머리판 후려치기(10, 재장전 중에도), 탄 5 → 6. damage 120 은 이제 봇 평가·표시용이고 실제 조준경 피해는 상대 체력이다.
+  // 더블배럴: 두 발을 한꺼번에 — 12알 × 11. 느리지만 한 번이 크고 멀리 밀친다. DPS 2.06
+  doublebarrel: {
+    ...INF, id: 'doublebarrel', family: 'shotgun', name: '더블배럴', desc: '두 발을 한꺼번에(12알). 느리지만 한 번이 크고 멀리 밀친다.',
+    knock: 1.5, damage: 11, pellets: 12, fireInterval: 64,
+    spreadHip: deg(11), spreadAds: deg(8), recoil: deg(6), recoilRecover: deg(0.4),
+    speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 160, falloffEnd: 420, falloffMin: 0.3,
+  },
+  // ---------------- 저격 계열 (옥냥덕 · 통천덕) — 한 발 · 관통 ----------------
+  // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.8초마다 · 하나를 더 꿰뚫는다. 한 마리 DPS 1.67
   sniper: {
-    id: 'sniper', knock: 4, name: '저격총', damage: 120, pellets: 1, fireInterval: 78, auto: true,
-    magSize: 6, reloadTicks: 225, spreadHip: deg(15), spreadAds: deg(0.4), recoil: deg(7),
-    recoilRecover: deg(0.35), speed: 26, life: 90, moveMul: 0.7, length: 32, color: 0x3d4a5c,
-    falloffStart: 9999, falloffEnd: 9999, falloffMin: 1, scope: true,
-    lethalAds: true, grazeLeave: 10, bash: { damage: 10, range: 55, arc: deg(70), interval: 20 },
+    ...INF, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 하나를 더 꿰뚫고 멀리 밀친다.',
+    knock: 4, damage: 80, pellets: 1, fireInterval: 48, pierce: 1,
+    spreadHip: deg(2.5), spreadAds: deg(0.4), recoil: deg(5), recoilRecover: deg(0.4),
+    speed: 30, life: 70, moveMul: 0.8, length: 32, color: 0x3d4a5c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // 명중률은 낮고 반동은 세지만 탄이 많아 계속 퍼붓는다
+  // 레일건: 모든 것을 꿰뚫는 150 · 1.6초마다. 한 마리 DPS 1.56 · 줄에는 무한
+  railgun: {
+    ...INF, id: 'railgun', family: 'sniper', name: '레일건', desc: '모든 것을 꿰뚫는 한 발(150). 느리다.',
+    knock: 3, damage: 150, pellets: 1, fireInterval: 96, pierce: 99,
+    spreadHip: deg(1.5), spreadAds: deg(0.3), recoil: deg(6), recoilRecover: deg(0.4),
+    speed: 44, life: 50, moveMul: 0.78, length: 34, color: 0x5ac8ff, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+  },
+  // ---------------- 기관총 계열 (철면덕) — 버티며 퍼붓기 ----------------
+  // DPS 10/5 = 2.0. 퍼짐이 크고 느리게 걷는다
   mg: {
-    // 2026-09-05 보통 봇 기준 재조정: 16 → 15 (철면덕 76% — 세게 두는 건 의도지만 너무 셌다 → 64%)
-    id: 'mg', knock: 0.5, name: '기관총', damage: 15, pellets: 1, fireInterval: 5, auto: true,
-    magSize: 80, reloadTicks: 210, spreadHip: deg(8), spreadAds: deg(4.5), recoil: deg(2.4),
-    recoilRecover: deg(0.35), speed: 15, life: 60, moveMul: 0.9, length: 30, color: 0x4a4f45,
-    falloffStart: 320, falloffEnd: 760, falloffMin: 0.55,
+    ...INF, id: 'mg', family: 'mg', name: '기관총', desc: '끝없이 퍼붓는다. 퍼짐이 크고 무겁다.',
+    knock: 0.5, damage: 10, pellets: 1, fireInterval: 5,
+    spreadHip: deg(7.5), spreadAds: deg(4.5), recoil: deg(2), recoilRecover: deg(0.35),
+    speed: 15, life: 60, moveMul: 0.9, length: 30, color: 0x4a4f45, falloffStart: 320, falloffEnd: 760, falloffMin: 0.55,
   },
-  // 승빠덕 전용 근접 무기. 꾹 누르면 계속 휘두르고, 기력으로 총알을 막는다
-  // 2026-09-05 피해 80 → 62. 봇 표에서는 빠져 있지만(근접을 못 쓴다) **사람 손에서는 승률이 계속 높다**(사용자).
-  // 세 대(186) 로는 아무도 못 잡고 네 대(248) 부터. 같은 날 소총 하향으로 상대가 약해져 68 로는
-  // tools/melee.ts 정면 대치가 5/10(권장 2~4)이라 62 까지 내렸다 → 3/10. 2026-09-05 오픈 베타 제보로 55 → 45 (다섯 대 225 — 체력 220 이하는 다섯 대, 매직덕 여섯, 철면덕 일곱)
+  // 유탄발사기: 맞거나 멈추면 반경 72 에 터진다(탄 피해 36 + 폭발 36). 한 마리 1.44 · 무리에 강하다
+  launcher: {
+    ...INF, id: 'launcher', family: 'mg', name: '유탄발사기', desc: '맞거나 멈추면 둘레 약 2칸에 터진다. 무리에 강하고 느리다.',
+    knock: 2, damage: 36, pellets: 1, fireInterval: 50, boom: { r: 72, mul: 1 },
+    spreadHip: deg(3), spreadAds: deg(1.5), recoil: deg(4), recoilRecover: deg(0.4),
+    speed: 11, life: 55, moveMul: 0.88, length: 26, color: 0x5a6a3a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+  },
+  // ---------------- 근접 (승빠덕) ----------------
+  // 후라이팬: 45 · 23틱 = 1.96. 기력으로 앞에서 오는 공격을 막는다
   pan: {
-    id: 'pan', knock: 5, name: '후라이팬', damage: 45, pellets: 1, fireInterval: 23, auto: true,
-    magSize: 0, reloadTicks: 0, spreadHip: 0, spreadAds: 0, recoil: 0,
-    recoilRecover: 0, speed: 0, life: 0, moveMul: 1.02, length: 20, color: 0x33383c,
-    falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    ...INF, id: 'pan', family: 'pan', name: '후라이팬', desc: '휘두르고 막는다. 앞에서 오는 공격을 기력으로 막는다.',
+    knock: 5, damage: 45, pellets: 1, fireInterval: 23, magSize: 0, reloadTicks: 0,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 1.02, length: 20, color: 0x33383c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 70, meleeArc: deg(60),
   },
+  // 대형 웍: 넓게(±90°) · 멀리 · 세게 — 느리다. 72 · 34틱 = 2.12
+  wok: {
+    ...INF, id: 'wok', family: 'pan', name: '대형 웍', desc: '더 넓고 멀리 휘두른다. 느리지만 세게 밀친다.',
+    knock: 7, damage: 72, pellets: 1, fireInterval: 34,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 0.98, length: 26, color: 0x2a2a2e, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    melee: true, meleeRange: 82, meleeArc: deg(90),
+  },
+}
+
+/** 계열의 무기들 (기본이 먼저) */
+export function familyOf(id: WeaponId): WeaponId[] {
+  const f = WEAPONS[id].family
+  return (Object.keys(WEAPONS) as WeaponId[]).filter((k) => WEAPONS[k].family === f)
+}
+
+/** 한 마리를 칠 때의 지속 DPS (피해 × 탄 ÷ 간격, 가까운 거리 · 레벨·장비 배율 전) — 표·툴팁용 */
+export function weaponDps(w: WeaponDef): number {
+  return (w.damage * w.pellets * (w.boom ? 1 + w.boom.mul : 1)) / w.fireInterval
 }
 
 export const PART_HEAD = 0

@@ -68,7 +68,6 @@ export class TouchControls {
       <div class="tzone fire"><span>누르고 있으면 사격</span></div>
       <div class="tstick" hidden><i></i></div>
       <div class="tbtns">
-        <button class="tbtn" data-a="reload">재장전</button>
         <button class="tbtn" data-a="swap">교체</button>
         <button class="tbtn" data-a="ads">조준</button>
         <button class="tbtn" data-a="dash">구르기</button>

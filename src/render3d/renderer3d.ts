@@ -384,9 +384,10 @@ export class Renderer3D {
           }
           const tip = new THREE.Vector3()
           rig.gunTip.getWorldPosition(tip)
-          this.spawnFlash(tip, w.scope ? 2.6 : w.pellets > 1 ? 1.6 : 1)
-          v.vsx -= w.scope ? 0.3 : 0.12
-          v.vsy += w.scope ? 0.2 : 0.08
+          const big = w.family === 'sniper' || w.boom !== undefined
+          this.spawnFlash(tip, big ? 2.6 : w.pellets > 1 ? 1.6 : 1)
+          v.vsx -= big ? 0.3 : 0.12
+          v.vsy += big ? 0.2 : 0.08
           if (e.p === localPlayer) {
             if (w.scope) {
               // 저격: 크게 흔들리고, 카메라가 반동으로 뒤로 밀리며, 조준경이 번쩍인다
@@ -1427,6 +1428,7 @@ export class Renderer3D {
 
   private updateRig(i: number, p: PlayerState, pos: { x: number; z: number }, dt: number): void {
     const rig = this.rigs[i]
+    if (rig.weapon.id !== p.weapon) rig.setWeapon(WEAPONS[p.weapon])
     const v = this.vis[i]
     const root = rig.root
     root.position.set(pos.x, 0, pos.z)
@@ -2328,10 +2330,11 @@ export class Renderer3D {
       const dz = speed > 0 ? b.vy / speed : 0
       // 무기마다 줄기 길이·색이 다르다: 저격은 길고 하얗게, 산탄은 짧고 주황
       const w = WEAPONS[b.weapon]
-      const mat = w.scope ? this.streakMats.sniper : w.pellets > 1 ? this.streakMats.shotgun : this.streakMats.default
+      const sn = w.family === 'sniper'
+      const mat = sn ? this.streakMats.sniper : w.pellets > 1 ? this.streakMats.shotgun : this.streakMats.default
       for (const child of streak.children) (child as THREE.Mesh).material = mat
-      const len = speed * U * (w.scope ? 3.4 : w.pellets > 1 ? 1.3 : 2.1)
-      const wid = w.scope ? 0.14 : 0.1
+      const len = speed * U * (sn ? 3.4 : w.pellets > 1 ? 1.3 : 2.1)
+      const wid = sn ? 0.14 : w.boom ? 0.2 : 0.1
       // 머리(밝은 끝)가 탄 위치, 꼬리는 뒤로
       streak.position.set(x - dx * len * 0.5, GUN_H, z - dz * len * 0.5)
       streak.rotation.y = -Math.atan2(dz, dx)

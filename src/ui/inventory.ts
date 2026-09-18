@@ -10,10 +10,15 @@ import {
   affixText, armorBase, computeStats, itemName, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
-import { WEAPONS } from '../core/weapons'
+import { WEAPONS, weaponDps } from '../core/weapons'
 
 function esc(t: string): string {
   return t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch)
+}
+
+/** 이 캐릭터가 낄 수 있는 무기인가 (같은 계열 — 권총 캐릭터는 권총·리볼버) */
+function canWield(me: PlayerState, it: Item): boolean {
+  return WEAPONS[WEAPON_IDS[it.wt]]?.family === WEAPONS[CHARACTERS[me.char].weapon].family
 }
 
 /** 아이템 줄 요약 (툴팁 본문) */
@@ -28,7 +33,9 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   for (let k = 0; k < it.aff.length; k += 2) lines.push(`<div class="aff">◆ ${affixText(it.aff[k], it.aff[k + 1])}</div>`)
   if (it.rarity === 3 && it.leg !== undefined && LEGENDS[it.leg]) lines.push(`<div class="leg">✦ ${LEGENDS[it.leg].name} — ${LEGENDS[it.leg].desc}</div>`)
   let warn = ''
-  if (me && it.slot === SLOT_WEAPON && WEAPON_IDS[it.wt] !== me.weapon) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
+  if (me && it.slot === SLOT_WEAPON && !canWield(me, it)) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
+  const wd = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]] : undefined
+  if (wd) lines.unshift(`<div class="base">${wd.desc} · 초당 피해 약 ${Math.round(weaponDps(wd) * 60)}</div>`)
   return `<div class="it-name" style="color:${color}">${esc(itemName(it))}</div>
     <div class="it-kind">${RARITY_NAMES[it.rarity]} ${kind} · 아이템 레벨 ${it.ilvl}</div>
     ${lines.join('')}${warn}`
@@ -36,7 +43,7 @@ export function itemHtml(it: Item, me?: PlayerState): string {
 
 /** 이 아이템을 끼면 능력치가 어떻게 바뀌나 (비교 줄) */
 function compareHtml(it: Item, me: PlayerState): string {
-  if (it.slot === SLOT_WEAPON && WEAPON_IDS[it.wt] !== me.weapon) return ''
+  if (it.slot === SLOT_WEAPON && !canWield(me, it)) return ''
   const equip = [...me.equip]
   equip[it.slot] = it
   const after = computeStats(me.level, equip)
@@ -114,7 +121,7 @@ export class Inventory {
         continue
       }
       const col = RARITY_COLORS[it.rarity]
-      const cant = it.slot === SLOT_WEAPON && WEAPON_IDS[it.wt] !== me.weapon
+      const cant = it.slot === SLOT_WEAPON && !canWield(me, it)
       cells.push(`<div class="cell${cant ? ' cant' : ''}" data-bag="${i}" style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(itemName(it).split(' ')[1] ?? '')}</b></div>`)
     }
     this.el.innerHTML = `
