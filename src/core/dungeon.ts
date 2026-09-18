@@ -57,6 +57,7 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     phase: 0,
     elite: 0,
     mode: 0,
+    stage: 0,
   }
 }
 

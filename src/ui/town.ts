@@ -49,7 +49,11 @@ export class QuestLog {
     const q = this.me().quests
     if (q.join('') === this.sig) return
     this.sig = q.join('')
-    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 1막 무너진 성당</b><button class="inv-x" data-x>✕</button></div>${questList(q, false)}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
+    // 연 막까지, 막마다 묶어서 (뒤 막이 위)
+    const reach = actReached(q)
+    let body = ''
+    for (let act = reach; act >= 0; act--) body += `<p class="tp-line">${act + 1}막 · ${ACTS[act].name}</p>` + questList(q.map((v, i) => (QUESTS[i]?.act === act ? v : -1)), false)
+    this.el.innerHTML = `<div class="tp-head"><b>퀘스트</b><button class="inv-x" data-x>✕</button></div>${body}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
   }
 }

@@ -3,13 +3,13 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden' | 'shade' | 'demon' | 'lord'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
 export type Attack = 'melee' | 'ranged' | 'explode' | 'flee' | 'heal' | 'lob'
 
 /** 보스 특수 패턴 (MS_CHASE 에서 특수 재사용 대기 scd 가 0 이면) */
-export type Special = 'charge' | 'queen' | 'raise' | 'warden'
+export type Special = 'charge' | 'queen' | 'raise' | 'warden' | 'blink' | 'lord'
 
 export interface MonsterDef {
   id: MonsterKindId
@@ -42,7 +42,7 @@ export interface MonsterDef {
   shotR?: number
   /** ranged: 이만큼 떨어져 쏘려고 한다 (너무 붙으면 물러선다) */
   keepDist?: number
-  /** explode: 폭발 반경 */
+  /** explode: 폭발 반경 · lob: 있으면 산성 웅덩이 대신 이 반경의 폭발 예고(ZONE_FUSE) */
   blast?: number
   /** 넉백 저항 0..1 (1 이면 안 밀린다) */
   knockRes: number
@@ -171,6 +171,30 @@ export const MONSTER_LIST: MonsterDef[] = [
     attack: 'melee', dmg: 46, range: 20, windup: 26, recover: 32, cooldown: 55, arc: deg(90),
     knockRes: 0.95, globe: 1, xp: 380, loot: 1, boss: true, special: 'warden',
   },
+  // ---------------- 4막 심연 ----------------
+  {
+    // 그림자: 떨어진 표적의 **등 뒤로 순간이동**(예고: 나타날 자리에 보랏빛 원)하고 곧장 할퀸다. 멀리 도망쳐도 소용없다
+    id: 'shade', idx: 13, name: '그림자',
+    hp: 90, speed: 2.6, r: 13,
+    attack: 'melee', dmg: 20, range: 12, windup: 12, recover: 20, cooldown: 34, arc: deg(70),
+    knockRes: 0.1, globe: 0.06, xp: 13, loot: 0.16, special: 'blink',
+  },
+  {
+    // 포격 악마: 멀리서 불덩이를 쏘아 올린다 → 떨어질 자리에 붉은 원이 차오르다 터진다(두 번 예고 — 원 밖으로)
+    id: 'demon', idx: 14, name: '포격 악마',
+    hp: 170, speed: 1.7, r: 17,
+    attack: 'lob', dmg: 34, range: 380, windup: 22, recover: 30, cooldown: 120, keepDist: 280, blast: 72,
+    knockRes: 0.6, globe: 0.12, xp: 18, loot: 0.2,
+  },
+  {
+    // 최종 보스 — 심연의 군주: 휘두르기 + 번갈아 **불꽃 고리**(사방 탄) · **불비**(사람마다 폭발 예고 둘) · (분노 뒤) **그림자 부르기**.
+    // 체력 2/3 · 1/3 에서 분노 — 그림자를 부르고, 마지막 단계는 빨라지고 더 자주 쓴다
+    id: 'lord', idx: 15, name: '심연의 군주',
+    hp: 3200, speed: 2.1, r: 30,
+    attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
+    shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
+    knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
+  },
 ]
 
 /** 보물 고블린: 깨어 있는 틱 상한(20초) · 골드를 흘리는 간격 · 지역에 나올 확률 */
@@ -197,6 +221,19 @@ export const RAISE = { n: 2, max: 6, hp: 0.5, windup: 40, every: 60 * 6 }
 /** 산성 웅덩이: 반경 · 지속 틱 · 피해 간격(틱) */
 export const ACID = { r: 58, ticks: 180, every: 20 }
 /** 관리인: 내려찍기(예고 · 반경 · 피해 배율) · 방패병 부르기(수 · 상한 · 체력 배율 · 예고) · 특수 간격 */
+/** 그림자 순간이동: 표적과의 거리(최소·최대) · 등 뒤 거리 · 예고 · 간격 */
+export const BLINK = { min: 110, max: 420, behind: 50, windup: 22, every: 60 * 4 }
+export const SHADE_KIND = 13
+export const LORD_KIND = 15
+/** 포격 악마: 떨어질 자리의 폭발 예고 틱 */
+export const DEMON_FUSE = 46
+/** 심연의 군주: 불꽃 고리(갈래 · 분노 갈래 · 피해 배율 · 예고) · 불비(예고 · 반경 · 폭발 예고 · 피해 배율) · 그림자(수 · 상한 · 체력) · 간격 · 분노 간격 · 분노 속도 */
+export const LORD = {
+  nova: 16, novaRage: 24, novaDmg: 0.5, novaWindup: 40,
+  meteorWindup: 30, meteorR: 70, meteorT: 50, meteorDmg: 0.9,
+  shades: 2, shadeMax: 4, shadeHp: 0.5, callWindup: 34,
+  every: 60 * 3.5, rageEvery: 60 * 2.5, rageSpeed: 1.3,
+}
 export const WARDEN = { slamWindup: 44, slamR: 150, slamDmg: 1.1, guards: 2, guardMax: 4, guardHp: 0.5, callWindup: 36, every: 60 * 4 }
 /** 정예: 무리 다섯에 하나, 우두머리가 된다 — 체력 4배 · 공격 1.4배 · 전리품 확정(등급 올림) · 경험치·골드 4배 */
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }

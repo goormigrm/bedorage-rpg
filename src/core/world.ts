@@ -56,6 +56,9 @@ const SHIELD = 9
 const NECRO = 10
 const SPITTER = 11
 const WARDEN = 12
+const SHADE = 13
+const DEMON = 14
+const LORD = 15
 
 export interface ActDef {
   name: string
@@ -105,6 +108,20 @@ export const ACTS: ActDef[] = [
       { w: 0.25, groups: [[SHIELD, 2, 3], [ARCHER, 2, 3]] },
     ],
   },
+  {
+    name: '심연',
+    town: 28,
+    packs: [
+      // 그림자 떼 — 도망쳐도 등 뒤에 나타난다
+      { w: 0.3, groups: [[SHADE, 4, 6]] },
+      // 방패 줄 뒤의 포격 악마
+      { w: 0.25, groups: [[DEMON, 1, 2], [SHIELD, 2, 3]] },
+      // 그림자가 붙잡고 악마가 쏜다
+      { w: 0.25, groups: [[SHADE, 2, 3], [DEMON, 1, 1], [GHOUL, 3, 4]] },
+      // 심연의 사제
+      { w: 0.2, groups: [[NECRO, 1, 1], [SHADE, 2, 3], [SPITTER, 0, 1]] },
+    ],
+  },
 ]
 
 const WOLVES: PackDef[] = [
@@ -124,6 +141,15 @@ const GUARDS: PackDef[] = [
 const SPITTERS: PackDef[] = [
   { w: 0.6, groups: [[SPITTER, 3, 4], [GHOUL, 2, 3]] },
   { w: 0.4, groups: [[SPITTER, 2, 3], [BLOATER, 1, 2]] },
+]
+// 포격 악마는 무리마다 하나 안팎 — 둘셋씩 넣으니 재의 들판에 45명(브라우저 확인), 화면이 폭발 예고로 덮였다
+const FIRES: PackDef[] = [
+  { w: 0.55, groups: [[DEMON, 1, 2], [GHOUL, 3, 5]] },
+  { w: 0.45, groups: [[DEMON, 1, 1], [SPITTER, 1, 2], [SHIELD, 1, 2]] },
+]
+const SHADOWS: PackDef[] = [
+  { w: 0.6, groups: [[SHADE, 5, 7]] },
+  { w: 0.4, groups: [[SHADE, 3, 4], [NECRO, 1, 1]] },
 ]
 // 강령술사는 무리 열에 넷쯤 — 모두에게 붙이면 일으킨 구울이 지역을 덮는다(브라우저 확인: 2층에 강령술사 24)
 const RITES: PackDef[] = [
@@ -174,6 +200,15 @@ export const AREAS: AreaDef[] = [
   { id: 25, act: 2, name: '의식의 회랑 2층', kind: 'dungeon', map: 'rite', level: 22, links: [24, 26], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
   { id: 26, act: 2, name: '봉인된 문서고', kind: 'dungeon', map: 'archive', level: 23, links: [25, 27], wp: true, lore: '누군가 봉인을 뜯었다' },
   { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], boss: WARDEN, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
+  // ---------------- 4막 심연 (지역 레벨 25~30) ----------------
+  { id: 28, act: 3, name: '심연의 문', kind: 'town', map: 'town4', level: 0, links: [29], wp: true, lore: '문틈으로 붉은 빛이 샌다 — 여기가 마지막 불이다' },
+  { id: 29, act: 3, name: '불타는 균열', kind: 'field', map: 'rift', level: 25, links: [28, 30, 35], wp: true, lore: '땅이 갈라져 불을 토한다' },
+  { id: 30, act: 3, name: '재의 들판', kind: 'field', map: 'ashen', level: 26, links: [29, 31], packs: FIRES, unique: { kind: DEMON, name: '불꽃 혀 가르' }, lore: '하늘에서 재가 내린다' },
+  { id: 31, act: 3, name: '그림자 미궁 1층', kind: 'dungeon', map: 'maze', level: 27, links: [30, 32], packs: SHADOWS, lore: '벽이 숨을 쉰다' },
+  { id: 32, act: 3, name: '그림자 미궁 2층', kind: 'dungeon', map: 'maze', level: 28, links: [31, 33], wp: true, packs: SHADOWS, unique: { kind: SHADE, name: '속삭이는 자' } },
+  { id: 33, act: 3, name: '군주의 계단', kind: 'dungeon', map: 'stair', level: 29, links: [32, 34], lore: '계단은 끝없이 아래로 이어진다' },
+  { id: 34, act: 3, name: '심연의 옥좌', kind: 'boss', map: 'throne', level: 30, links: [33], boss: LORD, density: 0.4, lore: '종이 처음 울린 곳' },
+  { id: 35, act: 3, name: '끓는 구덩이', kind: 'dungeon', map: 'pit', level: 26, links: [29], packs: FIRES, density: 1.2, lore: '바닥이 끓는다' },
 ]
 
 export function areaDef(id: number): AreaDef {
@@ -315,8 +350,37 @@ export const QUESTS: QuestDef[] = [
     name: '관리인', act: 2, area: 27, goal: 'kill', sp: 1, gold: 2500,
     task: '봉인된 문서고 끝, 관리인의 방의 관리인을 쓰러뜨려라',
     ask: '모든 문의 열쇠는 관리인이 쥐고 있소. 그가 지키는 문 너머에 — 종이 처음 울린 곳이 있다오.',
-    thanks: '열쇠 꾸러미로군… 이 문 너머가 심연이오. 누구도 돌아오지 못했소. (4막은 준비 중입니다)',
-    reward: '스킬 포인트 1 · 골드 2500',
+    thanks: '열쇠 꾸러미로군… 이 문 너머가 심연이오. 누구도 돌아오지 못했소. 그래도 가겠다면 말하시오 — 문 앞까지는 데려다 주겠소.',
+    reward: '스킬 포인트 1 · 골드 2500 · 4막',
+  },
+  // ---------------- 4막 ----------------
+  {
+    name: '끓는 구덩이', act: 3, area: 35, goal: 'clear', sp: 1,
+    task: '불타는 균열 옆 끓는 구덩이를 비워라',
+    ask: '균열 옆 구덩이에서 악마들이 불덩이를 빚고 있소. 구덩이를 비우지 않으면 이 야영지도 오래 못 버티오.',
+    thanks: '불덩이가 멎었구려. 고맙소 — 이걸 익혀 두시오. 마지막까지 쓸 데가 있을 거요.',
+    reward: '스킬 포인트 1',
+  },
+  {
+    name: '불꽃 혀 가르', act: 3, area: 30, goal: 'kill', gold: 3000,
+    task: '재의 들판의 불꽃 혀 가르를 쓰러뜨려라',
+    ask: '재의 들판에서 가장 큰 불덩이를 쏘는 놈이 있소. 가르 — 야영지를 세 번이나 태웠지. 놈을 멈춰 주시오.',
+    thanks: '가르가 쓰러졌다니! 야영지 사람들이 가진 걸 다 모았소. 받으시오.',
+    reward: '골드 3000',
+  },
+  {
+    name: '속삭이는 자', act: 3, area: 32, goal: 'kill', legend: true,
+    task: '그림자 미궁 2층의 속삭이는 자를 쓰러뜨려라',
+    ask: '미궁에서 누군가 이름을 부른다오. 대답한 자는 모두 그림자가 됐소. 속삭이는 자를 찾아 입을 다물게 하시오.',
+    thanks: '속삭임이 그쳤구려. 그가 쥐고 있던 것이오 — 심연에서 온 물건이지만, 당신 손에서는 쓸 만할 거요.',
+    reward: '전설 아이템 하나',
+  },
+  {
+    name: '심연의 군주', act: 3, area: 34, goal: 'kill', sp: 1, gold: 5000,
+    task: '군주의 계단 끝, 심연의 옥좌의 군주를 쓰러뜨려라',
+    ask: '성당 종이 멈춘 밤, 그 종을 울린 것이 옥좌에 앉아 있소. 모든 것의 시작이자 끝이오. 가시오 — 그리고 돌아오시오.',
+    thanks: '종소리가… 그쳤소. 들판에도, 숲에도, 도시 아래에도. 당신이 해냈소. 이 땅은 당신을 기억할 거요.',
+    reward: '스킬 포인트 1 · 골드 5000 · 엔딩',
   },
 ]
 
@@ -377,7 +441,7 @@ const CAMP: TownSpots = {
   npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
 }
 /** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
-const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP, 19: CAMP }
+const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP, 19: CAMP, 28: CAMP }
 
 /** 마을이면 NPC 자리 (px) */
 export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {

@@ -7,8 +7,8 @@ import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { ACID, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
-import { AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
+import { ACID, LORD, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
@@ -528,7 +528,8 @@ export class Renderer3D {
           break
         case 'bossDown': {
           const a = areaDef(e.area)
-          if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 다음 막은 준비 중입니다`, '#ffcf6a')
+          if (a.boss !== undefined && a.act === ACTS.length - 1) this.hud.banner('심연이 닫혔다', `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다`, '#ffcf6a')
+          else if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 촌장에게 가면 ${a.act + 2}막으로`, '#ffcf6a')
           else this.hud.notice(`우두머리 ${a.unique?.name ?? ''} 쓰러짐!`, '#ffb46a')
           break
         }
@@ -721,6 +722,25 @@ export class Renderer3D {
             const sp = 0.02 + Math.random() * 0.05
             this.spawnParticle(e.x * U, 0.5, e.y * U, Math.cos(a) * sp, 0.07 + Math.random() * 0.05, Math.sin(a) * sp, 0.7, 0x7ef0a0, 0.7)
           }
+          break
+        }
+        case 'blink': {
+          // 그림자: 사라진 자리와 나타난 자리에 보랏빛 연기
+          for (const [x, y] of [[e.x0, e.y0], [e.x, e.y]]) {
+            for (let i = 0; i < 10; i++) {
+              const a = Math.random() * Math.PI * 2
+              const sp = 0.02 + Math.random() * 0.05
+              this.spawnParticle(x * U, 0.6, y * U, Math.cos(a) * sp, 0.03 + Math.random() * 0.05, Math.sin(a) * sp, 0.6, 0x8a5ac0, 0.8)
+            }
+          }
+          this.spawnRing(e.x * U, e.y * U, 0.2, 1.4, 0.4, 0xd89aff)
+          break
+        }
+        case 'lordRage': {
+          this.spawnRing(e.x * U, e.y * U, 0.5, 6, 1.0, 0xff5a2a)
+          this.spawnImpact(e.x * U, 1.4, e.y * U, 0xff6a3a, 6)
+          this.shake = Math.max(this.shake, 0.5)
+          this.hud.banner('심연의 군주가 분노한다', e.stage >= 2 ? '마지막 힘을 끌어올린다 — 더 빠르고 더 자주' : '그림자가 옥좌에서 흘러나온다', '#ff7a4a')
           break
         }
         case 'mblock': {
@@ -2133,8 +2153,32 @@ export class Renderer3D {
         this.groundCircle(ctx, at.x, at.z, WARDEN.slamR * U, '#ff8a4a', 0.35 + 0.5 * (1 - m.t / WARDEN.slamWindup))
       }
       if (m.st === MS_WINDUP && def.attack === 'lob' && m.mode === 0) {
-        // 산성 예고: 떨어질 자리
-        this.groundCircle(ctx, m.ax * U, m.ay * U, ACID.r * U, '#9aff3a', 0.3 + 0.5 * (1 - m.t / def.windup))
+        // 산성·불덩이 예고: 떨어질 자리
+        this.groundCircle(ctx, m.ax * U, m.ay * U, (def.blast ?? ACID.r) * U, def.blast ? '#ff8a4a' : '#9aff3a', 0.3 + 0.5 * (1 - m.t / def.windup))
+      }
+      if (m.st === MS_WINDUP && def.special === 'blink' && m.mode === 2) {
+        // 그림자 순간이동 예고: 나타날 자리
+        this.groundCircle(ctx, m.ax * U, m.ay * U, 0.6, '#d89aff', 0.4 + 0.5 * (1 - m.t / 22))
+      }
+      if (m.st === MS_WINDUP && def.special === 'lord' && m.mode === 2) {
+        // 불꽃 고리 예고: 사방으로 짧은 선
+        const n = m.stage >= 2 ? LORD.novaRage : LORD.nova
+        const a0 = (m.aim / 1024) * Math.PI * 2
+        const k = 1 - m.t / LORD.novaWindup
+        ctx.save()
+        ctx.strokeStyle = '#ff7a3a'
+        ctx.globalAlpha = 0.3 + 0.5 * k
+        ctx.setLineDash([5, 5])
+        for (let i = 0; i < n; i++) {
+          const a = a0 + (i / n) * Math.PI * 2
+          const f = this.worldToScreen(at.x + Math.cos(a) * 1.2, 0.9, at.z + Math.sin(a) * 1.2)
+          const t = this.worldToScreen(at.x + Math.cos(a) * (3 + k * 3), 0.9, at.z + Math.sin(a) * (3 + k * 3))
+          ctx.beginPath()
+          ctx.moveTo(f.x, f.y)
+          ctx.lineTo(t.x, t.y)
+          ctx.stroke()
+        }
+        ctx.restore()
       }
       if (m.st === MS_WINDUP && def.special === 'queen' && m.mode === 2) {
         // 거미줄 부채 예고: 일곱 갈래

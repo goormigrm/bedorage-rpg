@@ -20,7 +20,7 @@ import { BashDef, SNIPER_GRAZE_FRAC } from './weapons'
 import { circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt } from './rng'
 import {
-  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { makeMonster, populate, rollAffixes } from './dungeon'
@@ -2656,6 +2656,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
     const d = len(dx, dy)
     if ((tick + m.id) % 10 === 0) m.los = rayBlocked(map, m.x, m.y, tp.x, tp.y) ? 0 : 1
     const face = atan2A(dy, dx)
+    if (def.special === 'lord') lordStage(state, m)
 
     if (m.st === MS_CHARGE) {
       // 보스 돌진: 정한 방향으로 곧게, 닿는 사람을 한 번씩 친다
@@ -2688,6 +2689,31 @@ function stepMonsters(state: GameState, map: GameMap): void {
         m.st = MS_WINDUP
         m.mode = brood ? 3 : 2
         m.t = brood ? QUEEN.broodWindup : QUEEN.fanWindup
+        m.aim = face
+        m.ax = tp.x
+        m.ay = tp.y
+        m.phase++
+        state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+        continue
+      }
+      // 그림자: 떨어진 표적의 등 뒤로 순간이동 (mode 2 — 나타날 자리는 예고 때 정한다: 표적 자리에서 등 쪽으로 밀어 벽을 피한다)
+      if (def.special === 'blink' && m.scd === 0 && m.los === 1 && d > BLINK.min && d < BLINK.max) {
+        const to = moveCircle(map, tp.x, tp.y, def.r, (dx / d) * BLINK.behind, (dy / d) * BLINK.behind)
+        m.st = MS_WINDUP
+        m.mode = 2
+        m.t = BLINK.windup
+        m.aim = face
+        m.ax = to.x
+        m.ay = to.y
+        state.events.push({ type: 'windup', m: m.id, kind: m.kind, x: m.x, y: m.y })
+        continue
+      }
+      // 심연의 군주: 불꽃 고리(mode 2) · 불비(mode 3) · (분노 뒤) 그림자 부르기(mode 4) 를 차례로
+      if (def.special === 'lord' && m.scd === 0 && m.los === 1 && d < 520) {
+        const pat = m.phase % (m.stage >= 1 ? 3 : 2)
+        m.st = MS_WINDUP
+        m.mode = 2 + pat
+        m.t = pat === 0 ? LORD.novaWindup : pat === 1 ? LORD.meteorWindup : LORD.callWindup
         m.aim = face
         m.ax = tp.x
         m.ay = tp.y
@@ -2791,13 +2817,25 @@ function stepMonsters(state: GameState, map: GameMap): void {
             booms.push({ x: m.x, y: m.y, r: WARDEN.slamR, dmg: Math.round((def.dmg * WARDEN.slamDmg * m.pow) / 100), by: -2 })
           } else summonKind(state, m, SHIELD_KIND, WARDEN.guards, WARDEN.guardMax, WARDEN.guardHp)
           m.scd = WARDEN.every
+        } else if (def.special === 'blink') {
+          state.events.push({ type: 'blink', m: m.id, x0: m.x, y0: m.y, x: m.ax, y: m.ay })
+          m.x = m.ax
+          m.y = m.ay
+          m.scd = BLINK.every
+          m.cd = 0
+        } else if (def.special === 'lord') {
+          if (m.mode === 2) lordNova(state, m, def)
+          else if (m.mode === 3) lordMeteors(state, m, def)
+          else summonKind(state, m, SHADE_KIND, LORD.shades, LORD.shadeMax, LORD.shadeHp)
+          m.scd = m.stage >= 2 ? LORD.rageEvery : LORD.every
         } else {
           summonKind(state, m, GHOUL_KIND, RAISE.n, RAISE.max, RAISE.hp)
           m.scd = RAISE.every
         }
-        m.mode = 0
         m.st = MS_RECOVER
-        m.t = 30
+        // 순간이동한 그림자는 곧장 덤빈다
+        m.t = def.special === 'blink' ? 6 : 30
+        m.mode = 0
       }
     } else if (m.st === MS_WINDUP) {
       if (def.attack === 'melee') m.aim = turnToward(m.aim, face, TURN_WINDUP)
@@ -2832,6 +2870,7 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
   }
   let speed = away ? def.speed * 0.8 : def.speed
   if (m.elite & EA_FAST) speed *= AFFIX_TUNE.fast
+  if (m.stage >= 2 && def.special === 'lord') speed *= LORD.rageSpeed
   if (m.slow > 0) speed *= 0.5
   const r = moveCircle(map, m.x, m.y, def.r, dirX * speed, dirY * speed)
   m.x = r.x
@@ -2861,6 +2900,42 @@ function queenFan(state: GameState, m: Monster, def: MonsterDef): void {
     state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: def.shotSlow ?? 0, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg, r: def.shotR ?? 6 })
   }
   state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
+}
+
+/** 심연의 군주 단계: 체력 2/3 · 1/3 아래로 내려가는 순간 분노 — 그림자를 부르고, 특수 대기를 줄인다 */
+function lordStage(state: GameState, m: Monster): void {
+  const k = m.hp / m.maxHp
+  const stage = k > 2 / 3 ? 0 : k > 1 / 3 ? 1 : 2
+  if (stage <= m.stage) return
+  m.stage = stage
+  state.events.push({ type: 'lordRage', m: m.id, stage, x: m.x, y: m.y })
+  summonKind(state, m, SHADE_KIND, LORD.shades, LORD.shadeMax, LORD.shadeHp)
+  m.scd = Math.min(m.scd, 30)
+}
+
+/** 불꽃 고리: 군주 둘레로 고르게 (분노 마지막 단계는 더 촘촘히) */
+function lordNova(state: GameState, m: Monster, def: MonsterDef): void {
+  const n = m.stage >= 2 ? LORD.novaRage : LORD.nova
+  const sp = def.shotSpeed ?? 4
+  const dmg = Math.round((def.dmg * LORD.novaDmg * m.pow) / 100)
+  for (let i = 0; i < n; i++) {
+    const a = (m.aim + Math.round((i * 1024) / n)) & 1023
+    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: 0, x: m.x + cosA(a) * (def.r + 4), y: m.y + sinA(a) * (def.r + 4), vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 100, dmg, r: def.shotR ?? 8 })
+  }
+  state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
+}
+
+/** 불비: 이 지역의 움직일 수 있는 사람마다 발밑 하나 + 곁 하나에 폭발 예고 (몬스터는 안 다친다) */
+function lordMeteors(state: GameState, m: Monster, def: MonsterDef): void {
+  const dmg = Math.round((def.dmg * LORD.meteorDmg * m.pow) / 100)
+  for (const p of state.players) {
+    if (!isActive(p)) continue
+    const a = randInt(state.rng, 0, 1024)
+    const r = 50 + rand(state.rng) * 60
+    for (const [x, y] of [[p.x, p.y], [p.x + cosA(a) * r, p.y + sinA(a) * r]]) {
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_FUSE, owner: -1, x, y, r: LORD.meteorR, t: LORD.meteorT, max: LORD.meteorT, dmg })
+    }
+  }
 }
 
 /** 같은 무리에서 살아 있는 동료 수 (자기 빼고) */
@@ -2913,8 +2988,10 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
     m.t = def.recover
     m.cd = def.cooldown
   } else if (def.attack === 'lob') {
-    // 산성: 예고 때 정한 자리에 웅덩이 (몬스터 편 — 사람만 다친다). 예고 원 밖으로 비키면 산다
-    state.zones.push({ id: state.nextFxId++, kind: ZONE_ACID, owner: -1, x: m.ax, y: m.ay, r: ACID.r, t: ACID.ticks, max: ACID.ticks, dmg: Math.round((def.dmg * m.pow) / 100) })
+    // 산성(토사꾼): 예고 때 정한 자리에 웅덩이 · 불덩이(포격 악마, blast): 그 자리에 폭발 예고 — 몬스터 편, 사람만 다친다
+    const dmg = Math.round((def.dmg * m.pow) / 100)
+    if (def.blast) state.zones.push({ id: state.nextFxId++, kind: ZONE_FUSE, owner: -1, x: m.ax, y: m.ay, r: def.blast, t: DEMON_FUSE, max: DEMON_FUSE, dmg })
+    else state.zones.push({ id: state.nextFxId++, kind: ZONE_ACID, owner: -1, x: m.ax, y: m.ay, r: ACID.r, t: ACID.ticks, max: ACID.ticks, dmg })
     state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
     m.st = MS_RECOVER
     m.t = def.recover

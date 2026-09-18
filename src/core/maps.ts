@@ -1,7 +1,7 @@
 // 맵 레지스트리. 맵을 추가하려면 MAPS 에 항목 하나를 넣으면 로비·프리뷰·네트워크가 자동으로 인식한다.
 // rows 는 **크기와 테두리**만 정한다. 안쪽 구조물은 map.ts 가 매 판 시드로 생성한다(gen).
 
-export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery' | 'town2' | 'forest' | 'swamp' | 'hollow' | 'nest' | 'town3' | 'sewer' | 'cistern' | 'ruins' | 'rite' | 'archive' | 'wardroom'
+export type MapId = 'studio' | 'yard' | 'garage' | 'crypt' | 'town1' | 'fields' | 'cave' | 'cathedral' | 'butchery' | 'town2' | 'forest' | 'swamp' | 'hollow' | 'nest' | 'town3' | 'sewer' | 'cistern' | 'ruins' | 'rite' | 'archive' | 'wardroom' | 'town4' | 'rift' | 'ashen' | 'pit' | 'maze' | 'stair' | 'throne'
 
 export interface MapTheme {
   /** 바닥 기본/보조 색 */
@@ -413,6 +413,113 @@ export const MAPS: Record<MapId, MapDef> = {
       wall: 0x4e443a, wallTop: 0x62564a, crate: 0x6a5846, outside: 0x040302,
       sunColor: 0xd0a878, ambientColor: 0x5a4a3a, fog: 0x050403,
       dark: { sun: 0.55, hemi: 0.5, fogAlpha: 0.92, lantern: 2.6 },
+      style: 'butchery',
+    },
+  },
+  // ---------------- 4막 심연 (붉은 균열) ----------------
+  town4: {
+    id: 'town4',
+    name: '심연의 문',
+    desc: '심연으로 내려가는 문 앞의 마지막 야영지. 문틈으로 붉은 빛이 샌다.',
+    rows: town1Rows(),
+    fixedScale: true,
+    fire: [22, 16],
+    gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
+    theme: {
+      floor: 0x3a302c, floorAlt: 0x352b27, floorLine: 0x2a2220,
+      wall: 0x4a3230, wallTop: 0x5e4038, crate: 0x6a4a3a, outside: 0x040202,
+      sunColor: 0xd0806a, ambientColor: 0x5a3a38, fog: 0x060303,
+      dark: { sun: 1.0, hemi: 0.95, fogAlpha: 0.8, lantern: 2.7 },
+      style: 'town',
+    },
+  },
+  rift: {
+    id: 'rift',
+    name: '불타는 균열',
+    desc: '땅이 갈라져 불을 토하는 벌판. 균열 사이로 그림자가 미끄러진다.',
+    rows: frame(72, 54),
+    fixedScale: true,
+    gen: { style: 'scatter', density: 10, crates: 10, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x3a2c28, floorAlt: 0x35282a, floorLine: 0x2a1e1c,
+      wall: 0x4e3430, wallTop: 0x62443c, crate: 0x6a3a2a, outside: 0x040202,
+      sunColor: 0xe07a5a, ambientColor: 0x5a3430, fog: 0x070302,
+      dark: { sun: 1.0, hemi: 0.85, fogAlpha: 0.86, lantern: 2.7 },
+      style: 'fields',
+    },
+  },
+  ashen: {
+    id: 'ashen',
+    name: '재의 들판',
+    desc: '하늘에서 재가 내리는 들판. 포격 악마들이 불덩이를 쏘아 올린다.',
+    rows: frame(74, 54),
+    fixedScale: true,
+    gen: { style: 'scatter', density: 8, crates: 12, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x3a3434, floorAlt: 0x353030, floorLine: 0x2a2626,
+      wall: 0x4a4040, wallTop: 0x5e5250, crate: 0x5a4a48, outside: 0x040202,
+      sunColor: 0xd8907a, ambientColor: 0x5a4444, fog: 0x060404,
+      dark: { sun: 1.0, hemi: 0.85, fogAlpha: 0.86, lantern: 2.7 },
+      style: 'fields',
+    },
+  },
+  pit: {
+    id: 'pit',
+    name: '끓는 구덩이',
+    desc: '바닥이 끓는 굴. 벽마다 붉은 불빛이 번진다.',
+    rows: frame(54, 40),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a2a24, floorAlt: 0x352620, floorLine: 0x2a1c18,
+      wall: 0x4e3028, wallTop: 0x644034, crate: 0x6a3a28, outside: 0x040202,
+      sunColor: 0xe0704a, ambientColor: 0x5a302a, fog: 0x070302,
+      dark: { sun: 0.6, hemi: 0.6, fogAlpha: 0.91, lantern: 2.7 },
+      style: 'cave',
+    },
+  },
+  maze: {
+    id: 'maze',
+    name: '그림자 미궁',
+    desc: '벽이 숨을 쉬는 미궁. 모퉁이마다 그림자가 기다린다.',
+    rows: frame(66, 48),
+    fixedScale: true,
+    gen: { style: 'rooms', density: 7, crates: 10, sandbags: 0, maxLen: 5, forts: false },
+    theme: {
+      floor: 0x322c34, floorAlt: 0x2e2830, floorLine: 0x241f26,
+      wall: 0x443a48, wallTop: 0x584a5c, crate: 0x5a4a60, outside: 0x040202,
+      sunColor: 0xb88ab8, ambientColor: 0x4a3a50, fog: 0x050306,
+      dark: { sun: 0.55, hemi: 0.55, fogAlpha: 0.92, lantern: 2.7 },
+      style: 'crypt',
+    },
+  },
+  stair: {
+    id: 'stair',
+    name: '군주의 계단',
+    desc: '끝없이 아래로 이어지는 계단 회랑. 기둥마다 불꽃이 매달렸다.',
+    rows: frame(64, 46),
+    fixedScale: true,
+    gen: { style: 'pillars', density: 5, crates: 8, sandbags: 0, maxLen: 4, forts: false },
+    theme: {
+      floor: 0x3a2c2c, floorAlt: 0x352828, floorLine: 0x2a1e1e,
+      wall: 0x4e3434, wallTop: 0x644444, crate: 0x6a4040, outside: 0x040202,
+      sunColor: 0xe0806a, ambientColor: 0x5a3434, fog: 0x070303,
+      dark: { sun: 0.6, hemi: 0.55, fogAlpha: 0.9, lantern: 2.7 },
+      style: 'cathedral',
+    },
+  },
+  throne: {
+    id: 'throne',
+    name: '심연의 옥좌',
+    desc: '종이 처음 울린 곳. 옥좌 위에서 군주가 눈을 뜬다.',
+    rows: frame(50, 40),
+    fixedScale: true,
+    gen: { style: 'pillars', density: 3, crates: 4, sandbags: 0, maxLen: 3, forts: false },
+    theme: {
+      floor: 0x3a2828, floorAlt: 0x342424, floorLine: 0x281a1a,
+      wall: 0x503030, wallTop: 0x684040, crate: 0x6a3a30, outside: 0x040202,
+      sunColor: 0xff7a5a, ambientColor: 0x603030, fog: 0x080302,
+      dark: { sun: 0.65, hemi: 0.6, fogAlpha: 0.9, lantern: 2.7 },
       style: 'butchery',
     },
   },

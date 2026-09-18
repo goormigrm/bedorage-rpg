@@ -11,6 +11,8 @@ import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown,
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
+import { showEnding } from '../ui/ending'
+import { LORD_KIND } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
@@ -1207,6 +1209,11 @@ export class Session {
           this.saveMine(true)
           this.onOver()
         } else if (e.type === 'levelup' && e.p === this.cfg.localPlayer) this.saveMine(false)
+        // 최종 보스: 엔딩 (따라잡는 중에 본 것이면 띄우지 않는다)
+        else if (e.type === 'bossDown' && e.kind === LORD_KIND && !this.joiningIn) {
+          this.saveMine(false)
+          showEnding(this.stage.querySelector('.game-ui') as HTMLElement, () => this.sfx.blip())
+        }
         // 마을에 들어설 때 저장 (하드코어는 이때만 저장된다)
         else if (e.type === 'areaEnter' && e.p === this.cfg.localPlayer && isTown(e.area)) this.saveMine(false)
         // 내가 죽으면: 투기장 개인전은 나를 죽인 사람, 아니면 살아 있는 동료를 본다

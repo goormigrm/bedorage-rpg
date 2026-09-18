@@ -354,8 +354,10 @@ export interface Monster {
   phase: number
   /** 정예 (무리의 우두머리) */
   elite: number
-  /** 보스 공격 방식: 0 보통 · 1 돌진 (예고 중 · 돌진 중) */
+  /** 보스 공격 방식: 0 보통 · 1 돌진 (예고 중 · 돌진 중) · 2 이상 특수 예고 */
   mode: number
+  /** 보스 단계 (심연의 군주: 0 → 1 → 2, 체력 2/3 · 1/3 에서 오른다) */
+  stage: number
 }
 
 /** 몬스터 상태 */
@@ -544,6 +546,10 @@ export type SimEvent =
   | { type: 'summon'; m: number; x: number; y: number }
   /** 방패병이 탄을 막았다 */
   | { type: 'mblock'; m: number; x: number; y: number }
+  /** 그림자가 순간이동했다 (x0,y0 → x,y) */
+  | { type: 'blink'; m: number; x0: number; y0: number; x: number; y: number }
+  /** 심연의 군주가 분노했다 (단계가 올랐다) */
+  | { type: 'lordRage'; m: number; stage: number; x: number; y: number }
   | { type: 'drop'; x: number; y: number }
   | { type: 'heal'; p: number; x: number; y: number; amount: number }
   | { type: 'start' }

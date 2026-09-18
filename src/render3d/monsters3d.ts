@@ -587,15 +587,150 @@ function wardenParts(): Part[] {
   ]
 }
 
+/** 그림자: 떠다니는 검보랏빛 두건 망령 · 보랏빛 눈 · 긴 발톱 팔. 순간이동 예고 때 오그라들며 흐려진다 */
+function shadeParts(): Part[] {
+  const cloak = new THREE.MeshLambertMaterial({ color: 0x2a1e34, transparent: true, opacity: 0.88 })
+  const claw = lambert(0x4a3a56)
+  const eye = glow(0xd89aff)
+  const fade = (a: Anim) => 1 - a.wind * 0.75
+  return [
+    part(new THREE.ConeGeometry(0.34, 1.0, 10, 1, true), cloak, true, (a, o) => {
+      o.position.set(0, 0.62 + sin(a.walk * 0.7) * 0.05, 0)
+      o.rotation.set(0.15 + a.swing * 0.3, 0, sin(a.walk) * 0.06 * a.move)
+      o.scale.setScalar(fade(a))
+    }),
+    part(new THREE.SphereGeometry(0.2, 10, 8), cloak, true, (a, o) => {
+      o.position.set(0, 1.12 + sin(a.walk * 0.7) * 0.05, 0.06 + a.swing * 0.1)
+      o.scale.set(fade(a), fade(a) * 1.1, fade(a))
+    }),
+    part(mergeGeometries([new THREE.SphereGeometry(0.03, 6, 5).translate(-0.06, 0, 0), new THREE.SphereGeometry(0.03, 6, 5).translate(0.06, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 1.12 + sin(a.walk * 0.7) * 0.05, 0.22 + a.swing * 0.1)
+      o.scale.setScalar(fade(a) * (1 + a.wind))
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(cap(0.04, 0.5), claw, true, (a, o) => {
+        o.position.set(side * 0.26, 0.86, 0.08)
+        o.rotation.set(1.1 + a.swing * 1.4 - a.wind * 0.6, 0, side * 0.25)
+        o.scale.setScalar(fade(a))
+        o.translateY(-0.25)
+      }),
+    ),
+  ]
+}
+
+/** 포격 악마: 붉은 거구 · 굽은 뿔 · 빛나는 입 · 오른팔의 굵은 포신. 쏠 때 포신이 튄다 */
+function demonParts(): Part[] {
+  const skin = lambert(0x8a3222)
+  const horn = lambert(0xd8c8a8)
+  const iron = lambert(0x3a3432)
+  const mouth = glow(0xffa040)
+  return [
+    part(new THREE.SphereGeometry(0.5, 12, 10), skin, true, (a, o) => {
+      o.position.set(0, 0.64 + Math.abs(sin(a.walk)) * 0.03 * a.move, 0)
+      o.rotation.set(0.12 - a.wind * 0.1 + a.swing * 0.2, 0, sin(a.walk) * 0.05 * a.move)
+      o.scale.set(0.46 * (1 + a.squash * 0.2), 0.5 * (1 - a.squash * 0.2), 0.4)
+    }),
+    part(new THREE.SphereGeometry(0.5, 10, 8), skin, true, (_a, o) => {
+      o.position.set(0, 1.04, 0.1)
+      o.scale.set(0.3, 0.28, 0.3)
+    }),
+    part(mergeGeometries([new THREE.ConeGeometry(0.05, 0.28, 6).rotateZ(0.5).translate(-0.14, 0.12, 0), new THREE.ConeGeometry(0.05, 0.28, 6).rotateZ(-0.5).translate(0.14, 0.12, 0)])!, horn, false, (_a, o) => {
+      o.position.set(0, 1.12, 0.06)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.BoxGeometry(0.14, 0.04, 0.02), mouth, false, (a, o) => {
+      o.position.set(0, 0.98, 0.25)
+      o.scale.set(1, 1 + a.wind * 2, 1)
+    }, false),
+    // 포신 (오른팔): 예고 때 들어 올리고, 쏘면 뒤로 튄다
+    part(new THREE.CylinderGeometry(0.1, 0.12, 0.62, 10).rotateX(Math.PI / 2), iron, true, (a, o) => {
+      o.position.set(0.34, 0.74 + a.wind * 0.1, 0.22 - a.swing * 0.14)
+      o.rotation.set(-a.wind * 0.5, 0, 0)
+      o.scale.setScalar(1)
+    }),
+    part(new THREE.SphereGeometry(0.07, 8, 6), mouth, false, (a, o) => {
+      o.position.set(0.34, 0.74 + a.wind * 0.25, 0.54 - a.swing * 0.14)
+      o.scale.setScalar(0.5 + a.wind * 1.2)
+    }, false),
+    ...[-1, 1].map((side) =>
+      part(cap(0.09, 0.24), iron, false, (a, o) => {
+        o.position.set(side * 0.16, 0.2, 0)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.45 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
+/** 심연의 군주(최종 보스): 검붉은 갑주 거인 · 뼈 뿔 왕관 · 붉게 갈라진 띠 · 등 뒤 거대한 날개 · 두 발톱 팔 */
+function lordParts(): Part[] {
+  const armor = lambert(0x6a2e34)
+  const bone = lambert(0xd8ccb0)
+  const crack = glow(0xff5a2a)
+  const eye = glow(0xffd24a)
+  const wing = new THREE.MeshLambertMaterial({ color: 0x7a2a30, side: THREE.DoubleSide })
+  const wingGeo = new THREE.BufferGeometry()
+  wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.9, 0.5, 0, 0.8, -0.35, 0, 0, 0, 0, 0.8, -0.35, 0, 0.35, -0.5, 0], 3))
+  wingGeo.computeVertexNormals()
+  return [
+    part(new THREE.SphereGeometry(0.5, 12, 10), armor, true, (a, o) => {
+      o.position.set(0, 0.7 + Math.abs(sin(a.walk)) * 0.03 * a.move, 0)
+      o.rotation.set(0.1 - a.wind * 0.12 + a.swing * 0.25, 0, sin(a.walk) * 0.04 * a.move)
+      o.scale.set(0.42 * (1 + a.squash * 0.2), 0.55 * (1 - a.squash * 0.2), 0.34)
+    }),
+    part(new THREE.TorusGeometry(0.34, 0.035, 5, 20).rotateX(Math.PI / 2), crack, false, (a, o) => {
+      o.position.set(0, 0.62, 0)
+      o.scale.setScalar(1 + a.wind * 0.12)
+    }, false),
+    part(new THREE.SphereGeometry(0.5, 10, 8), armor, true, (a, o) => {
+      o.position.set(0, 1.14 - a.wind * 0.03, 0.05)
+      o.rotation.set(-a.wind * 0.2, 0, 0)
+      o.scale.set(0.26, 0.28, 0.27)
+    }),
+    part(mergeGeometries([-0.12, -0.04, 0.04, 0.12].map((x) => new THREE.ConeGeometry(0.035, 0.26 - Math.abs(x) * 0.5, 5).translate(x, 0.12, 0)))!, bone, false, (a, o) => {
+      o.position.set(0, 1.24 - a.wind * 0.03, 0.03)
+      o.scale.setScalar(1)
+    }),
+    part(mergeGeometries([new THREE.SphereGeometry(0.03, 6, 5).translate(-0.06, 0, 0), new THREE.SphereGeometry(0.03, 6, 5).translate(0.06, 0, 0)])!, eye, false, (a, o) => {
+      o.position.set(0, 1.15 - a.wind * 0.03, 0.18)
+      o.scale.setScalar(1 + a.wind * 0.6)
+    }, false),
+    // 날개 (좌·우): 예고 때 크게 편다
+    ...[-1, 1].map((side) =>
+      part(wingGeo, wing, false, (a, o) => {
+        o.position.set(side * 0.18, 1.0, -0.2)
+        o.rotation.set(0.2, side * (0.9 - a.wind * 0.5) + (side > 0 ? 0 : Math.PI), sin(a.walk * 0.5) * 0.1)
+        o.scale.setScalar(1.1 + a.wind * 0.3)
+      }),
+    ),
+    ...[-1, 1].map((side) =>
+      part(cap(0.07, 0.52), armor, true, (a, o) => {
+        o.position.set(side * 0.34, 0.92, 0.08)
+        o.rotation.set(0.9 - a.wind * 1.8 + a.swing * 1.8, 0, side * 0.2)
+        o.scale.setScalar(1)
+        o.translateY(-0.28)
+      }),
+    ),
+    ...[-1, 1].map((side) =>
+      part(cap(0.09, 0.28), armor, false, (a, o) => {
+        o.position.set(side * 0.16, 0.22, 0)
+        o.rotation.set(sin(a.walk + (side > 0 ? 0 : Math.PI)) * 0.4 * a.move, 0, 0)
+        o.scale.setScalar(1)
+      }),
+    ),
+  ]
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
 const BUILDERS = [
   () => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts,
   wolfParts, () => spiderParts(), shamanParts, () => spiderParts(true),
   shieldParts, necroParts, spitterParts, wardenParts,
+  shadeParts, demonParts, lordParts,
 ]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 1.3, 1.4]
 
 export class MonsterView {
   readonly group = new THREE.Group()
