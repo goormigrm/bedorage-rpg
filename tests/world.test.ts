@@ -5,7 +5,7 @@ import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '.
 import { GameMap } from '../src/core/map'
 import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { MONSTER_LIST } from '../src/core/monsters'
-import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step } from '../src/core/sim'
+import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step, townPortalSpot } from '../src/core/sim'
 import { GameState } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { emptySheet } from '../src/core/items'
@@ -173,6 +173,45 @@ describe('이어진 세계', () => {
     run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(p.area).toBe(1)
     expect(s.portals.length).toBe(0)
+  })
+
+  it('타운 포털이 출구 곁에 열려도 포털로 온 사람이 출구로 튕겨 나가지 않는다 — 한 번 벗어나야 출구가 다시 먹는다', () => {
+    const { s, mapOf, run } = game(['chim', 'magic'])
+    standOnExit(s, mapOf, 0, 1)
+    run(1)
+    const p = s.players[0]
+    const mate = s.players[1]
+    expect(p.area).toBe(1)
+    // 들판의 마을 쪽 출구 바로 위(44px — 출구 반경 밖)에서 포털을 연다 → 포털로 오면 출구 위에 내려선다
+    const e = areaLayout(1, mapOf(1)).exits.find((x) => x.to === TOWN)!
+    p.x = e.x
+    p.y = e.y - 44
+    run(60)
+    expect(p.area).toBe(1)
+    run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_PORTAL } : idle()))
+    run(PORTAL_CAST + 2)
+    expect(s.portals.length).toBe(1)
+    // 동료가 마을 쪽 포털로 온다
+    const tl = areaLayout(TOWN, mapOf(TOWN))
+    const at = townPortalSpot(tl, 0)!
+    mate.x = at.x
+    mate.y = at.y
+    run(2)
+    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(mate.area).toBe(1)
+    expect(Math.hypot(mate.x - e.x, mate.y - e.y)).toBeLessThanOrEqual(30)
+    // 가만히 있어도 들판에 남는다 (예전에는 30틱 뒤 마을로 튕겨 나갔다)
+    run(120)
+    expect(mate.area).toBe(1)
+    expect(mate.exitLock).toBe(1)
+    // 출구에서 벗어났다가 다시 밟으면 건너간다
+    mate.y = e.y - 120
+    run(2)
+    expect(mate.exitLock).toBe(0)
+    mate.x = e.x
+    mate.y = e.y
+    run(2)
+    expect(mate.area).toBe(TOWN)
   })
 
   it('보스 방: 도살자를 쓰러뜨리면 기억한다 — 지역을 버렸다 다시 와도 다시 나오지 않는다', () => {

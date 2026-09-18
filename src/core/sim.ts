@@ -386,7 +386,9 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     const btn = inp?.buttons ?? 0
     const pressed = btn & ~p.btnPrev
     p.btnPrev = btn
-    if (p.exitLock > 0) p.exitLock--
+    // 건너온 뒤 30틱은 출구가 안 먹는다. 출구 위에 내려섰다면(출구 곁에 열린 타운 포털로 온 경우 등) 한 번 벗어날 때까지 1 에 머문다
+    // — 안 그러면 포털로 온 사람이 0.5초 뒤 출구로 튕겨 나간다 (2026-09-19 P2P 탭 확인에서 찾음)
+    if (p.exitLock > 1 || (p.exitLock === 1 && !l.exits.some((e) => len(p.x - e.x, p.y - e.y) <= EXIT_R))) p.exitLock--
     if (p.potCd > 0) p.potCd--
     if (p.shrineT > 0) p.shrineT--
     if (p.legCd > 0) p.legCd--
