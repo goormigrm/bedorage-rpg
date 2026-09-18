@@ -36,6 +36,8 @@ export interface WeaponDef {
   pierce?: number
   /** 맞거나 끝나면 터진다 (유탄): 반경 px · 폭발 피해 배율(탄 피해 기준) */
   boom?: { r: number; mul: number }
+  /** 투기장(사람을 맞힐 때)만 곱하는 피해 배율 — 던전 밸런스와 따로 맞춘다 (tools/arena.ts, 기본 1) */
+  pvp?: number
   damage: number
   /** 조준경(ADS)으로 맞히면 한 방 — 스치면(반지름 바깥 SNIPER_GRAZE_FRAC) 체력을 grazeLeave 만 남긴다 (저격총, 2026-09-05) */
   lethalAds?: boolean
@@ -95,21 +97,25 @@ export function falloff(w: WeaponDef, dist: number): number {
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
 
-/** 무기 계열 공통 값 (모두 무한 탄) */
+/**
+ * 무기 계열 공통 값 (모두 무한 탄).
+ * pvp = 투기장 배율(2026-09-19 tools/arena.ts, 12명 1:1 · 보통 봇 · 시드 10 → 캐릭터별 38~60%):
+ * 저격 0.72 · 소총 0.9 · 기관총 0.95 · 산탄 1.08 · SMG 1.1 · 권총 1.12 (변형은 계열과 같게)
+ */
 const INF = { magSize: 0, reloadTicks: 0, auto: true }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 권총 계열 (단군덕 · 우원덕) — 중거리 · 정확 · 소음기 ----------------
   // DPS 20/11 = 1.82. 소음기라 총소리가 무리를 깨우지 않는다(정찰)
   pistol: {
-    ...INF, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
+    ...INF, pvp: 1.12, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
     knock: 1.2, damage: 20, suppressed: true, pellets: 1, fireInterval: 11,
     spreadHip: deg(4), spreadAds: deg(1.4), recoil: deg(1.8), recoilRecover: deg(0.55),
     speed: 15, life: 60, moveMul: 1.0, length: 14, color: 0x9aa0a6, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   // 리볼버: 느리고 한 발이 크다(46). 소음기가 없어 시끄럽다. DPS 1.92
   revolver: {
-    ...INF, id: 'revolver', family: 'pistol', name: '리볼버', desc: '한 발 한 발이 크다(권총의 두 배 남짓). 대신 느리고 시끄럽다.',
+    ...INF, pvp: 1.12, id: 'revolver', family: 'pistol', name: '리볼버', desc: '한 발 한 발이 크다(권총의 두 배 남짓). 대신 느리고 시끄럽다.',
     knock: 2.4, damage: 46, pellets: 1, fireInterval: 24,
     spreadHip: deg(3), spreadAds: deg(0.9), recoil: deg(4), recoilRecover: deg(0.6),
     speed: 18, life: 55, moveMul: 1.0, length: 16, color: 0xb08a50, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -117,14 +123,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- SMG 계열 (주펄덕) — 근접 난사 ----------------
   // DPS 11/5 = 2.2 (가까이). 멀면 0.62 배
   smg: {
-    ...INF, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
+    ...INF, pvp: 1.1, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
     knock: 0.6, damage: 11, pellets: 1, fireInterval: 5,
     spreadHip: deg(7), spreadAds: deg(4), recoil: deg(1.2), recoilRecover: deg(0.5),
     speed: 14, life: 55, moveMul: 0.96, length: 18, color: 0x7c8590, falloffStart: 320, falloffEnd: 700, falloffMin: 0.62,
   },
   // 화염방사기: 약 4칸만 닿지만 불길이 셋을 꿰뚫는다. 한 마리 DPS 2.5 · 무리에 강하다. 가까이 붙어야 해서 위험하다
   flamer: {
-    ...INF, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
+    ...INF, pvp: 1.1, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
     knock: 0.3, damage: 5, pellets: 2, fireInterval: 4, pierce: 2,
     spreadHip: deg(10), spreadAds: deg(7), recoil: 0, recoilRecover: 0,
     speed: 9, life: 17, moveMul: 0.95, length: 20, color: 0xff7a2a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -132,14 +138,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 소총 계열 (침착덕 · 기열덕 · 우재덕) — 멀리서 정확 ----------------
   // DPS 18/10 = 1.8, 멀어도 0.78 배까지만 준다
   rifle: {
-    ...INF, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
+    ...INF, pvp: 0.9, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
     knock: 1.0, damage: 18, pellets: 1, fireInterval: 10,
     spreadHip: deg(5.5), spreadAds: deg(1.4), recoil: deg(2.2), recoilRecover: deg(0.5),
     speed: 24, life: 50, moveMul: 0.92, length: 24, color: 0x5f6b48, falloffStart: 420, falloffEnd: 820, falloffMin: 0.78,
   },
   // 석궁: 느린 화살(44)이 둘을 더 꿰뚫는다. 한 마리 DPS 1.69 · 줄 선 무리에 강하다
   crossbow: {
-    ...INF, id: 'crossbow', family: 'rifle', name: '석궁', desc: '느린 화살이 둘을 더 꿰뚫는다. 줄지어 오는 무리에 강하다.',
+    ...INF, pvp: 0.9, id: 'crossbow', family: 'rifle', name: '석궁', desc: '느린 화살이 둘을 더 꿰뚫는다. 줄지어 오는 무리에 강하다.',
     knock: 1.8, damage: 44, pellets: 1, fireInterval: 26, pierce: 2,
     spreadHip: deg(3), spreadAds: deg(0.8), recoil: deg(2), recoilRecover: deg(0.5),
     speed: 20, life: 60, moveMul: 0.95, length: 22, color: 0x7a5a38, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -147,14 +153,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 산탄 계열 (매직덕 · 풍월덕) — 근접 폭발력 ----------------
   // DPS 12×7/38 = 2.21 (가까이). 멀면 0.35 배
   shotgun: {
-    ...INF, id: 'shotgun', family: 'shotgun', name: '산탄총', desc: '가까이서 한 번에 크게. 멀면 급격히 약해진다.',
+    ...INF, pvp: 1.08, id: 'shotgun', family: 'shotgun', name: '산탄총', desc: '가까이서 한 번에 크게. 멀면 급격히 약해진다.',
     knock: 0.9, damage: 12, pellets: 7, fireInterval: 38,
     spreadHip: deg(7.5), spreadAds: deg(5), recoil: deg(4), recoilRecover: deg(0.4),
     speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b, falloffStart: 200, falloffEnd: 500, falloffMin: 0.35,
   },
   // 더블배럴: 두 발을 한꺼번에 — 12알 × 11. 느리지만 한 번이 크고 멀리 밀친다. DPS 2.06
   doublebarrel: {
-    ...INF, id: 'doublebarrel', family: 'shotgun', name: '더블배럴', desc: '두 발을 한꺼번에(12알). 느리지만 한 번이 크고 멀리 밀친다.',
+    ...INF, pvp: 1.08, id: 'doublebarrel', family: 'shotgun', name: '더블배럴', desc: '두 발을 한꺼번에(12알). 느리지만 한 번이 크고 멀리 밀친다.',
     knock: 1.5, damage: 11, pellets: 12, fireInterval: 64,
     spreadHip: deg(11), spreadAds: deg(8), recoil: deg(6), recoilRecover: deg(0.4),
     speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 160, falloffEnd: 420, falloffMin: 0.3,
@@ -162,14 +168,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 저격 계열 (옥냥덕 · 통천덕) — 한 발 · 관통 ----------------
   // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.8초마다 · 하나를 더 꿰뚫는다. 한 마리 DPS 1.67
   sniper: {
-    ...INF, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 하나를 더 꿰뚫고 멀리 밀친다.',
+    ...INF, pvp: 0.72, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 하나를 더 꿰뚫고 멀리 밀친다.',
     knock: 4, damage: 80, pellets: 1, fireInterval: 48, pierce: 1,
     spreadHip: deg(2.5), spreadAds: deg(0.4), recoil: deg(5), recoilRecover: deg(0.4),
     speed: 30, life: 70, moveMul: 0.8, length: 32, color: 0x3d4a5c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   // 레일건: 모든 것을 꿰뚫는 150 · 1.6초마다. 한 마리 DPS 1.56 · 줄에는 무한
   railgun: {
-    ...INF, id: 'railgun', family: 'sniper', name: '레일건', desc: '모든 것을 꿰뚫는 한 발(150). 느리다.',
+    ...INF, pvp: 0.72, id: 'railgun', family: 'sniper', name: '레일건', desc: '모든 것을 꿰뚫는 한 발(150). 느리다.',
     knock: 3, damage: 150, pellets: 1, fireInterval: 96, pierce: 99,
     spreadHip: deg(1.5), spreadAds: deg(0.3), recoil: deg(6), recoilRecover: deg(0.4),
     speed: 44, life: 50, moveMul: 0.78, length: 34, color: 0x5ac8ff, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -177,14 +183,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 기관총 계열 (철면덕) — 버티며 퍼붓기 ----------------
   // DPS 10/5 = 2.0. 퍼짐이 크고 느리게 걷는다
   mg: {
-    ...INF, id: 'mg', family: 'mg', name: '기관총', desc: '끝없이 퍼붓는다. 퍼짐이 크고 무겁다.',
+    ...INF, pvp: 0.95, id: 'mg', family: 'mg', name: '기관총', desc: '끝없이 퍼붓는다. 퍼짐이 크고 무겁다.',
     knock: 0.5, damage: 10, pellets: 1, fireInterval: 5,
     spreadHip: deg(7.5), spreadAds: deg(4.5), recoil: deg(2), recoilRecover: deg(0.35),
     speed: 15, life: 60, moveMul: 0.9, length: 30, color: 0x4a4f45, falloffStart: 320, falloffEnd: 760, falloffMin: 0.55,
   },
   // 유탄발사기: 맞거나 멈추면 반경 72 에 터진다(탄 피해 36 + 폭발 36). 한 마리 1.44 · 무리에 강하다
   launcher: {
-    ...INF, id: 'launcher', family: 'mg', name: '유탄발사기', desc: '맞거나 멈추면 둘레 약 2칸에 터진다. 무리에 강하고 느리다.',
+    ...INF, pvp: 0.95, id: 'launcher', family: 'mg', name: '유탄발사기', desc: '맞거나 멈추면 둘레 약 2칸에 터진다. 무리에 강하고 느리다.',
     knock: 2, damage: 36, pellets: 1, fireInterval: 50, boom: { r: 72, mul: 1 },
     spreadHip: deg(3), spreadAds: deg(1.5), recoil: deg(4), recoilRecover: deg(0.4),
     speed: 11, life: 55, moveMul: 0.88, length: 26, color: 0x5a6a3a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,

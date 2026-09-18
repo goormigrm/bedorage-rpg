@@ -195,7 +195,8 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     prominence: 7,
     // 2026-09-05 SMG → 소총. 연속 명중 패시브인데 SMG 는 애초에 잘 안 맞아 특성과 어긋났다
     // 소총이 되면서 세져(계측 67%) 체력을 우재덕과 같은 185 로 내렸다
-    maxHp: 185, speed: 3.2, weapon: 'rifle', dashCooldown: 55,
+    // 2026-09-19 재장전을 없앤 뒤 투기장 1:1 에서 17~21% (머리가 커서 헤드샷을 잘 맞는다) → 205
+    maxHp: 205, speed: 3.2, weapon: 'rifle', dashCooldown: 55,
     passiveName: '뇌절', passiveDesc: '연달아 맞힐수록 한 발 한 발이 점점 아파집니다. 빗나가면 조금 식습니다.\n소총으로 침착하게 맞히기만 하면 뇌절이 쌓입니다.',
     bodyColor: 0xff5f5f, accentColor: 0xd42b2b,
     look: {

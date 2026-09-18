@@ -42,8 +42,9 @@ export const PUNGWOL = { dashCost: 22 }
 export const UWON = { invulnAfterDash: 24 }
 /** 주펄덕 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }
-/** 기열덕 패시브(뇌절): 연속 명중마다 피해 배율이 오른다 */
-export const GIYEOL = { perHit: 0.06, maxStacks: 6 }
+/** 기열덕 패시브(뇌절): 연속 명중마다 피해 배율이 오른다. 2026-09-19 재장전이 없어져 빗나가는 탄이 늘자(빗나가면 한 칸 식음)
+ * 투기장 1:1 에서 17% 까지 떨어졌다 → 한 칸 6% → 8%, 최대 6 → 8 칸 (tools/arena.ts) */
+export const GIYEOL = { perHit: 0.08, maxStacks: 8 }
 
 /**
  * 회복 구슬(디아블로의 체력 구슬): 몬스터가 떨어뜨린다. 밟은 사람은 최대 체력의 25%,

@@ -2336,6 +2336,8 @@ function applyHitPlayer(state: GameState, b: Bullet, victim: PlayerState, dOff: 
   const shooter = state.players[b.owner]
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
   if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
+  // 투기장 배율 (2026-09-19 재장전을 없앤 뒤 tools/arena.ts 로 맞춘 값 — 던전 밸런스와 따로)
+  dmg *= w.pvp ?? 1
   dmg = Math.round(dmg)
   b.hitSomeone = true
   shooter.streak = Math.min(99, shooter.streak + 1)
