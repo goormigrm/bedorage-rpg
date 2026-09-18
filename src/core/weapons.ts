@@ -100,7 +100,8 @@ const deg = (d: number) => Math.round((d / 360) * 1024)
 /**
  * 무기 계열 공통 값 (모두 무한 탄).
  * pvp = 투기장 배율(2026-09-19 tools/arena.ts, 12명 1:1 · 보통 봇 · 시드 10 → 캐릭터별 38~60%):
- * 저격 0.72 · 소총 0.9 · 기관총 0.95 · 산탄 1.08 · SMG 1.1 · 권총 1.12 (변형은 계열과 같게)
+ * 저격 0.72 · 소총 0.9 · 기관총 0.95 · 산탄 1.08 · SMG 1.1 · 권총 1.12 (변형은 계열과 같게).
+ * 저격 계열은 같은 날 PvE 연사를 올리며(48 → 42틱) 배율을 그만큼 낮췄다: 저격 0.63 · 레일건 0.67
  */
 const INF = { magSize: 0, reloadTicks: 0, auto: true }
 
@@ -166,19 +167,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 160, falloffEnd: 420, falloffMin: 0.3,
   },
   // ---------------- 저격 계열 (옥냥덕 · 통천덕) — 한 발 · 관통 ----------------
-  // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.8초마다 · 하나를 더 꿰뚫는다. 한 마리 DPS 1.67
+  // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.7초마다 · 둘을 더 꿰뚫는다. 한 마리 DPS 1.9
+  // (48틱 · 관통 1 이면 혼자 한 바퀴 계측에서 통천덕이 6.2시간 · 죽음 136 — 무리에 너무 약했다. 투기장 배율은 그만큼 낮춰 PvP 는 그대로)
   sniper: {
-    ...INF, pvp: 0.72, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 하나를 더 꿰뚫고 멀리 밀친다.',
-    knock: 4, damage: 80, pellets: 1, fireInterval: 48, pierce: 1,
+    ...INF, pvp: 0.63, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 둘을 더 꿰뚫고 멀리 밀친다.',
+    knock: 4, damage: 80, pellets: 1, fireInterval: 42, pierce: 2,
     spreadHip: deg(2.5), spreadAds: deg(0.4), recoil: deg(5), recoilRecover: deg(0.4),
-    speed: 30, life: 70, moveMul: 0.8, length: 32, color: 0x3d4a5c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    speed: 30, life: 70, moveMul: 0.9, length: 32, color: 0x3d4a5c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // 레일건: 모든 것을 꿰뚫는 150 · 1.6초마다. 한 마리 DPS 1.56 · 줄에는 무한
+  // 레일건: 모든 것을 꿰뚫는 150 · 1.5초마다. 한 마리 DPS 1.67 · 줄에는 무한
   railgun: {
-    ...INF, pvp: 0.72, id: 'railgun', family: 'sniper', name: '레일건', desc: '모든 것을 꿰뚫는 한 발(150). 느리다.',
-    knock: 3, damage: 150, pellets: 1, fireInterval: 96, pierce: 99,
+    ...INF, pvp: 0.67, id: 'railgun', family: 'sniper', name: '레일건', desc: '모든 것을 꿰뚫는 한 발(150). 느리다.',
+    knock: 3, damage: 150, pellets: 1, fireInterval: 90, pierce: 99,
     spreadHip: deg(1.5), spreadAds: deg(0.3), recoil: deg(6), recoilRecover: deg(0.4),
-    speed: 44, life: 50, moveMul: 0.78, length: 34, color: 0x5ac8ff, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    speed: 44, life: 50, moveMul: 0.85, length: 34, color: 0x5ac8ff, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   // ---------------- 기관총 계열 (철면덕) — 버티며 퍼붓기 ----------------
   // DPS 10/5 = 2.0. 퍼짐이 크고 느리게 걷는다

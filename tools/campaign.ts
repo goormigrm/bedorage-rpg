@@ -29,7 +29,9 @@ const GEAR = arg('gear', 1)
 const HUMAN = 2.0
 const OVERHEAD = 120
 const CLEAR = 0.85
-const CHARS: CharacterId[] = (['chim', 'cheolmyeon', 'magic', 'oknyang'] as CharacterId[]).slice(0, PARTY)
+// char=jupeol,pungwol — 파티 캐릭터를 직접 고른다 (없으면 침착·철면·매직·옥냥 순)
+const CHAR_ARG = process.argv.find((a) => a.startsWith('char='))?.split('=')[1]
+const CHARS: CharacterId[] = CHAR_ARG ? (CHAR_ARG.split(',') as CharacterId[]) : (['chim', 'cheolmyeon', 'magic', 'oknyang'] as CharacterId[]).slice(0, PARTY)
 /** 막을 따로 잴 때 시작 레벨 (막 보스 앞 ≈ 지역 레벨이 목표 — GUIDE 7장) */
 const ACT_START = [1, 8, 16, 24]
 
@@ -73,7 +75,7 @@ const path = AREAS.filter((a) => a.kind !== 'town' && (ONLY_ACT < 0 || a.act ===
 let carry = ONLY_ACT >= 0 ? totalXp(ACT_START[ONLY_ACT], 0) : 0
 const rows: { act: number; name: string; lv: number; lvIn: number; lvOut: number; sec: number; deaths: number; kill: number; capped: number }[] = []
 
-console.log(`파티 ${PARTY}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 끝 = 보스·우두머리 + ${CLEAR * 100}% · 상한 ${CAP_MIN}분`)
+console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 끝 = 보스·우두머리 + ${CLEAR * 100}% · 상한 ${CAP_MIN}분`)
 console.log('지역                    지역Lv  Lv(들어감→나옴)   봇 분   죽음  잡은%  상한')
 for (const a of path) {
   const lv0 = fromXp(carry)

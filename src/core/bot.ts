@@ -5,7 +5,7 @@
 // 봇의 기억(BotMemory)은 상태 밖이라 P2P 에서는 호스트가 봇 입력을 만들어 보낸다(덕 DESIGN 8.6 그대로).
 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
-import { BTN_ADS, BTN_DASH, BTN_FIRE, BTN_USE, Input, SKILL_BTNS } from './input'
+import { BTN_DASH, BTN_FIRE, BTN_USE, Input, SKILL_BTNS } from './input'
 import { GameMap, TILE, isWallAt, rayBlocked } from './map'
 import { ACID, MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
@@ -193,7 +193,7 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     out.aimDist = Math.min(255, Math.round(d / 4))
     const err = Math.abs(angleDiff(want, mem.aim))
     if (mem.seen && err < deg(10) && rand(mem.rng) < diff.fireChance && d < range) out.buttons |= BTN_FIRE
-    if (w.family === 'sniper' && d > 220 && mem.seen) out.buttons |= BTN_ADS
+    // (조준경이 없어진 뒤로 저격도 정조준 이득이 작다 — 정조준하면 0.6배로 걸어 한 바퀴가 너무 느려졌다. 봇은 쓰지 않는다)
     // 거리 유지 (방패가 이쪽을 보면 옆으로 돌아 들어간다)
     const pref = PREFERRED_RANGE[me.weapon]
     if (guarding(target, me) && !w.melee) {
