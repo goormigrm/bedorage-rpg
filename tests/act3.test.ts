@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, CMD_QUEST, Input } from '../src/core/input'
 import { GameMap, TILE, TILE_FLOOR, buildMap, rayBlocked } from '../src/core/map'
-import { GUARD, MONSTER_LIST, RAISE, WARDEN } from '../src/core/monsters'
+import { GUARD, MONSTER_LIST, RAISE, TIERS, WARDEN } from '../src/core/monsters'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
 import { GameState, MS_CHASE, MS_RECOVER, MS_WINDUP, Monster, ZONE_ACID } from '../src/core/state'
@@ -46,7 +46,7 @@ function duel(id: string, mapId: 'ruins' | 'sewer' | 'rite', gap: number, seed =
 }
 
 describe('3막 잠긴 지하도 (D6)', () => {
-  it('방패병: 정면에서 쏜 탄은 방패에 막혀 40% 만 — 등 뒤에서 쏘면 제대로 들어간다', () => {
+  it('방패병: 정면에서 쏜 탄은 방패에 막혀 일부만(보통 60% · 악몽·지옥 40%) — 등 뒤에서 쏘면 제대로 들어간다', () => {
     const shoot = (facing: number) => {
       const g = duel('shield', 'ruins', 5)
       const m: Monster = g.m
@@ -70,8 +70,11 @@ describe('3막 잠긴 지하도 (D6)', () => {
     const back = shoot(0) // 등을 보인다
     expect(front.blocks).toBeGreaterThan(0)
     expect(back.blocks).toBe(0)
-    expect(back.lost).toBeGreaterThan(front.lost * 2)
+    // 보통 판: 정면은 TIERS[0].guard(0.6)만 들어간다 (2026-09-19 보통을 쉽게 — 악몽·지옥은 GUARD.mult 0.4)
+    expect(back.lost).toBeGreaterThan(front.lost * 1.5)
+    expect(Math.abs(front.lost / back.lost - TIERS[0].guard)).toBeLessThan(0.1)
     expect(GUARD.mult).toBeLessThan(0.5)
+    expect(TIERS[1].guard).toBe(GUARD.mult)
   })
 
   it('산성 토사꾼: 예고 때 정한 자리(사람 발밑)에 웅덩이 — 서 있으면 계속 다친다', () => {

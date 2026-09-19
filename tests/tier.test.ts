@@ -1,7 +1,7 @@
 // 난이도 (D7 — GUIDE 5장): 보통 · 악몽 · 지옥. 같은 세계, 지역 레벨 +10/+20 · 체력 · 정예 능력 · 전리품 · 난이도별 퀘스트 · 열림 조건.
 import { describe, expect, it } from 'vitest'
 import { emptySheet, sanitizeSheet } from '../src/core/items'
-import { EA_UNIQUE, ELITE_AFFIXES, TIERS, tierOf } from '../src/core/monsters'
+import { EA_UNIQUE, ELITE_AFFIXES, TIERS, levelPow, tierOf } from '../src/core/monsters'
 import { createState } from '../src/core/sim'
 import { ACTS, QUESTS, actBossQuest, areaLevel, buildAreaMap, tierOpen, tierQuests } from '../src/core/world'
 
@@ -20,6 +20,19 @@ describe('난이도', () => {
     expect(areaLevel(4, 1, 1)).toBe(areaLevel(4, 1, 0) + TIERS[1].lvl)
     expect(hp[1]).toBeGreaterThan(hp[0] * 1.5)
     expect(hp[2]).toBeGreaterThan(hp[1] * 1.3)
+  })
+
+  it('보통은 몬스터 피해가 레벨 보정의 0.75배 — 악몽·지옥은 그대로 (2026-09-19 "보통인데 꽤 어렵다")', () => {
+    const seed = 93
+    const map = buildAreaMap(seed, 4)
+    const avgPow = (tier: number) => {
+      const ms = createState({ seed, chars: ['chim'], area: 4, tier }, map).monsters.filter((m) => !m.elite)
+      return ms.reduce((a, m) => a + m.pow, 0) / ms.length
+    }
+    const lv = areaLevel(4, 1, 0)
+    expect(avgPow(0)).toBeCloseTo(Math.round(levelPow(lv) * 0.75), 0)
+    expect(avgPow(1)).toBeCloseTo(levelPow(areaLevel(4, 1, 1)), 0)
+    expect(TIERS[0].pow).toBeLessThan(TIERS[1].pow)
   })
 
   it('지옥의 우두머리는 접두 능력이 더 붙는다', () => {

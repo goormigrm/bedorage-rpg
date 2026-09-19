@@ -298,10 +298,13 @@ export const HP_BASE = 1.35
  * lvl = 지역 레벨에 더함 · hp = 체력 배율(레벨 보정 위에) · affix = 정예·우두머리 접두 능력 더 · loot = 전리품 등급 올림 · gold = 골드 배율.
  * 보통 4막을 끝내면 악몽, 악몽 4막을 끝내면 지옥이 열린다(캐릭터마다 · 퀘스트는 난이도마다 따로).
  */
+// 2026-09-19 사용자 "보통인데 꽤 어렵다" → 보통만 쉽게 (악몽·지옥은 그대로):
+//   pow = 몬스터 피해 배율(레벨 보정 위에) — 보통 0.75
+//   guard = 방패 정면으로 들어가는 피해 비율(GUARD.mult) — 보통 0.6. 3막 무너진 시장(방패병 무리)에서 봇이 12~23번씩 죽었다
 export const TIERS = [
-  { lvl: 0, hp: 1, affix: 0, loot: 0, gold: 1 },
-  { lvl: 10, hp: 1.3, affix: 1, loot: 0.08, gold: 1.6 },
-  { lvl: 20, hp: 1.7, affix: 2, loot: 0.16, gold: 2.2 },
+  { lvl: 0, hp: 1, affix: 0, loot: 0, gold: 1, pow: 0.75, guard: 0.6 },
+  { lvl: 10, hp: 1.3, affix: 1, loot: 0.08, gold: 1.6, pow: 1, guard: GUARD.mult },
+  { lvl: 20, hp: 1.7, affix: 2, loot: 0.16, gold: 2.2, pow: 1, guard: GUARD.mult },
 ]
 export const TIER_LABEL = ['보통', '악몽', '지옥']
 export const tierOf = (t: number | undefined) => TIERS[Math.max(0, Math.min(TIERS.length - 1, t ?? 0))]

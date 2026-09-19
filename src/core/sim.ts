@@ -235,7 +235,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   }
   if (state.killed.includes(id)) return
   const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp
-  const pow = levelPow(lvl)
+  const pow = Math.round(levelPow(lvl) * tierOf(state.tier).pow)
   const at = l.special
   if (def.boss !== undefined) {
     // 막 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
@@ -2304,7 +2304,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   if (def.guard && m.st !== MS_SLEEP && m.stun === 0 && Math.abs(angleDiff(atan2A(-b.vy, -b.vx), m.aim)) <= def.guard) {
     b.hitSomeone = true
     state.events.push({ type: 'mblock', m: m.id, x: b.x, y: b.y })
-    hurtMonster(state, m, Math.max(1, Math.round(b.damage * b.mul * GUARD.mult)), b.owner, false, b.x, b.y)
+    hurtMonster(state, m, Math.max(1, Math.round(b.damage * b.mul * tierOf(state.tier).guard)), b.owner, false, b.x, b.y)
     return true
   }
   const dist = len(m.x - b.ox, m.y - b.oy)

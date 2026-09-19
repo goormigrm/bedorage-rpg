@@ -170,7 +170,7 @@ export function populate(
   // 몬스터 레벨만큼 세진다 (monsters.ts levelHp · levelPow)
   const tier = tierOf(state.tier)
   const hpMul = hpScaleFor(players) * levelHp(level) * tier.hp
-  const pow = levelPow(level)
+  const pow = Math.round(levelPow(level) * tier.pow)
   centers.forEach((c, pack) => {
     const cx = (c % map.w) * TILE + TILE / 2
     const cy = ((c / map.w) | 0) * TILE + TILE / 2
