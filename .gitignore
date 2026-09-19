@@ -9,3 +9,5 @@ Thumbs.db
 docs/img/
 # 방 지키기 운영 로그 (로컬)
 tools/rooms.log
+# 괴물 모델 원본(Sketchfab · Quaternius 원본 — 줄인 결과만 public/ 에 넣는다, 2026-09-19)
+art-src/
