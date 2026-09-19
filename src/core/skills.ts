@@ -1,4 +1,4 @@
-// 스킬 정의표: 캐릭터마다 스킬 2개(Q·E) + 궁극기 1개(X). 기존 특성(패시브)은 그대로 둔다.
+// 스킬 정의표: 캐릭터마다 스킬 2개(Q·E) + 궁극기 1개(R). 기존 특성(패시브)은 그대로 둔다.
 // (2026-09-18 사용자 요청: "캐릭터마다 특성이 1개씩 있었는데 RPG 에서는 스킬 2개에 궁극기 1개 더")
 // 효과 구현은 sim.ts castSkill — 여기는 이름·설명·재사용 시간·아이콘만. 시간은 틱(60Hz), 거리는 px.
 //
@@ -168,7 +168,7 @@ export function focusCost(def: SkillDef, b: Build, n: number): number {
   return Math.round(base * (b.m5[n] === 2 ? 0.65 : 1))
 }
 
-/** 스킬 칸(0 Q · 1 E · 2 X · 3 [1] · 4 [2]) → 트리 칸 번호 (배우지 않았으면 -1) */
+/** 스킬 칸(0 Q · 1 E · 2 R · 3 [1] · 4 [2]) → 트리 칸 번호 (배우지 않았으면 -1) */
 export function slotNode(p: { build: Build }, slot: number): number {
   if (slot === 2) return ULT_NODE
   const n = p.build.s[slot < 2 ? slot : slot - 1] ?? -1
@@ -196,8 +196,8 @@ export const CHAR_SKILLS: Record<CharacterId, [SkillId, SkillId, SkillId]> = {
   juwoojae: ['catwalk', 'flashbulb', 'encore'],
 }
 
-/** 스킬 칸 키 (칸 번호 = PlayerState.cd 번호: 0 Q · 1 E · 2 X · 3 [1] · 4 [2]) */
-export const SKILL_KEYS = ['Q', 'E', 'X', '1', '2'] as const
+/** 스킬 칸 키 (칸 번호 = PlayerState.cd 번호: 0 Q · 1 E · 2 R · 3 [1] · 4 [2]) — 궁극기는 X 였다가 R (2026-09-19) */
+export const SKILL_KEYS = ['Q', 'E', 'R', '1', '2'] as const
 
 /** 판이 시작될 때 궁극기는 절반쯤 차 있다 — 첫 큰 싸움에서 한 번은 쓸 수 있게 */
 export const ULT_START_FRAC = 0.5

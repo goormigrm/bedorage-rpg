@@ -65,7 +65,7 @@ export class LocalInput {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '1', '2', '3', 'q', 'e', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
+      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '1', '2', '3', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
         if (down) this.keys.add(k)
         else this.keys.delete(k)
         e.preventDefault()
@@ -209,10 +209,10 @@ export class LocalInput {
     if (k.has('f')) buttons |= BTN_USE
     if (k.has('t')) buttons |= BTN_PORTAL
     if (k.has('3')) buttons |= BTN_POTION
-    // 스킬 Q · E, 궁극기 X (누르고 있으면 준비되는 대로 쓴다)
+    // 스킬 Q · E, 궁극기 R (누르고 있으면 준비되는 대로 쓴다). 궁극기는 X 였다가 2026-09-19 요청으로 R — 재장전이 없어져 빈 키였다
     if (k.has('q')) buttons |= BTN_SKILL1
     if (k.has('e')) buttons |= BTN_SKILL2
-    if (k.has('x')) buttons |= BTN_ULT
+    if (k.has('r')) buttons |= BTN_ULT
     if (k.has('1')) buttons |= BTN_SKILL3
     if (k.has('2')) buttons |= BTN_SKILL4
     t?.takeSwap()

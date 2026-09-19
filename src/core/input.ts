@@ -17,7 +17,7 @@ export const BTN_ULT = 1 << 9
 /** 스킬 칸 1 · 2 (D4 — 스킬 트리에서 배운 스킬) */
 export const BTN_SKILL3 = 1 << 12
 export const BTN_SKILL4 = 1 << 13
-/** 스킬 칸(0 Q · 1 E · 2 X 궁극기 · 3 [1] · 4 [2]) → 버튼. 칸 번호는 PlayerState.cd 번호와 같다 */
+/** 스킬 칸(0 Q · 1 E · 2 R 궁극기 · 3 [1] · 4 [2]) → 버튼. 칸 번호는 PlayerState.cd 번호와 같다 */
 export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT, BTN_SKILL3, BTN_SKILL4]
 /** 타운 포털 (T): 1.5초 시전 — 움직이거나 쏘거나 맞으면 끊긴다 */
 export const BTN_PORTAL = 1 << 10

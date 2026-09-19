@@ -488,7 +488,7 @@ export type SimEvent =
   | { type: 'death'; p: number; by: number; x: number; y: number; out: boolean }
   /** 투기장: 플레이어가 플레이어에게 맞음 (덕의 'hit') */
   | { type: 'hit'; p: number; by: number; x: number; y: number; part: number; dmg: number }
-  /** 스킬 사용 (slot 0=Q 1=E 2=X). tx·ty = 커서 지점 스킬의 목표 */
+  /** 스킬 사용 (slot 0=Q 1=E 2=R). tx·ty = 커서 지점 스킬의 목표 */
   | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number }
   /** 계단: 내려가기 시작 · 다음 층에 들어섬 */
   /** 다른 지역으로 건너갔다 (출구 · 웨이포인트 · 포털 · 마을에서 되살아남 · 따라감) */

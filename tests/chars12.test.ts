@@ -42,7 +42,7 @@ function dummy(s: GameState, x: number, y: number, hp = 5000) {
 }
 
 describe('나머지 여섯 (D7)', () => {
-  it('12명 모두 고를 수 있고, 제 Q·E·X 와 트리 다섯 칸이 있다', () => {
+  it('12명 모두 고를 수 있고, 제 Q·E·R 과 트리 다섯 칸이 있다', () => {
     expect(PLAYABLE.length).toBe(12)
     for (const c of PLAYABLE) {
       expect(TREE_ACTIVE[c]?.length).toBe(5)

@@ -1,4 +1,4 @@
-// 스킬(캐릭터마다 Q·E·X) · 투기장(PvP — 덕의 대전 규칙 이식) 규칙.
+// 스킬(캐릭터마다 Q·E·R) · 투기장(PvP — 덕의 대전 규칙 이식) 규칙.
 import { describe, expect, it } from 'vitest'
 import { radToAngle } from '../src/core/fixedmath'
 import { BTN_FIRE, BTN_SKILL1, BTN_SKILL2, BTN_ULT, Input } from '../src/core/input'
@@ -32,7 +32,7 @@ function openRow(map: GameMap, n: number): { x: number; y: number } {
 }
 
 describe('스킬 — 캐릭터마다 셋', () => {
-  it('1차 6명 모두 Q·E·X 가 있고, 궁극기는 절반 차서 시작한다', () => {
+  it('1차 6명 모두 Q·E·R 이 있고, 궁극기는 절반 차서 시작한다', () => {
     for (const c of PLAYABLE) {
       const ids = CHAR_SKILLS[c]
       expect(ids.length).toBe(3)

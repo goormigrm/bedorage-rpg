@@ -69,11 +69,11 @@ export class SkillPanel {
         <div class="sk-d">${def.desc}</div><div class="sk-f"><span class="sk-slots">칸 ${slots}</span>${mods(n)}</div></div>`
     })
     const ult = SKILLS[CHAR_SKILLS[p.char][2]]
-    const ultRow = `<div class="sk-row ult"><div class="sk-h"><b>${ult.name}</b><small>궁극기 · X</small>${pips(ULT_NODE)}${plus(ULT_NODE)}</div><div class="sk-d">${ult.desc}</div><div class="sk-f">${mods(ULT_NODE)}</div></div>`
+    const ultRow = `<div class="sk-row ult"><div class="sk-h"><b>${ult.name}</b><small>궁극기 · R</small>${pips(ULT_NODE)}${plus(ULT_NODE)}</div><div class="sk-d">${ult.desc}</div><div class="sk-f">${mods(ULT_NODE)}</div></div>`
     const passives = PASSIVES.map((ps, k) => `<div class="sk-row pas"><div class="sk-h"><b>${ps.name}</b>${pips(6 + k)}${plus(6 + k)}</div><div class="sk-d">${ps.desc}</div></div>`).join('')
     const respec = isTown(p.area) ? `<button class="btn" data-cmd="${CMD_RESPEC}" data-arg="0" ${p.gold >= 50 * p.level ? '' : 'disabled'}>재분배 · ${50 * p.level} 골드</button>` : '<span class="tp-note">재분배는 마을에서</span>'
     this.el.innerHTML = `<div class="tp-head"><b>스킬</b><span class="tp-gold">남은 포인트 ${free}</span><button class="inv-x" data-x>✕</button></div>
-      <p class="tp-line">레벨마다 포인트 하나 · 랭크마다 위력 +15% · 재사용 -4% · 3·5랭크에서 변형 하나. 배운 스킬을 Q · E · 1 · 2 칸에 건다 (궁극기는 X).</p>
+      <p class="tp-line">레벨마다 포인트 하나 · 랭크마다 위력 +15% · 재사용 -4% · 3·5랭크에서 변형 하나. 배운 스킬을 Q · E · 1 · 2 칸에 건다 (궁극기는 R).</p>
       <div class="sk-grid"><div>${actives.join('')}</div><div>${ultRow}${passives}<div class="sk-respec">${respec}</div></div></div>
       <p class="tp-hint">K · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)

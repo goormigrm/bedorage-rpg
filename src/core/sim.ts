@@ -1,7 +1,7 @@
 // 결정론 시뮬레이션. 두 가지 판을 한 코드로 돈다:
 //  - dungeon: 협동 던전 (몬스터 AI · 쓰러짐/부활 · 회복 구슬 · 죽음 규칙)
 //  - arena:   투기장 PvP (배도라지 덕의 대전 규칙 이식 — 헤드샷 · 모래주머니 · 힐팩 · 목표 킬, RPG 에서 키운 캐릭터끼리)
-// 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·X)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
+// 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·R)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
 import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
@@ -1331,7 +1331,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     state.events.push({ type: 'dash', p: p.id })
   }
 
-  // 스킬 Q · E · X · 1 · 2 (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼). 궁극기 빼고는 집중이 든다
+  // 스킬 Q · E · R · 1 · 2 (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼). 궁극기 빼고는 집중이 든다
   if (playing && p.dashTimer === 0) {
     for (let k = 0; k < SKILL_BTNS.length; k++) {
       if ((input.buttons & SKILL_BTNS[k]) === 0 || (p.cd[k] ?? 0) > 0) continue

@@ -232,7 +232,7 @@ export class Lobby {
         <canvas></canvas>
         <div class="ct"><b>${c.name} <em class="lv">Lv ${levelOf(c.id)}</em></b><small>${c.basedOn} · ${WEAPONS[c.weapon].name} · HP ${c.maxHp}</small></div>
         <div class="pv"><b>${c.passiveName}</b> ${c.passiveDesc}
-          <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div></div>`
+          <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div></div>`
       el.onclick = () => this.selectChar(c.id)
       chars.appendChild(el)
       const cv = el.querySelector('canvas') as HTMLCanvasElement
@@ -431,7 +431,7 @@ export class Lobby {
     if (!el) return
     const played = playTimeOf(c.id)
     const own = CHAR_SKILLS[c.id]
-    // 스킬 설명 (2026-09-19 요청 "스킬들 설명 보이게"): Q · E · X 는 설명과 재사용 대기를 다 보이고,
+    // 스킬 설명 (2026-09-19 요청 "스킬들 설명 보이게"): Q · E · R 은 설명과 재사용 대기를 다 보이고,
     // 스킬 트리에서 더 배우는 셋은 이름표 — 마우스를 올리면 설명
     const extra = (TREE_ACTIVE[c.id] ?? []).filter((sid) => !own.includes(sid))
     const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
@@ -439,7 +439,7 @@ export class Lobby {
       <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div></div>
       <div class="ch-r"><div class="skd">${own
         .map(
-          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i><div><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em><span>${SKILLS[sid].desc}</span></div></div>`,
+          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i><div><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em><span>${SKILLS[sid].desc}</span></div></div>`,
         )
         .join('')}</div>
       ${extra.length ? `<div class="skx"><small>스킬 트리(K)에서 더 배우는 스킬</small>${extra.map((sid) => `<span tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')} (재사용 ${cd(sid)})">${SKILLS[sid].name}</span>`).join('')}</div>` : ''}</div>`
