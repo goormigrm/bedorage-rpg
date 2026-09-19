@@ -546,6 +546,7 @@ export class Renderer3D {
         case 'levelup': {
           const p = state.players[e.p]
           if (!p) break
+          if (e.p === localPlayer) this.hud.notice(`레벨 ${e.level} — 능력치 포인트 +3 · 스킬 포인트 +1 (C · K)`, '#ffd86a')
           this.spawnRing(p.x * U, p.y * U, 0.3, 3, 0.8, 0xffd86a)
           this.spawnImpact(p.x * U, 1.2, p.y * U, 0xffd86a, 4)
           for (let k = 0; k < 24; k++) {

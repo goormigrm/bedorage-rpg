@@ -318,6 +318,25 @@ export const PROTAGONIST: CharacterDef = CHARACTERS.cheolmyeon
  * 순서가 로비 목록 순서다.
  */
 // D7(2026-09-18): 12명 모두. 뒤 여섯은 제 스킬(skills.ts)을 받았다
+/**
+ * 추천 능력치 (C 창 · "추천대로 분배") — [주, 부] 를 6:4 로. 번호 = ATTR_NAMES(힘 · 민첩 · 활력 · 정신).
+ * 역할에서 정했다: 탱커·근접은 활력, 저격·소총은 힘·민첩, 스킬이 강한 캐릭터는 정신.
+ */
+export const ATTR_REC: Record<CharacterId, [number, number]> = {
+  cheolmyeon: [2, 0],
+  chim: [1, 0],
+  dangun: [1, 3],
+  magic: [3, 2],
+  seungwoo: [2, 0],
+  oknyang: [0, 1],
+  jupeol: [1, 3],
+  uwon: [3, 1],
+  giyeol: [0, 1],
+  pungwol: [0, 2],
+  tongdak: [0, 2],
+  juwoojae: [1, 3],
+}
+
 export const PLAYABLE: CharacterId[] = ['cheolmyeon', 'chim', 'dangun', 'magic', 'seungwoo', 'oknyang', 'jupeol', 'uwon', 'giyeol', 'pungwol', 'tongdak', 'juwoojae']
 
 export function isPlayable(id: CharacterId): boolean {

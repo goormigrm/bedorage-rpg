@@ -318,6 +318,26 @@ export function xpNeed(level: number): number {
   return Math.round(XP_BASE * Math.pow(level, 1.1) * tail)
 }
 
+/**
+ * 능력치 (C 창 — 2026-09-19 "레벨업 시 세부 능력치 포인트를 줘서 올리고, 추천 능력치도 같이"). 레벨마다 3점.
+ * 힘 = 피해 · 민첩 = 연사 · 치명타 · 활력 = 체력 · 정신 = 스킬 위력 · 재사용. 추천은 characters.ts ATTR_REC.
+ */
+export const ATTR_NAMES = ['힘', '민첩', '활력', '정신']
+export const ATTR_DESC = ['피해 +0.8% / 점', '연사 +0.4% · 치명타 피해 +0.8% / 점', '최대 체력 +3 / 점', '스킬 위력 +0.8% · 스킬 재사용 -0.2% / 점']
+export const ATTR_PER_LEVEL = 3
+export const attrPoints = (level: number) => Math.max(0, level - 1) * ATTR_PER_LEVEL
+/** 남은 능력치 포인트 */
+export const attrFree = (level: number, attr: number[]) => attrPoints(level) - attr.reduce((a, b) => a + b, 0)
+/** 능력치가 능력치 칸(st)에 더하는 값 */
+function addAttr(st: number[], attr: number[]): void {
+  st[ST_DMG] += (attr[0] ?? 0) * 0.8
+  st[ST_RATE] += (attr[1] ?? 0) * 0.4
+  st[ST_CRIT] += (attr[1] ?? 0) * 0.8
+  st[ST_HP] += (attr[2] ?? 0) * 3
+  st[ST_SKILLPOW] += (attr[3] ?? 0) * 0.8
+  st[ST_CDR] += (attr[3] ?? 0) * 0.2
+}
+
 /** 레벨마다 최대 체력 +6, 피해 +1.5% */
 export const HP_PER_LEVEL = 6
 export const DMG_PER_LEVEL = 1.5
@@ -326,7 +346,7 @@ export const DMG_PER_LEVEL = 1.5
  * 장비 + 레벨로 능력치를 낸다. 결과는 PlayerState.st 에 들어간다(상태 안 — 결정론).
  * 합산 후 옵션마다 상한을 건다(받는 피해 감소 45%, 스킬 재사용 40% …).
  */
-export function computeStats(level: number, equip: (Item | null)[]): number[] {
+export function computeStats(level: number, equip: (Item | null)[], attr: number[] = []): number[] {
   const st = new Array(ST_COUNT).fill(0)
   for (const it of equip) {
     if (!it) continue
@@ -336,6 +356,7 @@ export function computeStats(level: number, equip: (Item | null)[]): number[] {
   }
   st[ST_DMG] += (level - 1) * DMG_PER_LEVEL
   st[ST_HP] += (level - 1) * HP_PER_LEVEL
+  addAttr(st, attr)
   for (let i = 0; i < ST_COUNT; i++) st[i] = Math.min(st[i], AFFIXES[i].cap + (i === ST_DMG ? LEVEL_CAP * DMG_PER_LEVEL + 70 : i === ST_HP ? LEVEL_CAP * HP_PER_LEVEL : i === ST_DR ? 0 : 0))
   st[ST_DR] = Math.min(st[ST_DR], 60)
   return st
@@ -364,6 +385,8 @@ export type Sheet = {
   twps?: number[]
   /** 플레이 시간(초) 막마다 — 보통 난이도 한 바퀴 시간을 실제 기록으로 맞추려고 (D7 · GUIDE 7장) */
   playSec?: number[]
+  /** 능력치에 쓴 포인트 [힘, 민첩, 활력, 정신] (C 창) */
+  attr?: number[]
 }
 
 export function emptySheet(): Sheet {
@@ -395,5 +418,8 @@ export function sanitizeSheet(s: unknown): Sheet {
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build
   e.quests = Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))
+  // 능력치: 네 칸 · 음수 없음 · 레벨이 준 포인트보다 많으면 모두 되돌린다
+  const at = Array.from({ length: 4 }, (_, i) => Math.max(0, Math.floor(Number(o.attr?.[i]) || 0)))
+  e.attr = attrFree(e.level, at) >= 0 ? at : [0, 0, 0, 0]
   return e
 }

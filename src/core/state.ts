@@ -236,6 +236,8 @@ export interface PlayerState {
   build: { r: number[]; m3: number[]; m5: number[]; s: number[] }
   /** 퀘스트로 받은 스킬 포인트 (D5) */
   spBonus: number
+  /** 능력치에 쓴 포인트 [힘, 민첩, 활력, 정신] (C 창 · 세이브 Sheet.attr) */
+  attr: number[]
   /** 퀘스트 상태 (world.ts QUESTS: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
   quests: number[]
   /** 용병이면 고용한 사람 (-1 = 사람) · 용병의 봇 기억 (sim 안에서 결정론으로 움직인다) */
@@ -534,6 +536,8 @@ export type SimEvent =
   | { type: 'pickup'; p: number; rarity: number; uid: number }
   /** 자동 줍기를 하려는데 가방이 가득 (2초에 한 번) */
   | { type: 'bagFull'; p: number }
+  /** 능력치를 올렸다 · 되돌렸다 (C 창) */
+  | { type: 'attr'; p: number }
   | { type: 'levelup'; p: number; level: number }
   /** 장비를 바꿨다 */
   | { type: 'equip'; p: number; slot: number }

@@ -13,7 +13,7 @@ import { Input } from '../src/core/input'
 import { Item, LEVEL_CAP, SLOT_COUNT, Sheet, emptySheet, rollItem, xpNeed } from '../src/core/items'
 import { MONSTER_LIST, isBossLike } from '../src/core/monsters'
 import { makeRng } from '../src/core/rng'
-import { createState, step } from '../src/core/sim'
+import { autoAttr, createState, step } from '../src/core/sim'
 import { MAX_RANK, ULT_NODE, defaultBuild, freePoints } from '../src/core/skills'
 import { AREAS, QUESTS, buildAreaMap, questPoints } from '../src/core/world'
 
@@ -94,6 +94,12 @@ for (const a of path) {
       xp: lv0.xp,
       equip: GEAR ? gear(c, a.level, seed + i) : new Array(SLOT_COUNT).fill(null),
       build: build(lv0.level, questPoints(quests)),
+      // 능력치는 추천대로 (사람도 C 창의 "추천대로 분배" 를 누른다고 친다)
+      attr: (() => {
+        const q = { char: c, level: lv0.level, attr: [0, 0, 0, 0] }
+        autoAttr(q)
+        return q.attr
+      })(),
       quests,
       potMax: 4 + Math.min(4, a.act),
     }))

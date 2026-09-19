@@ -757,3 +757,22 @@ body { background: var(--bg); }
 .overlay .autopick .apr button { flex: 1; padding: 7px 0; font: 700 13px "IBM Plex Sans KR", sans-serif; color: #6a5e4c; background: rgba(0,0,0,.45); border: 1px dashed #3a3024; border-radius: 3px; cursor: pointer; text-decoration: line-through; }
 .overlay .autopick .apr button.on { color: var(--rc); border: 1px solid var(--rc); box-shadow: inset 0 0 0 1px var(--rc); background: rgba(255,255,255,.05); text-decoration: none; }
 .overlay .autopick .apn { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: #8a7a60; text-align: left; }
+
+/* 능력치 창 (C — 2026-09-19) */
+.csp .cs-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-top: 8px; }
+.csp .cs-row { border: 1px solid rgba(201,162,74,.22); border-radius: 4px; padding: 8px 10px; margin-bottom: 7px; background: rgba(0,0,0,.25); }
+.csp .cs-row.rec { border-color: rgba(241,213,138,.55); box-shadow: inset 0 0 0 1px rgba(241,213,138,.15); }
+.csp .cs-h { display: flex; align-items: center; gap: 8px; }
+.csp .cs-h b { font: 800 15px "Nanum Myeongjo", serif; color: #f1d58a; }
+.csp .cs-rec { font-size: 11px; color: #ffe6a8; border: 1px solid rgba(241,213,138,.6); border-radius: 3px; padding: 0 5px; }
+.csp .cs-rec.sub { opacity: .75; }
+.csp .cs-pt { margin-left: auto; font: 800 16px "IBM Plex Sans KR", sans-serif; color: #e8dcc4; min-width: 26px; text-align: right; }
+.csp .cs-d { font-size: 12px; color: #b8a67e; margin-top: 3px; }
+.csp .cs-d em { font-style: normal; color: #d8cfbf; }
+.csp .cs-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.csp .cs-sts { border: 1px solid rgba(201,162,74,.22); border-radius: 4px; padding: 8px 10px; background: rgba(0,0,0,.25); }
+.csp .cs-t { font: 700 12px "IBM Plex Sans KR", sans-serif; color: #b8a67e; margin-bottom: 6px; }
+.csp .cs-st { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 2px 0; border-bottom: 1px dashed rgba(201,162,74,.12); }
+.csp .cs-st span { color: #b8a67e; }
+.csp .cs-st b { color: #e8dcc4; font-weight: 700; }
+.csp .cs-st.zero b { color: #6a5e4c; font-weight: 500; }

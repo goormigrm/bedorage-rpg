@@ -4,15 +4,15 @@
 // 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·R)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
-import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
+import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
-  CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -860,7 +860,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   // 세이브에서 온 것은 복사해 둔다 (상태가 세이브 객체를 건드리지 않게)
   const equip = sh.equip.map((it) => (it ? { ...it, aff: [...it.aff] } : null))
   const bag = sh.bag.map((it) => ({ ...it, aff: [...it.aff] }))
-  const st = computeStats(sh.level, equip)
+  const attr = (sh.attr ?? [0, 0, 0, 0]).slice(0, 4)
+  const st = computeStats(sh.level, equip, attr)
   const maxHp = c.maxHp + st[ST_HP]
   const weapon = weaponFor(char, equip)
   const magSize = 0
@@ -938,6 +939,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     portalCast: 0,
     follow: -1,
     autoPick: AUTOPICK_ALL,
+    attr,
     potions: sh.potMax ?? 4,
     potMax: sh.potMax ?? 4,
     potHot: 0,
@@ -969,10 +971,31 @@ function hasLeg(p: PlayerState | null | undefined, leg: number): boolean {
   return !!p && (p.legs & (1 << leg)) !== 0
 }
 
+/** 능력치 (C 창): 0~3 한 점 · 10 추천대로 모두 · 99 되돌리기(마을에서만) */
+function attrCommand(state: GameState, p: PlayerState, arg: number): void {
+  if (arg === 99) {
+    if (!isTown(p.area)) return
+    p.attr = [0, 0, 0, 0]
+  } else if (arg === 10) autoAttr(p)
+  else if (arg >= 0 && arg < 4 && attrFree(p.level, p.attr) > 0) p.attr[arg]++
+  else return
+  recalc(p)
+  state.events.push({ type: 'attr', p: p.id })
+}
+
+/** 남은 포인트를 추천 능력치 둘에 6:4 로 (용병 · 봇 · "추천대로 분배") — 결정론 */
+export function autoAttr(p: { char: CharacterId; level: number; attr: number[] }): void {
+  const [a, b] = ATTR_REC[p.char]
+  for (let n = attrFree(p.level, p.attr); n > 0; n--) {
+    if (p.attr[a] * 4 <= p.attr[b] * 6) p.attr[a]++
+    else p.attr[b]++
+  }
+}
+
 function recalc(p: PlayerState): void {
   const c = CHARACTERS[p.char]
   p.weapon = weaponFor(p.char, p.equip)
-  p.st = computeStats(p.level, p.equip)
+  p.st = computeStats(p.level, p.equip, p.attr)
   p.legs = legMask(p.equip)
   // 전설 "집중": 스킬 재사용 대기 -15% (옵션 상한과 따로 더한다)
   if (hasLeg(p, LEG_FOCUS)) p.st[ST_CDR] += 15
@@ -2625,6 +2648,8 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
     up = true
   }
   if (!up) return
+  // 용병은 UI 가 없으니 능력치 포인트를 추천대로 스스로 쓴다
+  if (p.merc >= 0) autoAttr(p)
   recalc(p)
   // 레벨이 오르면 체력이 가득 찬다 (디아블로)
   if (p.alive && !p.downed) p.hp = p.maxHp
@@ -2733,6 +2758,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_AUTOPICK) {
     p.autoPick = arg & AUTOPICK_ALL
+    return
+  }
+  if (cmd === CMD_ATTR) {
+    attrCommand(state, p, arg)
     return
   }
   if (cmd >= CMD_SKILL_UP && cmd <= CMD_HIRE) {

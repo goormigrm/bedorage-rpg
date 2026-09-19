@@ -3,7 +3,7 @@
 
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { CMD_AUTOPICK, Input } from '../core/input'
+import { CMD_ATTR, CMD_AUTOPICK, Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
@@ -14,11 +14,12 @@ import { QuestLog, TownPanel } from '../ui/town'
 import { showEnding } from '../ui/ending'
 import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
+import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES, Sheet, emptySheet, sanitizeSheet } from '../core/items'
+import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES, Sheet, attrFree, emptySheet, sanitizeSheet } from '../core/items'
 
 /** 자동 줍기 등급 옵션 (브라우저에 기억 — 기본은 모두) */
 const AUTOPICK_KEY = 'brpg.autopick'
@@ -113,6 +114,7 @@ export class Session {
   private waypoints!: WaypointPanel
   private town!: TownPanel
   private skills!: SkillPanel
+  private chars!: CharSheet
   private quests!: QuestLog
   /** 음성 대화 (방이 있을 때만) */
   private voice: Voice | null = null
@@ -242,7 +244,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -301,6 +303,15 @@ export class Session {
       (cmd, arg) => this.input.queueCmd(cmd, arg),
       (open) => {
         this.input.uiOpen = open || this.inventory?.open || this.town?.open !== null
+        this.sfx.blip()
+      },
+    )
+    this.chars = new CharSheet(
+      this.stage.querySelector('.game-ui') as HTMLElement,
+      () => this.state.players[this.cfg.localPlayer],
+      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (open) => {
+        this.input.uiOpen = open || this.inventory?.open || this.skills?.open || this.town?.open !== null
         this.sfx.blip()
       },
     )
@@ -659,9 +670,12 @@ export class Session {
   private botFor(i: number, diff: Difficulty): Input {
     const a = this.state.players[i]?.area ?? 0
     const v = areaView(this.state, a)
-    return this.arena
-      ? pvpBotInput(v, this.mapOf(a), i, this.bots[i] as PvpBotMemory, diff)
-      : botInput(v, this.mapOf(a), i, this.bots[i] as BotMemory, diff)
+    if (this.arena) return pvpBotInput(v, this.mapOf(a), i, this.bots[i] as PvpBotMemory, diff)
+    const inp = botInput(v, this.mapOf(a), i, this.bots[i] as BotMemory, diff)
+    // 봇 동료는 능력치 포인트가 생기면 추천대로 쓴다 (명령으로 — 모두의 sim 이 같게)
+    const bp = this.state.players[i]
+    if (bp && !inp.cmd && attrFree(bp.level, bp.attr) > 0) return { ...inp, cmd: CMD_ATTR, arg: 10 }
+    return inp
   }
 
   private get isHost(): boolean {
@@ -720,6 +734,17 @@ export class Session {
     }
     if (e.key === 'Escape' && this.skills.open) {
       this.skills.toggle(false)
+      e.preventDefault()
+      return
+    }
+    // 능력치 창: C (Esc 로도 닫힌다)
+    if (k === 'c' && !this.arena) {
+      if (this.overlay.hidden) this.chars.toggle()
+      e.preventDefault()
+      return
+    }
+    if (e.key === 'Escape' && this.chars.open) {
+      this.chars.toggle(false)
       e.preventDefault()
       return
     }
@@ -1339,6 +1364,7 @@ export class Session {
     this.syncView()
     const view = this.view()
     this.skills.refresh()
+    this.chars.refresh()
     this.quests.refresh()
     // NPC 창: 멀어지면 닫고, 거래가 끝나면 다시 그린다
     if (this.town.open) {

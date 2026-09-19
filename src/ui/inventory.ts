@@ -48,7 +48,7 @@ function compareHtml(it: Item, me: PlayerState): string {
   if (it.slot === SLOT_WEAPON && !canWield(me, it)) return ''
   const equip = [...me.equip]
   equip[it.slot] = it
-  const after = computeStats(me.level, equip)
+  const after = computeStats(me.level, equip, me.attr)
   const out: string[] = []
   for (let i = 0; i < ST_COUNT; i++) {
     const d = Math.round((after[i] - me.st[i]) * 10) / 10

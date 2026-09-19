@@ -292,6 +292,7 @@
 - 쇠 패널 + 바랜 금테 + 명조체(Nanum Myeongjo) 제목. 숫자는 고딕.
 
 ## 6.8 성장 · 전리품 · 세이브
+- **능력치**(v0.29.0): 레벨마다 3점 — 힘(피해) · 민첩(연사 · 치명타) · 활력(체력) · 정신(스킬 위력 · 재사용). `PlayerState.attr` · `Sheet.attr` · `computeStats(level, equip, attr)`. `CMD_ATTR`(0~3 한 점 · 10 추천 · 99 되돌리기 — 마을). 추천 `ATTR_REC`(6:4). 창은 `ui/charsheet.ts`(C).
 - **전리품**(v0.28.0): 등급은 출처로 정한다(`DROP_TABLE` — 졸개 일반·마법 · 정예 전설까지 · 우두머리·보스·도박은 신화까지). `rollItem(rng, uid, ilvl, weapon, src, up, minRarity, slot)`.
   방어구·장신구는 바탕 종류(`BASE_TYPES`, `Item.bt`)마다 기본 옵션 하나(첫 옵션). 이름은 옵션에서(`itemName`). 신화(4) = 전설 효과 + 옵션 최대.
 - **강화**(v0.28.0): 대장장이. 같은 부위 · 같은 등급 (단계 + 1)개를 녹여 `Item.up` +1(최대 5). 옵션 · 기본 피해/방어 × (1 + 0.1 × 단계) — `affixValue` · `computeStats`. 옵션 다시 굴리기(`CMD_REROLL`)는 없앴다.

@@ -77,6 +77,8 @@ export const CMD_QUEST = 17
 export const CMD_AUTOPICK = 18
 /** 대장장이 강화: arg = 가방 칸, 또는 100 + 장비 칸. 같은 부위 · 같은 등급을 (단계 + 1)개 녹인다 (CMD_REROLL 은 없앴다) */
 export const CMD_UPGRADE = 19
+/** 능력치 (C 창): arg 0~3 = 그 능력치에 1점 · 10 = 추천대로 모두 분배 · 99 = 되돌리기(마을에서만) */
+export const CMD_ATTR = 20
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 
