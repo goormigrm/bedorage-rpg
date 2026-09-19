@@ -1,11 +1,11 @@
 // 무기 (2026-09-19): 재장전 없음 · 저격 조준경 없음(관통) · 계열 변형 무기 · 유탄 폭발 · 지속 DPS 범위.
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, CMD_EQUIP, CMD_UNEQUIP, Input } from '../src/core/input'
-import { TILE, TILE_FLOOR, buildMap, GameMap } from '../src/core/map'
+import { TILE, TILE_FLOOR, TILE_WALL, buildMap, GameMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
-import { CharacterId } from '../src/core/characters'
-import { COUNTDOWN_TICKS, GameState, MS_RECOVER } from '../src/core/state'
+import { CHARACTERS, CharacterId, PLAYABLE } from '../src/core/characters'
+import { COUNTDOWN_TICKS, GameState, MS_RECOVER, MS_SLEEP } from '../src/core/state'
 import { Item, SLOT_WEAPON, VARIANT_ILVL, WEAPON_IDS, emptySheet, rollItem } from '../src/core/items'
 import { WEAPONS, WeaponId, familyOf, weaponDps } from '../src/core/weapons'
 import { makeRng } from '../src/core/rng'
@@ -127,5 +127,42 @@ describe('무기 (2026-09-19)', () => {
       expect(weaponDps(w)).toBeLessThan(2.6)
       expect(familyOf(id).length).toBe(2)
     }
+  })
+
+  // 2026-09-20 사용자: "재장전이 없어서 권총과 SMG 차이가 없다" — 권총 계열을 없애고 단군 · 우원을 SMG 로
+  it('권총 계열은 물러났다: 아무도 쓰지 않고 새로 떨어지지도 않는다', () => {
+    for (const c of PLAYABLE) expect(WEAPONS[CHARACTERS[c].weapon].family).not.toBe('pistol')
+    expect(WEAPONS.pistol.retired && WEAPONS.revolver.retired).toBe(true)
+    const rng = makeRng(5)
+    let rolled = 0
+    for (let i = 0; i < 4000; i++) {
+      const it = rollItem(rng, i, 20, 'smg')
+      if (it.slot === SLOT_WEAPON && WEAPONS[WEAPON_IDS[it.wt]].retired) rolled++
+    }
+    expect(rolled).toBe(0)
+  })
+
+  it('옛 세이브의 권총 · 리볼버는 SMG · 화염방사기로 바뀐다 (단군 · 우원)', () => {
+    const pistol = { uid: 1, slot: SLOT_WEAPON, rarity: 0, ilvl: 1, wt: WEAPON_IDS.indexOf('pistol'), aff: [], price: 1 } as unknown as Item
+    const { s } = ready('dangun', [pistol])
+    expect(WEAPON_IDS[s.players[0].bag[0].wt]).toBe('smg')
+  })
+
+  it('소음기는 캐릭터 특성: 단군 · 우원이 쏘면 벽 너머 잠든 무리가 안 깨고, 주펄이 쏘면 깬다', () => {
+    // 총소리는 벽을 넘어 7칸까지 깨운다. 눈으로 보고 깨는 것(11칸 · 벽에 막힘)과 갈라 보려면 **벽 뒤**에 세워야 한다 —
+    // 시험 맵은 넓게 트인 자리를 골라 쓰므로, 사이에 벽 한 줄을 직접 세운다
+    const wakes = (c: CharacterId) => {
+      const { s, map, o } = ready(c)
+      const tx = ((o.x + 2.5 * TILE) / TILE) | 0
+      for (let dy = -3; dy <= 3; dy++) map.tiles[(((o.y / TILE) | 0) + dy) * map.w + tx] = TILE_WALL
+      const m = makeMonster(s, 0, o.x + 5 * TILE, o.y, 1, 1)
+      m.st = MS_SLEEP
+      s.monsters.push(m)
+      for (let t = 0; t < 40; t++) step(s, map, [fire()])
+      return m.st !== MS_SLEEP
+    }
+    expect(wakes('dangun')).toBe(false)
+    expect(wakes('uwon')).toBe(false)
+    expect(wakes('jupeol')).toBe(true)
   })
 })

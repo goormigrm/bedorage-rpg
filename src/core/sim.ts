@@ -35,7 +35,7 @@ import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
   COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
-  MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
+  CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
   STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, isActive, isEnemy, teamKills, MoveHow, SimEvent,
 } from './state'
@@ -862,7 +862,13 @@ function roleOf(p: PlayerState): Role {
 const LEGACY_WEAPON: Partial<Record<CharacterId, Partial<Record<WeaponId, WeaponId>>>> = {
   cheolmyeon: { mg: 'violin', launcher: 'cello' },
   juwoojae: { rifle: 'rapier', crossbow: 'katana' },
+  // 2026-09-20 권총 계열을 없앴다 — 옛 권총 · 리볼버는 SMG · 화염방사기로 바뀐다
+  dangun: { pistol: 'smg', revolver: 'flamer' },
+  uwon: { pistol: 'smg', revolver: 'flamer' },
 }
+
+/** 총소리가 무리를 깨우지 않는 캐릭터 (옛 소음기 권총 — 2026-09-20 무기에서 캐릭터 특성으로) */
+const SILENT_CHARS = new Set<CharacterId>(['dangun', 'uwon'])
 function convertLegacy(char: CharacterId, it: Item): Item {
   const map = LEGACY_WEAPON[char]
   if (!map || it.slot !== SLOT_WEAPON) return it
@@ -1912,7 +1918,7 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
     const a = (p.aim + off) & 1023
     spawnBullet(state, p, mx, my, a, p.weapon, { headTarget, critMon, over: aimsAtHead(state, map, p, mx, my, a, headTarget), overR, pierce, mul })
   }
-  if (state.mode === 'dungeon' && !w.suppressed) noise(state, p.x, p.y)
+  if (state.mode === 'dungeon' && !w.suppressed && !SILENT_CHARS.has(p.char)) noise(state, p.x, p.y)
   p.shots += w.pellets // 명중률을 탄 단위로 재야 산탄총이 왜곡되지 않는다
   p.fireCooldown = interval
   if (p.fx[FX_CRIT] === 0) p.recoil = Math.min(w.recoil * MAX_RECOIL_MUL * 2, p.recoil + w.recoil * (p.char === 'chim' ? CHIM.recoilMul : 1))
@@ -2541,7 +2547,7 @@ function applyHitPlayer(state: GameState, b: Bullet, victim: PlayerState, dOff: 
   const shooter = state.players[b.owner]
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
   if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
-  if (shooter.char === 'pungwol') dmg *= PUNGWOL.pvpMul
+  dmg *= CHAR_PVP[shooter.char] ?? 1
   // 투기장 배율 (2026-09-19 재장전을 없앤 뒤 tools/arena.ts 로 맞춘 값 — 던전 밸런스와 따로)
   dmg *= w.pvp ?? 1
   dmg = Math.round(dmg)

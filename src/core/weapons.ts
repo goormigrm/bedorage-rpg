@@ -82,7 +82,9 @@ export interface WeaponDef {
   meleeArc?: number
   /** 정조준 시 스코프 (시야가 멀어지고 화면에 조준경) */
   scope?: boolean
-  /** 소음기: 발소리가 안 나고 총소리가 아주 작다 (권총 — 단군덕·우원덕, 2026-09-05) */
+  /** 물러난 무기: 아무도 쓰지 않고 새로 떨어지지도 않는다. 옛 세이브의 아이템 번호를 지키려고 정의만 남긴다 (2026-09-20 권총 계열) */
+  retired?: boolean
+  /** 소음기: 발소리가 안 나고 총소리가 아주 작다 (2026-09-20 부터는 무기가 아니라 캐릭터 특성 — sim.ts SILENT_CHARS) */
   suppressed?: boolean
   /** 몬스터를 미는 힘 (px/틱, 탄 하나 기준). 몬스터의 넉백 저항만큼 줄어든다 */
   knock: number
@@ -109,17 +111,18 @@ const deg = (d: number) => Math.round((d / 360) * 1024)
 const INF = { magSize: 0, reloadTicks: 0, auto: true }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
-  // ---------------- 권총 계열 (단군덕 · 우원덕) — 중거리 · 정확 · 소음기 ----------------
-  // DPS 20/11 = 1.82. 소음기라 총소리가 무리를 깨우지 않는다(정찰)
+  // ---------------- 권총 계열 — 물러남 (2026-09-20 사용자: "재장전이 없어서 권총과 SMG 차이가 없게 느껴진다") ----------------
+  // 단군덕 · 우원덕은 SMG 계열로 옮겼다. 정의만 남긴다: 옛 세이브의 아이템 번호(WEAPON_IDS)가 밀리지 않게.
+  // 소음기(무리를 안 깨움)는 무기가 아니라 두 캐릭터의 특성이 됐다.
   pistol: {
-    ...INF, pvp: 1.12, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
+    ...INF, retired: true, pvp: 1.12, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
     knock: 1.2, damage: 20, suppressed: true, pellets: 1, fireInterval: 11,
     spreadHip: deg(4), spreadAds: deg(1.4), recoil: deg(1.8), recoilRecover: deg(0.55),
     speed: 15, life: 60, moveMul: 1.0, length: 14, color: 0x9aa0a6, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   // 리볼버: 느리고 한 발이 크다(46). 소음기가 없어 시끄럽다. DPS 1.92
   revolver: {
-    ...INF, pvp: 1.12, id: 'revolver', family: 'pistol', name: '리볼버', desc: '한 발 한 발이 크다(권총의 두 배 남짓). 대신 느리고 시끄럽다.',
+    ...INF, retired: true, pvp: 1.12, id: 'revolver', family: 'pistol', name: '리볼버', desc: '한 발 한 발이 크다(권총의 두 배 남짓). 대신 느리고 시끄럽다.',
     knock: 2.4, damage: 46, pellets: 1, fireInterval: 24,
     spreadHip: deg(3), spreadAds: deg(0.9), recoil: deg(4), recoilRecover: deg(0.6),
     speed: 18, life: 55, moveMul: 1.0, length: 16, color: 0xb08a50, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -127,14 +130,14 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- SMG 계열 (주펄덕) — 근접 난사 ----------------
   // DPS 11/5 = 2.2 (가까이). 멀면 0.62 배
   smg: {
-    ...INF, pvp: 1.0, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
+    ...INF, pvp: 1.1, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
     knock: 0.6, damage: 11, pellets: 1, fireInterval: 5,
     spreadHip: deg(7), spreadAds: deg(4), recoil: deg(1.2), recoilRecover: deg(0.5),
     speed: 14, life: 55, moveMul: 0.96, length: 18, color: 0x7c8590, falloffStart: 320, falloffEnd: 700, falloffMin: 0.62,
   },
   // 화염방사기: 약 4칸만 닿지만 불길이 셋을 꿰뚫는다. 한 마리 DPS 2.5 · 무리에 강하다. 가까이 붙어야 해서 위험하다
   flamer: {
-    ...INF, pvp: 1.0, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
+    ...INF, pvp: 1.1, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
     knock: 0.3, damage: 5, pellets: 2, fireInterval: 4, pierce: 2,
     spreadHip: deg(10), spreadAds: deg(7), recoil: 0, recoilRecover: 0,
     speed: 9, life: 17, moveMul: 0.95, length: 20, color: 0xff7a2a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
@@ -142,7 +145,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 소총 계열 (침착덕 · 기열덕 · 우재덕) — 멀리서 정확 ----------------
   // DPS 18/10 = 1.8, 멀어도 0.78 배까지만 준다
   rifle: {
-    ...INF, pvp: 0.9, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
+    ...INF, pvp: 0.95, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
     knock: 1.0, damage: 18, pellets: 1, fireInterval: 10,
     spreadHip: deg(5.5), spreadAds: deg(1.4), recoil: deg(2.2), recoilRecover: deg(0.5),
     speed: 24, life: 50, moveMul: 0.92, length: 24, color: 0x5f6b48, falloffStart: 420, falloffEnd: 820, falloffMin: 0.78,
@@ -240,16 +243,16 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 근접 딜러 (우재덕, 2026-09-19 사용자 "길고 얇은 검") ----------------
   // 멀리(104px) 좁게(±28°) 빠르게 찌른다. 30 · 14틱 = 2.14. 앞에서 오는 공격은 검으로 쳐 낸다(기력)
   rapier: {
-    ...INF, pvp: 1.7, id: 'rapier', family: 'rapier', name: '장검', desc: '길고 얇은 검. 멀리까지 빠르게 찌른다. 좁게 닿는 대신 줄지어 선 것을 함께 벤다.',
-    knock: 2.5, damage: 30, pellets: 1, fireInterval: 14,
+    ...INF, pvp: 2.6, id: 'rapier', family: 'rapier', name: '장검', desc: '길고 얇은 검. 멀리까지 빠르게 찌른다. 좁게 닿는 대신 줄지어 선 것을 함께 벤다.',
+    knock: 2.5, damage: 27, pellets: 1, fireInterval: 14,
     spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
     speed: 0, life: 0, moveMul: 1.04, length: 34, color: 0xd8dde3, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 104, meleeArc: deg(28),
   },
   // 태도: 더 길고 조금 넓게(±45°) 벤다. 느리지만 한 번이 크다 — 54 · 25틱 = 2.16
   katana: {
-    ...INF, pvp: 1.7, id: 'katana', family: 'rapier', name: '태도', desc: '긴 칼. 조금 느리지만 더 멀리, 조금 넓게 벤다.',
-    knock: 3.5, damage: 54, pellets: 1, fireInterval: 25,
+    ...INF, pvp: 2.6, id: 'katana', family: 'rapier', name: '태도', desc: '긴 칼. 조금 느리지만 더 멀리, 조금 넓게 벤다.',
+    knock: 3.5, damage: 49, pellets: 1, fireInterval: 25,
     spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
     speed: 0, life: 0, moveMul: 1.02, length: 38, color: 0xc9ced6, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 112, meleeArc: deg(45),

@@ -16,7 +16,7 @@ function esc(t: string): string {
   return t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch)
 }
 
-/** 이 캐릭터가 낄 수 있는 무기인가 (같은 계열 — 권총 캐릭터는 권총·리볼버) */
+/** 이 캐릭터가 낄 수 있는 무기인가 (같은 계열 — SMG 캐릭터는 SMG·화염방사기) */
 function canWield(me: PlayerState, it: Item): boolean {
   return WEAPONS[WEAPON_IDS[it.wt]]?.family === WEAPONS[CHARACTERS[me.char].weapon].family
 }

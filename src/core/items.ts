@@ -6,7 +6,7 @@
 // 아이템은 숫자만으로 된 작은 객체다(상태·해시·세이브가 가볍게). 생성은 sim 의 rng 로만(결정론).
 
 import { Rng, rand, randInt } from './rng'
-import { WeaponId, familyOf } from './weapons'
+import { WEAPONS, WeaponId, familyOf } from './weapons'
 
 export const SLOT_WEAPON = 0
 export const SLOT_HELM = 1
@@ -251,7 +251,11 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
       const fam = familyOf(myWeapon)
       const pool = ilvl >= VARIANT_ILVL ? fam : fam.slice(0, 1)
       wt = WEAPON_IDS.indexOf(pool[randInt(rng, 0, pool.length)])
-    } else wt = randInt(rng, 0, WEAPON_IDS.length)
+    } else {
+      // 아무 종류 (팔거나 동료에게) — 물러난 무기(권총 계열)는 빼고 (2026-09-20)
+      const all = WEAPON_IDS.filter((id) => !WEAPONS[id].retired)
+      wt = WEAPON_IDS.indexOf(all[randInt(rng, 0, all.length)])
+    }
   }
   const aff: number[] = []
   // 옵션 크기: 신화는 최대, 전설은 80~100%, 나머지는 50~100%

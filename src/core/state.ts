@@ -43,9 +43,16 @@ export const CHIM = { spreadMul: 0.55, recoilMul: 0.45, recoverMul: 3 }
  * 풍월덕 패시브(근성) — 2026-09-20 사용자: "풍월량은 바람과 상관없다" → 바람(자주 구르기)을 버리고 **탱커**가 됐다.
  * 실제 풍월량: 키 167cm · 92.5kg 단신 통통 체형(배도라지 '삼돼장'), 남들이 포기하는 게임을 끝까지 붙드는 근성.
  * 맞을 때마다 한 칸씩 단단해지고(받는 피해 -5%/칸), 2초간 안 맞으면 식는다. 기열덕의 뇌절(연속 명중)과 거울쌍.
- * 투기장(역할 효과가 없는 곳)에서는 구르기 특혜를 뗀 만큼 27% 까지 떨어져, 피해 배율 · 받는 피해로 따로 맞춘다.
+ * 투기장(역할 효과가 없는 곳)에서는 구르기 특혜를 뗀 만큼 27% 까지 떨어져, 피해 배율(CHAR_PVP) · 받는 피해로 따로 맞춘다.
  */
-export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpMul: 1.35, pvpTaken: 0.88 }
+export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.88 }
+
+/**
+ * 캐릭터별 투기장 피해 배율 (`tools/arena.ts` 1:1 리그로 맞춘다 — 목표 45~55%).
+ * 무기 계열의 `pvp` 로 맞추면 같은 무기를 쓰는 다른 캐릭터까지 흔들려서, 캐릭터 한 명만 올릴 때 쓴다.
+ * 2026-09-20: 우원덕 · 단군덕은 권총(1.12 배율)에서 SMG 로 옮기며 27% 까지 떨어졌다. 풍월덕은 탱커가 되며 구르기 특혜를 뗐다.
+ */
+export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.35, uwon: 1.22, dangun: 1.22, giyeol: 1.12 }
 export const UWON = { invulnAfterDash: 24 }
 /** 주펄덕 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }
