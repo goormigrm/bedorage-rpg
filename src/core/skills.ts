@@ -52,17 +52,18 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   fanfire: { id: 'fanfire', name: '난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에 쏜다. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 안의 괴물을 밀쳐 내 1.5초 느리게.', cd: s(8) },
   spotlight: { id: 'spotlight', name: '스포트라이트', desc: '커서 지점(10칸까지)에 8초짜리 무대. 안의 괴물은 절반 속도 · 받는 피해 +50%, 안의 동료는 연사 +30%. 던전에서는 안의 괴물이 0.5초마다 18 피해.', cd: s(60), ult: true, reach: 10 * 32 },
   // 매직덕 — 치유: 파티를 살린다
-  firstaid: { id: 'firstaid', name: '응급 처치', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다.', cd: s(15) },
-  flame: { id: 'flame', name: '소독 화염', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다.', cd: s(9) },
+  // 2026-09-19 저격 둘 · 매직 · 우재가 3·4막에서 다른 캐릭터의 두세 배 죽었다(붙은 떼를 떼어내지 못함) — 권총 둘처럼 스킬로, 던전에서만
+  firstaid: { id: 'firstaid', name: '응급 처치', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.', cd: s(15) },
+  flame: { id: 'flame', name: '소독 화염', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 앞만이 아니라 둘레 4칸 모두를 친다.', cd: s(9) },
   surgery: { id: 'surgery', name: '대수술', desc: '8칸 안의 쓰러진 동료를 바로 일으키고, 모두 체력 가득 · 3초 무적.', cd: s(90), ult: true },
   // 승빠덕 — 근접: 들어가서 휘젓는다
   pancharge: { id: 'pancharge', name: '후라이팬 돌진', desc: '조준 방향으로 5칸 돌진. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.', cd: s(7) },
   oil: { id: 'oil', name: '기름 튀기기', desc: '주변 3칸에 50 피해 · 2.5초간 절반 속도.', cd: s(10) },
   kitchen: { id: 'kitchen', name: '주방 대참사', desc: '5초간 회전하며 0.25초마다 주변 2.4칸에 35 피해. 이동 +30% · 받는 피해 -50%.', cd: s(60), ult: true },
   // 옥냥덕 — 보스 딜: 한 방을 크게
-  catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배.', cd: s(9) },
-  railshot: { id: 'railshot', name: '관통 저격', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타.', cd: s(12) },
-  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 연사 3배 · 탄이 2마리를 더 꿰뚫고 퍼짐이 거의 없다.', cd: s(70), ult: true },
+  catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 뛰며 원래 자리 3칸을 할퀴고(40 피해 · 2초 기절) 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.', cd: s(9) },
+  railshot: { id: 'railshot', name: '관통 저격', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타. 던전에서는 260 피해에 방패도 뚫는다.', cd: s(12) },
+  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 연사 3배 · 탄이 2마리를 더 꿰뚫고 퍼짐이 거의 없다. 던전에서는 그동안 받는 피해 -30%.', cd: s(70), ult: true },
   // ---- D7 나머지 여섯 (2026-09-18) ----
   // 주펄덕 — 빛: 붙어서 눈부시게
   flash: { id: 'flash', name: '섬광', desc: '주변 3.5칸에 25 피해 · 1.5초 기절.', cd: s(11) },
@@ -82,12 +83,12 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   windstep: { id: 'windstep', name: '순풍', desc: '구르기가 모두 차고 4초간 이동 +40%.', cd: s(12) },
   typhoon: { id: 'typhoon', name: '태풍', desc: '커서 지점(8칸까지)에 6초 소용돌이 — 안의 괴물을 가운데로 끌어당기고 0.5초마다 30 피해.', cd: s(70), ult: true, reach: 8 * 32 },
   // 통천덕 — 치킨: 버티며 한 방
-  snack: { id: 'snack', name: '치킨 한 입', desc: '체력 30% 회복 · 4초간 연사 +30%.', cd: s(15) },
-  trap: { id: 'trap', name: '덫', desc: '커서 지점(7칸까지)에 덫(20초). 처음 밟은 괴물 둘레 2칸에 120 피해 · 3초 기절.', cd: s(12), reach: 7 * 32 },
-  angelshot: { id: 'angelshot', name: '천사의 한 발', desc: '모든 것을 꿰뚫는 거대한 한 발 — 400 피해, 약점을 겨누면 치명타.', cd: s(70), ult: true },
+  snack: { id: 'snack', name: '치킨 한 입', desc: '체력 30% 회복 · 4초간 연사 +30%. 던전에서는 4초간 받는 피해 -30% · 이동 +40%.', cd: s(15) },
+  trap: { id: 'trap', name: '덫', desc: '커서 지점(7칸까지)에 덫(20초). 처음 밟은 괴물 둘레 2칸(던전 3칸)에 120 피해 · 3초 기절.', cd: s(12), reach: 7 * 32 },
+  angelshot: { id: 'angelshot', name: '천사의 한 발', desc: '모든 것을 꿰뚫는 거대한 한 발 — 400 피해, 약점을 겨누면 치명타. 던전에서는 방패도 뚫는다.', cd: s(70), ult: true },
   // 우재덕 — 런웨이: 길게 가로지른다
-  catwalk: { id: 'catwalk', name: '런웨이 워크', desc: '조준 방향으로 7칸 긴 돌진(무적). 지나는 괴물에 60 피해 · 밀침.', cd: s(8) },
-  flashbulb: { id: 'flashbulb', name: '플래시 세례', desc: '커서 지점(9칸까지) 3칸에 20 피해 · 2초 기절 · 6초간 드러남과 받는 피해 +30%.', cd: s(12), reach: 9 * 32 },
+  catwalk: { id: 'catwalk', name: '런웨이 워크', desc: '조준 방향으로 7칸 긴 돌진(무적). 지나는 괴물에 60 피해 · 밀침. 던전에서는 출발할 때 둘레 3칸을 밀쳐 내고 1.5초 느리게.', cd: s(8) },
+  flashbulb: { id: 'flashbulb', name: '플래시 세례', desc: '커서 지점(9칸까지) 3칸(던전 4칸)에 20 피해(던전 40) · 2초 기절 · 6초간 드러남과 받는 피해 +30%.', cd: s(12), reach: 9 * 32 },
   encore: { id: 'encore', name: '앙코르', desc: '다른 스킬의 재사용 대기를 모두 끝내고 집중을 가득 · 6초간 연사 +50%.', cd: s(80), ult: true },
 }
 

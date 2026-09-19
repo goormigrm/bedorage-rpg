@@ -1732,7 +1732,7 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
 }
 
 /** 탄 하나를 만든다 (사격·난사·관통 저격 공용) */
-function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a: number, weapon: PlayerState['weapon'], o: { speed?: number; damage?: number; life?: number; pierce?: number; mul?: number; headTarget: number; critMon: number; over: boolean; overR: number }): void {
+function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a: number, weapon: PlayerState['weapon'], o: { speed?: number; damage?: number; life?: number; pierce?: number; mul?: number; breaker?: boolean; headTarget: number; critMon: number; over: boolean; overR: number }): void {
   const w = WEAPONS[weapon]
   const sp = o.speed ?? w.speed
   const b: Bullet = {
@@ -1762,6 +1762,7 @@ function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a
     boom: WEAPONS[weapon].boom ? WEAPONS[weapon].boom!.r : 0,
     forceCrit: p.fx[FX_CRIT] > 0,
   }
+  if (o.breaker) b.breaker = true
   state.bullets.push(b)
 }
 
@@ -1941,6 +1942,8 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     // ---- 매직덕
     case 'firstaid': {
       for (const q of alliesNear(state, p, 6 * T)) {
+        // 던전: 4초간 받는 피해 -30% (붙은 떼 속에서 회복만으로는 다시 쓰러졌다)
+        if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
         const amount = Math.min(q.maxHp - q.hp, Math.round(q.maxHp * 0.25))
         if (amount <= 0) continue
         q.hp += amount
@@ -1949,7 +1952,10 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     }
     case 'flame':
-      aoe(state, map, p, p.x, p.y, 4 * T, 60, { knock: 5, arcAim: p.aim, arc: deg(40), id })
+      // 던전: 부채꼴 대신 둘레 전체 — 산탄은 가까이 붙어 싸워 떼에 사방으로 둘러싸였다 (피해 · 밀침은 그대로)
+      // 시드 5 평균 죽음: 앞 부채꼴 54 → 둘레 + 85 피해·강한 밀침·느려짐 6 → 둘레 + 60·밀침 8·1초 느림 8 (둘 다 가장 쉬운 캐릭터가 됐다)
+      if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 4 * T, 60, { knock: 5, id })
+      else aoe(state, map, p, p.x, p.y, 4 * T, 60, { knock: 5, arcAim: p.aim, arc: deg(40), id })
       break
     case 'surgery': {
       for (const q of alliesNear(state, p, 8 * T, true)) {
@@ -1982,6 +1988,12 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     // ---- 옥냥덕
     case 'catstep':
+      // 던전: 뛰어오르며 원래 자리를 할퀸다 — 추격하던 떼를 2초 묶고, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초
+      if (state.mode === 'dungeon') {
+        aoe(state, map, p, p.x, p.y, 3 * T, 40, { stun: 120, id })
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 11 + 120)
+        p.cd[slot] = Math.round((p.cd[slot] * 7) / 9)
+      }
       p.dashDx = -cosA(p.aim)
       p.dashDy = -sinA(p.aim)
       p.fx[FX_CHARGE] = 11
@@ -1990,7 +2002,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'railshot': {
       const { x: mx, y: my } = muzzle(map, p)
-      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 200, life: 50, pierce: 99, headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
+      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: state.mode === 'dungeon' ? 260 : 200, life: 50, pierce: 99, breaker: state.mode === 'dungeon', headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
       p.shots++
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
       break
@@ -1998,6 +2010,8 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     case 'ninelives':
       p.fx[FX_SNIPE] = 480
       buffRate(p, 480, 3)
+      // 던전: 그동안 받는 피해 -30%
+      if (state.mode === 'dungeon') p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 480)
       break
     // ---- 주펄덕
     case 'flash':
@@ -2078,6 +2092,11 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
         state.events.push({ type: 'heal', p: p.id, x: p.x, y: p.y, amount })
       }
       buffRate(p, 240, 1.3)
+      // 던전: 먹고 빠져나간다 — 4초간 받는 피해 -30% · 이동 +40% (가장 느린 캐릭터라 떼에 잡히면 벗어나지 못했다)
+      if (state.mode === 'dungeon') {
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 240)
+        p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], 240)
+      }
       break
     }
     case 'trap':
@@ -2085,13 +2104,15 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'angelshot': {
       const { x: mx, y: my } = muzzle(map, p)
-      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 400, life: 60, pierce: 99, headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
+      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 400, life: 60, pierce: 99, breaker: state.mode === 'dungeon', headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
       p.shots++
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
       break
     }
     // ---- 우재덕
     case 'catwalk':
+      // 던전: 출발하며 둘레를 밀쳐 낸다 — 둘러싸여도 빠져나간다
+      if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 3 * T, 20, { knock: 10, slow: 90, id, quiet: true })
       p.dashDx = cosA(p.aim)
       p.dashDy = sinA(p.aim)
       p.fx[FX_CHARGE] = 20
@@ -2099,9 +2120,11 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.ads = false
       break
     case 'flashbulb': {
-      aoe(state, map, p, tx, ty, 3 * T, 20, { stun: 120, id })
+      // 던전: 4칸 · 40 피해 (투기장은 3칸 · 20 그대로)
+      const fr = (state.mode === 'dungeon' ? 4 : 3) * T
+      aoe(state, map, p, tx, ty, fr, state.mode === 'dungeon' ? 40 : 20, { stun: 120, id })
       for (const m of state.monsters) {
-        if (m.hp <= 0 || len(m.x - tx, m.y - ty) > 3 * T) continue
+        if (m.hp <= 0 || len(m.x - tx, m.y - ty) > fr) continue
         m.mark = Math.max(m.mark, 360)
         m.vuln = Math.max(m.vuln, 360)
         m.vulnPct = Math.max(m.vulnPct, 30)
@@ -2150,7 +2173,7 @@ function stepZones(state: GameState, map: GameMap): void {
       // 덫: 처음 밟은 괴물 둘레를 치고 사라진다
       const owner = state.players[z.owner]
       if (owner && state.monsters.some((m) => m.hp > 0 && m.st !== MS_SLEEP && len(m.x - z.x, m.y - z.y) <= z.r)) {
-        aoe(state, map, owner, z.x, z.y, 2 * TILE, z.dmg, { stun: 180, id: 'trap' })
+        aoe(state, map, owner, z.x, z.y, (state.mode === 'dungeon' ? 3 : 2) * TILE, z.dmg, { stun: 180, id: 'trap' })
         continue
       }
     } else if (z.kind === ZONE_ACID) {
@@ -2301,7 +2324,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   const w = WEAPONS[b.weapon]
   const def = MONSTER_LIST[m.kind]
   // 방패병: 깨어 있고 기절하지 않았으면 정면(±guard)에서 온 탄을 방패로 막는다 — 피해 조금 · 치명타·넉백·집중 없음
-  if (def.guard && m.st !== MS_SLEEP && m.stun === 0 && Math.abs(angleDiff(atan2A(-b.vy, -b.vx), m.aim)) <= def.guard) {
+  if (def.guard && !b.breaker && m.st !== MS_SLEEP && m.stun === 0 && Math.abs(angleDiff(atan2A(-b.vy, -b.vx), m.aim)) <= def.guard) {
     b.hitSomeone = true
     state.events.push({ type: 'mblock', m: m.id, x: b.x, y: b.y })
     hurtMonster(state, m, Math.max(1, Math.round(b.damage * b.mul * tierOf(state.tier).guard)), b.owner, false, b.x, b.y)

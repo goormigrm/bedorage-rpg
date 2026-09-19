@@ -268,6 +268,8 @@ export interface Portal {
 export interface Bullet {
   /** 폭발 반경 (유탄 — 0 이면 안 터진다) */
   boom: number
+  /** 방패를 뚫는다 (던전의 관통 저격 · 천사의 한 발 — 2026-09-19 저격 둘이 방패병 무리에서 가장 많이 죽었다) */
+  breaker?: boolean
   id: number
   owner: number
   x: number

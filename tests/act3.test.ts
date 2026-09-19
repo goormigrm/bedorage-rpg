@@ -1,9 +1,10 @@
 // 3막 잠긴 지하도 (D6): 방패병 정면 막기 · 산성 웅덩이 · 강령술사 일으키기 · 관리인 내려찍기·방패병 부르기 · 3막 이동.
 import { describe, expect, it } from 'vitest'
-import { BTN_FIRE, CMD_QUEST, Input } from '../src/core/input'
+import { BTN_FIRE, BTN_SKILL2, CMD_QUEST, Input } from '../src/core/input'
 import { GameMap, TILE, TILE_FLOOR, buildMap, rayBlocked } from '../src/core/map'
 import { GUARD, MONSTER_LIST, RAISE, TIERS, WARDEN } from '../src/core/monsters'
 import { makeMonster } from '../src/core/dungeon'
+import { CharacterId } from '../src/core/characters'
 import { createState, step } from '../src/core/sim'
 import { GameState, MS_CHASE, MS_RECOVER, MS_WINDUP, Monster, ZONE_ACID } from '../src/core/state'
 import { ACTS, QUESTS, areaDef, buildAreaMap, townNpcs } from '../src/core/world'
@@ -24,9 +25,9 @@ function lane(map: GameMap, len: number): { tx: number; ty: number } {
 }
 
 /** 3막 맵 하나에 사람 하나와 몬스터 하나만 — 사람은 왼쪽 끝, 몬스터는 gap 칸 오른쪽 */
-function duel(id: string, mapId: 'ruins' | 'sewer' | 'rite', gap: number, seed = 71) {
+function duel(id: string, mapId: 'ruins' | 'sewer' | 'rite', gap: number, seed = 71, char: CharacterId = 'chim') {
   const map = buildMap(mapId, 1, seed)
-  const s = createState({ area: 22, seed, chars: ['chim'] }, map)
+  const s = createState({ area: 22, seed, chars: [char] }, map)
   const { tx, ty } = lane(map, gap + 2)
   const p = s.players[0]
   p.x = (tx + 0.5) * TILE
@@ -75,6 +76,29 @@ describe('3막 잠긴 지하도 (D6)', () => {
     expect(Math.abs(front.lost / back.lost - TIERS[0].guard)).toBeLessThan(0.1)
     expect(GUARD.mult).toBeLessThan(0.5)
     expect(TIERS[1].guard).toBe(GUARD.mult)
+  })
+
+  it('관통 저격(옥냥덕 E)은 던전에서 방패를 뚫는다 — 막히지 않고 제 피해가 들어간다', () => {
+    const g = duel('shield', 'ruins', 5, 71, 'oknyang')
+    const m: Monster = g.m
+    m.maxHp = m.hp = 5000
+    g.p.cd[1] = 0
+    g.p.focus = 100
+    let blocks = 0
+    g.run(
+      40,
+      (t) => ({ ...idle(), buttons: t < 2 ? BTN_SKILL2 : 0, aim: 0, aimDist: 15 }),
+      (s) => {
+        m.st = MS_RECOVER
+        m.t = 999
+        m.aim = 512 // 사람 쪽(−x)을 본다 — 방패 정면
+        m.x = g.p.x + 5 * TILE
+        blocks += s.events.filter((e) => e.type === 'mblock').length
+      },
+    )
+    expect(g.p.cd[1]).toBeGreaterThan(0)
+    expect(blocks).toBe(0)
+    expect(m.maxHp - m.hp).toBeGreaterThan(200)
   })
 
   it('산성 토사꾼: 예고 때 정한 자리(사람 발밑)에 웅덩이 — 서 있으면 계속 다친다', () => {
