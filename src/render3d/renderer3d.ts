@@ -961,7 +961,10 @@ export class Renderer3D {
       const act = me ? areaDef(me.area).act : -1
       if (act >= 0 && act !== this.prefetchedAct) {
         this.prefetchedAct = act
-        this.monsterView.prefetch(Renderer3D.actKinds(act))
+        const kinds = Renderer3D.actKinds(act)
+        // 앞 막 괴물의 모델은 내려놓는다 (GPU 메모리 — 되돌아가면 다시 굽는다)
+        this.monsterView.release(new Set(kinds))
+        this.monsterView.prefetch(kinds)
       }
     }
     // 역경직: 내 치명타 · 처치 · 정예·보스 쓰러짐에 연출(입자 · 괴물 몸짓)을 잠깐 거의 멈춘다 — sim 은 그대로 (그림만)

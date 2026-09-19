@@ -885,6 +885,34 @@ export class MonsterView {
     for (const k of kinds) this.want(k)
   }
 
+  /**
+   * 버리기 (2026-09-19 · GPU 메모리): 이 막에 나오지 않는 종류의 실사 모델을 내려놓는다.
+   * 모양 키 텍스처가 종류마다 3~15MB 라, 4막까지 다 들고 있으면 150MB 쯤 된다 → 막마다 70MB 안쪽.
+   * 지금 그려지는 종류(살아 있거나 시체)는 두고, 다시 만나면 새로 굽는다(파일은 굽기 쪽이 들고 있어 다시 받지 않는다).
+   * 텍스처는 같은 파일의 다른 종류와 같이 쓰므로 치우지 않는다.
+   */
+  release(keep: Set<number>): number[] {
+    const inUse = new Set(this.corpses.map((c) => c.kind))
+    const out: number[] = []
+    this.models.forEach((mk, k) => {
+      if (!mk || typeof mk === 'string' || keep.has(k) || inUse.has(k) || this.mcounts[k] > 0) return
+      for (const mesh of mk.meshes) {
+        this.group.remove(mesh)
+        mesh.geometry.dispose()
+        ;(mesh.material as THREE.Material).dispose()
+        mesh.dispose()
+      }
+      mk.depth.dispose()
+      for (const ex of mk.extras) {
+        this.group.remove(ex.mesh)
+        ex.mesh.dispose()
+      }
+      this.models[k] = undefined
+      out.push(k)
+    })
+    return out
+  }
+
   /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물) */
   private want(kind: number): void {
     if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) return
