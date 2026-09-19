@@ -8,7 +8,7 @@
 //  - 체력이 낮으면 화면 가장자리가 붉게 맥박친다.
 // 모양은 어두운 쇠 바탕 + 바랜 금테 + 명조체 제목. 수치는 읽기 쉬운 고딕.
 
-import { CHARACTERS, CharacterDef } from '../core/characters'
+import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
@@ -630,11 +630,20 @@ export class D4Hud {
         c.fillRect(x + 7, y + 6, 38, 38)
       }
       c.restore()
-      c.strokeStyle = 'rgba(201,162,74,0.7)'
-      c.lineWidth = 1.5
+      // 초상 테두리: 던전에서는 역할 색 (탱커 파랑 · 딜러 주황 · 힐러 초록 — 2026-09-19)
+      const role = s.mode === 'dungeon' ? ROLE_INFO[def.role] : null
+      c.strokeStyle = role ? role.color : 'rgba(201,162,74,0.7)'
+      c.lineWidth = role ? 2.2 : 1.5
       c.beginPath()
       c.arc(x + 26, y + 25, 19, 0, Math.PI * 2)
       c.stroke()
+      if (role) {
+        c.font = `700 10px ${SANS}`
+        c.textAlign = 'right'
+        c.textBaseline = 'alphabetic'
+        c.fillStyle = role.color
+        c.fillText(role.name, x + W - 10, y + 20)
+      }
       // 이름 · 체력
       c.font = `700 12px ${SANS}`
       c.textAlign = 'left'

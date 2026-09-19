@@ -1085,11 +1085,20 @@ export class Lobby {
     return c ? c.name : '호스트'
   }
 
-  /** 봇 캐릭터: 이미 앉은 사람과 겹치지 않게 (혼자 하기와 같은 규칙) */
+  /**
+   * 봇 캐릭터: 이미 앉은 사람과 겹치지 않게 (혼자 하기와 같은 규칙).
+   * 던전은 **모자란 역할부터**(2026-09-19 — 봇이 탱커만 셋 앉기도 했다): 탱커가 없으면 탱커, 힐러가 없으면 힐러, 그다음 딜러.
+   */
   private pickBotChar(players: Member[]): CharacterId {
     const used = new Set(players.map((p) => p.char))
     const pool = [...PLAYABLE]
-    const rest = pool.filter((id) => !used.has(id))
+    let rest = pool.filter((id) => !used.has(id))
+    if (this.kind !== 'arena') {
+      const roles = players.map((p) => (CHARACTERS as Record<string, { role: string } | undefined>)[p.char]?.role)
+      const want = !roles.includes('tank') ? 'tank' : !roles.includes('heal') ? 'heal' : 'dps'
+      const byRole = rest.filter((id) => CHARACTERS[id].role === want)
+      if (byRole.length > 0) rest = byRole
+    }
     const pick = rest.length > 0 ? rest : pool
     return pick[Math.floor(Math.random() * pick.length)]
   }
