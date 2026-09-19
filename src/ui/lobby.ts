@@ -18,7 +18,7 @@ const TIER_DESC = [
   '같은 세계를 지역 레벨 +10 으로 — 정예 능력 하나 더 · 전리품 등급·골드↑ (보통의 심연의 군주를 쓰러뜨리면 열린다)',
   '지역 레벨 +20 — 정예 능력 둘 더 · 전리품 등급·골드 더↑ (악몽의 심연의 군주를 쓰러뜨리면 열린다)',
 ]
-import { CHAR_SKILLS, SKILLS } from '../core/skills'
+import { CHAR_SKILLS, SKILLS, TREE_ACTIVE } from '../core/skills'
 import { sanitizeSheet } from '../core/items'
 import { exportSave, importSave, levelOf, playTimeOf, sheetOf } from '../game/save'
 import { WEAPONS } from '../core/weapons'
@@ -27,7 +27,7 @@ import {
   makeRoomCode, openLobby, openRoom,
 } from '../net/room'
 import { drawPortrait } from '../render/character'
-import { BonfireScene } from './bonfire'
+import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { SessionConfig } from '../game/session'
@@ -132,6 +132,7 @@ export class Lobby {
           <button class="arrow" id="char-prev" title="이전 캐릭터">◀</button>
           <div class="ci" id="char-info"></div>
           <button class="arrow" id="char-next" title="다음 캐릭터">▶</button>
+          <p class="pickhint">발판 위의 캐릭터를 눌러 고를 수도 있습니다</p>
         </div>
         <div class="d2-side">
           <div class="panel">
@@ -324,9 +325,15 @@ export class Lobby {
         this.status(`세이브를 불러오지 못했습니다: ${(e as Error).message}`, 'bad')
       }
     }
-    // 모닥불 장면: 캐릭터를 누르거나 ◀ ▶ 로 고른다
+    // 모닥불 장면: 발판 위의 캐릭터를 누르거나 ◀ ▶ 로 고른다. 무대는 오른쪽 패널·아래 카드에 가리지 않는 칸에 맞춘다
     this.bonfire?.dispose()
-    this.bonfire = new BonfireScene(h.querySelector('#bonfire') as HTMLCanvasElement, PLAYABLE, (id) => this.selectChar(id))
+    this.bonfire = new BonfireScene(
+      h.querySelector('#bonfire') as HTMLCanvasElement,
+      PLAYABLE,
+      (id) => this.selectChar(id),
+      () => this.sceneFrame(),
+      (id) => `레벨 ${levelOf(id)}`,
+    )
     this.bonfire.select(this.char)
     const step = (d: number) => {
       const i = PLAYABLE.indexOf(this.char)
@@ -423,10 +430,44 @@ export class Lobby {
     const el = this.host.querySelector('#char-info') as HTMLElement | null
     if (!el) return
     const played = playTimeOf(c.id)
-    el.innerHTML = `<b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
-      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div>
-      <div class="sk">${CHAR_SKILLS[c.id].map((sid, k) => `<span class="${k === 2 ? 'ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i>${SKILLS[sid].name}</span>`).join('')}</div>`
+    const own = CHAR_SKILLS[c.id]
+    // 스킬 설명 (2026-09-19 요청 "스킬들 설명 보이게"): Q · E · X 는 설명과 재사용 대기를 다 보이고,
+    // 스킬 트리에서 더 배우는 셋은 이름표 — 마우스를 올리면 설명
+    const extra = (TREE_ACTIVE[c.id] ?? []).filter((sid) => !own.includes(sid))
+    const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
+    el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
+      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div></div>
+      <div class="ch-r"><div class="skd">${own
+        .map(
+          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'X'][k]}</i><div><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em><span>${SKILLS[sid].desc}</span></div></div>`,
+        )
+        .join('')}</div>
+      ${extra.length ? `<div class="skx"><small>스킬 트리(K)에서 더 배우는 스킬</small>${extra.map((sid) => `<span tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')} (재사용 ${cd(sid)})">${SKILLS[sid].name}</span>`).join('')}</div>` : ''}</div>`
     this.bonfire?.select(this.char)
+    // 카드 높이가 캐릭터마다 달라 무대 칸도 바뀐다
+    requestAnimationFrame(() => this.bonfire?.refit())
+  }
+
+  /** 모닥불 무대를 담을 칸: 오른쪽 패널(넓은 화면)과 아래 캐릭터 카드를 뺀 곳 (캔버스 픽셀) */
+  private sceneFrame(): SceneFrame {
+    const cv = this.host.querySelector('#bonfire') as HTMLElement | null
+    const c = cv?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight)
+    const f: SceneFrame = { x0: 0, x1: c.width, y0: 0, y1: c.height }
+    const side = this.host.querySelector('.d2-side') as HTMLElement | null
+    if (side && getComputedStyle(side).position === 'fixed') f.x1 = side.getBoundingClientRect().left - c.left - 12
+    const card = this.host.querySelector('#my-char') as HTMLElement | null
+    if (card) {
+      const r = card.getBoundingClientRect()
+      // 카드가 캔버스 아래쪽에 겹쳐 있으면 그 위까지만
+      if (r.top > c.top + c.height * 0.4 && r.top < c.bottom) f.y1 = r.top - c.top - 6
+    }
+    const title = this.host.querySelector('.d2-title') as HTMLElement | null
+    if (title) {
+      // 제목(왼쪽 위) 아래부터 — 뒤 단 이름패가 제목과 겹치지 않게
+      const r = title.getBoundingClientRect()
+      f.y0 = Math.min(c.height * 0.3, Math.max(0, r.bottom - c.top))
+    }
+    return f
   }
 
   private selectChar(id: CharacterId): void {
