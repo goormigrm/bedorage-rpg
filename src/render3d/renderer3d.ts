@@ -10,7 +10,7 @@ import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../c
 import { ACID, LORD, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
 import { ACTS, AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
-import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS } from '../core/weapons'
+import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
@@ -95,6 +95,13 @@ interface Ring {
   r1: number
 }
 
+/** 근접 베기 궤적 (2026-09-19 손맛 — 무기의 사거리 · 각도 그대로의 부채꼴이 번쩍 지나간다) */
+interface Slash {
+  mesh: THREE.Mesh
+  life: number
+  max: number
+}
+
 /** 빠른 감정 표현 (키 1·2·3, 폰은 버튼). 글은 여기 한 곳에서 정한다 */
 export const EMOTES: Record<number, string> = { 1: 'ㅋㅋㅋ', 2: '굿 👍', 3: '미안 🙏' }
 
@@ -174,6 +181,9 @@ export class Renderer3D {
   private texts: WorldText[] = []
   private flashes: Flash[] = []
   private rings: Ring[] = []
+  private slashes: Slash[] = []
+  /** 무기마다 베기 부채꼴 모양 (한 번 만들어 둔다) */
+  private slashGeo = new Map<string, THREE.BufferGeometry>()
   private pings: Ping[] = []
   /** 팀 신호 (같은 편이 찍은 "여기"). 지면 마커 + 화면 밖이면 가장자리 화살표 */
   private marks: { x: number; z: number; life: number; max: number; mesh: THREE.Mesh }[] = []
@@ -408,8 +418,10 @@ export class Renderer3D {
           const rig = this.rigs[e.p]
           const v = this.vis[e.p]
           if (w.melee) {
-            // 후라이팬: 휘두르는 모션
+            // 근접: 휘두르는 몸짓 + 베기 궤적 (바이올린 = 넓고 붉은 호 · 장검 = 가늘고 긴 흰 쐐기 · 후라이팬 = 누런 호)
             v.swing = 1
+            const pl = state.players[e.p]
+            if (pl && !this.hidden[e.p]) this.spawnSlash(pl.x * U, pl.y * U, (e.aim / 1024) * Math.PI * 2, w)
             break
           }
           // 단군덕 패시브(중계, 투기장): 시야 밖 적의 총성 위치를 1.2초 표시
@@ -902,6 +914,27 @@ export class Renderer3D {
     mesh.position.set(x, 0.02, z)
     this.scene.add(mesh)
     this.rings.push({ mesh, life, max: life, r0, r1 })
+  }
+
+  private spawnSlash(x: number, z: number, aim: number, w: WeaponDef): void {
+    let geo = this.slashGeo.get(w.id)
+    if (!geo) {
+      const range = ((w.meleeRange ?? 60) + 12) * U
+      const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
+      // 휘두르기는 바깥쪽 얇은 호(칼끝이 지나간 자리), 장검은 찌르는 쐐기
+      const inner = range * (w.family === 'rapier' ? 0.3 : 0.74)
+      geo = new THREE.RingGeometry(inner, range, 20, 1, -half, half * 2)
+      geo.rotateX(-Math.PI / 2)
+      this.slashGeo.set(w.id, geo)
+    }
+    const color = w.family === 'violin' ? 0xff7a5a : w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.set(x, 0.45, z)
+    // 링 조각은 +x 가 가운데, 바닥에 눕히면 각이 -z 쪽으로 돈다 → y 축으로 -aim 만큼 돌리면 조준 방향
+    mesh.rotation.y = -aim
+    this.scene.add(mesh)
+    this.slashes.push({ mesh, life: 0.14, max: 0.14 })
   }
 
   // ---------- 프레임 ----------
@@ -2473,6 +2506,19 @@ export class Renderer3D {
         f.light.dispose()
         this.flashes.splice(i, 1)
       }
+    }
+    for (let i = this.slashes.length - 1; i >= 0; i--) {
+      const sl = this.slashes[i]
+      sl.life -= dt
+      if (sl.life <= 0) {
+        this.scene.remove(sl.mesh)
+        ;(sl.mesh.material as THREE.Material).dispose()
+        this.slashes.splice(i, 1)
+        continue
+      }
+      const k = 1 - sl.life / sl.max
+      sl.mesh.scale.setScalar(0.85 + 0.25 * k)
+      ;(sl.mesh.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k)
     }
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]

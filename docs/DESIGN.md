@@ -241,6 +241,7 @@
   - 카메라: `punch` 가 camDist 를 최대 7% 줄인다. `hitStop` 이 남아 있으면 연출 시간이 0.08배.
   - 쓰러짐 크기는 `monsterView.rank(id)`(0 졸개 · 1 정예 · 2 우두머리)로 정하고, `MONSTER_LIST[kind].boss` 이면 3.
   - 조준 표시: `hud.killMark()`. 소리: `sfx.killThump()`.
+  - 근접 베기 궤적(v0.32.1): `renderer3d.spawnSlash` — 무기의 `meleeRange` · `meleeArc` 그대로의 링 조각(무기마다 한 번 만든다), 0.14초.
 - 쓰러진 동료 머리 위: 남은 시간(빨간 고리) · 일으키는 진행(파란 고리), 가까이 가면 "F 누르고 있기".
 
 ## 6.5 스킬 (캐릭터마다 Q·E·R — 궁극기 키는 X 였다가 v0.20.1 부터 R)
