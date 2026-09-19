@@ -110,6 +110,7 @@ export class Hud {
   private hitMarkT = 0
   private hitMarkMax = 0.22
   private hitMarkHead = false
+  private killMarkT = 0
   private overT = 0
   private countdownPulse = 0
   private lastCountdownSec = -1
@@ -137,6 +138,11 @@ export class Hud {
     this.hitMarkMax = head ? 0.45 : 0.24
     this.hitMarkT = this.hitMarkMax
     this.hitMarkHead = head
+  }
+
+  /** 처치 표시: 조준 표시가 굵은 붉은 X 로 (손맛 — 2026-09-19) */
+  killMark(): void {
+    this.killMarkT = 0.4
   }
 
   addHitDir(angle: number, big: boolean): void {
@@ -219,6 +225,7 @@ export class Hud {
     this.t += dt
     this.lastDt = dt
     if (this.hitMarkT > 0) this.hitMarkT = Math.max(0, this.hitMarkT - dt)
+    if (this.killMarkT > 0) this.killMarkT = Math.max(0, this.killMarkT - dt)
     const ctx = this.ctx
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     ctx.clearRect(0, 0, VIEW_W, VIEW_H)
@@ -466,6 +473,19 @@ export class Hud {
         ctx.arc(cur.x, cur.y, d1 + 4 + (1 - k) * 10, 0, Math.PI * 2)
         ctx.stroke()
       }
+    }
+    if (this.killMarkT > 0) {
+      const k = this.killMarkT / 0.4
+      const d0 = r + 4
+      const d1 = d0 + 20 + (1 - k) * 8
+      ctx.strokeStyle = `rgba(255,40,30,${k.toFixed(3)})`
+      ctx.lineWidth = 5
+      ctx.beginPath()
+      for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+        ctx.moveTo(cur.x + sx * d0 * 0.7071, cur.y + sy * d0 * 0.7071)
+        ctx.lineTo(cur.x + sx * d1 * 0.7071, cur.y + sy * d1 * 0.7071)
+      }
+      ctx.stroke()
     }
   }
 }

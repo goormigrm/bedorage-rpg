@@ -61,6 +61,7 @@ export class Sfx {
   /** 몬스터 소리 되풀이 제한 (무리 전투에서 같은 소리가 수십 번 겹치면 귀가 아프다) */
   private lastMHit = 0
   private lastMDeath = 0
+  private lastKill = 0
   private lastGrowl = 0
   private lastCountdownSec = -1
   private unlockOff: (() => void) | null = null
@@ -327,6 +328,11 @@ export class Sfx {
           if (now - this.lastMDeath > 30) {
             this.lastMDeath = now
             this.squelch(sp(e.x, e.y))
+          }
+          // 손맛: 내가 잡았으면 묵직한 "퍽" (40ms 에 한 번)
+          if (e.by === localPlayer && now - this.lastKill > 40) {
+            this.lastKill = now
+            this.killThump()
           }
           this.intensity = Math.min(1, this.intensity + 0.05)
           break
@@ -602,6 +608,13 @@ export class Sfx {
       this.tone(node, t0 + 0.01, 0.14, 'sine', 1500, 1100, 0.6)
       this.tone(node, t0 + 0.02, 0.2, 'triangle', 2400, 1900, 0.45)
     }
+  }
+
+  /** 내가 잡았다: 낮게 울리는 "퍽" + 짧은 파열 (손맛 — 2026-09-19) */
+  private killThump(): void {
+    const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.8)
+    this.tone(b.node, b.t0, 0.14, 'sine', 120, 42, 0.9, 0.002)
+    this.noiseBurst(b.node, b.t0, 0.07, 'lowpass', 1400, 300, 0.5, 1)
   }
 
   /** 몬스터가 쓰러지는 소리: 질척한 저음 */

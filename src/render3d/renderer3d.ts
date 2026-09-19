@@ -33,6 +33,9 @@ const GUN_H = 0.95
  * 처음 170/11(한 변 ≈ 15칸)은 "보여 주는 게 너무 적다"(2026-09-05) → 190/7 로 넓혔다 (한 변 ≈ 27칸, 대각선 ≈ 38칸).
  */
 const MINIMAP_SIZE = 190
+/** 바닥 핏자국 수 · 남는 시간(초) — 손맛 (2026-09-19) */
+const DECAL_MAX = 160
+const DECAL_LIFE = 30
 const MINIMAP_PX_PER_TILE = 7
 
 interface Particle {
@@ -177,6 +180,13 @@ export class Renderer3D {
   /** 빠른 감정 표현 말풍선 (플레이어 번호 → 글·끝나는 시각) */
   private emotes = new Map<number, { text: string; until: number }>()
   private shake = 0
+  /** 손맛 (2026-09-19): 역경직(연출 시간을 잠깐 거의 멈춤) · 카메라 펀치(잠깐 당겨짐) */
+  private hitStop = 0
+  private punch = 0
+  /** 바닥 핏자국 (인스턴스 — 오래된 것부터 덮어쓴다) */
+  private decals!: THREE.InstancedMesh
+  private decalData: { x: number; z: number; s: number; r: number; life: number }[] = []
+  private decalNext = 0
   /** 저격 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위) */
   private kick = 0
   private kickDir = 0
@@ -586,10 +596,16 @@ export class Renderer3D {
         case 'mhit': {
           // 몬스터 명중: 보통은 빨강, 치명타(약점)는 금색으로 더 크게 — 덕의 헤드샷 연출 그대로
           const head = e.crit
-          this.monsterView.hit(e.m, head)
+          // 쏜 방향 (쏜 사람 → 맞은 자리) — 몸이 밀리고 피가 그쪽으로 튄다 (손맛)
+          const dir = this.shotDir(state, e.by, e.x, e.y)
+          this.monsterView.hit(e.m, head, dir.x, dir.z)
           const hidden = this.hiddenM.has(e.m)
           // 숫자는 **내가 맞힌 것만** 띄운다 — 동료·폭발 숫자까지 띄우면 무리 싸움에서 화면이 숫자로 덮였다(2026-09-18 확인)
           const mine = e.by === localPlayer
+          if (mine && head) {
+            this.hitStop = Math.max(this.hitStop, 0.045)
+            this.punch = Math.max(this.punch, 0.45)
+          }
           if (!hidden && mine) {
             this.texts.push({
               x: e.x * U, z: e.y * U, y: head ? 1.7 : 1.5,
@@ -600,13 +616,20 @@ export class Renderer3D {
             if (this.texts.length > 80) this.texts.splice(0, this.texts.length - 80)
           }
           if (!hidden) {
-            const n = head ? 12 : mine ? 5 : 2
+            // 피는 쏜 방향으로 뿜어진다 (사방이 아니라) · 치명타는 금빛 불꽃이 더
+            const n = head ? 14 : mine ? 6 : 2
             for (let k = 0; k < n; k++) {
-              const a = Math.random() * Math.PI * 2
-              const sp = (head ? 0.09 : 0.06) + Math.random() * 0.1
-              const col = head ? (k % 3 === 0 ? 0xfff3c0 : 0xffd84a) : k % 2 === 0 ? 0x7a1010 : 0x3a0a0a
-              this.spawnParticle(e.x * U, 0.8, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.1, Math.sin(a) * sp, 0.3 + Math.random() * 0.15, col, head ? 0.45 : 0.4)
+              const spread = (Math.random() - 0.5) * 1.3
+              const ca = Math.cos(spread)
+              const sa = Math.sin(spread)
+              const fx = dir.x * ca - dir.z * sa
+              const fz = dir.x * sa + dir.z * ca
+              const sp = (head ? 0.11 : 0.07) + Math.random() * 0.1
+              const col = head ? (k % 3 === 0 ? 0xfff3c0 : k % 3 === 1 ? 0xffd84a : 0x8a1010) : k % 2 === 0 ? 0x7a1010 : 0x3a0a0a
+              this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
             }
+            // 바닥 핏자국: 내 치명타는 늘, 내 명중은 가끔 (쏜 방향 뒤쪽에)
+            if (mine && (head || Math.random() < 0.25)) this.addDecal(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.55 : 0.32)
             this.spawnImpact(e.x * U, 0.8, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.2 : 1.1)
             if (head) this.spawnRing(e.x * U, e.y * U, 0.3, 1.4, 0.35, 0xffd84a)
           }
@@ -614,8 +637,27 @@ export class Renderer3D {
           break
         }
         case 'mdeath': {
-          this.monsterView.died(e)
+          // 쓰러짐 (손맛): 쏜 쪽 반대로 날아가 넘어진다 · 바닥에 큰 핏자국 · 내가 잡으면 펀치 · 정예·우두머리·보스는 섬광 · 충격파 · 역경직
+          const dir = this.shotDir(state, e.by, e.x, e.y)
+          const rank = MONSTER_LIST[e.kind]?.boss !== undefined ? 3 : this.monsterView.rank(e.m)
+          const mineKill = e.by === localPlayer
+          this.monsterView.died(e, dir.x, dir.z, rank >= 2 ? 1.2 : mineKill ? 2.6 : 1.6)
+          if (mineKill) {
+            this.punch = Math.max(this.punch, rank >= 1 ? 1 : 0.35)
+            this.hud.killMark()
+          }
+          if (rank >= 1) {
+            const big = rank >= 2
+            const light = new THREE.PointLight(big ? 0xffe0a0 : 0xffc870, big ? 40 : 22, big ? 14 : 8, 1.4)
+            light.position.set(e.x * U, 1.4, e.y * U)
+            this.scene.add(light)
+            this.flashes.push({ light, mesh: new THREE.Mesh(), life: big ? 0.35 : 0.2 })
+            this.spawnRing(e.x * U, e.y * U, 0.3, big ? 5 : 2.8, big ? 0.7 : 0.45, big ? 0xffe0a0 : 0xffc870)
+            this.shake = Math.max(this.shake, big ? 0.55 : 0.3)
+            if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
+          }
           if (this.hiddenM.has(e.m)) break
+          if (e.kind !== 1) this.addDecal(e.x * U + dir.x * 0.7, e.y * U + dir.z * 0.7, rank >= 1 ? 1.1 : 0.75)
           // 검붉은 피 · 뼛조각이 튀고 바닥에 얼룩 링
           const bone = e.kind === 1
           for (let k = 0; k < 10; k++) {
@@ -843,7 +885,9 @@ export class Renderer3D {
   // ---------- 프레임 ----------
   draw(prev: GameState, curr: GameState, alpha: number, dt: number, opts: RenderOptions): void {
     this.ensureRigs(curr)
-    const ts = opts.timeScale ?? 1
+    // 역경직: 내 치명타 · 처치 · 정예·보스 쓰러짐에 연출(입자 · 괴물 몸짓)을 잠깐 거의 멈춘다 — sim 은 그대로 (그림만)
+    const ts = (opts.timeScale ?? 1) * (this.hitStop > 0 ? 0.08 : 1)
+    this.hitStop = Math.max(0, this.hitStop - dt)
     this.lastDt = dt
     const viewer = opts.viewer ?? opts.localPlayer
     this.scoped =
@@ -2446,6 +2490,8 @@ export class Renderer3D {
     }
     this.shake = Math.max(0, this.shake - dt * 1.4)
     this.kick = Math.max(0, this.kick - dt * 5)
+    this.punch = Math.max(0, this.punch - dt * 4.5)
+    this.updateDecals(dt)
     this.scopeFlash = Math.max(0, this.scopeFlash - dt * 3.2)
   }
 
@@ -2524,12 +2570,64 @@ export class Renderer3D {
     const shz = (Math.random() - 0.5) * this.shake
     const cx = this.camTarget.x + shx
     const cz = this.camTarget.z + shz
-    const flat = Math.cos(PITCH) * this.camDist
-    this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * this.camDist, cz + Math.cos(YAW) * flat)
+    // 카메라 펀치: 잠깐 당겨졌다 돌아온다 (최대 7%)
+    const cd = this.camDist * (1 - Math.min(1, this.punch) * 0.07)
+    const flat = Math.cos(PITCH) * cd
+    this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * cd, cz + Math.cos(YAW) * flat)
     this.camera.lookAt(cx, 0.6, cz)
     // 그림자 카메라가 시점을 따라오도록
     this.world.sun.position.set(this.camTarget.x + 8, 18, this.camTarget.z + 10)
     this.world.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z)
+  }
+
+  /** 쏜 방향 (쏜 사람 → 맞은 자리, 그림 좌표의 단위 벡터). 쏜 사람을 모르면 (0, 0) */
+  private shotDir(state: GameState, by: number, x: number, y: number): { x: number; z: number } {
+    const sh = by >= 0 ? state.players[by] : undefined
+    if (!sh) return { x: 0, z: 0 }
+    const dx = x - sh.x
+    const dy = y - sh.y
+    const d = Math.hypot(dx, dy)
+    return d < 1 ? { x: 0, z: 0 } : { x: dx / d, z: dy / d }
+  }
+
+  /** 바닥 핏자국 하나 (오래된 것부터 덮어쓴다 · 30초 뒤 사라진다) */
+  private addDecal(x: number, z: number, s: number): void {
+    if (!this.decals) {
+      const geo = new THREE.CircleGeometry(0.5, 14)
+      geo.rotateX(-Math.PI / 2)
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })
+      this.decals = new THREE.InstancedMesh(geo, mat, DECAL_MAX)
+      this.decals.count = 0
+      this.decals.frustumCulled = false
+      this.decals.renderOrder = 1
+      this.scene.add(this.decals)
+    }
+    const i = this.decalNext
+    this.decalNext = (this.decalNext + 1) % DECAL_MAX
+    this.decalData[i] = { x, z, s: s * (0.8 + Math.random() * 0.5), r: Math.random() * Math.PI, life: DECAL_LIFE }
+    // 조명을 받지 않는 재질이라 어두운 던전에서 튀지 않게 검붉게 (밝으면 분홍빛으로 떴다)
+    const shade = 0.2 + Math.random() * 0.14
+    this.decals.setColorAt(i, new THREE.Color(shade * 1.2, shade * 0.08, shade * 0.07))
+    if (this.decals.instanceColor) this.decals.instanceColor.needsUpdate = true
+    this.decals.count = Math.max(this.decals.count, i + 1)
+  }
+
+  private updateDecals(dt: number): void {
+    if (!this.decals) return
+    const o = new THREE.Object3D()
+    for (let i = 0; i < this.decals.count; i++) {
+      const d = this.decalData[i]
+      if (!d) continue
+      d.life -= dt
+      // 끝 3초 동안 줄어들며 사라진다
+      const k = d.life <= 0 ? 0 : Math.min(1, d.life / 3)
+      o.position.set(d.x, 0.02, d.z)
+      o.rotation.set(0, d.r, 0)
+      o.scale.set(d.s * 1.6 * k, 1, d.s * k)
+      o.updateMatrix()
+      this.decals.setMatrixAt(i, o.matrix)
+    }
+    this.decals.instanceMatrix.needsUpdate = true
   }
 
   /** 관전 시트용: 캐릭터를 특정 위치·회전으로 직접 배치하고 렌더 */

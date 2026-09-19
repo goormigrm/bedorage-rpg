@@ -54,10 +54,19 @@ interface Corpse {
   z: number
   yaw: number
   t: number
+  /** 날아가는 속도 (쏜 쪽 반대로 — 손맛) */
+  vx: number
+  vz: number
+  /** 정예·우두머리였나 (시체도 큰 몸 그대로) */
+  elite?: boolean
+  unique?: boolean
 }
 
 interface MVis extends Anim {
   seen: number
+  /** 맞아서 밀린 만큼 (그림만 — sim 위치와 따로, 곧 돌아온다) */
+  kx: number
+  kz: number
 }
 
 const CAP = 220
@@ -751,19 +760,38 @@ export class MonsterView {
   }
 
   /** 맞음: 번쩍 + 움찔 */
-  hit(id: number, crit: boolean): void {
+  /**
+   * 맞음 (2026-09-19 손맛): 번쩍 · 찌그러짐에 더해 **쏜 방향으로 밀려났다 돌아온다**. dx·dz = 쏜 방향(단위 벡터, 그림 좌표).
+   */
+  hit(id: number, crit: boolean, dx = 0, dz = 0): void {
     const v = this.vis.get(id)
     if (!v) return
     v.flash = 1
     v.crit = crit
     v.squashV += crit ? 7 : 4
+    const push = crit ? 0.3 : 0.14
+    v.kx += dx * push
+    v.kz += dz * push
+    const k = Math.hypot(v.kx, v.kz)
+    if (k > 0.5) {
+      v.kx *= 0.5 / k
+      v.kz *= 0.5 / k
+    }
   }
 
-  /** 쓰러짐: 시체로 남겨 넘어지며 가라앉게 한다 */
-  died(m: { m: number; kind: number; x: number; y: number }): void {
+  /** 등급: 0 졸개 · 1 정예 · 2 우두머리 (죽기 전의 모습 — 쓰러짐 연출의 크기) */
+  rank(id: number): number {
+    const v = this.vis.get(id)
+    return v?.unique ? 2 : v?.elite ? 1 : 0
+  }
+
+  /** 쓰러짐: 쏜 쪽 반대로 날아가며 뒤로 넘어지고, 한동안 누워 있다가 가라앉는다. dx·dz = 쏜 방향 · power = 세기 */
+  died(m: { m: number; kind: number; x: number; y: number }, dx = 0, dz = 0, power = 0): void {
     const v = this.vis.get(m.m)
     const s = this.shown.get(m.m)
-    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw: v ? v.yaw : 0, t: 0 })
+    // 쏜 사람을 바라보게 두면 "뒤로" 넘어지는 쪽이 곧 쏜 쪽 반대다
+    const yaw = dx !== 0 || dz !== 0 ? Math.atan2(-dz, -dx) : v ? v.yaw : 0
+    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw, t: 0, vx: dx * power, vz: dz * power, elite: v?.elite, unique: v?.unique })
     if (this.corpses.length > CORPSE_MAX) this.corpses.shift()
   }
 
@@ -789,12 +817,18 @@ export class MonsterView {
       let v = this.vis.get(m.id)
       const yawTarget = ((m.aim & 1023) / 1024) * Math.PI * 2
       if (!v) {
-        v = { walk: Math.random() * 6, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: yawTarget, seen: 0 }
+        v = { walk: Math.random() * 6, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: yawTarget, seen: 0, kx: 0, kz: 0 }
         this.vis.set(m.id, v)
       }
       const p = this.prevPos.get(m.id) ?? m
-      const x = (p.x + (m.x - p.x) * alpha) * U
-      const z = (p.y + (m.y - p.y) * alpha) * U
+      // 맞아서 밀린 만큼 더해 그린다 (빠르게 돌아온다)
+      if (v) {
+        const back = Math.exp(-dt * 11)
+        v.kx *= back
+        v.kz *= back
+      }
+      const x = (p.x + (m.x - p.x) * alpha) * U + (v?.kx ?? 0)
+      const z = (p.y + (m.y - p.y) * alpha) * U + (v?.kz ?? 0)
       this.shown.set(m.id, { x, z })
       // 움직임 상태
       const def = MONSTER_LIST[m.kind]
@@ -821,6 +855,17 @@ export class MonsterView {
     for (const c of this.corpses) {
       c.t += dt
       if (c.t > CORPSE_LIFE) continue
+      // 날아가다 멈춘다
+      if (c.vx !== 0 || c.vz !== 0) {
+        c.x += c.vx * dt
+        c.z += c.vz * dt
+        const slow = Math.exp(-dt * 7)
+        c.vx *= slow
+        c.vz *= slow
+        if (Math.abs(c.vx) + Math.abs(c.vz) < 0.01) c.vx = c.vz = 0
+      }
+      dead.elite = c.elite
+      dead.unique = c.unique
       still.push(c)
       dead.dead = Math.min(1, c.t / 0.35)
       dead.flash = Math.max(0, 1 - c.t * 6)
