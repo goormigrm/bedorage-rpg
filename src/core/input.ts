@@ -73,6 +73,8 @@ export const CMD_RESPEC = 15
 export const CMD_HIRE = 16
 /** 촌장: 퀘스트 받기(arg = 퀘스트 번호, 목표 전) · 보상 받기(목표를 이뤘으면) */
 export const CMD_QUEST = 17
+/** 자동 줍기 등급: arg = 비트(1 << 등급 — 일반 1 · 마법 2 · 희귀 4 · 전설 8). 각자의 옵션이라 명령으로 모두에게 알린다(락스텝) */
+export const CMD_AUTOPICK = 18
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

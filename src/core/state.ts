@@ -204,6 +204,8 @@ export interface PlayerState {
   portalCast: number
   /** 따라가는 사람 (용병·동료 봇 — 그 사람이 다른 지역으로 가면 곁으로 따라간다). -1 = 없음 */
   follow: number
+  /** 밟으면 줍는 아이템 등급(비트 1 << 등급, 기본 AUTOPICK_ALL). 내 전리품만 — 버려진 것·남에게 준 것은 F */
+  autoPick: number
   /** 물약: 남은 칸 · 칸 수 · 회복 남은 틱 · 다시 마실 때까지 */
   potions: number
   potMax: number
@@ -523,6 +525,8 @@ export type SimEvent =
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
   /** 주웠다 */
   | { type: 'pickup'; p: number; rarity: number; uid: number }
+  /** 자동 줍기를 하려는데 가방이 가득 (2초에 한 번) */
+  | { type: 'bagFull'; p: number }
   | { type: 'levelup'; p: number; level: number }
   /** 장비를 바꿨다 */
   | { type: 'equip'; p: number; slot: number }

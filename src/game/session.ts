@@ -3,11 +3,11 @@
 
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { Input } from '../core/input'
+import { CMD_AUTOPICK, Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, townNpcs, tierQuests } from '../core/world'
+import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, townNpcs, tierQuests } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
@@ -18,7 +18,25 @@ import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { Sheet, emptySheet, sanitizeSheet } from '../core/items'
+import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES, Sheet, emptySheet, sanitizeSheet } from '../core/items'
+
+/** 자동 줍기 등급 옵션 (브라우저에 기억 — 기본은 모두) */
+const AUTOPICK_KEY = 'brpg.autopick'
+function loadAutoPick(): number {
+  try {
+    const v = Number(localStorage.getItem(AUTOPICK_KEY) ?? AUTOPICK_ALL)
+    return Number.isInteger(v) && v >= 0 && v <= AUTOPICK_ALL ? v : AUTOPICK_ALL
+  } catch {
+    return AUTOPICK_ALL
+  }
+}
+function saveAutoPick(v: number): void {
+  try {
+    localStorage.setItem(AUTOPICK_KEY, String(v))
+  } catch {
+    /* 저장 못 해도 이번 판은 반영된다 */
+  }
+}
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
@@ -253,6 +271,8 @@ export class Session {
       void enterLandscape()
     }
     this.input.attach(this.stage, this.touch)
+    // 자동 줍기 등급은 각자의 옵션이지만 줍기는 sim 이 한다 → 판에 들어오자마자 명령으로 모두에게 알린다 (난입도 같은 길)
+    this.input.queueCmd(CMD_AUTOPICK, loadAutoPick())
     this.waypoints = new WaypointPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
@@ -494,7 +514,13 @@ export class Session {
     const a = areaDef(this.viewArea)
     const t = this.state.tier ?? 0
     const tag = t > 0 ? `${TIER_LABEL[t]} · ` : ''
-    this.renderer.banner(a.name, a.kind === 'town' ? `${tag}${a.act + 1}막 · ${a.lore ?? '안전지대'}` : `${tag}지역 레벨 ${a.level + tierOf(t).lvl}${a.lore ? ` · ${a.lore}` : ''}`)
+    // 막다른 옆길은 들어서자마자 알린다 (다음 맵이 없다 — 끝의 금빛 상자를 열고 들어온 곳으로 돌아간다)
+    const sub = isDeadEnd(a.id)
+      ? `${tag}지역 레벨 ${a.level + tierOf(t).lvl} · 막다른 옆길 — 끝에 금빛 상자, 나가는 길은 ${AREAS[a.links[0]].name} 쪽뿐`
+      : a.kind === 'town'
+        ? `${tag}${a.act + 1}막 · ${a.lore ?? '안전지대'}`
+        : `${tag}지역 레벨 ${a.level + tierOf(t).lvl}${a.lore ? ` · ${a.lore}` : ''}`
+    this.renderer.banner(a.name, sub)
   }
 
   /** 계속 켜기 방식: 음성 켜기/끄기 (버튼 · B) */
@@ -801,7 +827,25 @@ export class Session {
         { label: '계속', primary: true, onClick: () => this.hideOverlay() },
         { label: '로비로', primary: false, onClick: () => this.exit() },
       ],
+      this.autoPickHtml(),
     )
+    // 자동 줍기: 등급 단추를 누르면 그 등급을 켜고 끈다 (2026-09-19 요청)
+    this.overlay.querySelectorAll<HTMLButtonElement>('.autopick button[data-r]').forEach((b) => {
+      b.onclick = () => {
+        const v = loadAutoPick() ^ (1 << Number(b.dataset.r))
+        saveAutoPick(v)
+        this.input.queueCmd(CMD_AUTOPICK, v)
+        this.showMenu()
+      }
+    })
+  }
+
+  /** Esc 메뉴의 자동 줍기 칸: 등급마다 켜고 끄는 단추 */
+  private autoPickHtml(): string {
+    const ap = loadAutoPick()
+    const btns = RARITY_NAMES.map((n, r) => `<button type="button" data-r="${r}" class="${ap & (1 << r) ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}" title="${n} 아이템을 밟으면 ${ap & (1 << r) ? '줍습니다 (누르면 끔)' : '줍지 않습니다 (누르면 켬)'}">${n}</button>`).join('')
+    const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? '꺼짐 — F 로만' : '켠 등급만'
+    return `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div><p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>`
   }
 
   private showOverlay(

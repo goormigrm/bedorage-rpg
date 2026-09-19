@@ -1,12 +1,12 @@
 // 성장·전리품: 스마트 루트 · 개인 전리품 · 줍기 · 장착 명령 · 버리기(선물) · 경험치 공유 · 레벨업 · 소실 규칙 · 세이브 검사.
 import { describe, expect, it } from 'vitest'
-import { BTN_USE, CMD_DROP, CMD_EQUIP, Input } from '../src/core/input'
+import { BTN_USE, CMD_AUTOPICK, CMD_DROP, CMD_EQUIP, Input } from '../src/core/input'
 import { buildMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
 import { makeRng } from '../src/core/rng'
 import {
-  BAG_SIZE, Item, SLOT_ARMOR, SLOT_WEAPON, ST_DMG, ST_HP, WEAPON_IDS, computeStats, emptySheet, rollItem, sanitizeSheet, xpNeed,
+  AUTOPICK_ALL, BAG_SIZE, Item, SLOT_ARMOR, SLOT_WEAPON, ST_DMG, ST_HP, WEAPON_IDS, computeStats, emptySheet, rollItem, sanitizeSheet, xpNeed,
 } from '../src/core/items'
 import { COUNTDOWN_TICKS, MS_CHASE } from '../src/core/state'
 
@@ -103,7 +103,9 @@ describe('전리품 · 성장 (sim)', () => {
     for (let t = 0; t < 20; t++) step(s, map, [idle(), idle()])
     expect(a.gold).toBeGreaterThanOrEqual(gold0 + g.gold)
     expect(s.drops.some((d) => d.id === g.id)).toBe(false)
-    // 아이템은 F 로 줍는다 (밟기만 하면 그대로)
+    // 아이템: 기본은 밟으면 줍는다(자동 줍기 — 2026-09-19). 자동 줍기를 끄면 F 로
+    step(s, map, [cmd(CMD_AUTOPICK, 0), idle()])
+    expect(a.autoPick).toBe(0)
     const it = s.drops.find((d) => d.owner === 0 && d.item)!
     a.x = it.x
     a.y = it.y
@@ -121,6 +123,37 @@ describe('전리품 · 성장 (sim)', () => {
       step(s, map, [{ ...idle(), buttons: BTN_USE }, idle()])
       expect(s.drops.some((d) => d.id === other.id)).toBe(true)
     }
+  })
+
+  it('자동 줍기: 기본은 모든 등급 · 켠 등급의 내 아이템만 밟으면 줍는다 — 버려진 것(주인 -1)은 F · 가방이 차면 알린다', () => {
+    const { s, map } = ready(['chim'])
+    const a = s.players[0]
+    expect(a.autoPick).toBe(AUTOPICK_ALL)
+    const put = (uid: number, rarity: number, owner: number, dx: number) =>
+      s.drops.push({ id: 9000 + uid, owner, x: a.x + dx, y: a.y, item: { uid, slot: SLOT_WEAPON, wt: 0, rarity, ilvl: 3, aff: [] }, gold: 0, pot: 0, ttl: 6000, lock: 0 })
+    // 희귀 · 전설만 켠다
+    step(s, map, [cmd(CMD_AUTOPICK, (1 << 2) | (1 << 3))])
+    put(1, 0, 0, 0) // 일반 — 끔
+    put(2, 1, 0, 3) // 마법 — 끔
+    put(3, 2, 0, -3) // 희귀 — 켬
+    put(4, 3, -1, 2) // 전설이지만 버려진 것 — 자동으로는 안 줍는다
+    for (let t = 0; t < 5; t++) step(s, map, [idle()])
+    expect(a.bag.map((i) => i.uid)).toEqual([3])
+    expect(s.drops.filter((d) => d.item).map((d) => d.item!.uid).sort()).toEqual([1, 2, 4])
+    // 버려진 것은 F 로 (가장 가까운 것부터)
+    s.drops = s.drops.filter((d) => d.item?.uid === 4)
+    step(s, map, [{ ...idle(), buttons: BTN_USE }])
+    expect(a.bag.some((i) => i.uid === 4)).toBe(true)
+    // 가방이 가득이면 줍지 않고 알린다
+    while (a.bag.length < BAG_SIZE) a.bag.push({ uid: 100 + a.bag.length, slot: SLOT_WEAPON, wt: 0, rarity: 0, ilvl: 1, aff: [] })
+    put(5, 3, 0, 0)
+    let warned = false
+    for (let t = 0; t < 130; t++) {
+      step(s, map, [idle()])
+      if (s.events.some((e) => e.type === 'bagFull' && e.p === 0)) warned = true
+    }
+    expect(warned).toBe(true)
+    expect(s.drops.some((d) => d.item?.uid === 5)).toBe(true)
   })
 
   it('레벨이 오르면 체력이 가득 차고 강해진다', () => {

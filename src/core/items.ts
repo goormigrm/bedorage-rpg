@@ -25,6 +25,8 @@ export const VARIANT_ILVL = 6
 
 /** 등급: 일반 · 마법 · 희귀 · 전설 (디아블로 색: 흰 · 파랑 · 노랑 · 주황) */
 export const RARITY_NAMES = ['일반', '마법', '희귀', '전설']
+/** 자동 줍기 등급 비트(1 << 등급) — 기본은 모두 (2026-09-19 요청 "아이템은 기본적으로 자동 수집, 등급별로 조절") */
+export const AUTOPICK_ALL = 0b1111
 export const RARITY_COLORS = ['#d8d8d8', '#6c9cff', '#ffd84a', '#ff8a2a']
 /** 등급별 옵션 수 */
 const AFFIX_COUNT = [0, 2, 3, 4]

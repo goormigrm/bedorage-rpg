@@ -8,11 +8,11 @@ import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
-  CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -948,6 +948,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     exitLock: 0,
     portalCast: 0,
     follow: -1,
+    autoPick: AUTOPICK_ALL,
     potions: sh.potMax ?? 4,
     potMax: sh.potMax ?? 4,
     potHot: 0,
@@ -2601,14 +2602,26 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
   state.events.push({ type: 'levelup', p: p.id, level: p.level })
 }
 
-/** 바닥 전리품 줍기: 가방에 자리가 있으면 발밑의 내 것·버려진 것을 줍는다 */
-/** 밟으면 줍는 것: 골드 더미 · 물약(칸이 찼으면 두고 간다). 아이템은 F (pickItem) */
+/**
+ * 밟으면 줍는 것: 골드 더미 · 물약(칸이 찼으면 두고 간다) · **내 아이템 중 자동 줍기를 켠 등급**(가방에 자리가 있으면).
+ * 버려진 것·남에게 준 것(주인 -1)은 자동으로 줍지 않는다 — 버리자마자 도로 줍게 된다. 그런 것과 끈 등급은 F (pickItem).
+ */
 function pickUp(state: GameState, p: PlayerState): void {
   if (!isActive(p)) return
   const R2 = (PLAYER_RADIUS + 14) ** 2
+  const RI2 = (PLAYER_RADIUS + 22) ** 2
+  let full = false
   for (let i = state.drops.length - 1; i >= 0; i--) {
     const d = state.drops[i]
-    if (d.item || d.lock > 0 || (d.owner !== p.id && d.owner !== -1)) continue
+    if (d.lock > 0) continue
+    if (d.item) {
+      if (d.owner !== p.id || ((p.autoPick >> d.item.rarity) & 1) === 0) continue
+      if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > RI2) continue
+      if (p.bag.length >= BAG_SIZE) full = true
+      else takeItem(state, p, i)
+      continue
+    }
+    if (d.owner !== p.id && d.owner !== -1) continue
     if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
     if (d.gold > 0) {
       const g = hasLeg(p, LEG_GOLD) ? Math.round(d.gold * 1.5) : d.gold
@@ -2623,6 +2636,17 @@ function pickUp(state: GameState, p: PlayerState): void {
     }
     state.drops.splice(i, 1)
   }
+  if (full && state.tick % 120 === 0) state.events.push({ type: 'bagFull', p: p.id })
+}
+
+/** 바닥의 아이템 하나(drops[i])를 가방에 */
+function takeItem(state: GameState, p: PlayerState, i: number): void {
+  const it = state.drops[i].item!
+  p.bag.push(it)
+  p.found++
+  if (it.rarity > p.bestFound) p.bestFound = it.rarity
+  state.drops.splice(i, 1)
+  state.events.push({ type: 'pickup', p: p.id, rarity: it.rarity, uid: it.uid })
 }
 
 /** F: 가장 가까운 내 아이템(또는 버려진 것)을 줍는다 (가방이 차면 못 줍는다) */
@@ -2640,13 +2664,7 @@ function pickItem(state: GameState, p: PlayerState): boolean {
     }
   }
   if (best < 0) return false
-  const d = state.drops[best]
-  const it = d.item!
-  p.bag.push(it)
-  p.found++
-  if (it.rarity > p.bestFound) p.bestFound = it.rarity
-  state.drops.splice(best, 1)
-  state.events.push({ type: 'pickup', p: p.id, rarity: it.rarity, uid: it.uid })
+  takeItem(state, p, best)
   return true
 }
 
@@ -2659,6 +2677,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_QUEST) {
     questCommand(state, p, arg)
+    return
+  }
+  if (cmd === CMD_AUTOPICK) {
+    p.autoPick = arg & AUTOPICK_ALL
     return
   }
   if (cmd >= CMD_SKILL_UP && cmd <= CMD_HIRE) {

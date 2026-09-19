@@ -229,6 +229,16 @@ export function isTown(id: number): boolean {
   return areaDef(id).kind === 'town'
 }
 
+/**
+ * 막다른 옆길: 이어진 곳이 하나뿐인 던전(보스 방 · 마을 제외) — 굶주린 굴 · 늑대 굴 · 저수조 · 끓는 구덩이.
+ * 끝에 금빛 상자가 있고 나가는 길은 들어온 출구뿐이다. 2026-09-19 "굶주린 굴에서 다음 맵으로 가는 포탈이 없다" —
+ * 설계상 막다른 곳인데 알려 주지 않아 길이 끊긴 것처럼 보였다 → 배너 · 추적 칸에 적는다.
+ */
+export function isDeadEnd(id: number): boolean {
+  const a = areaDef(id)
+  return a.links.length === 1 && a.kind !== 'boss' && a.kind !== 'town'
+}
+
 /** 웨이포인트가 있는 지역 (순서 = 세이브의 비트 번호) */
 export const WAYPOINTS: number[] = AREAS.filter((a) => a.wp).map((a) => a.id)
 

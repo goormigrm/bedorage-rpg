@@ -123,6 +123,8 @@ export class Renderer3D {
   private seenT: number[] = []
   /** 스코프(저격 정조준) 중인가 */
   private scoped = false
+  /** 가방 가득 알림을 마지막으로 띄운 때 (performance.now) */
+  private bagWarnAt = -1e9
   private miniCanvas: HTMLCanvasElement | null = null
   /** 모래주머니 내구도 표시 캐시 (타일 인덱스 → 마지막으로 칠한 비율) */
   private bagShown = new Map<number, number>()
@@ -454,6 +456,13 @@ export class Renderer3D {
           const col = new THREE.Color(RARITY_COLORS[e.rarity]).getHex()
           this.spawnRing(e.x * U, e.y * U, 0.2, 0.6 + e.rarity * 0.4, 0.5, col)
           if (e.rarity >= 2) this.spawnImpact(e.x * U, 0.6, e.y * U, col, 1.5 + e.rarity)
+          break
+        }
+        case 'bagFull': {
+          // 자동 줍기를 하려는데 가방이 가득 — 5초에 한 번만 알린다
+          if (e.p !== localPlayer || performance.now() - this.bagWarnAt < 5000) break
+          this.bagWarnAt = performance.now()
+          this.hud.notice('가방이 가득 찼습니다 — 마을에서 팔거나 보관하세요 (I 가방)', '#ffb0a0')
           break
         }
         case 'pickup': {

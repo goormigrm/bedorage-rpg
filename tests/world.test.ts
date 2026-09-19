@@ -3,7 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, isDeadEnd, townNpcs, wpBit } from '../src/core/world'
+import { flowField } from '../src/core/flow'
+import { TILE } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
 import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step, townPortalSpot } from '../src/core/sim'
 import { GameState } from '../src/core/state'
@@ -275,6 +277,26 @@ describe('이어진 세계', () => {
       if (a.wp) expect(l.wp).not.toBeNull()
     }
   })
+
+  it('모든 지역 (시드 둘): 처음 자리에서 모든 출구 · 웨이포인트까지 걸어갈 수 있고, 막다른 옆길은 넷뿐 (tools/links.ts 의 짧은 판)', () => {
+    for (const seed of [3, 777]) {
+      const mapOf = world(seed)
+      for (const a of AREAS) {
+        const map = mapOf(a.id)
+        const l = areaLayout(a.id, map)
+        const tile = (p: { x: number; y: number }) => Math.floor(p.y / TILE) * map.w + Math.floor(p.x / TILE)
+        const field = flowField(map, tile(l.spawn))
+        for (const e of l.exits) {
+          expect(field[tile(e)], `${a.name} → ${AREAS[e.to].name} (시드 ${seed})`).toBeGreaterThanOrEqual(0)
+          expect(field[tile(e.arrive)]).toBeGreaterThanOrEqual(0)
+        }
+        if (l.wp) expect(field[tile(l.wp)], `${a.name} 웨이포인트 (시드 ${seed})`).toBeGreaterThanOrEqual(0)
+      }
+    }
+    // 굶주린 굴처럼 다음 맵이 없는 곳은 배너 · 추적 칸에 "막다른 옆길" 로 알린다
+    expect(AREAS.filter((a) => isDeadEnd(a.id)).map((a) => a.name)).toEqual(['굶주린 굴', '늑대 굴', '저수조', '끓는 구덩이'])
+    // 맵 72장을 만든다 — 기본 5초로는 모자라다
+  }, 30000)
 })
 
 describe('퀘스트 (D5)', () => {

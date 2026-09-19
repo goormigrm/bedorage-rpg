@@ -13,7 +13,7 @@ import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
-import { QUESTS, areaDef, isTown } from '../core/world'
+import { QUESTS, areaDef, isDeadEnd, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -482,7 +482,9 @@ export class D4Hud {
           ? a.boss !== undefined
             ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`
             : `◆ 우두머리 ${a.unique?.name ?? ''}`
-          : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
+          : isDeadEnd(s.curArea)
+            ? '◆ 막다른 옆길 · 끝에 금빛 상자 · 되돌아 나가기'
+            : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
       c.fillText(goal, x + 12, y + 46)
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53, W - 24, 4)
