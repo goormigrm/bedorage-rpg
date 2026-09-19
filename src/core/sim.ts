@@ -28,7 +28,7 @@ import { botInput, makeBot } from './bot'
 import { ACTS, AreaLayout, QUESTS, WAYPOINTS, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
-  CHAR_SKILLS, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_SNIPE, FX_SWIFT, FX_WHIRL,
+  CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_SNIPE, FX_SWIFT, FX_WHIRL,
   MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
 import {
@@ -1307,7 +1307,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     // 레드카펫: 구르기가 줄지 않고, 구를 때마다 주변을 친다
     if (p.fx[FX_CARPET] > 0) {
       if (dungeon) p.dashCharges = Math.min(DASH_MAX, p.dashCharges + 1)
-      aoe(state, map, p, p.x, p.y, 2.5 * TILE, p.carpetDmg, { stun: 30, knock: 4, id: 'redcarpet' })
+      aoe(state, map, p, p.x, p.y, 2.5 * TILE, p.carpetDmg, { stun: dungeon ? 60 : 30, knock: 4, id: 'redcarpet' })
     }
     state.events.push({ type: 'dash', p: p.id })
   }
@@ -1327,7 +1327,8 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
 
   // 회전 공격(주방 대참사): 0.25초마다 주변을 친다
   if (p.fx[FX_WHIRL] > 0 && p.fx[FX_WHIRL] % 15 === 0) {
-    aoe(state, map, p, p.x, p.y, 2.4 * TILE, 35, { knock: 3, id: 'kitchen', quiet: true })
+    const dun = state.mode === 'dungeon'
+    aoe(state, map, p, p.x, p.y, (dun ? 3 : 2.4) * TILE, dun ? 65 : 35, { knock: 3, id: 'kitchen', quiet: true })
   }
 
   // 줍기: 내 전리품·버려진 것 위를 지나가면 줍는다 (디아블로처럼 한 번 클릭 대신 — 슈터는 손이 바쁘다)
@@ -1845,7 +1846,11 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
   }
 }
 
-function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: number, id: SkillId, def: (typeof SKILLS)[SkillId]): void {
+function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: number, realId: SkillId, def: (typeof SKILLS)[SkillId]): void {
+  // 트리 스킬(캐릭터 고유 이름)은 바탕 스킬의 효과를 그대로 쓴다 — 이벤트 · 연출 · 소리도 바탕 id 로
+  const id = baseSkill(realId)
+  // 궁극기는 던전에서 확실히 세게 (2026-09-19 "궁극기가 일반 스킬보다 효과가 작은 게 많다 — 확실히 우위로"). 투기장은 그대로
+  const dun = state.mode === 'dungeon'
   let tx = p.x
   let ty = p.y
   if (def.reach) {
@@ -1873,8 +1878,9 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_FREEAMMO] = 240
       break
     case 'roar': {
-      aoe(state, map, p, p.x, p.y, 5 * T, 120, { stun: 120, knock: 8, id })
+      aoe(state, map, p, p.x, p.y, (dun ? 6 : 5) * T, dun ? 220 : 120, { stun: dun ? 180 : 120, knock: dun ? 10 : 8, id })
       for (const q of alliesNear(state, p, 8 * T)) q.fx[FX_PARTYDR] = 360
+      if (dun) p.fx[FX_GUARD] = Math.max(p.fx[FX_GUARD], 360)
       break
     }
     // ---- 침착덕
@@ -1885,8 +1891,8 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       state.throws.push({ id: state.nextFxId++, owner: p.id, x0: p.x, y0: p.y, x: tx, y: ty, t: 42, max: 42 })
       break
     case 'composure':
-      p.fx[FX_CRIT] = 360
-      buffRate(p, 360, 1.5)
+      p.fx[FX_CRIT] = dun ? 480 : 360
+      buffRate(p, dun ? 480 : 360, dun ? 2 : 1.5)
       break
     // ---- 단군덕
     case 'broadcast': {
@@ -1917,8 +1923,9 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     }
     case 'spotlight':
-      // 던전: 무대 위 괴물이 0.5초마다 18 피해 (투기장은 피해 없음 — 예전 그대로)
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480, dmg: state.mode === 'dungeon' ? Math.round(18 * skillPow) : 0 })
+      // 던전: 무대 5칸 · 켜지는 순간 1.5초 기절 · 0.5초마다 30 피해 (투기장은 4칸 · 피해 없음 — 예전 그대로)
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: (dun ? 5 : 4) * T, t: 480, max: 480, dmg: dun ? Math.round(30 * skillPow) : 0 })
+      if (dun) aoe(state, map, p, tx, ty, 5 * T, 0, { stun: 90, id, quiet: true })
       break
     // ---- 매직덕
     case 'firstaid': {
@@ -1939,7 +1946,9 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       else aoe(state, map, p, p.x, p.y, 4 * T, 60, { knock: 5, arcAim: p.aim, arc: deg(40), id })
       break
     case 'surgery': {
-      for (const q of alliesNear(state, p, 8 * T, true)) {
+      // 던전: 12칸 · 그 뒤 8초간 받는 피해 -50%
+      if (dun) for (const q of alliesNear(state, p, 12 * T)) q.fx[FX_GUARD] = Math.max(q.fx[FX_GUARD], 480)
+      for (const q of alliesNear(state, p, (dun ? 12 : 8) * T, true)) {
         if (q.downed) {
           raise(state, q, q.maxHp, 180)
           p.revives++
@@ -1965,7 +1974,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       aoe(state, map, p, p.x, p.y, 3 * T, 50, { slow: 150, knock: 2, id })
       break
     case 'kitchen':
-      p.fx[FX_WHIRL] = 300
+      p.fx[FX_WHIRL] = dun ? 420 : 300
       break
     // ---- 옥냥덕
     case 'catstep':
@@ -1991,8 +2000,11 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     case 'ninelives':
       p.fx[FX_SNIPE] = 480
       buffRate(p, 480, 3)
-      // 던전: 그동안 받는 피해 -30%
-      if (state.mode === 'dungeon') p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 480)
+      // 던전: 그동안 받는 피해 -30% · 모든 탄이 치명타
+      if (dun) {
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 480)
+        p.fx[FX_CRIT] = Math.max(p.fx[FX_CRIT], 480)
+      }
       break
     // ---- 주펄덕
     case 'flash':
@@ -2002,7 +2014,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_REFLECT] = 180
       break
     case 'supernova':
-      aoe(state, map, p, p.x, p.y, 6 * T, 200, { stun: 150, knock: 10, id })
+      aoe(state, map, p, p.x, p.y, (dun ? 7 : 6) * T, dun ? 380 : 200, { stun: dun ? 180 : 150, knock: 10, id })
       break
     // ---- 우원덕
     case 'stunt': {
@@ -2038,7 +2050,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'redcarpet':
       p.fx[FX_CARPET] = 480
-      p.carpetDmg = Math.round(70 * skillPow)
+      p.carpetDmg = Math.round((dun ? 160 : 70) * skillPow)
       break
     // ---- 기열덕
     case 'overdrive':
@@ -2049,7 +2061,8 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       aoe(state, map, p, p.x, p.y, 5 * T, 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
       break
     case 'kingrage':
-      p.fx[FX_KING] = 480
+      p.fx[FX_KING] = dun ? 600 : 480
+      if (dun) buffRate(p, 600, 1.5)
       break
     // ---- 풍월덕
     case 'gust':
@@ -2063,7 +2076,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_SWIFT] = 240
       break
     case 'typhoon':
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_VORTEX, owner: p.id, x: tx, y: ty, r: 3.5 * T, t: 360, max: 360, dmg: Math.round(30 * skillPow) })
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_VORTEX, owner: p.id, x: tx, y: ty, r: (dun ? 4.5 : 3.5) * T, t: dun ? 480 : 360, max: dun ? 480 : 360, dmg: Math.round((dun ? 60 : 30) * skillPow) })
       break
     // ---- 통천덕
     case 'snack': {
@@ -2085,9 +2098,11 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'angelshot': {
       const { x: mx, y: my } = muzzle(map, p)
-      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 400, life: 60, pierce: 99, breaker: state.mode === 'dungeon', headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
+      spawnBullet(state, p, mx, my, p.aim, 'sniper', { speed: 30, damage: 400, life: 60, pierce: 99, breaker: dun, headTarget: aimedEnemy(state, p), critMon: aimedMonster(state, map, p), over: false, overR: 0 })
       p.shots++
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
+      // 던전: 빛의 기둥 — 조준 방향 18칸 줄 위의 모든 괴물에 900 피해 · 2초 기절 (한 마리 400 은 70초 궁극기로 너무 약했다)
+      if (dun) lineAoe(state, p, 18 * T, 1.2 * T, 900, 120)
       break
     }
     // ---- 우재덕
@@ -2115,9 +2130,37 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     case 'encore':
       for (let k = 0; k < p.cd.length; k++) if (k !== slot) p.cd[k] = 0
       p.focus = 100
-      buffRate(p, 360, 1.5)
+      buffRate(p, 360, dun ? 2 : 1.5)
+      // 던전: 8칸 안 동료도 6초간 연사 +50%, 나는 받는 피해 -30%
+      if (dun) {
+        for (const q of alliesNear(state, p, 8 * T)) if (q !== p) buffRate(q, 360, 1.5)
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 360)
+      }
       break
   }
+}
+
+/** 조준 방향으로 길이 len · 반폭 halfW 의 줄 위 모든 괴물 (천사의 한 발 — 벽 · 방패를 뚫는 빛의 기둥) */
+function lineAoe(state: GameState, p: PlayerState, len: number, halfW: number, dmg: number, stun: number): void {
+  const dx = cosA(p.aim)
+  const dy = sinA(p.aim)
+  const d = Math.round(dmg * dmgMul(p) * skillPow)
+  const hit: Monster[] = []
+  for (const m of state.monsters) {
+    if (m.hp <= 0) continue
+    const rx = m.x - p.x
+    const ry = m.y - p.y
+    const along = rx * dx + ry * dy
+    if (along < 0 || along > len) continue
+    if (Math.abs(rx * dy - ry * dx) > halfW + MONSTER_LIST[m.kind].r) continue
+    hit.push(m)
+  }
+  hit.sort((a, b) => a.id - b.id)
+  for (const m of hit) {
+    m.stun = Math.max(m.stun, stun)
+    hurtMonster(state, m, d, p.id, false, m.x, m.y)
+  }
+  state.events.push({ type: 'chain', x: p.x, y: p.y, x2: p.x + dx * len, y2: p.y + dy * len })
 }
 
 /** 돌진 중: 몸에 닿는 몬스터·적을 한 번씩 친다 */

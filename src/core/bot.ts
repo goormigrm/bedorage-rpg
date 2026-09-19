@@ -11,7 +11,7 @@ import { ACID, MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
 import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, ZONE_ACID, ZONE_FUSE, isActive } from './state'
 import { WEAPONS, WeaponId } from './weapons'
-import { SKILLS, focusCost, nodeSkill, slotNode } from './skills'
+import { SKILLS, baseSkill, focusCost, nodeSkill, slotNode } from './skills'
 import { flowField, flowStep } from './flow'
 
 export type Difficulty = 'easy' | 'normal' | 'hard'
@@ -338,8 +338,9 @@ function useSkills(state: GameState, me: PlayerState, mem: BotMemory, out: Input
     const id = nodeSkill(me, node)
     if (k !== 2 && state.mode === 'dungeon' && me.focus < focusCost(SKILLS[id], me.build, node)) continue
     let want: boolean
-    if (id === 'firstaid') want = hurt
-    else if (id === 'surgery') want = !!downed || (hurt && near >= 4)
+    const bid = baseSkill(id)
+    if (bid === 'firstaid') want = hurt
+    else if (bid === 'surgery') want = !!downed || (hurt && near >= 4)
     else if (k === 2) want = near >= 5
     else want = !!target && len(target.x - me.x, target.y - me.y) < 320
     if (want && rand(mem.rng) < 0.06) {

@@ -1,11 +1,11 @@
 // 스킬 아이콘: 이미지 파일 없이 캔버스 선·면으로 그린다(저작권·준비물 0 원칙). (cx, cy) 가운데, s = 한 변.
 // 디아블로 4 의 스킬 칸처럼 어두운 바탕에 금속빛 실루엣 — 색은 역할마다(탱커 주황 · 원거리 청록 · 정찰 보라 · 치유 초록 · 근접 붉은 금 · 저격 파랑).
 
-import { SkillId } from '../core/skills'
+import { BaseSkillId, SkillId, baseSkill } from '../core/skills'
 
 type Painter = (c: CanvasRenderingContext2D, s: number) => void
 
-const TONE: Record<SkillId, string> = {
+const TONE: Record<BaseSkillId, string> = {
   ironwall: '#e0a060', barrage: '#e0a060', roar: '#ff8a50',
   pierce: '#7fd6d0', grenade: '#7fd6d0', composure: '#ffd86a',
   broadcast: '#b99cff', fanfire: '#b99cff', spotlight: '#fff0b0',
@@ -27,7 +27,7 @@ function line(c: CanvasRenderingContext2D, pts: number[][], w: number): void {
   c.stroke()
 }
 
-const P: Record<SkillId, Painter> = {
+const P: Record<BaseSkillId, Painter> = {
   // 방패
   ironwall: (c, s) => {
     const k = s / 2
@@ -484,7 +484,9 @@ export function drawSkillIcon(c: CanvasRenderingContext2D, id: SkillId, cx: numb
   c.translate(cx, cy)
   c.lineCap = 'round'
   c.lineJoin = 'round'
-  const col = TONE[id]
+  // 트리 스킬은 바탕 스킬의 그림 (이름만 캐릭터마다 다르다)
+  const b = baseSkill(id)
+  const col = TONE[b]
   c.fillStyle = col
   c.strokeStyle = col
   c.globalAlpha = dim ? 0.35 : 1
@@ -492,7 +494,7 @@ export function drawSkillIcon(c: CanvasRenderingContext2D, id: SkillId, cx: numb
     c.shadowColor = col
     c.shadowBlur = s * 0.18
   }
-  P[id](c, s)
+  P[b](c, s)
   c.restore()
 }
 

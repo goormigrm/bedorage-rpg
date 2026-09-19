@@ -1,12 +1,12 @@
 // 스킬(캐릭터마다 Q·E·R) · 투기장(PvP — 덕의 대전 규칙 이식) 규칙.
 import { describe, expect, it } from 'vitest'
 import { radToAngle } from '../src/core/fixedmath'
-import { BTN_FIRE, BTN_SKILL1, BTN_SKILL2, BTN_ULT, Input } from '../src/core/input'
+import { BTN_FIRE, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_ULT, Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap, GameMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, hashState, step } from '../src/core/sim'
 import { CharacterId, PLAYABLE } from '../src/core/characters'
-import { CHAR_SKILLS, FX_GUARD, SKILLS, ULT_START_FRAC } from '../src/core/skills'
+import { CHAR_SKILLS, FX_GUARD, SKILLS, TREE_ACTIVE, ULT_START_FRAC, baseSkill } from '../src/core/skills'
 import { COUNTDOWN_TICKS, GameState, MS_CHASE, isEnemy } from '../src/core/state'
 import { makePvpBot, pvpBotInput } from '../src/core/pvpbot'
 
@@ -30,6 +30,63 @@ function openRow(map: GameMap, n: number): { x: number; y: number } {
   }
   throw new Error('빈 곳이 없다')
 }
+
+describe('고유 스킬 · 궁극기 (2026-09-19)', () => {
+  it('스킬 트리의 스킬은 모두 그 캐릭터만의 것 — 스킬 id 도 이름도 두 캐릭터가 같이 쓰지 않는다', () => {
+    const owner = new Map<string, string>()
+    const names = new Map<string, string>()
+    for (const c of PLAYABLE) {
+      for (const id of [...TREE_ACTIVE[c], CHAR_SKILLS[c][2]]) {
+        expect(owner.get(id) ?? c, `${id} 를 ${owner.get(id)} 와 ${c} 가 같이 쓴다`).toBe(c)
+        owner.set(id, c)
+        const n = SKILLS[id].name
+        expect(names.get(n) ?? c, `이름 "${n}" 이 겹친다`).toBe(c)
+        names.set(n, c)
+        // 트리 스킬은 효과가 있는 바탕 스킬을 가리킨다
+        expect(SKILLS[baseSkill(id)]).toBeTruthy()
+        expect(SKILLS[baseSkill(id)].base).toBeUndefined()
+      }
+    }
+  })
+
+  it('트리 스킬(1 칸)은 바탕 스킬의 효과를 낸다 — 침착덕 "속사 부채" = 부채꼴 8발', () => {
+    const { s, map } = ready(['chim'])
+    const p = s.players[0]
+    p.build.r[2] = 1 // 트리 칸 2(속사 부채)를 배웠다 → 1 칸
+    p.focus = 100
+    const b0 = s.bullets.length
+    step(s, map, [press(BTN_SKILL3)])
+    expect(TREE_ACTIVE.chim[2]).toBe('chim_volley')
+    expect(s.bullets.length - b0).toBe(8)
+    expect(s.events.some((e) => e.type === 'skill' && e.id === 'fanfire')).toBe(true)
+    expect(p.cd[3]).toBeGreaterThan(0)
+  })
+
+  it('통천덕 궁극기(던전): 조준 방향 줄 위의 모든 괴물에 빛의 기둥 900 · 기절 — 줄 밖은 그대로', () => {
+    const { s, map } = ready(['tongdak'])
+    const p = s.players[0]
+    const at = openRow(map, 14)
+    p.x = at.x
+    p.y = at.y
+    const line = [100, 220, 340].map((dx, k) => {
+      const m = makeMonster(s, 0, p.x + dx, p.y, 800 + k, 40, 100, 5)
+      m.st = MS_CHASE
+      s.monsters.push(m)
+      return m
+    })
+    const off = makeMonster(s, 0, p.x + 200, p.y + 120, 810, 40, 100, 5)
+    s.monsters.push(off)
+    s.monstersTotal = s.monsters.length
+    p.cd[2] = 0
+    const hp0 = line.map((m) => m.hp)
+    step(s, map, [press(BTN_ULT, 0, 15)])
+    line.forEach((m, k) => {
+      expect(hp0[k] - m.hp).toBeGreaterThanOrEqual(900)
+      expect(m.stun).toBeGreaterThan(60)
+    })
+    expect(off.hp).toBe(off.maxHp)
+  })
+})
 
 describe('스킬 — 캐릭터마다 셋', () => {
   it('1차 6명 모두 Q·E·R 이 있고, 궁극기는 절반 차서 시작한다', () => {

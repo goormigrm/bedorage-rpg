@@ -7,7 +7,8 @@
 
 import { CharacterId } from './characters'
 
-export type SkillId =
+/** 캐릭터 스킬 Q · E · R (효과 구현이 있는 바탕 스킬) */
+export type BaseSkillId =
   | 'ironwall' | 'barrage' | 'roar'
   | 'pierce' | 'grenade' | 'composure'
   | 'broadcast' | 'fanfire' | 'spotlight'
@@ -21,8 +22,20 @@ export type SkillId =
   | 'snack' | 'trap' | 'angelshot'
   | 'catwalk' | 'flashbulb' | 'encore'
 
+/**
+ * 스킬 트리(K)에서 더 배우는 스킬 — 캐릭터마다 셋, **모두 그 캐릭터만의 이름** (2026-09-19 요청
+ * "스킬은 모든 캐릭터에 고유하게만 — K 로 배우는 스킬도. 비슷한 효과여도 이름은 다르게").
+ * 예전에는 다른 캐릭터의 Q · E 를 그대로 빌려 이름이 겹쳤다. 효과는 바탕 스킬(base)의 구현을 그대로 쓴다.
+ */
+export type TreeSkillId =
+  | 'cm_bulldoze' | 'cm_mortar' | 'cm_steel' | 'chim_volley' | 'chim_mark' | 'chim_fallback' | 'dg_cut' | 'dg_spill' | 'dg_replay' | 'mg_cast' | 'mg_xray' | 'mg_flask' | 'sw_lid' | 'sw_torch' | 'sw_chop' | 'ok_claw' | 'ok_hairball' | 'ok_knead' | 'jp_prism' | 'jp_overheat' | 'jp_glare' | 'uw_lead' | 'uw_exit' | 'uw_ng' | 'gy_rant' | 'gy_tantrum' | 'gy_glare' | 'pw_heat' | 'pw_breeze' | 'pw_gale' | 'td_drumstick' | 'td_flap' | 'td_crow' | 'jw_pose' | 'jw_turn' | 'jw_finale'
+
+export type SkillId = BaseSkillId | TreeSkillId
+
 export interface SkillDef {
   id: SkillId
+  /** 효과를 빌려 쓰는 바탕 스킬 (트리 스킬만) — sim · 연출 · 소리 · 아이콘은 바탕을 본다 */
+  base?: BaseSkillId
   name: string
   /** 한두 문장. 수치는 넣되 짧게 (툴팁·로비 카드) */
   desc: string
@@ -36,81 +49,131 @@ export interface SkillDef {
 
 const s = (sec: number) => Math.round(sec * 60)
 
-export const SKILLS: Record<SkillId, SkillDef> = {
+const BASE_SKILLS: Record<BaseSkillId, SkillDef> = {
   // 철면덕 — 탱커: 맞아 주고 끌어모은다
   ironwall: { id: 'ironwall', name: '철벽', desc: '4초간 받는 피해 -50%, 7칸 안의 괴물이 나만 노린다.', cd: s(14) },
   barrage: { id: 'barrage', name: '탄막', desc: '4초간 연사 2배. 맞은 괴물은 느려진다.', cd: s(16) },
-  roar: { id: 'roar', name: '야차의 포효', desc: '주변 5칸에 120 피해 · 밀쳐 내고 2초 기절. 8칸 안 동료는 6초간 받는 피해 -30%.', cd: s(70), ult: true },
+  roar: { id: 'roar', name: '야차의 포효', desc: '주변 5칸에 120 피해 · 밀쳐 내고 2초 기절. 8칸 안 동료는 6초간 받는 피해 -30%. 던전에서는 6칸 · 220 피해 · 3초 기절, 나는 6초간 받는 피해 -50%.', cd: s(70), ult: true },
   // 침착덕 — 원거리: 정확하게, 줄지어 선 것을 꿰뚫는다
   pierce: { id: 'pierce', name: '관통탄', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.', cd: s(10) },
   grenade: { id: 'grenade', name: '수류탄', desc: '커서 지점(9칸까지)에 던진다. 0.7초 뒤 3칸에 80 피해 · 1초 기절.', cd: s(12), reach: 9 * 32 },
-  composure: { id: 'composure', name: '침착 모드', desc: '6초간 모든 탄이 치명타, 연사 1.5배, 반동 없음.', cd: s(60), ult: true },
+  composure: { id: 'composure', name: '침착 모드', desc: '6초간 모든 탄이 치명타, 연사 1.5배, 반동 없음. 던전에서는 8초 · 연사 2배.', cd: s(60), ult: true },
   // 단군덕 — 정찰: 보여 주고 약하게 만든다 (소음기라 무리를 깨우지 않는다)
   // 2026-09-19 권총 둘이 던전에서 떼에 둘러싸여 가장 많이 죽었다(단군 195 · 우원 421, 다른 캐릭터 31~119) —
   // 권총 수치 대신 스킬로 살아남게 한다(사용자 요청): 생중계 = 받는 피해 감소, 난사 = 밀쳐 내기. 투기장은 그대로
   broadcast: { id: 'broadcast', name: '생중계', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.', cd: s(16) },
   fanfire: { id: 'fanfire', name: '난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에 쏜다. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 안의 괴물을 밀쳐 내 1.5초 느리게.', cd: s(8) },
-  spotlight: { id: 'spotlight', name: '스포트라이트', desc: '커서 지점(10칸까지)에 8초짜리 무대. 안의 괴물은 절반 속도 · 받는 피해 +50%, 안의 동료는 연사 +30%. 던전에서는 안의 괴물이 0.5초마다 18 피해.', cd: s(60), ult: true, reach: 10 * 32 },
+  spotlight: { id: 'spotlight', name: '스포트라이트', desc: '커서 지점(10칸까지)에 8초짜리 무대. 안의 괴물은 절반 속도 · 받는 피해 +50%, 안의 동료는 연사 +30%. 던전에서는 무대 5칸 · 켜지는 순간 1.5초 기절 · 0.5초마다 30 피해.', cd: s(60), ult: true, reach: 10 * 32 },
   // 매직덕 — 치유: 파티를 살린다
   // 2026-09-19 저격 둘 · 매직 · 우재가 3·4막에서 다른 캐릭터의 두세 배 죽었다(붙은 떼를 떼어내지 못함) — 권총 둘처럼 스킬로, 던전에서만
   firstaid: { id: 'firstaid', name: '응급 처치', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.', cd: s(15) },
   flame: { id: 'flame', name: '소독 화염', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 앞만이 아니라 둘레 4칸 모두를 친다.', cd: s(9) },
-  surgery: { id: 'surgery', name: '대수술', desc: '8칸 안의 쓰러진 동료를 바로 일으키고, 모두 체력 가득 · 3초 무적.', cd: s(90), ult: true },
+  surgery: { id: 'surgery', name: '대수술', desc: '8칸 안의 쓰러진 동료를 바로 일으키고, 모두 체력 가득 · 3초 무적. 던전에서는 12칸 · 그 뒤 8초간 받는 피해 -50%.', cd: s(90), ult: true },
   // 승빠덕 — 근접: 들어가서 휘젓는다
   pancharge: { id: 'pancharge', name: '후라이팬 돌진', desc: '조준 방향으로 5칸 돌진. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.', cd: s(7) },
   oil: { id: 'oil', name: '기름 튀기기', desc: '주변 3칸에 50 피해 · 2.5초간 절반 속도.', cd: s(10) },
-  kitchen: { id: 'kitchen', name: '주방 대참사', desc: '5초간 회전하며 0.25초마다 주변 2.4칸에 35 피해. 이동 +30% · 받는 피해 -50%.', cd: s(60), ult: true },
+  kitchen: { id: 'kitchen', name: '주방 대참사', desc: '5초간 회전하며 0.25초마다 주변 2.4칸에 35 피해. 이동 +30% · 받는 피해 -50%. 던전에서는 7초 · 3칸 · 65 피해.', cd: s(60), ult: true },
   // 옥냥덕 — 보스 딜: 한 방을 크게
   catstep: { id: 'catstep', name: '고양이 걸음', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 뛰며 원래 자리 3칸을 할퀴고(40 피해 · 2초 기절) 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.', cd: s(9) },
   railshot: { id: 'railshot', name: '관통 저격', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타. 던전에서는 260 피해에 방패도 뚫는다.', cd: s(12) },
-  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 연사 3배 · 탄이 2마리를 더 꿰뚫고 퍼짐이 거의 없다. 던전에서는 그동안 받는 피해 -30%.', cd: s(70), ult: true },
+  ninelives: { id: 'ninelives', name: '아홉 목숨', desc: '8초간 연사 3배 · 탄이 2마리를 더 꿰뚫고 퍼짐이 거의 없다. 던전에서는 그동안 모든 탄이 치명타 · 받는 피해 -30%.', cd: s(70), ult: true },
   // ---- D7 나머지 여섯 (2026-09-18) ----
   // 주펄덕 — 빛: 붙어서 눈부시게
   flash: { id: 'flash', name: '섬광', desc: '주변 3.5칸에 25 피해 · 1.5초 기절.', cd: s(11) },
   mirror: { id: 'mirror', name: '반사광', desc: '3초간 받는 피해 -60% · 나를 때린 괴물은 그 피해의 1.5배를 돌려받는다.', cd: s(14) },
-  supernova: { id: 'supernova', name: '초신성', desc: '주변 6칸에 200 피해 · 밀쳐 내고 2.5초 기절.', cd: s(75), ult: true },
+  supernova: { id: 'supernova', name: '초신성', desc: '주변 6칸에 200 피해 · 밀쳐 내고 2.5초 기절. 던전에서는 7칸 · 380 피해 · 3초 기절.', cd: s(75), ult: true },
   // 우원덕 — 배우: 구르고 무대를 지배한다
   // 2026-09-19 스턴트는 조준 방향(= 괴물 쪽)으로 굴러 떼 한가운데로 뛰어들었다 → 뒤로 구르며 앞으로 쏜다. 커튼콜에 1초 기절
   stunt: { id: 'stunt', name: '스턴트', desc: '뒤로 구르며(무적) 조준 방향 부채꼴로 6발을 쏜다. 던전에서는 8발 · 한 발 28 피해 · 하나를 더 꿰뚫는다.', cd: s(9) },
   curtain: { id: 'curtain', name: '커튼콜', desc: '7칸 안의 괴물이 1초 기절하고, 4초간 절반 속도 · 드러남 · 받는 피해 +20%. 던전에서는 40 피해도 준다.', cd: s(14) },
-  redcarpet: { id: 'redcarpet', name: '레드카펫', desc: '8초간 구르기가 줄지 않고, 구를 때마다 주변 2.5칸에 70 피해 · 0.5초 기절.', cd: s(70), ult: true },
+  redcarpet: { id: 'redcarpet', name: '레드카펫', desc: '8초간 구르기가 줄지 않고, 구를 때마다 주변 2.5칸에 70 피해 · 0.5초 기절. 던전에서는 구를 때마다 160 피해 · 1초 기절.', cd: s(70), ult: true },
   // 기열덕 — 뇌절: 쌓아서 터뜨린다
   overdrive: { id: 'overdrive', name: '폭주', desc: '뇌절을 바로 가득 채우고 5초간 연사 +30%.', cd: s(14) },
   shout: { id: 'shout', name: '고함', desc: '앞 5칸 부채꼴에 50 피해 · 멀리 밀치고 2초 느리게.', cd: s(10) },
-  kingrage: { id: 'kingrage', name: '킹의 분노', desc: '8초간 모든 탄이 2마리를 꿰뚫고 피해 +30% · 뇌절이 두 배로 쌓인다.', cd: s(70), ult: true },
+  kingrage: { id: 'kingrage', name: '킹의 분노', desc: '8초간 모든 탄이 2마리를 꿰뚫고 피해 +30% · 뇌절이 두 배로 쌓인다. 던전에서는 10초 · 연사 1.5배.', cd: s(70), ult: true },
   // 풍월덕 — 바람: 휩쓸고 지나간다
   gust: { id: 'gust', name: '돌풍', desc: '주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.', cd: s(9) },
   windstep: { id: 'windstep', name: '순풍', desc: '구르기가 모두 차고 4초간 이동 +40%.', cd: s(12) },
-  typhoon: { id: 'typhoon', name: '태풍', desc: '커서 지점(8칸까지)에 6초 소용돌이 — 안의 괴물을 가운데로 끌어당기고 0.5초마다 30 피해.', cd: s(70), ult: true, reach: 8 * 32 },
+  typhoon: { id: 'typhoon', name: '태풍', desc: '커서 지점(8칸까지)에 6초 소용돌이 — 안의 괴물을 가운데로 끌어당기고 0.5초마다 30 피해. 던전에서는 8초 · 4.5칸 · 0.5초마다 60 피해.', cd: s(70), ult: true, reach: 8 * 32 },
   // 통천덕 — 치킨: 버티며 한 방
   snack: { id: 'snack', name: '치킨 한 입', desc: '체력 30% 회복 · 4초간 연사 +30%. 던전에서는 4초간 받는 피해 -30% · 이동 +40%.', cd: s(15) },
   trap: { id: 'trap', name: '덫', desc: '커서 지점(7칸까지)에 덫(20초). 처음 밟은 괴물 둘레 2칸(던전 3칸)에 120 피해 · 3초 기절.', cd: s(12), reach: 7 * 32 },
-  angelshot: { id: 'angelshot', name: '천사의 한 발', desc: '모든 것을 꿰뚫는 거대한 한 발 — 400 피해, 약점을 겨누면 치명타. 던전에서는 방패도 뚫는다.', cd: s(70), ult: true },
+  angelshot: { id: 'angelshot', name: '천사의 한 발', desc: '모든 것을 꿰뚫는 거대한 한 발 — 400 피해, 약점을 겨누면 치명타. 던전에서는 조준 방향 18칸을 빛의 기둥이 훑는다 — 줄 위의 모든 괴물에 900 피해 · 2초 기절(벽 · 방패도 뚫음).', cd: s(70), ult: true },
   // 우재덕 — 런웨이: 길게 가로지른다
   catwalk: { id: 'catwalk', name: '런웨이 워크', desc: '조준 방향으로 7칸 긴 돌진(무적). 지나는 괴물에 60 피해 · 밀침. 던전에서는 출발할 때 둘레 3칸을 밀쳐 내고 1.5초 느리게.', cd: s(8) },
   flashbulb: { id: 'flashbulb', name: '플래시 세례', desc: '커서 지점(9칸까지) 3칸(던전 4칸)에 20 피해(던전 40) · 2초 기절 · 6초간 드러남과 받는 피해 +30%.', cd: s(12), reach: 9 * 32 },
-  encore: { id: 'encore', name: '앙코르', desc: '다른 스킬의 재사용 대기를 모두 끝내고 집중을 가득 · 6초간 연사 +50%.', cd: s(80), ult: true },
+  encore: { id: 'encore', name: '앙코르', desc: '다른 스킬의 재사용 대기를 모두 끝내고 집중을 가득 · 6초간 연사 +50%. 던전에서는 8칸 안 동료도 6초간 연사 +50%, 나는 연사 2배 · 받는 피해 -30%.', cd: s(80), ult: true },
+}
+
+/** 트리 스킬: 이름 · 설명만 따로, 재사용 · 거리 · 궁극기 여부는 바탕을 따른다 */
+const TREE_SKILLS: { id: TreeSkillId; base: BaseSkillId; name: string; desc: string }[] = [
+  { id: 'cm_bulldoze', base: 'pancharge', name: '철갑 돌진', desc: '조준 방향으로 5칸 몸통 박치기. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.' },
+  { id: 'cm_mortar', base: 'grenade', name: '박격 탄', desc: '커서 지점(9칸까지)에 박격 탄. 0.7초 뒤 3칸에 80 피해 · 1초 기절.' },
+  { id: 'cm_steel', base: 'firstaid', name: '강철 의지', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.' },
+  { id: 'chim_volley', base: 'fanfire', name: '속사 부채', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 괴물을 밀쳐 내 1.5초 느리게.' },
+  { id: 'chim_mark', base: 'broadcast', name: '표적 지정', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.' },
+  { id: 'chim_fallback', base: 'catstep', name: '전술 후퇴', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 떠난 자리 3칸의 괴물에 40 피해 · 2초 기절, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.' },
+  { id: 'dg_cut', base: 'catstep', name: '편집점', desc: '뒤로 4칸 도약(무적) — 장면 전환. 다음 한 발 피해 2배. 던전에서는 떠난 자리 3칸의 괴물에 40 피해 · 2초 기절, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.' },
+  { id: 'dg_spill', base: 'oil', name: '커피 쏟기', desc: '주변 3칸에 뜨거운 커피 — 50 피해 · 2.5초간 절반 속도.' },
+  { id: 'dg_replay', base: 'pierce', name: '슬로 리플레이', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.' },
+  { id: 'mg_cast', base: 'ironwall', name: '깁스', desc: '4초간 받는 피해 -50%, 7칸 안의 괴물이 나만 노린다.' },
+  { id: 'mg_xray', base: 'broadcast', name: '엑스레이', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.' },
+  { id: 'mg_flask', base: 'grenade', name: '약병 투척', desc: '커서 지점(9칸까지)에 약병을 던진다. 0.7초 뒤 3칸에 80 피해 · 1초 기절.' },
+  { id: 'sw_lid', base: 'ironwall', name: '냄비 뚜껑 방패', desc: '4초간 받는 피해 -50%, 7칸 안의 괴물이 나만 노린다.' },
+  { id: 'sw_torch', base: 'flame', name: '토치 불맛', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 둘레 4칸 모두를 친다.' },
+  { id: 'sw_chop', base: 'barrage', name: '다지기 연타', desc: '4초간 휘두르기 2배로 빠르게. 맞은 괴물은 느려진다.' },
+  { id: 'ok_claw', base: 'pierce', name: '발톱 탄', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.' },
+  { id: 'ok_hairball', base: 'oil', name: '털뭉치 폭탄', desc: '주변 3칸에 털뭉치가 터진다 — 50 피해 · 2.5초간 절반 속도.' },
+  { id: 'ok_knead', base: 'fanfire', name: '꾹꾹이 난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 괴물을 밀쳐 내 1.5초 느리게.' },
+  { id: 'jp_prism', base: 'fanfire', name: '프리즘 산개', desc: '조준 방향 30° 부채꼴로 빛줄기 8발. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 괴물을 밀쳐 내 1.5초 느리게.' },
+  { id: 'jp_overheat', base: 'barrage', name: '과열 연사', desc: '4초간 연사 2배. 맞은 괴물은 느려진다.' },
+  { id: 'jp_glare', base: 'oil', name: '눈부심 장막', desc: '주변 3칸에 눈부신 빛 — 50 피해 · 2.5초간 절반 속도.' },
+  { id: 'uw_lead', base: 'broadcast', name: '주연 조명', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.' },
+  { id: 'uw_exit', base: 'catstep', name: '퇴장 인사', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 떠난 자리 3칸의 괴물에 40 피해 · 2초 기절, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.' },
+  { id: 'uw_ng', base: 'fanfire', name: 'NG 난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 괴물을 밀쳐 내 1.5초 느리게.' },
+  { id: 'gy_rant', base: 'pierce', name: '뇌절 관통탄', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.' },
+  { id: 'gy_tantrum', base: 'grenade', name: '분노 투척', desc: '커서 지점(9칸까지)에 던진다. 0.7초 뒤 3칸에 80 피해 · 1초 기절.' },
+  { id: 'gy_glare', base: 'flashbulb', name: '째려보기', desc: '커서 지점(9칸까지) 3칸(던전 4칸)에 20 피해(던전 40) · 2초 기절 · 6초간 드러남과 받는 피해 +30%.' },
+  { id: 'pw_heat', base: 'flame', name: '열풍', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 둘레 4칸 모두를 친다.' },
+  { id: 'pw_breeze', base: 'firstaid', name: '산들바람', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.' },
+  { id: 'pw_gale', base: 'pancharge', name: '질풍 돌격', desc: '조준 방향으로 5칸 돌진. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.' },
+  { id: 'td_drumstick', base: 'railshot', name: '닭다리 관통탄', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타. 던전에서는 260 피해에 방패도 뚫는다.' },
+  { id: 'td_flap', base: 'catstep', name: '날개 퍼덕', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 떠난 자리 3칸의 괴물에 40 피해 · 2초 기절, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.' },
+  { id: 'td_crow', base: 'broadcast', name: '새벽 울음', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.' },
+  { id: 'jw_pose', base: 'pierce', name: '포즈 샷', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.' },
+  { id: 'jw_turn', base: 'stunt', name: '턴 앤 샷', desc: '뒤로 구르며(무적) 조준 방향 부채꼴로 6발. 던전에서는 8발 · 한 발 28 피해 · 하나를 더 꿰뚫는다.' },
+  { id: 'jw_finale', base: 'curtain', name: '피날레', desc: '7칸 안의 괴물이 1초 기절하고, 4초간 절반 속도 · 드러남 · 받는 피해 +20%. 던전에서는 40 피해도 준다.' },
+]
+
+export const SKILLS: Record<SkillId, SkillDef> = {
+  ...BASE_SKILLS,
+  ...(Object.fromEntries(TREE_SKILLS.map((t) => [t.id, { ...BASE_SKILLS[t.base], id: t.id, base: t.base, name: t.name, desc: t.desc }])) as Record<TreeSkillId, SkillDef>),
+}
+
+/** 효과를 내는 바탕 스킬 (트리 스킬이면 그 바탕, 아니면 자기) */
+export function baseSkill(id: SkillId): BaseSkillId {
+  return SKILLS[id]?.base ?? (id as BaseSkillId)
 }
 
 /** 캐릭터별 [Q, E, X]. 1차 6명 밖의 캐릭터는 무기가 같은 1차 캐릭터 것을 빌린다(M7 에서 제 것을 준다) */
 /**
- * 스킬 트리 (GUIDE 8장 — D4). 캐릭터마다 10칸: 0~4 액티브(자기 Q·E + 다른 캐릭터에게서 배우는 셋) · 5 궁극기 · 6~9 패시브.
+ * 스킬 트리 (GUIDE 8장 — D4). 캐릭터마다 10칸: 0~4 액티브(자기 Q·E + 그 캐릭터만의 트리 스킬 셋 — TREE_SKILLS) · 5 궁극기 · 6~9 패시브.
  * 랭크 1~5 — 레벨마다 포인트 하나. 액티브·궁극기는 랭크마다 위력 +15% · 재사용 -4%.
  * 3랭크에서 [위력 +25% | 재사용 -20%], 5랭크에서 [위력 +25% | 집중 -35%] 중 하나를 고른다.
  */
 export const TREE_ACTIVE: Record<string, SkillId[]> = {
-  cheolmyeon: ['ironwall', 'barrage', 'pancharge', 'grenade', 'firstaid'],
-  chim: ['pierce', 'grenade', 'fanfire', 'broadcast', 'catstep'],
-  dangun: ['broadcast', 'fanfire', 'catstep', 'oil', 'pierce'],
-  magic: ['firstaid', 'flame', 'ironwall', 'broadcast', 'grenade'],
-  seungwoo: ['pancharge', 'oil', 'ironwall', 'flame', 'barrage'],
-  oknyang: ['catstep', 'railshot', 'pierce', 'oil', 'fanfire'],
-  jupeol: ['flash', 'mirror', 'fanfire', 'barrage', 'oil'],
-  uwon: ['stunt', 'curtain', 'broadcast', 'catstep', 'fanfire'],
-  giyeol: ['overdrive', 'shout', 'pierce', 'grenade', 'flashbulb'],
-  pungwol: ['gust', 'windstep', 'flame', 'firstaid', 'pancharge'],
-  tongdak: ['snack', 'trap', 'railshot', 'catstep', 'broadcast'],
-  juwoojae: ['catwalk', 'flashbulb', 'pierce', 'stunt', 'curtain'],
+  cheolmyeon: ['ironwall', 'barrage', 'cm_bulldoze', 'cm_mortar', 'cm_steel'],
+  chim: ['pierce', 'grenade', 'chim_volley', 'chim_mark', 'chim_fallback'],
+  dangun: ['broadcast', 'fanfire', 'dg_cut', 'dg_spill', 'dg_replay'],
+  magic: ['firstaid', 'flame', 'mg_cast', 'mg_xray', 'mg_flask'],
+  seungwoo: ['pancharge', 'oil', 'sw_lid', 'sw_torch', 'sw_chop'],
+  oknyang: ['catstep', 'railshot', 'ok_claw', 'ok_hairball', 'ok_knead'],
+  jupeol: ['flash', 'mirror', 'jp_prism', 'jp_overheat', 'jp_glare'],
+  uwon: ['stunt', 'curtain', 'uw_lead', 'uw_exit', 'uw_ng'],
+  giyeol: ['overdrive', 'shout', 'gy_rant', 'gy_tantrum', 'gy_glare'],
+  pungwol: ['gust', 'windstep', 'pw_heat', 'pw_breeze', 'pw_gale'],
+  tongdak: ['snack', 'trap', 'td_drumstick', 'td_flap', 'td_crow'],
+  juwoojae: ['catwalk', 'flashbulb', 'jw_pose', 'jw_turn', 'jw_finale'],
 }
 export const PASSIVES: { name: string; desc: string }[] = [
   { name: '총기 숙련', desc: '피해 +4% / 랭크' },
