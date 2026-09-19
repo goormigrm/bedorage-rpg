@@ -5,6 +5,7 @@
 import { GameState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
+import { MONSTER_LIST } from '../core/monsters'
 import { worldDirToScreen } from '../render3d/camera'
 
 const STORAGE_KEY = 'brpg.muted'
@@ -70,6 +71,8 @@ export class Sfx {
   private bgmNextBeat = 0
   private bgmBeatIndex = 0
   private bgmOn = false
+  /** 보스전 (0 = 아님 · 1 = 싸우는 중 · 2 = 성남 — 체력 30% 아래). 던전 배경음이 보스 곡으로 바뀐다 (2026-09-19 M7) */
+  private boss = 0
   /** 교전 강도 0..1 (배경음 레이어) */
   private intensity = 0
   /** 발소리: 플레이어별 걸음 위상(0~1). 1 을 넘을 때마다 한 걸음 */
@@ -222,6 +225,18 @@ export class Sfx {
       }
     } else {
       this.lastCountdownSec = -1
+    }
+    // 보스전: 보는 지역에 깨어 있는 막 보스(우두머리는 빼고)가 있으면 배경음을 보스 곡으로. 쓰러뜨리면 승리음
+    if (state.mode === 'dungeon') {
+      let b = 0
+      for (const m of state.monsters) {
+        if (m.hp > 0 && m.st !== 0 && MONSTER_LIST[m.kind].boss) {
+          b = m.hp < m.maxHp * 0.3 ? 2 : 1
+          break
+        }
+      }
+      if (b === 0 && this.boss > 0 && this.ready() && events.some((e) => e.type === 'mdeath' && MONSTER_LIST[e.kind]?.boss)) this.bossWin()
+      this.boss = b
     }
     if (events.length === 0) return
     // 멈춰 있으면 되살린다 (onstatechange 를 놓친 경우)
@@ -826,11 +841,90 @@ export class Sfx {
     }
   }
 
+  // ---------- 보스 배경음: 84 BPM 단조 (Dm - Dm - B♭ - A) ----------
+  // 전투 북(낮은 톰) · 금관처럼 굵은 화음 찌르기 · 8분 현악 반복 · 합창 두 음.
+  // 성나면(체력 30% 아래) 북이 잦아지고 16분 높은 반복이 더해진다. 던전 곡과 같은 조라 넘어갈 때 튀지 않는다.
+  private static readonly BOSS = [
+    { root: 36.71, chord: [146.8, 174.6, 220.0] }, // Dm
+    { root: 36.71, chord: [146.8, 174.6, 220.0] }, // Dm
+    { root: 29.14, chord: [116.5, 146.8, 174.6] }, // B♭
+    { root: 27.5, chord: [110.0, 138.6, 164.8] }, // A (화성 단조의 C#)
+  ]
+
+  private scheduleBoss(ctx: AudioContext): void {
+    const step16 = 60 / 84 / 4
+    const rage = this.boss === 2
+    while (this.bgmNextBeat < ctx.currentTime + 0.4) {
+      const t = this.bgmNextBeat
+      const step = this.bgmBeatIndex % 64
+      const bar = (step / 16) | 0
+      const s16 = step % 16
+      const ch = Sfx.BOSS[bar]
+      // 합창 두 음 (마디 내내)
+      if (s16 === 0) {
+        this.bgmNote(t, ch.chord[0] * 2, 'sine', step16 * 16, 0.07, 1400)
+        this.bgmNote(t, ch.chord[2] * 2 * 1.004, 'sine', step16 * 16, 0.05, 1400)
+      }
+      // 금관 찌르기: 1박 · 2박 뒤 엇박
+      if (s16 === 0 || s16 === 6) for (const f of ch.chord) this.bgmNote(t, f, 'sawtooth', step16 * (s16 === 0 ? 3 : 2), 0.08, 760)
+      // 8분 현악 반복 (근음 옥타브 · 5도)
+      if (s16 % 2 === 0) this.bgmNote(t, ch.root * (s16 % 4 === 0 ? 2 : 3), 'sawtooth', step16 * 1.6, 0.15, 520)
+      // 전투 북: 쿵 · 쿵 · 쿵, 넷째 마디(성나면 매 마디) 끝에 굴림
+      const roll = s16 >= 13 && (bar === 3 || rage)
+      if (s16 === 0 || s16 === 3 || s16 === 8 || (rage && s16 % 4 === 2) || roll) this.bgmTom(t, roll ? 0.45 : 0.8)
+      if (s16 === 4 || s16 === 12) this.bgmSnare(t, rage ? 0.15 : 0.09)
+      // 성남: 16분 높은 반복
+      if (rage) this.bgmNote(t, ch.chord[(s16 >> 1) % 3] * 4, 'triangle', step16 * 0.9, 0.045, 3000)
+      this.bgmNextBeat += step16
+      this.bgmBeatIndex++
+    }
+  }
+
+  /** 전투 북: 낮게 떨어지는 톰 + 가죽 치는 잡음 */
+  private bgmTom(t0: number, peak: number): void {
+    const ctx = this.ctx!
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(120, t0)
+    osc.frequency.exponentialRampToValueAtTime(46, t0 + 0.3)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(peak, t0)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42)
+    osc.connect(g)
+    g.connect(this.bgmGain!)
+    osc.start(t0)
+    osc.stop(t0 + 0.46)
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise
+    const flt = ctx.createBiquadFilter()
+    flt.type = 'lowpass'
+    flt.frequency.value = 520
+    const gn = ctx.createGain()
+    gn.gain.setValueAtTime(peak * 0.35, t0)
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12)
+    src.connect(flt)
+    flt.connect(gn)
+    gn.connect(this.bgmGain!)
+    src.start(t0)
+    src.stop(t0 + 0.14)
+  }
+
+  /** 보스를 쓰러뜨렸다: 장조로 올라가는 금관 넷 + 심벌 */
+  private bossWin(): void {
+    const b = this.bus({ gain: 1, pan: 0, far: 0 }, 1)
+    ;[293.7, 370.0, 440.0, 587.3].forEach((f, i) => {
+      this.tone(b.node, b.t0 + i * 0.13, 0.9 - i * 0.1, 'sawtooth', f, f, 0.16, 0.01)
+      this.tone(b.node, b.t0 + i * 0.13, 0.9 - i * 0.1, 'sine', f * 2, f * 2, 0.12, 0.01)
+    })
+    this.noiseBurst(b.node, b.t0 + 0.39, 1.2, 'highpass', 5200, 3800, 0.22)
+  }
+
   private scheduleBgm(): void {
     const ctx = this.ctx
     if (!ctx || !this.bgmGain || ctx.state !== 'running') return
     if (this.bgmStyle === 'dark') {
-      this.scheduleDark(ctx)
+      if (this.boss > 0) this.scheduleBoss(ctx)
+      else this.scheduleDark(ctx)
       return
     }
     const step16 = 60 / 132 / 4 // 16분음표 길이
