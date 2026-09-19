@@ -1796,7 +1796,8 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
       if (len(dx, dy) > range + PLAYER_RADIUS) continue
       if (Math.abs(angleDiff(atan2A(dy, dx), p.aim)) > arc) continue
       if (rayCast(map, p.x, p.y, victim.x, victim.y, 'bullet', true).blocked) continue
-      hurtPvp(state, p, victim, dmg, PART_BODY, victim.x, victim.y)
+      // 투기장 배율은 근접에도 (2026-09-19 — 예전에는 총알에만 걸렸다)
+      hurtPvp(state, p, victim, Math.round(dmg * (WEAPONS[p.weapon].pvp ?? 1)), PART_BODY, victim.x, victim.y)
       n++
     }
   }

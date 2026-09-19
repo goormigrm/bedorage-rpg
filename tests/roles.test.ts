@@ -122,8 +122,9 @@ describe('역할 · 근접 캐릭터 (2026-09-19)', () => {
     expect(m.target).toBe(tank.id)
   })
 
-  it('산탄총 하향: 한 알 10 · 투기장 배율로 대전은 그대로', () => {
+  it('산탄총 하향: 한 알 10 · 투기장은 배율로 예전(12 × 1.08)의 ±10% 안', () => {
     expect(WEAPONS.shotgun.damage).toBe(10)
-    expect(WEAPONS.shotgun.damage * WEAPONS.shotgun.pvp!).toBeCloseTo(12 * 1.08, 0)
+    const now = WEAPONS.shotgun.damage * WEAPONS.shotgun.pvp!
+    expect(Math.abs(now - 12 * 1.08) / (12 * 1.08)).toBeLessThan(0.1)
   })
 })
