@@ -14,7 +14,7 @@
 
 import type * as THREE from 'three'
 
-export type SegName = 'idle' | 'walk' | 'attack' | 'hit'
+export type SegName = 'idle' | 'walk' | 'attack' | 'hit' | 'death'
 export interface Seg {
   start: number
   count: number
@@ -60,7 +60,12 @@ export const MODEL_SPECS: (ModelSpec | undefined)[] = []
 MODEL_SPECS[0] = { file: 'ghoul', size: 0.95, clips: GHOUL_CLIPS, windup: 0.5, glow: { 'Sphere.001': 0xd6ff5c, 'Sphere_1.001': 0xd6ff5c } }
 // 해골 궁수 — Skeleton animated · danielmclogan · CC BY 4.0
 // (옆 +x 를 보고 걷는다 → -90° 돌려 +z 로)
-MODEL_SPECS[1] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: { walk: { clip: 'Take 001', frames: 14 } } }
+// 동작이 한 줄(3.3초)에 셋 이어 붙어 있었다: 0~0.85 옆으로 선 자세 · 0.88~1.6 **쓰러짐** · 1.67~3.2 정면에서 팔을 뻗는 흔들림.
+// 통째로 걷기로 돌리면 살아 있는 궁수가 주기적으로 누워 보였다(2026-09-19) → 셋째를 걷기, 둘째를 죽음으로 쓴다
+MODEL_SPECS[1] = {
+  file: 'archer', size: 1.2, yaw: -Math.PI / 2,
+  clips: { walk: { clip: 'Take 001', from: 1.67, to: 3.2, frames: 12 }, death: { clip: 'Take 001', from: 0.88, to: 1.6, frames: 6 } },
+}
 // 부푼 시체 — 구울 모델 + 살찐 몸 모양 키 + 누런 녹색
 MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 2.2, tint: [0.95, 1.05, 0.7], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0

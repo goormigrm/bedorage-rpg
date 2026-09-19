@@ -12,11 +12,24 @@ import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
 import { BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
 
-/** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 프레임 고르기용 배열 */
+/** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 프레임 고르기용 배열 + 겹쳐 그리는 도형 부품 */
 interface ModelKind {
   baked: BakedModel
   meshes: InstancedMesh[]
   dummy: { morphTargetInfluences: Float32Array }
+  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dy: number; dz: number }[]
+}
+
+/**
+ * 실사 모델에 없는 것을 도형 부품으로 겹쳐 그린다 (2026-09-19): 해골 궁수의 **활**(예고 때 당긴다) · **빛나는 눈**.
+ * part = BUILDERS 부품 번호, s = 크기(도형 몸이 모델보다 조금 크다), dy · dz = 자리 보정. 따로 인스턴스를 둔다
+ * (도형 부품과 번호를 같이 쓰면 다른 부품의 옛 자리가 유령처럼 남는다).
+ */
+const MODEL_EXTRAS: Record<number, { part: number; s: number; dy: number; dz?: number }[]> = {
+  1: [
+    { part: 4, s: 0.88, dy: -0.02 },
+    { part: 3, s: 0.9, dy: -0.03, dz: -0.05 },
+  ],
 }
 
 /** 몬스터가 매 프레임 넘기는 움직임 상태 */
@@ -821,7 +834,16 @@ export class MonsterView {
           this.group.add(mesh)
           return mesh
         })
-        this.models[kind] = { baked, meshes, dummy: { morphTargetInfluences: new Float32Array(baked.frames) } }
+        const extras = (MODEL_EXTRAS[kind] ?? []).map((e) => {
+          const src = this.kinds[kind][e.part]
+          const mesh = new THREE.InstancedMesh(src.mesh.geometry, src.mesh.material, CAP) as InstancedMesh
+          mesh.count = 0
+          mesh.frustumCulled = false
+          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+          this.group.add(mesh)
+          return { mesh, pose: src.pose, s: e.s, dy: e.dy, dz: e.dz ?? 0 }
+        })
+        this.models[kind] = { baked, meshes, dummy: { morphTargetInfluences: new Float32Array(baked.frames) }, extras }
       })
       .catch((err) => {
         console.warn('실사 괴물 모델을 받지 못했다 — 도형 괴물로 그린다', kind, err)
@@ -940,7 +962,9 @@ export class MonsterView {
       dead.elite = c.elite
       dead.unique = c.unique
       still.push(c)
-      dead.dead = Math.min(1, c.t / 0.35)
+      // 죽음 동작이 있는 모델은 동작을 0.8초에 걸쳐 튼다 (없으면 0.35초 만에 넘어진다)
+      const mk = this.real ? this.models[c.kind] : undefined
+      dead.dead = Math.min(1, c.t / (mk && typeof mk !== 'string' && mk.baked.seg.death ? 0.8 : 0.35))
       dead.flash = Math.max(0, 1 - c.t * 6)
       this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)))
     }
@@ -962,6 +986,10 @@ export class MonsterView {
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
         if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true
       }
+      for (const ex of mk.extras) {
+        ex.mesh.count = n
+        if (n > 0) ex.mesh.instanceMatrix.needsUpdate = true
+      }
     })
   }
 
@@ -980,7 +1008,8 @@ export class MonsterView {
     this.o.scale.setScalar(size)
     this.o.updateMatrix()
     this.root.copy(this.o.matrix)
-    if (a.dead > 0) {
+    // 죽음 동작이 있는 실사 모델(해골 궁수)은 그 동작으로 쓰러진다 — 억지로 넘어뜨리지 않는다
+    if (a.dead > 0 && !model?.baked.seg.death) {
       // 사람 모양은 뒤로 넘어진다. 네 발 짐승은 뒤로 넘어가면 꼬리로 서 버렸다(2026-09-19) — 늑대 · 여왕은 옆으로 눕고, 거미는 뒤집힌다
       const fall =
         kind === SPIDER_KIND ? this.tmp.makeRotationZ(a.dead * Math.PI)
@@ -1025,8 +1054,8 @@ export class MonsterView {
     let seg = s.idle ?? s.walk!
     let t = 0
     if (a.dead > 0) {
-      seg = s.hit ?? s.idle ?? s.walk!
-      t = s.hit ? 1 : 0
+      seg = s.death ?? s.hit ?? s.idle ?? s.walk!
+      t = s.death ? a.dead : s.hit ? 1 : 0
     } else if (a.wind > 0 && s.attack) {
       seg = s.attack
       t = a.wind * b.windup
@@ -1076,6 +1105,20 @@ export class MonsterView {
     }
     infl[seg.start + i0] = 0
     infl[seg.start + i1] = 0
+    // 겹쳐 그리는 도형 부품 (활 · 눈): 도형 몸의 자세를 모델 크기로 줄여 뿌리에 붙인다
+    for (const ex of mk.extras) {
+      this.o.position.set(0, 0, 0)
+      this.o.rotation.set(0, 0, 0)
+      this.o.scale.setScalar(1)
+      ex.pose(a, this.o)
+      this.o.position.multiplyScalar(ex.s)
+      this.o.position.y += ex.dy
+      this.o.position.z += ex.dz
+      this.o.scale.multiplyScalar(ex.s)
+      this.o.updateMatrix()
+      this.tmp.multiplyMatrices(this.root, this.o.matrix)
+      ex.mesh.setMatrixAt(i, this.tmp)
+    }
   }
 
   dispose(): void {
@@ -1086,6 +1129,8 @@ export class MonsterView {
         ;(mesh.material as THREE.Material).dispose()
         mesh.dispose()
       }
+      // 겹쳐 그리는 부품의 지오메트리 · 재질은 도형 부품 것이라 그쪽에서 치운다
+      for (const ex of mk.extras) ex.mesh.dispose()
     }
     for (const parts of this.kinds) {
       for (const p of parts) {

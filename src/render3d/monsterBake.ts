@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { BakedModel, ModelSpec, SegName } from './monsterModels'
 
-const SEG_ORDER: SegName[] = ['idle', 'walk', 'attack', 'hit']
+const SEG_ORDER: SegName[] = ['idle', 'walk', 'attack', 'hit', 'death']
 
 let loaderP: Promise<{ load: (url: string) => Promise<GLTF> }> | null = null
 const files = new Map<string, Promise<GLTF>>()
