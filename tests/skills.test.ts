@@ -123,7 +123,7 @@ describe('스킬 — 캐릭터마다 셋', () => {
       if (CHAR_SKILLS[c][2] !== 'encore') expect(s.events.some((e) => e.type === 'skill')).toBe(false)
       else expect(s.events.some((e) => e.type === 'skill')).toBe(true)
     }
-  })
+  }, 20000) // 다른 일로 바쁠 때 5초를 넘겼다 — 한도만 늘린다
 
   it('수류탄: 커서 지점에서 터져 주변 괴물을 다치게 하고 기절시킨다', () => {
     const { s, map } = ready(['chim'])

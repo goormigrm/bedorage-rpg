@@ -219,7 +219,11 @@ function buildGun(w: WeaponDef, R: number): { group: THREE.Group; tip: THREE.Obj
   const len = (0.26 + w.length / 120) * Math.max(0.8, R / 0.42)
   const bodyM = mat(w.color)
   const darkM = mat(0x2b2b2b)
-  if (w.melee) return buildPan(len, bodyM, darkM)
+  if (w.melee) {
+    if (w.family === 'violin') return buildViolin(len, w.id === 'cello')
+    if (w.family === 'rapier') return buildSword(len, w.id === 'katana')
+    return buildPan(len, bodyM, darkM)
+  }
   g.add(capsuleZ(0.055, len, bodyM))
   const grip = capsuleDown(0.03, 0.14, darkM)
   grip.position.set(0, 0.02, 0.08)
@@ -278,6 +282,80 @@ function buildPan(len: number, bodyM: THREE.MeshLambertMaterial, darkM: THREE.Me
   g.add(yolk)
   const tip = new THREE.Object3D()
   tip.position.set(0, 0.03, cz)
+  g.add(tip)
+  return { group: g, tip }
+}
+
+/**
+ * 딱딱한 고기 바이올린 (철면덕, 2026-09-19 사용자): 붉은 살코기 몸통 + 흰 지방 줄무늬 + 뼈 목(스크롤). 첼로는 더 크다.
+ * 손잡이(목)를 쥐고 몸통으로 후려친다 — 몸통이 앞(+z).
+ */
+function buildViolin(len: number, big: boolean): { group: THREE.Group; tip: THREE.Object3D } {
+  const g = new THREE.Group()
+  // 몸집이 큰 철면덕 손에서 스테이크가 아니라 악기로 읽히도록 크게 (2026-09-19 확인)
+  const k = (big ? 1.35 : 1) * 1.6
+  const meat = mat(0xa8392c)
+  const fat = mat(0xf2d8c8)
+  const bone = mat(0xe8e0cc)
+  const neckLen = len * 0.7 * k
+  const neck = capsuleZ(0.022 * k, neckLen, bone)
+  neck.position.set(0, 0.01, neckLen * 0.2)
+  g.add(neck)
+  // 스크롤(목 끝 돌돌 말린 부분): 손 쪽
+  const scroll = new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.012 * k, 6, 12), bone)
+  scroll.position.set(0, 0.02, -neckLen * 0.28)
+  scroll.rotation.y = Math.PI / 2
+  g.add(scroll)
+  // 몸통: 아래 · 위 두 덩이 (바이올린 허리)
+  const cz = neckLen * 0.62 + 0.13 * k
+  const lower = new THREE.Mesh(new THREE.SphereGeometry(0.12 * k, 14, 10), meat)
+  lower.scale.set(1, 0.36, 1.05)
+  lower.position.set(0, 0.012, cz + 0.07 * k)
+  lower.castShadow = true
+  g.add(lower)
+  const upper = new THREE.Mesh(new THREE.SphereGeometry(0.095 * k, 14, 10), meat)
+  upper.scale.set(1, 0.36, 1)
+  upper.position.set(0, 0.012, cz - 0.08 * k)
+  upper.castShadow = true
+  g.add(upper)
+  // 흰 지방 줄무늬 (마블링) 셋
+  for (const [dz, w] of [[-0.09, 0.14], [0.02, 0.18], [0.11, 0.17]] as const) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(w * k, 0.012, 0.014 * k), fat)
+    stripe.position.set(0, 0.05 * k, cz + dz * k)
+    stripe.rotation.y = 0.25
+    g.add(stripe)
+  }
+  // 줄받침 · 현 (뼈 색 가는 줄)
+  const strings = new THREE.Mesh(new THREE.BoxGeometry(0.03 * k, 0.006, neckLen * 0.9 + 0.2 * k), bone)
+  strings.position.set(0, 0.052 * k, cz * 0.62)
+  g.add(strings)
+  const tip = new THREE.Object3D()
+  tip.position.set(0, 0.03, cz)
+  g.add(tip)
+  return { group: g, tip }
+}
+
+/** 길고 얇은 검 (우재덕 장검 · 태도, 2026-09-19 사용자): 가죽 손잡이 · 금빛 코등이 · 가늘고 긴 칼날. 칼날이 앞(+z) */
+function buildSword(len: number, katana: boolean): { group: THREE.Group; tip: THREE.Object3D } {
+  const g = new THREE.Group()
+  const steel = mat(0xd8dde3, { emissive: 0x1a1d22 })
+  const grip = capsuleZ(0.02, 0.13, mat(katana ? 0x1c1c1f : 0x3a2418))
+  grip.position.set(0, 0.01, -0.02)
+  g.add(grip)
+  const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), mat(0xd9b04a))
+  pommel.position.set(0, 0.01, -0.1)
+  g.add(pommel)
+  const guard = new THREE.Mesh(katana ? new THREE.CylinderGeometry(0.045, 0.045, 0.012, 16) : new THREE.BoxGeometry(0.16, 0.022, 0.022), mat(0xd9b04a))
+  if (katana) guard.rotation.x = Math.PI / 2
+  guard.position.set(0, 0.01, 0.06)
+  g.add(guard)
+  const bladeLen = len * (katana ? 2.3 : 2.1)
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(katana ? 0.028 : 0.018, 0.008, bladeLen), steel)
+  blade.position.set(0, 0.012, 0.07 + bladeLen / 2)
+  blade.castShadow = true
+  g.add(blade)
+  const tip = new THREE.Object3D()
+  tip.position.set(0, 0.012, 0.07 + bladeLen)
   g.add(tip)
   return { group: g, tip }
 }

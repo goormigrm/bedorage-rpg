@@ -58,6 +58,9 @@ export default defineConfig({
       input: { main: root + 'index.html' },
     },
   },
+  // 실사 괴물 로더는 처음 괴물을 만날 때 동적으로 불러온다 — 개발 서버가 그때 의존성을 다시 묶으며 페이지를 통째로
+  // 새로 고쳐 판이 날아갔다(2026-09-19) → 미리 묶어 둔다 (배포본과는 상관없다)
+  optimizeDeps: { include: ['three/examples/jsm/loaders/GLTFLoader.js'] },
   server: {
     port: 5173,
     // GIF 프레임(.frames/)이 수십 장씩 떨어질 때 감시기가 페이지를 새로고침해 녹화 중인 판이 날아갔다 → 감시에서 뺀다

@@ -780,3 +780,6 @@ body { background: var(--bg); }
 .csp .cs-st span { color: #b8a67e; }
 .csp .cs-st b { color: #e8dcc4; font-weight: 700; }
 .csp .cs-st.zero b { color: #6a5e4c; font-weight: 500; }
+
+/* 역할 표시 (탱커 · 딜러 · 힐러 — 2026-09-19) */
+.role-chip { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 3px; border: 1px solid var(--rc); color: var(--rc); font: 700 11.5px "IBM Plex Sans KR", sans-serif; line-height: 18px; vertical-align: middle; white-space: nowrap; background: rgba(0,0,0,.35); }

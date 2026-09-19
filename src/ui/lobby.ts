@@ -5,7 +5,7 @@
 // (2026-09-18 사용자: "덕 링크가 아니라 덕의 방식을 RPG 안에 이식"). 방 만들기·혼자 하기 창에서 '종류' 로 고른다.
 
 import { DIFFICULTY_LABEL, Difficulty } from '../core/bot'
-import { CHARACTERS, CharacterId, PLAYABLE, isPlayable } from '../core/characters'
+import { CHARACTERS, CharacterId, PLAYABLE, isPlayable, ROLE_INFO } from '../core/characters'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
 import { DEATH_RULE_LABEL, DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
@@ -435,7 +435,8 @@ export class Lobby {
     // 스킬 트리에서 더 배우는 셋은 이름표 — 마우스를 올리면 설명
     const extra = (TREE_ACTIVE[c.id] ?? []).filter((sid) => !own.includes(sid))
     const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
-    el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}</b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
+    const role = ROLE_INFO[c.role]
+    el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
       <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div></div>
       <div class="ch-r"><div class="skd">${own
         .map(

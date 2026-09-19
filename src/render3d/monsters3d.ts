@@ -78,6 +78,11 @@ interface MVis extends Anim {
 }
 
 const CAP = 220
+/** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 — MONSTER_LIST 번호 */
+const QUADRUPEDS = new Set([5, 6, 8])
+const SPIDER_KIND = 6
+/** 옆으로 눕거나 뒤집힐 때 들어 올리는 높이 (크기 1 기준 타일) */
+const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45 }
 /** 시체가 바닥에 남는 시간 (초) — 디아블로 2 처럼 싸운 자리에 시체가 쌓인다. 끝 1초 동안 가라앉는다 */
 const CORPSE_LIFE = 24
 const CORPSE_MAX = 90
@@ -976,7 +981,14 @@ export class MonsterView {
     this.o.updateMatrix()
     this.root.copy(this.o.matrix)
     if (a.dead > 0) {
-      const fall = new THREE.Matrix4().makeRotationX(-a.dead * Math.PI * 0.48)
+      // 사람 모양은 뒤로 넘어진다. 네 발 짐승은 뒤로 넘어가면 꼬리로 서 버렸다(2026-09-19) — 늑대 · 여왕은 옆으로 눕고, 거미는 뒤집힌다
+      const fall =
+        kind === SPIDER_KIND ? this.tmp.makeRotationZ(a.dead * Math.PI)
+        : QUADRUPEDS.has(kind) ? this.tmp.makeRotationZ(a.dead * Math.PI * 0.5)
+        : this.tmp.makeRotationX(-a.dead * Math.PI * 0.48)
+      // 발을 축으로 돌면 몸이 땅에 묻힌다 → 누운 몸 두께만큼 들어 올린다
+      const lift = FALL_LIFT[kind] ?? 0
+      if (lift > 0) fall.setPosition(0, lift * a.dead, 0)
       this.root.multiply(fall)
     }
     // 번쩍임 색: 보통 빨강, 치명타 금색. 예고 중이면 살이 붉게 달아오른다 (피할 때라는 신호)

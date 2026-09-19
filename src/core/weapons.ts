@@ -13,6 +13,7 @@
 export type WeaponId =
   | 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'sniper' | 'mg' | 'pan'
   | 'revolver' | 'flamer' | 'crossbow' | 'doublebarrel' | 'railgun' | 'launcher' | 'wok'
+  | 'violin' | 'cello' | 'rapier' | 'katana'
 
 /** 저격 조준경 탄이 반지름의 이 비율 바깥으로 지나가면 '스침' — 죽이지 않고 체력 grazeLeave 를 남긴다 */
 export const SNIPER_GRAZE_FRAC = 0.7
@@ -152,19 +153,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 20, life: 60, moveMul: 0.95, length: 22, color: 0x7a5a38, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
   // ---------------- 산탄 계열 (매직덕 · 풍월덕) — 근접 폭발력 ----------------
-  // DPS 12×7/38 = 2.21 (가까이). 멀면 0.35 배
+  // 2026-09-19 사용자: "샷건이 너무 좋다 — 괴물이 많은데 가까이서 세게 넣을 수 있으니" → 12 → 10 · 감쇠 200 → 160px.
+  // DPS 10×7/38 = 1.84 (가까이 — 소총과 같다). 멀면 0.35 배. 투기장은 배율로 예전 그대로(1.08 × 1.2 = 1.3)
   shotgun: {
-    ...INF, pvp: 1.08, id: 'shotgun', family: 'shotgun', name: '산탄총', desc: '가까이서 한 번에 크게. 멀면 급격히 약해진다.',
-    knock: 0.9, damage: 12, pellets: 7, fireInterval: 38,
+    ...INF, pvp: 1.3, id: 'shotgun', family: 'shotgun', name: '산탄총', desc: '가까이서 한 번에 크게. 멀면 급격히 약해진다.',
+    knock: 0.9, damage: 10, pellets: 7, fireInterval: 38,
     spreadHip: deg(7.5), spreadAds: deg(5), recoil: deg(4), recoilRecover: deg(0.4),
-    speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b, falloffStart: 200, falloffEnd: 500, falloffMin: 0.35,
+    speed: 14, life: 34, moveMul: 0.9, length: 26, color: 0x8b5a2b, falloffStart: 160, falloffEnd: 500, falloffMin: 0.35,
   },
-  // 더블배럴: 두 발을 한꺼번에 — 12알 × 11. 느리지만 한 번이 크고 멀리 밀친다. DPS 2.06
+  // 더블배럴: 두 발을 한꺼번에 — 12알 × 9 (2026-09-19 산탄 하향 11 → 9). 느리지만 한 번이 크고 멀리 밀친다. DPS 1.69
   doublebarrel: {
-    ...INF, pvp: 1.08, id: 'doublebarrel', family: 'shotgun', name: '더블배럴', desc: '두 발을 한꺼번에(12알). 느리지만 한 번이 크고 멀리 밀친다.',
-    knock: 1.5, damage: 11, pellets: 12, fireInterval: 64,
+    ...INF, pvp: 1.32, id: 'doublebarrel', family: 'shotgun', name: '더블배럴', desc: '두 발을 한꺼번에(12알). 느리지만 한 번이 크고 멀리 밀친다.',
+    knock: 1.5, damage: 9, pellets: 12, fireInterval: 64,
     spreadHip: deg(11), spreadAds: deg(8), recoil: deg(6), recoilRecover: deg(0.4),
-    speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 160, falloffEnd: 420, falloffMin: 0.3,
+    speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 130, falloffEnd: 420, falloffMin: 0.3,
   },
   // ---------------- 저격 계열 (옥냥덕 · 통천덕) — 한 발 · 관통 ----------------
   // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.7초마다 · 둘을 더 꿰뚫는다. 한 마리 DPS 1.9
@@ -213,6 +215,40 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
     speed: 0, life: 0, moveMul: 0.98, length: 26, color: 0x2a2a2e, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 82, meleeArc: deg(90),
+  },
+  // ---------------- 근접 탱커 (철면덕, 2026-09-19 사용자 "딱딱한 고기 바이올린") ----------------
+  // 넓게(±75°) 후려치고 세게 밀친다. 58 · 30틱 = 1.93. 앞에서 오는 공격을 기력으로 막는다(근접 무기 공통)
+  violin: {
+    ...INF, id: 'violin', family: 'violin', name: '고기 바이올린', desc: '얼린 고기로 만든 딱딱한 바이올린. 넓게 후려치고 세게 밀친다. 앞에서 오는 공격은 기력으로 막는다.',
+    knock: 6, damage: 58, pellets: 1, fireInterval: 30,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 0.98, length: 24, color: 0xa8392c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    melee: true, meleeRange: 78, meleeArc: deg(75),
+  },
+  // 고기 첼로: 더 크고 느리다 — 둘레 거의 반 바퀴(±100°) · 96 · 46틱 = 2.09
+  cello: {
+    ...INF, id: 'cello', family: 'violin', name: '고기 첼로', desc: '통째로 얼린 고기 첼로. 느리지만 반 바퀴를 한 번에 쓸고 멀리 날린다.',
+    knock: 9, damage: 96, pellets: 1, fireInterval: 46,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 0.94, length: 30, color: 0x8e2c22, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    melee: true, meleeRange: 92, meleeArc: deg(100),
+  },
+  // ---------------- 근접 딜러 (우재덕, 2026-09-19 사용자 "길고 얇은 검") ----------------
+  // 멀리(104px) 좁게(±28°) 빠르게 찌른다. 30 · 14틱 = 2.14. 앞에서 오는 공격은 검으로 쳐 낸다(기력)
+  rapier: {
+    ...INF, id: 'rapier', family: 'rapier', name: '장검', desc: '길고 얇은 검. 멀리까지 빠르게 찌른다. 좁게 닿는 대신 줄지어 선 것을 함께 벤다.',
+    knock: 2.5, damage: 30, pellets: 1, fireInterval: 14,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 1.04, length: 34, color: 0xd8dde3, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    melee: true, meleeRange: 104, meleeArc: deg(28),
+  },
+  // 태도: 더 길고 조금 넓게(±45°) 벤다. 느리지만 한 번이 크다 — 54 · 25틱 = 2.16
+  katana: {
+    ...INF, id: 'katana', family: 'rapier', name: '태도', desc: '긴 칼. 조금 느리지만 더 멀리, 조금 넓게 벤다.',
+    knock: 3.5, damage: 54, pellets: 1, fireInterval: 25,
+    spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
+    speed: 0, life: 0, moveMul: 1.02, length: 38, color: 0xc9ced6, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
+    melee: true, meleeRange: 112, meleeArc: deg(45),
   },
 }
 

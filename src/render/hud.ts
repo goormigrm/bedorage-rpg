@@ -564,6 +564,26 @@ export function drawWeaponIcon(ctx: CanvasRenderingContext2D, cx: number, cy: nu
       grip(-9)
       ctx.fillRect(-5, 0, 9, 9) // 탄통
       break
+    case 'violin':
+      // 고기 바이올린: 목 + 허리 잘록한 몸통 + 흰 지방 줄
+      line(-23, 0, -4, 0, 3.5)
+      ctx.fillStyle = '#c9523f'
+      ctx.beginPath()
+      ctx.ellipse(3, 0, 6, 5.5, 0, 0, Math.PI * 2)
+      ctx.ellipse(13, 0, 8, 7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#f5e2d6'
+      line(8, -4, 16, 4, 1.6)
+      line(12, -6, 19, 1, 1.6)
+      break
+    case 'rapier':
+      // 길고 얇은 검: 손잡이 · 코등이 · 긴 칼날
+      line(-22, 0, -12, 0, 4)
+      ctx.strokeStyle = '#ffd86a'
+      line(-11, -6, -11, 6, 3)
+      ctx.strokeStyle = '#e6edf3'
+      line(-10, 0, 24, 0, 2)
+      break
     case 'pan':
       // 옆에서 본 후라이팬: 손잡이 + 납작한 팬, 위에 계란후라이
       line(-23, 0, -7, 0, 4)

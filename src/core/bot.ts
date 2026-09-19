@@ -54,6 +54,10 @@ const PREFERRED_RANGE: Record<WeaponId, number> = {
   railgun: 360,
   launcher: 240,
   wok: 36,
+  violin: 34,
+  cello: 40,
+  rapier: 62,
+  katana: 68,
 }
 
 export interface BotMemory {

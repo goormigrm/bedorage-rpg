@@ -87,9 +87,9 @@ describe('무기 (2026-09-19)', () => {
   })
 
   it('유탄발사기: 맞은 자리 둘레의 괴물도 다친다', () => {
-    const { s, map, o } = ready('cheolmyeon', [weapon('launcher')])
-    step(s, map, [cmd(CMD_EQUIP, 0)])
-    expect(s.players[0].weapon).toBe('launcher')
+    // 2026-09-19 철면덕이 고기 바이올린을 들면서 기관총 계열을 끼는 캐릭터가 없다 — 폭발 규칙만 본다(무기를 직접 쥐여 준다)
+    const { s, map, o } = ready('chim')
+    s.players[0].weapon = 'launcher'
     const a = dummy(s, o.x + 5 * TILE, o.y)
     const side = dummy(s, o.x + 5 * TILE + 10, o.y + 45)
     for (let t = 0; t < 80; t++) step(s, map, [fire()])

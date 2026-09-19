@@ -19,7 +19,8 @@ export const SLOT_NAMES = ['무기', '투구', '갑옷', '반지', '목걸이']
 export const BAG_SIZE = 30
 
 // 뒤에만 붙인다 — 세이브의 아이템이 번호(wt)로 무기 종류를 들고 있다
-export const WEAPON_IDS: WeaponId[] = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'pan', 'revolver', 'flamer', 'crossbow', 'doublebarrel', 'railgun', 'launcher', 'wok']
+// 번호가 세이브에 들어간다 — 새 무기는 끝에 붙인다 (2026-09-19 고기 바이올린 · 첼로 · 장검 · 태도)
+export const WEAPON_IDS: WeaponId[] = ['pistol', 'smg', 'rifle', 'shotgun', 'sniper', 'mg', 'pan', 'revolver', 'flamer', 'crossbow', 'doublebarrel', 'railgun', 'launcher', 'wok', 'violin', 'cello', 'rapier', 'katana']
 /** 변형 무기(리볼버 · 화염방사기 …)가 떨어지기 시작하는 아이템 레벨 */
 export const VARIANT_ILVL = 6
 
@@ -122,6 +123,7 @@ const AFFIX_SUFFIX = ['파괴', '속사', '주문', '거인 사냥', '치명', '
 const WEAPON_NAMES: Record<WeaponId, string> = {
   pistol: '권총', smg: 'SMG', rifle: '소총', shotgun: '산탄총', sniper: '저격총', mg: '기관총', pan: '후라이팬',
   revolver: '리볼버', flamer: '화염방사기', crossbow: '석궁', doublebarrel: '더블배럴', railgun: '레일건', launcher: '유탄발사기', wok: '대형 웍',
+  violin: '고기 바이올린', cello: '고기 첼로', rapier: '장검', katana: '태도',
 }
 
 /**

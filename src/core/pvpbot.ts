@@ -56,6 +56,10 @@ const PREFERRED_RANGE: Record<WeaponId, number> = {
   railgun: 400,
   launcher: 260,
   wok: 48,
+  violin: 46,
+  cello: 54,
+  rapier: 74,
+  katana: 80,
 }
 
 /** 봇이 죽었을 때 캐릭터를 바꿀 확률 (2026-09-06 사용자: 봇전에서 봇도 게임 중에 캐릭터를 바꾸게). 계측·시험은 swap 을 끈 봇을 쓴다 */

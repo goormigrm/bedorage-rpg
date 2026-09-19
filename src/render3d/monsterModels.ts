@@ -65,10 +65,9 @@ MODEL_SPECS[1] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: { walk: 
 MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 2.2, tint: [0.95, 1.05, 0.7], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
-// ⚠ 2026-09-19: tools/model-view.html 에서는 멀쩡한데 게임 안에서 길쭉하게 늘어나 보였다(원인 확인 전).
-//   확인할 때까지 게임은 도형 늑대로 그린다 — WOLF_READY 를 true 로 바꾸면 켜진다.
-const WOLF_READY = false
-if (WOLF_READY || typeof location !== 'undefined' && location.pathname.includes('model-view')) MODEL_SPECS[5] = {
+// (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이
+//  화면 세로로 길게 보이는 것이었다 — 모델은 정상. 기절시켜 세워 두고 확인했다)
+MODEL_SPECS[5] = {
   file: 'wolf', size: 1.15, fit: 'length', yaw: Math.PI / 2, tint: [0.72, 0.7, 0.68],
   clips: { walk: { clip: 'Wolf ArmatureAction', frames: 16 } },
   glow: { Wolf_Eye_Material: 0xffc04a },

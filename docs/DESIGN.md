@@ -222,6 +222,12 @@
   **눈은 조명과 무관하게 빛난다**(MeshBasic) — 어둠 속에서 먼저 보이는 것.
 - 시야 밖 몬스터는 그리지 않는다(덕의 규칙). 미니맵에는 보이는 몬스터만 점으로(잠든 것은 어둡게), 층 입구는 초록 네모.
 - 피해 숫자는 **내가 맞힌 것만** 띄운다 — 동료·폭발 숫자까지 띄우면 무리 싸움에서 화면이 숫자로 덮였다.
+- **역할**(v0.32.0, 던전에서만 — `sim.ts roleOn`: step · createState · joinPlayer 가 모드로 정한다): `CharacterDef.role`(tank · dps · heal), `ROLE_INFO`.
+  - 탱커: `recalc` · `makePlayer` 에서 최대 체력 +30%, `takenMul` ×0.8, `nearestActive` 에서 거리² ×0.4(괴물이 먼저 노림).
+  - 딜러 · 힐러: `weaponMul`(사격 · 휘두르기만) ×1.2 · ×0.8. 스킬 피해(`dmgMul` — aoe · lineAoe · 스킬 탄)는 역할과 상관없다.
+  - 힐러: `stepPlayer` 에서 2초마다 7칸 안 동료 3%(`healPlayer`), 치유 스킬은 `healMul` = 스킬 위력 × 1.5.
+  - 근접 무기 계열: 후라이팬(승빠) · 고기 바이올린(철면) · 장검(우재). 모두 `swingAt` 부채꼴 · `panBlock` 막기. 장검은 흡혈 4%(던전).
+  - 옛 무기 아이템 변환: `LEGACY_WEAPON`(makePlayer). `WEAPON_IDS` 는 끝에만 붙인다(세이브 번호).
 - **실사 괴물**(v0.31.0, 그림만): `render3d/monsterModels.ts`(명세 `MODEL_SPECS` — 종류 번호 → 파일 · 크기 · 방향 · 동작 · 빛나는 눈) + `monsterBake.ts`(처음 받을 때 따로 받는 굽기 코드).
   - 처음 그 종류를 그릴 때 `public/assets3d/monsters/<파일>.glb` 를 받아 동작을 프레임(대기 · 걷기 · 공격 · 맞음, 합계 30장 안팎)으로 굽는다 — 모양 키(절대 위치, `morphTargetsRelative=false`).
   - 마리마다 `InstancedMesh.setMorphAt` 으로 프레임 두 장을 섞는다. 예고 `wind` = 공격 클립 앞부분(`windup`) · 휘두름 `swing` = 뒷부분 · 걷기 = 걸음 위상 · 맞음 = 번쩍임.

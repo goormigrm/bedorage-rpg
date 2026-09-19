@@ -584,6 +584,21 @@ export class Sfx {
         for (const f of [330, 495, 740, 990]) this.tone(node, t0, 0.6, 'sine', f, f * 0.95, 0.22, 0.002)
         this.noiseBurst(node, t0, 0.06, 'highpass', 3000, 2000, 0.5)
         break
+      case 'violin':
+      case 'cello': {
+        // 고기 바이올린: 묵직한 휘두름(바람) + 현이 튕기는 소리 한 번 (첼로는 한 옥타브 낮게)
+        const low = w === 'cello' ? 0.5 : 1
+        this.noiseBurst(node, t0, 0.14, 'bandpass', 500 * low, 900 * low, 0.5, 0.6)
+        this.tone(node, t0 + 0.02, 0.35, 'sawtooth', 392 * low, 386 * low, 0.18, 0.004)
+        this.tone(node, t0 + 0.02, 0.3, 'triangle', 196 * low, 194 * low, 0.22, 0.004)
+        break
+      }
+      case 'rapier':
+      case 'katana':
+        // 검: 날카로운 바람 가르는 소리 + 짧은 쇳소리
+        this.noiseBurst(node, t0, 0.1, 'highpass', 2600, 5200, 0.45, 0.5)
+        this.tone(node, t0 + 0.03, 0.18, 'sine', w === 'katana' ? 2100 : 2600, 2500, 0.1, 0.002)
+        break
       case 'sniper':
         // 크랙(날카롭고 길게) + 몸을 치는 저음 + 메아리 꼬리 + 0.25초 뒤 노리쇠 — 조준경 안에서도 "쐈다" 가 들리게
         this.noiseBurst(node, t0, 0.09, 'highpass', 3200, 1800, 1.2)

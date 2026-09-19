@@ -4,7 +4,7 @@
 // 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·R)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
-import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
+import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
@@ -746,6 +746,7 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
   const rng = makeRng(cfg.seed)
   const mode = cfg.mode ?? 'dungeon'
   const n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, cfg.chars.length))
+  roleOn = mode === 'dungeon'
   const players: PlayerState[] = []
   for (let i = 0; i < n; i++) {
     const p = makePlayer(i, cfg.chars[i], mode === 'arena' ? (cfg.teams?.[i] ?? i) : 0, cfg.sheets?.[i])
@@ -846,6 +847,29 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
 }
 
 /** 쏘는 무기: 무기 칸 아이템의 종류가 캐릭터 기본 무기와 같은 계열이면 그것, 아니면 기본 (2026-09-19 변형 무기) */
+/**
+ * 역할 특화(탱 · 딜 · 힐)는 **던전에서만** (투기장 밸런스는 그대로 — 2026-09-19).
+ * step · createState · joinPlayer 가 판의 모드로 정한다(모든 피어가 같은 값 — 결정론).
+ */
+let roleOn = false
+/** 역할별 무기 피해 배율 (던전) */
+const ROLE_DMG: Record<Role, number> = { tank: 1, dps: 1.2, heal: 0.8 }
+function roleOf(p: PlayerState): Role {
+  return CHARACTERS[p.char].role
+}
+
+/** 무기를 바꾼 캐릭터의 옛 무기 아이템을 새 계열로 (2026-09-19 — 철면덕 기관총 → 고기 바이올린 · 우재덕 소총 → 장검) */
+const LEGACY_WEAPON: Partial<Record<CharacterId, Partial<Record<WeaponId, WeaponId>>>> = {
+  cheolmyeon: { mg: 'violin', launcher: 'cello' },
+  juwoojae: { rifle: 'rapier', crossbow: 'katana' },
+}
+function convertLegacy(char: CharacterId, it: Item): Item {
+  const map = LEGACY_WEAPON[char]
+  if (!map || it.slot !== SLOT_WEAPON) return it
+  const to = map[WEAPON_IDS[it.wt]]
+  return to ? { ...it, wt: WEAPON_IDS.indexOf(to) } : it
+}
+
 export function weaponFor(char: CharacterId, equip: (Item | null)[]): WeaponId {
   const base = CHARACTERS[char].weapon
   const it = equip[SLOT_WEAPON]
@@ -858,10 +882,12 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   const ult = SKILLS[CHAR_SKILLS[char][2]]
   const sh: Sheet = sheet ?? { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }
   // 세이브에서 온 것은 복사해 둔다 (상태가 세이브 객체를 건드리지 않게)
-  const equip = sh.equip.map((it) => (it ? { ...it, aff: [...it.aff] } : null))
-  const bag = sh.bag.map((it) => ({ ...it, aff: [...it.aff] }))
+  const equip = sh.equip.map((it) => (it ? convertLegacy(char, { ...it, aff: [...it.aff] }) : null))
+  const bag = sh.bag.map((it) => convertLegacy(char, { ...it, aff: [...it.aff] }))
   const attr = (sh.attr ?? [0, 0, 0, 0]).slice(0, 4)
   const st = computeStats(sh.level, equip, attr)
+  // 탱커: 최대 체력 +30% (던전 — recalc 과 같은 식)
+  if (roleOn && c.role === 'tank') st[ST_HP] += Math.round(c.maxHp * 0.3)
   const maxHp = c.maxHp + st[ST_HP]
   const weapon = weaponFor(char, equip)
   const magSize = 0
@@ -1003,6 +1029,8 @@ function recalc(p: PlayerState): void {
   p.st[ST_DMG] += 4 * p.build.r[6]
   p.st[ST_HP] += Math.round(c.maxHp * 0.06 * p.build.r[7])
   p.st[ST_CDR] += 2 * p.build.r[9]
+  // 탱커: 최대 체력 +30% (던전)
+  if (roleOn && c.role === 'tank') p.st[ST_HP] += Math.round(c.maxHp * 0.3)
   const maxHp = c.maxHp + p.st[ST_HP]
   if (maxHp > p.maxHp && p.alive) p.hp += maxHp - p.maxHp
   p.maxHp = maxHp
@@ -1015,6 +1043,25 @@ function recalc(p: PlayerState): void {
 /** 피해 배율 (레벨 + 장비) */
 function dmgMul(p: PlayerState): number {
   return (1 + p.st[ST_DMG] / 100) * (p.shrineT > 0 && p.shrine === 0 ? 1.25 : 1)
+}
+
+/** 무기(사격 · 휘두르기) 피해 배율 = 레벨·장비 × 역할 (딜러 1.2 · 힐러 0.8 — 던전). 스킬 피해에는 역할을 곱하지 않는다 */
+function weaponMul(p: PlayerState): number {
+  return dmgMul(p) * (roleOn ? ROLE_DMG[roleOf(p)] : 1)
+}
+
+/** 치유 배율: 스킬 위력 × 힐러 1.5 (던전) */
+function healMul(p: PlayerState): number {
+  return skillPow * (roleOn && roleOf(p) === 'heal' ? 1.5 : 1)
+}
+
+/** 체력을 채우고 떠오르는 숫자를 띄운다. 실제로 찬 만큼을 돌려준다 */
+function healPlayer(state: GameState, q: PlayerState, amount: number): number {
+  const a = Math.min(q.maxHp - q.hp, Math.round(amount))
+  if (a <= 0 || !q.alive || q.downed) return 0
+  q.hp += a
+  state.events.push({ type: 'heal', p: q.id, x: q.x, y: q.y, amount: a })
+  return a
 }
 
 /**
@@ -1062,6 +1109,7 @@ function farthestSpawn(map: GameMap, from: { x: number; y: number }[], rng: Game
 
 export function step(state: GameState, maps: MapSource, inputs: Input[]): void {
   const mapOf = mapFn(maps)
+  roleOn = state.mode === 'dungeon'
   unbind(state)
   stepping = true
   try {
@@ -1178,6 +1226,7 @@ export function joinPlayer(state: GameState, maps: MapSource, idx: number, char:
   const mapOf = mapFn(maps)
   const p = state.players[idx]
   if (!p) return
+  roleOn = state.mode === 'dungeon'
   Object.assign(p, makePlayer(idx, char, state.mode === 'arena' ? team : 0, sheet))
   if (state.mode === 'arena') {
     p.area = 0
@@ -1275,6 +1324,10 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 매직덕 패시브(진료): 3초 안 맞으면 초당 6 회복
   if (c.id === 'magic' && state.tick - p.lastHitTick > 180 && p.hp < p.maxHp) {
     p.hp = Math.min(p.maxHp, p.hp + 6 / 60)
+  }
+  // 힐러의 기운 (던전): 2초마다 7칸 안 동료(나 포함) 체력 3% 회복 — 사람마다 박자를 어긋나게
+  if (roleOn && c.role === 'heal' && isActive(p) && (state.tick + p.id * 29) % 120 === 0) {
+    for (const q of alliesNear(state, p, 7 * TILE)) healPlayer(state, q, Math.max(1, q.maxHp * 0.03))
   }
 
   p.aim = input.aim & 1023
@@ -1488,6 +1541,7 @@ function takenMul(p: PlayerState): number {
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
   if (p.fx[FX_REFLECT] > 0) k *= 0.4
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
+  if (roleOn && roleOf(p) === 'tank') k *= 0.8
   if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
   if (hasLeg(p, LEG_GUARD)) k *= 0.92
   return k
@@ -1706,7 +1760,7 @@ function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: 
 
 /** 부채꼴 안을 친다 (후라이팬 · 개머리판) — 몬스터와 적 플레이어 */
 function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, arc: number, dmg: number, knock: number): number {
-  dmg = Math.round(dmg * dmgMul(p))
+  dmg = Math.round(dmg * weaponMul(p))
   let n = 0
   const reach = range + PLAYER_RADIUS + 20
   const hit: Monster[] = []
@@ -1724,12 +1778,16 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
   hit.sort((a, b) => a.id - b.id)
   for (const m of hit) {
     const d = len(m.x - p.x, m.y - p.y) || 1
+    // 격정 연주(철면덕 E) · 다지기 연타 중 휘두르기에 맞은 괴물은 느려진다 (총의 탄막과 같은 효과)
+    if (p.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 60)
     const k = knock * (1 - MONSTER_LIST[m.kind].knockRes)
     m.kx += ((m.x - p.x) / d) * k
     m.ky += ((m.y - p.y) / d) * k
     hurtMonster(state, m, dmg, p.id, false, m.x, m.y)
     n++
   }
+  // 검(우재덕)의 흡혈 (던전): 벤 피해의 4% — 근접 딜러가 떼 속에서 버티게 (조용히, 숫자는 띄우지 않는다)
+  if (roleOn && n > 0 && WEAPONS[p.weapon].family === 'rapier' && isActive(p)) p.hp = Math.min(p.maxHp, p.hp + dmg * n * 0.04)
   if (state.mode === 'arena') {
     for (const victim of state.players) {
       if (!isEnemy(p, victim) || !victim.alive || victim.left || victim.invuln > 0 || victim.dashTimer > 0) continue
@@ -1760,7 +1818,7 @@ function spawnBullet(state: GameState, p: PlayerState, mx: number, my: number, a
     vy: sinA(a) * sp,
     life: o.life ?? w.life,
     // 레벨·장비의 피해 증가는 탄에 실어 보낸다 (쏜 뒤 장비를 바꿔도 이미 날아가는 탄은 그대로)
-    damage: (o.damage ?? w.damage) * dmgMul(p),
+    damage: o.damage !== undefined ? o.damage * dmgMul(p) : w.damage * weaponMul(p),
     ads: p.ads || p.fx[FX_SNIPE] > 0,
     ox: p.x,
     oy: p.y,
@@ -1964,10 +2022,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       for (const q of alliesNear(state, p, 6 * T)) {
         // 던전: 4초간 받는 피해 -30% (붙은 떼 속에서 회복만으로는 다시 쓰러졌다)
         if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
-        const amount = Math.min(q.maxHp - q.hp, Math.round(q.maxHp * 0.25))
-        if (amount <= 0) continue
-        q.hp += amount
-        state.events.push({ type: 'heal', p: q.id, x: q.x, y: q.y, amount })
+        healPlayer(state, q, q.maxHp * 0.25 * healMul(p))
       }
       break
     }
@@ -2044,9 +2099,17 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'mirror':
       p.fx[FX_REFLECT] = 180
+      // 후광 (던전 — 주펄덕 힐러): 7칸 안 동료(나 포함) 체력 15% · 5초간 받는 피해 -30%
+      if (dun) {
+        for (const q of alliesNear(state, p, 7 * T)) {
+          healPlayer(state, q, q.maxHp * 0.15 * healMul(p))
+          q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 300)
+        }
+      }
       break
     case 'supernova':
       aoe(state, map, p, p.x, p.y, (dun ? 7 : 6) * T, dun ? 380 : 200, { stun: dun ? 180 : 150, knock: 10, id })
+      if (dun) for (const q of alliesNear(state, p, 9 * T)) healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
       break
     // ---- 우원덕
     case 'stunt': {
@@ -2091,6 +2154,16 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'shout':
       aoe(state, map, p, p.x, p.y, 5 * T, 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
+      // 던전 (기열덕 탱커): 8칸 안 괴물이 5초간 나만 노리고, 나는 5초간 받는 피해 -30%
+      if (dun) {
+        for (const m of state.monsters) {
+          if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 8 * T) continue
+          if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
+          m.target = p.id
+          m.taunt = Math.max(m.taunt, 300)
+        }
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 300)
+      }
       break
     case 'kingrage':
       p.fx[FX_KING] = dun ? 600 : 480
@@ -2112,17 +2185,14 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     // ---- 통천덕
     case 'snack': {
-      const amount = Math.min(p.maxHp - p.hp, Math.round(p.maxHp * 0.3 * skillPow))
-      if (amount > 0) {
-        p.hp += amount
-        state.events.push({ type: 'heal', p: p.id, x: p.x, y: p.y, amount })
+      // 치킨 나눔 (2026-09-19 통천덕 = 힐러): 나와 7칸 안 동료 체력 25%
+      for (const q of alliesNear(state, p, 7 * T)) {
+        healPlayer(state, q, q.maxHp * 0.25 * healMul(p))
+        if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
       }
       buffRate(p, 240, 1.3)
-      // 던전: 먹고 빠져나간다 — 4초간 받는 피해 -30% · 이동 +40% (가장 느린 캐릭터라 떼에 잡히면 벗어나지 못했다)
-      if (state.mode === 'dungeon') {
-        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 240)
-        p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], 240)
-      }
+      // 던전: 나는 빠져나간다 — 이동 +40% (가장 느린 캐릭터라 떼에 잡히면 벗어나지 못했다)
+      if (state.mode === 'dungeon') p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], 240)
       break
     }
     case 'trap':
@@ -2134,7 +2204,14 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.shots++
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'sniper' })
       // 던전: 빛의 기둥 — 조준 방향 18칸 줄 위의 모든 괴물에 900 피해 · 2초 기절 (한 마리 400 은 70초 궁극기로 너무 약했다)
-      if (dun) lineAoe(state, p, 18 * T, 1.2 * T, 900, 120)
+      if (dun) {
+        lineAoe(state, p, 18 * T, 1.2 * T, 900, 120)
+        // 천사의 가호: 12칸 안 동료(나 포함) 체력 40% · 6초간 받는 피해 -30%
+        for (const q of alliesNear(state, p, 12 * T)) {
+          healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
+          q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 360)
+        }
+      }
       break
     }
     // ---- 우재덕
@@ -2858,7 +2935,8 @@ function nearestActive(state: GameState, x: number, y: number): number {
   let bestD = Infinity
   for (const p of state.players) {
     if (!isActive(p)) continue
-    const d = (p.x - x) ** 2 + (p.y - y) ** 2
+    // 탱커는 괴물이 먼저 노린다 (던전): 거리를 0.63배로 본다
+    const d = ((p.x - x) ** 2 + (p.y - y) ** 2) * (roleOn && roleOf(p) === 'tank' ? 0.4 : 1)
     if (d < bestD) {
       bestD = d
       best = p.id

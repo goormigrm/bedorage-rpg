@@ -122,7 +122,7 @@ describe('이어진 세계', () => {
       step(recv, mapOf2, [input(0, t), input(1, t)])
     }
     expect(hashState(recv)).toBe(hashState(a.s))
-  })
+  }, 20000) // 다른 일로 바쁠 때 5초를 넘겼다 — 한도만 늘린다
 
   it('웨이포인트: 밟으면 열리고, 곁에서 열린 곳으로만 건너간다', () => {
     const { s, mapOf, run } = game(['chim'])
