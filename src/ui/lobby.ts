@@ -1153,6 +1153,8 @@ export class Lobby {
     const title = this.role === 'host' ? '내 게임' : `${this.hostName()}의 게임`
     const teams = this.kind === 'arena' && this.roomMode === 'teams'
     const slots: string[] = []
+    // 파티 구성 (던전 — 역할은 던전에서만 효과가 있다)
+    const roleCount: Record<string, number> = { tank: 0, dps: 0, heal: 0 }
     for (let i = 0; i < this.roomSize; i++) {
       const m = this.members[i]
       if (!m) {
@@ -1160,14 +1162,17 @@ export class Lobby {
         continue
       }
       const mine = m.id === link.selfId
-      const c = (CHARACTERS as Record<string, { name: string } | undefined>)[m.char]
+      const c = (CHARACTERS as Record<string, { name: string; role: keyof typeof ROLE_INFO } | undefined>)[m.char]
+      const role = c && this.kind !== 'arena' ? ROLE_INFO[c.role] : null
+      if (c && this.kind !== 'arena') roleCount[c.role]++
+      const roleChip = role ? `<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span>` : ''
       const who = (i === 0 ? '방장' : `${i + 1}번`) + (mine ? ' · 나' : '')
       const badge = teams ? `<span class="team ${m.team === 0 ? 'team-a' : 'team-b'}">${m.team === 0 ? 'A팀' : 'B팀'}</span>` : ''
       const nick = (m.name ?? '').trim()
       slots.push(`<div class="slot ${m.ready ? 'ready' : ''} ${mine ? 'mine' : ''}">
         <div class="who">${who}${badge}</div>
         <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}</div>
-        <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
+        <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}${roleChip}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
       </div>`)
     }
     const html = `
@@ -1182,6 +1187,7 @@ export class Lobby {
         ${connected && link.peers.size > 0 ? `<span><b>핑</b>${link.rtt} ms</span>` : ''}
       </div>
       <div class="slots">${slots.join('')}</div>
+      ${this.kind !== 'arena' ? `<p class="roomhint party">파티 구성 — ${(['tank', 'dps', 'heal'] as const).map((r) => `<span style="color:${ROLE_INFO[r].color}">${ROLE_INFO[r].name} ${roleCount[r]}</span>`).join(' · ')}${this.members.length > 1 && roleCount.heal === 0 ? ' <span class="dim">(힐러가 있으면 오래 버팁니다)</span>' : ''}</p>` : ''}
       ${
         this.role === 'host'
           ? `<div class="setrow botrow">
