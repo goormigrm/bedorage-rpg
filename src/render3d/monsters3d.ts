@@ -22,7 +22,7 @@ interface ModelKind {
 
 /**
  * 실사 모델에 없는 것을 도형 부품으로 겹쳐 그린다 (2026-09-19): 해골 궁수의 **활**(예고 때 당긴다) · **빛나는 눈**.
- * part = BUILDERS 부품 번호, s = 크기(도형 몸이 모델보다 조금 크다), dy · dz = 자리 보정. 따로 인스턴스를 둔다
+ * part = BUILDERS 부품 번호(음수면 뒤에서 — -1 = 마지막), s = 크기(도형 몸이 모델보다 조금 크다), dy · dz = 자리 보정. 따로 인스턴스를 둔다
  * (도형 부품과 번호를 같이 쓰면 다른 부품의 옛 자리가 유령처럼 남는다).
  */
 const MODEL_EXTRAS: Record<number, { part: number; s: number; dy: number; dz?: number }[]> = {
@@ -30,6 +30,8 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dy: number; dz?: n
     { part: 4, s: 0.88, dy: -0.02 },
     { part: 3, s: 0.9, dy: -0.03, dz: -0.05 },
   ],
+  // 도살자: 식칼 (도형 도살자의 마지막 부품 — 휘두를 때 팔과 함께 돈다)
+  3: [{ part: -1, s: 1.05, dy: 0.02 }],
 }
 
 /** 몬스터가 매 프레임 넘기는 움직임 상태 */
@@ -840,7 +842,7 @@ export class MonsterView {
           return mesh
         })
         const extras = (MODEL_EXTRAS[kind] ?? []).map((e) => {
-          const src = this.kinds[kind][e.part]
+          const src = this.kinds[kind][e.part < 0 ? this.kinds[kind].length + e.part : e.part]
           const mesh = new THREE.InstancedMesh(src.mesh.geometry, src.mesh.material, CAP) as InstancedMesh
           mesh.count = 0
           mesh.frustumCulled = false

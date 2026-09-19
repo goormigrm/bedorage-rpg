@@ -68,6 +68,9 @@ MODEL_SPECS[1] = {
 }
 // 부푼 시체 — 구울 모델 + 살찐 몸 모양 키 + 누런 녹색
 MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 2.2, tint: [0.95, 1.05, 0.7], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
+// 도살자(1막 보스) — 구울 모델 + 살찐 몸 + 붉은 살 + 붉은 눈 (식칼은 도형 부품을 겹쳐 그린다 — monsters3d MODEL_EXTRAS).
+// 2차 묶음의 Pig Demon 을 받기 전까지 쓴다 (받을 파일이 늘지 않는다)
+MODEL_SPECS[3] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.4, tint: [1.3, 0.72, 0.64], glow: { 'Sphere.001': 0xff3a1a, 'Sphere_1.001': 0xff3a1a } }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
 // (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이
