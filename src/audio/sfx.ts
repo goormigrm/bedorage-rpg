@@ -269,7 +269,7 @@ export class Sfx {
           if (e.p !== localPlayer) break
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5 + e.rarity * 0.15)
           // 등급이 높을수록 높고 긴 음 — 전설은 세 음 화음
-          const f = [520, 660, 880, 990][e.rarity]
+          const f = [520, 660, 880, 990, 1175][e.rarity] ?? 990
           this.tone(b.node, b.t0, 0.12, 'triangle', f, f * 1.02, 0.35, 0.004)
           if (e.rarity >= 2) this.tone(b.node, b.t0 + 0.08, 0.2, 'sine', f * 1.5, f * 1.5, 0.3, 0.004)
           if (e.rarity >= 3) this.tone(b.node, b.t0 + 0.16, 0.4, 'sine', f * 2, f * 2, 0.3, 0.004)

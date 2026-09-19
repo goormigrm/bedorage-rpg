@@ -75,6 +75,8 @@ export const CMD_HIRE = 16
 export const CMD_QUEST = 17
 /** 자동 줍기 등급: arg = 비트(1 << 등급 — 일반 1 · 마법 2 · 희귀 4 · 전설 8). 각자의 옵션이라 명령으로 모두에게 알린다(락스텝) */
 export const CMD_AUTOPICK = 18
+/** 대장장이 강화: arg = 가방 칸, 또는 100 + 장비 칸. 같은 부위 · 같은 등급을 (단계 + 1)개 녹인다 (CMD_REROLL 은 없앴다) */
+export const CMD_UPGRADE = 19
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

@@ -23,13 +23,21 @@ export const WEAPON_IDS: WeaponId[] = ['pistol', 'smg', 'rifle', 'shotgun', 'sni
 /** 변형 무기(리볼버 · 화염방사기 …)가 떨어지기 시작하는 아이템 레벨 */
 export const VARIANT_ILVL = 6
 
-/** 등급: 일반 · 마법 · 희귀 · 전설 (디아블로 색: 흰 · 파랑 · 노랑 · 주황) */
-export const RARITY_NAMES = ['일반', '마법', '희귀', '전설']
+/**
+ * 등급: 일반 · 마법 · 희귀 · 전설 · **신화** (디아블로 색: 흰 · 파랑 · 노랑 · 주황 · 보라).
+ * 신화는 2026-09-19 "아이템 단계를 하나 더" — 전설 고유 효과 + 옵션 최대로. 우두머리·보스에서만 드물게.
+ */
+export const RARITY_NAMES = ['일반', '마법', '희귀', '전설', '신화']
+export const RARITY_MYTHIC = 4
 /** 자동 줍기 등급 비트(1 << 등급) — 기본은 모두 (2026-09-19 요청 "아이템은 기본적으로 자동 수집, 등급별로 조절") */
-export const AUTOPICK_ALL = 0b1111
-export const RARITY_COLORS = ['#d8d8d8', '#6c9cff', '#ffd84a', '#ff8a2a']
-/** 등급별 옵션 수 */
-const AFFIX_COUNT = [0, 2, 3, 4]
+export const AUTOPICK_ALL = 0b11111
+export const RARITY_COLORS = ['#d8d8d8', '#6c9cff', '#ffd84a', '#ff8a2a', '#e060ff']
+/** 등급별 옵션 수: 무기는 이만큼, 방어구·장신구는 기본 옵션(바탕 종류) 하나 + 이만큼 */
+const AFFIX_COUNT_WEAPON = [0, 2, 3, 4, 5]
+const AFFIX_COUNT_EXTRA = [0, 1, 2, 3, 4]
+/** 강화 최대 단계 · 단계마다 옵션 · 기본 피해/방어 +10% */
+export const UPGRADE_MAX = 5
+export const UPGRADE_STEP = 0.1
 
 /** type 별칭인 이유: 방 메시지(Trystero)가 JSON 호환 타입을 요구하는데, interface 는 인덱스 시그니처가 없어 안 맞는다 */
 export type Item = {
@@ -43,8 +51,12 @@ export type Item = {
   ilvl: number
   /** 옵션: [번호, 값, 번호, 값 …] */
   aff: number[]
-  /** 전설 고유 효과 번호 (LEGENDS · 전설만) */
+  /** 전설 고유 효과 번호 (LEGENDS · 전설 · 신화) */
   leg?: number
+  /** 방어구·장신구의 바탕 종류 (BASE_TYPES[칸] 번호 — 기본 옵션 하나가 정해진다). 무기 · 옛 아이템은 없음 */
+  bt?: number
+  /** 강화 단계 0~5 (대장장이 — 같은 부위 · 같은 등급을 녹여서) */
+  up?: number
 }
 
 /** 능력치 번호 (PlayerState.st 배열) */
@@ -91,18 +103,26 @@ export const AFFIXES: AffixDef[] = [
   { name: '경험치', pct: true, base: 5, per: 0.5, slots: [SLOT_AMULET], cap: 100 },
 ]
 
-/** 무기 이름 (등급별 앞말) · 방어구 이름 */
+/** 옛 아이템(바탕 종류 없음)의 이름 */
 const BASE_NAMES = ['', '투구', '갑옷', '반지', '목걸이']
+/**
+ * 방어구·장신구 바탕 종류 (2026-09-19 "각 옵션에 따라서 다양한 아이템이 존재하도록") — 종류마다 **기본 옵션**(imp) 하나가 늘 붙는다.
+ * 무기는 무기 종류(계열 · 변형)가 곧 바탕이다.
+ */
+export const BASE_TYPES: { name: string; imp: number }[][] = [
+  [],
+  [{ name: '가죽 두건', imp: 8 }, { name: '철 투구', imp: 6 }, { name: '사제 두건', imp: 9 }, { name: '사냥꾼 모자', imp: 4 }],
+  [{ name: '누빈 옷', imp: 7 }, { name: '사슬 갑옷', imp: 5 }, { name: '판금 갑옷', imp: 6 }],
+  [{ name: '구리 반지', imp: 0 }, { name: '은 반지', imp: 1 }, { name: '뼈 반지', imp: 10 }, { name: '루비 반지', imp: 5 }],
+  [{ name: '나무 부적', imp: 11 }, { name: '은 목걸이', imp: 7 }, { name: '성물 목걸이', imp: 9 }, { name: '호박 목걸이', imp: 8 }],
+]
+/** 옵션에서 이름을 짓는다: 첫 옵션 → 앞말, 둘째 → "~의" (옵션 번호 = AFFIXES 순서) */
+const AFFIX_PREFIX = ['날카로운', '속사', '주문 새긴', '거인 사냥꾼의', '치명적인', '튼튼한', '단단한', '날렵한', '끈질긴', '영창하는', '흡혈하는', '현자의']
+const AFFIX_SUFFIX = ['파괴', '속사', '주문', '거인 사냥', '치명', '생명', '수호', '바람', '인내', '영창', '흡혈', '지혜']
 const WEAPON_NAMES: Record<WeaponId, string> = {
   pistol: '권총', smg: 'SMG', rifle: '소총', shotgun: '산탄총', sniper: '저격총', mg: '기관총', pan: '후라이팬',
   revolver: '리볼버', flamer: '화염방사기', crossbow: '석궁', doublebarrel: '더블배럴', railgun: '레일건', launcher: '유탄발사기', wok: '대형 웍',
 }
-const PREFIX = [
-  ['낡은', '녹슨', '평범한'],
-  ['단단한', '날렵한', '빛나는'],
-  ['저주받은', '피에 젖은', '묘지기의'],
-  ['야차의', '침착맨의', '배도라지의'],
-]
 
 /**
  * 전설 고유 효과 (GUIDE 8장 — "빌드의 나머지 절반"). 전설 아이템마다 하나. 같은 효과를 둘 껴도 한 번만.
@@ -134,14 +154,35 @@ export const LEG_GOLD = 9
 /** 낀 장비의 전설 효과 비트 묶음 */
 export function legMask(equip: (Item | null)[]): number {
   let m = 0
-  for (const it of equip) if (it && it.rarity === 3 && it.leg !== undefined && it.leg >= 0) m |= 1 << it.leg
+  for (const it of equip) if (it && it.rarity >= 3 && it.leg !== undefined && it.leg >= 0) m |= 1 << it.leg
   return m
 }
 
+/** 방어구·장신구에 바탕 종류가 있어 첫 옵션이 기본 옵션인가 */
+export function hasImplicit(it: Item): boolean {
+  return it.slot !== SLOT_WEAPON && it.bt !== undefined && it.bt >= 0 && !!BASE_TYPES[it.slot]?.[it.bt]
+}
+
+/** 바탕 이름: 무기 종류 · 방어구 바탕 종류 */
+export function baseName(it: Item): string {
+  if (it.slot === SLOT_WEAPON) return WEAPON_NAMES[WEAPON_IDS[it.wt] ?? 'rifle']
+  return hasImplicit(it) ? BASE_TYPES[it.slot][it.bt!].name : BASE_NAMES[it.slot]
+}
+
+/**
+ * 이름은 옵션에서 짓는다: 일반 = 바탕 · 마법 = 앞말 + 바탕 · 희귀 = "~의" + 앞말 + 바탕 · 전설·신화 = 「고유 효과」 + 바탕. 강화면 +N.
+ * 예: 사슬 갑옷 · 날카로운 구리 반지 · 생명의 치명적인 사냥꾼 모자 · 「광란」 판금 갑옷
+ */
 export function itemName(it: Item): string {
-  const base = it.slot === SLOT_WEAPON ? WEAPON_NAMES[WEAPON_IDS[it.wt] ?? 'rifle'] : BASE_NAMES[it.slot]
-  const pre = PREFIX[it.rarity][it.uid % 3]
-  return `${pre} ${base}`
+  const base = baseName(it)
+  const up = it.up ? `+${it.up} ` : ''
+  if (it.rarity >= 3 && it.leg !== undefined && LEGENDS[it.leg]) return `${up}「${LEGENDS[it.leg].name}」 ${base}`
+  const rolled: number[] = []
+  for (let k = hasImplicit(it) ? 2 : 0; k < it.aff.length; k += 2) rolled.push(it.aff[k])
+  if (it.rarity === 0 || rolled.length === 0) return `${up}${base}`
+  const pre = AFFIX_PREFIX[rolled[0]] ?? ''
+  if (it.rarity === 1 || rolled.length < 2) return `${up}${pre} ${base}`
+  return `${up}${AFFIX_SUFFIX[rolled[1]] ?? ''}의 ${pre} ${base}`
 }
 
 /** 옵션 한 줄 */
@@ -150,24 +191,57 @@ export function affixText(id: number, v: number): string {
   return a.pct ? `${a.name} +${v}%` : `${a.name} +${v}`
 }
 
-/** 무기 아이템의 기본 피해 증가 (옵션과 별개 — 아이템 레벨이 높을수록 센 무기) */
-export function weaponBaseDmg(it: Item): number {
-  return it.slot === SLOT_WEAPON ? Math.round(it.ilvl * 2.2 + it.rarity * 4) : 0
+/** 강화 배율 (단계마다 +10%) */
+export function upMul(it: Item): number {
+  return 1 + UPGRADE_STEP * Math.min(UPGRADE_MAX, Math.max(0, it.up ?? 0))
 }
-/** 방어구의 기본 방어 (받는 피해 감소 %) */
+/** 무기 아이템의 기본 피해 증가 (옵션과 별개 — 아이템 레벨이 높을수록 센 무기, 강화 포함) */
+export function weaponBaseDmg(it: Item): number {
+  return it.slot === SLOT_WEAPON ? Math.round((it.ilvl * 2.2 + it.rarity * 4) * upMul(it)) : 0
+}
+/** 방어구의 기본 방어 (받는 피해 감소 %, 강화 포함) */
 export function armorBase(it: Item): number {
-  return it.slot === SLOT_ARMOR || it.slot === SLOT_HELM ? Math.round(it.ilvl * 0.35 + it.rarity) : 0
+  return it.slot === SLOT_ARMOR || it.slot === SLOT_HELM ? Math.round((it.ilvl * 0.35 + it.rarity) * upMul(it)) : 0
+}
+/** 옵션 한 칸의 실제 값 (강화 포함) */
+export function affixValue(it: Item, k: number): number {
+  return Math.round(it.aff[k + 1] * upMul(it))
 }
 
 /**
- * 아이템 하나를 굴린다. myWeapon = 주운 사람의 무기(스마트 루트 85%).
- * 등급 확률: 일반 55 · 마법 32 · 희귀 11 · 전설 2 (엘리트·보스는 bonus 로 위로)
+ * 어디서 나온 전리품인가 → 등급 확률 (일반 · 마법 · 희귀 · 전설 · 신화).
+ * 2026-09-19 "희귀·전설이 너무 쉽게 떨어진다 — 정예나 보스에서만, 확률도 더 낮게":
+ *  졸개는 일반·마법만 · 정예부터 희귀·전설 · 신화는 우두머리·보스(와 도박)에서만.
+ *  예전: 졸개도 희귀 11% · 전설 2%, 우두머리·보스는 한 개에 전설 27% 였다.
  */
-export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, bonus = 0, minRarity = 0, forceSlot = -1): Item {
+export type LootSource = 'normal' | 'elite' | 'boss' | 'chest' | 'goldchest' | 'gamble' | 'shop'
+export const DROP_TABLE: Record<LootSource, number[]> = {
+  normal: [0.7, 0.3, 0, 0, 0],
+  elite: [0.25, 0.52, 0.19, 0.04, 0],
+  boss: [0, 0.43, 0.44, 0.12, 0.01],
+  chest: [0.55, 0.45, 0, 0, 0],
+  goldchest: [0.1, 0.55, 0.3, 0.05, 0],
+  gamble: [0, 0.55, 0.35, 0.095, 0.005],
+  shop: [0.25, 0.6, 0.15, 0, 0],
+}
+/** 등급을 고른다. up = 난이도 전리품 보너스(악몽 0.08 · 지옥 0.16) — 희귀 이상의 몫을 (1 + up × 6) 배 */
+export function pickRarity(rng: Rng, src: LootSource, up = 0): number {
+  const w = DROP_TABLE[src].map((v, i) => (i >= 2 ? v * (1 + up * 6) : v))
+  let r = rand(rng) * w.reduce((a, b) => a + b, 0)
+  for (let i = 0; i < w.length; i++) {
+    r -= w[i]
+    if (r < 0) return i
+  }
+  return 0
+}
+
+/**
+ * 아이템 하나를 굴린다. myWeapon = 주운 사람의 무기(스마트 루트 85%). src = 어디서 나왔나(DROP_TABLE) · up = 난이도 보너스.
+ */
+export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1): Item {
   const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
-  const r = rand(rng) - bonus
-  const rarity = Math.max(minRarity, r < 0.02 ? 3 : r < 0.13 ? 2 : r < 0.45 ? 1 : 0)
-  const leg = rarity === 3 ? randInt(rng, 0, LEGENDS.length) : undefined
+  const rarity = Math.max(minRarity, pickRarity(rng, src, up))
+  const leg = rarity >= 3 ? randInt(rng, 0, LEGENDS.length) : undefined
   let wt = -1
   if (slot === SLOT_WEAPON) {
     // 스마트 루트 85%: 내 계열 무기 — 아이템 레벨 6 부터는 계열의 변형도 (절반쯤). 나머지 15% 는 아무 종류(팔거나 동료에게)
@@ -178,43 +252,54 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
     } else wt = randInt(rng, 0, WEAPON_IDS.length)
   }
   const aff: number[] = []
-  const pool = AFFIXES.map((a, i) => ({ a, i })).filter(({ a }) => a.slots.includes(slot))
-  const n = Math.min(AFFIX_COUNT[rarity], pool.length)
-  for (let k = 0; k < n; k++) {
-    const pick = pool.splice(randInt(rng, 0, pool.length), 1)[0]
-    const max = pick.a.base + pick.a.per * ilvl
-    // 전설은 옵션이 크다 (최대의 80~100%), 나머지는 50~100%
-    const lo = rarity === 3 ? 0.8 : 0.5
-    const v = Math.max(1, Math.round(max * (lo + rand(rng) * (1 - lo))))
-    aff.push(pick.i, v)
+  // 옵션 크기: 신화는 최대, 전설은 80~100%, 나머지는 50~100%
+  const lo = rarity >= RARITY_MYTHIC ? 1 : rarity === 3 ? 0.8 : 0.5
+  const roll = (i: number) => {
+    const a = AFFIXES[i]
+    const max = a.base + a.per * ilvl
+    aff.push(i, Math.max(1, Math.round(max * (lo + rand(rng) * (1 - lo)))))
   }
-  return leg === undefined ? { uid, slot, wt, rarity, ilvl, aff } : { uid, slot, wt, rarity, ilvl, aff, leg }
+  // 방어구·장신구: 바탕 종류를 고르고 그 기본 옵션부터
+  let bt: number | undefined
+  if (slot !== SLOT_WEAPON) {
+    bt = randInt(rng, 0, BASE_TYPES[slot].length)
+    roll(BASE_TYPES[slot][bt].imp)
+  }
+  const taken = new Set(aff.filter((_, k) => k % 2 === 0))
+  const pool = AFFIXES.map((_, i) => i).filter((i) => AFFIXES[i].slots.includes(slot) && !taken.has(i))
+  const n = Math.min(slot === SLOT_WEAPON ? AFFIX_COUNT_WEAPON[rarity] : AFFIX_COUNT_EXTRA[rarity], pool.length)
+  for (let k = 0; k < n; k++) roll(pool.splice(randInt(rng, 0, pool.length), 1)[0])
+  const it: Item = { uid, slot, wt, rarity, ilvl, aff }
+  if (leg !== undefined) it.leg = leg
+  if (bt !== undefined) it.bt = bt
+  return it
 }
 
-/** 상인에게 파는 값 (골드): 아이템 레벨 × 등급 */
+/** 상인에게 파는 값 (골드): 아이템 레벨 × 등급 × 강화 */
 export function itemValue(it: Item): number {
-  return Math.round((6 + it.ilvl * 3) * [1, 2.5, 6, 15][it.rarity])
+  return Math.round((6 + it.ilvl * 3) * ([1, 2.5, 6, 15, 30][it.rarity] ?? 1) * (1 + 0.25 * (it.up ?? 0)))
 }
 
-/** 마을 값 (GUIDE 9장): 상인 진열은 파는 값의 4배 · 대장장이 다시 굴리기 = 파는 값의 2배 · 도박 = 60 + 레벨×25 · 물약 칸 = 200×(늘린 횟수+1)² */
+/** 마을 값 (GUIDE 9장): 상인 진열은 파는 값의 4배 · 대장장이 강화 = 파는 값의 절반 × 다음 단계 · 도박 = 60 + 레벨×25 */
 export const buyPrice = (it: Item) => itemValue(it) * 4
-export const rerollPrice = (it: Item) => itemValue(it) * 2 + 20
 export const gamblePrice = (level: number) => 60 + level * 25
 export const potUpPrice = (potMax: number) => 200 * (potMax - 3) ** 2
 /** 보관함 칸 (캐릭터 공유) */
 export const STASH_SIZE = 60
 
-/** 대장장이: 옵션 하나를 같은 칸의 다른 옵션으로 다시 굴린다 (디아블로 3 마법부여) */
-export function rerollAffix(rng: Rng, it: Item): void {
-  if (it.aff.length === 0) return
-  const k = randInt(rng, 0, it.aff.length / 2) * 2
-  const have = new Set(it.aff.filter((_, i) => i % 2 === 0))
-  const pool = AFFIXES.map((a, i) => ({ a, i })).filter(({ a, i }) => a.slots.includes(it.slot) && (!have.has(i) || i === it.aff[k]))
-  const pick = pool[randInt(rng, 0, pool.length)]
-  const max = pick.a.base + pick.a.per * it.ilvl
-  const lo = it.rarity === 3 ? 0.8 : 0.5
-  it.aff[k] = pick.i
-  it.aff[k + 1] = Math.max(1, Math.round(max * (lo + rand(rng) * (1 - lo))))
+/**
+ * 대장장이 **강화** (2026-09-19 "옵션 변경 NPC 를 없애고 강화 — 동일 단계의 아이템 부위를 모아 오면 소모해서 강화"):
+ * 같은 부위(칸) · 같은 등급의 아이템을 (지금 단계 + 1)개 녹여 한 단계 올린다. 단계마다 옵션 · 기본 피해/방어 +10%, 최대 +5.
+ */
+export const upgradeNeed = (it: Item) => (it.up ?? 0) + 1
+export const upgradePrice = (it: Item) => Math.round(itemValue(it) * 0.5 * ((it.up ?? 0) + 1))
+/** 재료가 될 가방 칸 (대상은 빼고, 싼 것부터 — 결정론) */
+export function upgradeMaterials(bag: Item[], target: Item): number[] {
+  return bag
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => it !== target && it.slot === target.slot && it.rarity === target.rarity)
+    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.i - b.i)
+    .map((o) => o.i)
 }
 
 // ---------- 레벨 ----------
@@ -245,7 +330,7 @@ export function computeStats(level: number, equip: (Item | null)[]): number[] {
   const st = new Array(ST_COUNT).fill(0)
   for (const it of equip) {
     if (!it) continue
-    for (let k = 0; k < it.aff.length; k += 2) st[it.aff[k]] += it.aff[k + 1]
+    for (let k = 0; k < it.aff.length; k += 2) st[it.aff[k]] += affixValue(it, k)
     st[ST_DMG] += weaponBaseDmg(it)
     st[ST_DR] += armorBase(it)
   }
@@ -294,7 +379,7 @@ export function sanitizeSheet(s: unknown): Sheet {
     if (!it || typeof it !== 'object') return false
     const x = it as Item
     if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
-    return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= 3 && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 8 && x.aff.every((v) => Number.isFinite(v))
+    return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && x.aff.every((v) => Number.isFinite(v))
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))
   e.xp = Math.max(0, Math.floor(Number(o.xp) || 0))

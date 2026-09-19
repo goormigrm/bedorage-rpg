@@ -6,7 +6,8 @@ import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
 import { makeRng } from '../src/core/rng'
 import {
-  AUTOPICK_ALL, BAG_SIZE, Item, SLOT_ARMOR, SLOT_WEAPON, ST_DMG, ST_HP, WEAPON_IDS, computeStats, emptySheet, rollItem, sanitizeSheet, xpNeed,
+  AUTOPICK_ALL, BAG_SIZE, BASE_TYPES, Item, LootSource, RARITY_MYTHIC, SLOT_ARMOR, SLOT_RING, SLOT_WEAPON, ST_DMG, ST_HP, WEAPON_IDS, computeStats, emptySheet, itemName,
+  pickRarity, rollItem, sanitizeSheet, xpNeed,
 } from '../src/core/items'
 import { COUNTDOWN_TICKS, MS_CHASE } from '../src/core/state'
 
@@ -34,6 +35,50 @@ function killNear(s: ReturnType<typeof ready>['s'], map: ReturnType<typeof ready
   for (let t = 0; t < 20 && m.hp > 0; t++) step(s, map, s.players.map(idle))
 }
 
+describe('전리품 개편 (2026-09-19 — 희귀·전설은 정예·보스에서만 · 신화 · 옵션 이름 · 강화)', () => {
+  it('어디서 나왔나에 따라 등급이 막힌다: 졸개는 일반·마법만 · 정예는 전설까지 · 신화는 우두머리·보스와 도박만', () => {
+    const rng = makeRng(11)
+    const top = (src: LootSource) => {
+      let t = 0
+      for (let i = 0; i < 20000; i++) t = Math.max(t, pickRarity(rng, src))
+      return t
+    }
+    expect(top('normal')).toBe(1)
+    expect(top('chest')).toBe(1)
+    expect(top('elite')).toBe(3)
+    expect(top('boss')).toBe(RARITY_MYTHIC)
+    // 난이도 보너스는 희귀 이상의 몫만 늘린다
+    let rare0 = 0
+    let rare1 = 0
+    for (let i = 0; i < 20000; i++) {
+      if (pickRarity(rng, 'elite') >= 2) rare0++
+      if (pickRarity(rng, 'elite', 0.16) >= 2) rare1++
+    }
+    expect(rare1).toBeGreaterThan(rare0 * 1.5)
+  })
+
+  it('이름은 옵션에서 짓는다: 일반 = 바탕 · 마법 = 앞말 + 바탕 · 희귀 = ~의 + 앞말 + 바탕 · 전설 = 「효과」 · 강화 +N', () => {
+    const ring = (rarity: number, aff: number[], extra: Partial<Item> = {}): Item => ({ uid: 1, slot: SLOT_RING, wt: -1, rarity, ilvl: 5, aff, bt: 0, ...extra })
+    expect(itemName(ring(0, [0, 5]))).toBe('구리 반지')
+    expect(itemName(ring(1, [0, 5, 4, 12]))).toBe('치명적인 구리 반지')
+    expect(itemName(ring(2, [0, 5, 4, 12, 5, 30]))).toBe('생명의 치명적인 구리 반지')
+    expect(itemName(ring(3, [0, 5, 4, 12, 5, 30, 1, 4], { leg: 5 }))).toBe('「광란」 구리 반지')
+    expect(itemName(ring(1, [0, 5, 4, 12], { up: 2 }))).toBe('+2 치명적인 구리 반지')
+    // 강화는 옵션 값에 단계마다 +10%
+    const st = computeStats(1, [null, null, null, ring(1, [0, 10], { up: 2 }), null])
+    expect(st[ST_DMG]).toBe(12)
+  })
+
+  it('세이브: 신화(옵션 다섯) · 바탕 종류 · 강화 단계가 살아남는다', () => {
+    const it: Item = { uid: 7, slot: SLOT_WEAPON, wt: 2, rarity: RARITY_MYTHIC, ilvl: 20, aff: [0, 30, 1, 20, 2, 20, 3, 25, 4, 40], leg: 3, up: 4 }
+    const s = sanitizeSheet({ ...emptySheet(), bag: [it, { uid: 8, slot: SLOT_RING, wt: -1, rarity: 2, ilvl: 5, aff: [1, 5], bt: 1 }] })
+    expect(s.bag.length).toBe(2)
+    expect(s.bag[0].up).toBe(4)
+    expect(s.bag[0].rarity).toBe(RARITY_MYTHIC)
+    expect(s.bag[1].bt).toBe(1)
+  })
+})
+
 describe('아이템 굴리기', () => {
   it('같은 시드면 같은 아이템, 무기는 85% 가 내 무기 (스마트 루트)', () => {
     const a = rollItem(makeRng(5), 1, 5, 'rifle')
@@ -52,18 +97,25 @@ describe('아이템 굴리기', () => {
     expect(mine / weapons).toBeLessThan(0.95)
   })
 
-  it('등급이 높을수록 옵션이 많고, 능력치에 더해진다', () => {
+  it('등급이 높을수록 옵션이 많고, 능력치에 더해진다 — 방어구·장신구는 바탕 종류의 기본 옵션 하나가 늘 붙는다', () => {
     const rng = makeRng(3)
-    const counts = [0, 0, 0, 0]
-    for (let i = 0; i < 3000; i++) {
-      const it = rollItem(rng, i, 10, 'rifle')
+    const counts = [0, 0, 0, 0, 0]
+    for (let i = 0; i < 6000; i++) {
+      const it = rollItem(rng, i, 10, 'rifle', 'boss')
       counts[it.rarity]++
-      // 칸마다 붙을 수 있는 옵션 종류가 달라(갑옷은 3종) 전설도 3개일 수 있다
-      expect(it.aff.length / 2).toBeLessThanOrEqual([0, 2, 3, 4][it.rarity])
-      expect(it.aff.length / 2).toBeGreaterThanOrEqual(Math.min([0, 2, 3, 4][it.rarity], 3))
+      const n = it.aff.length / 2
+      if (it.slot === SLOT_WEAPON) expect(n).toBe([0, 2, 3, 4, 5][it.rarity])
+      else {
+        // 첫 옵션 = 바탕 종류의 기본 옵션 · 칸마다 붙을 수 있는 옵션 종류가 달라(갑옷은 3종) 모자랄 수 있다
+        expect(it.bt).toBeGreaterThanOrEqual(0)
+        expect(it.aff[0]).toBe(BASE_TYPES[it.slot][it.bt!].imp)
+        expect(n).toBeLessThanOrEqual(it.rarity + 1)
+        expect(n).toBeGreaterThanOrEqual(Math.min(it.rarity + 1, 3))
+      }
     }
-    expect(counts[0]).toBeGreaterThan(counts[1])
+    expect(counts[1]).toBeGreaterThan(counts[3])
     expect(counts[3]).toBeGreaterThan(0)
+    expect(counts[RARITY_MYTHIC]).toBeGreaterThan(0)
     const armor: Item = { uid: 1, slot: SLOT_ARMOR, wt: -1, rarity: 1, ilvl: 5, aff: [5, 40] }
     const st = computeStats(3, [null, null, armor, null, null])
     expect(st[ST_HP]).toBe(40 + 2 * 6)

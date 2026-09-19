@@ -25,6 +25,8 @@ const AUTOPICK_KEY = 'brpg.autopick'
 function loadAutoPick(): number {
   try {
     const v = Number(localStorage.getItem(AUTOPICK_KEY) ?? AUTOPICK_ALL)
+    // 신화 등급(비트 16)이 생기기 전의 "모두"(15)는 모두로 (2026-09-19)
+    if (v === 15) return AUTOPICK_ALL
     return Number.isInteger(v) && v >= 0 && v <= AUTOPICK_ALL ? v : AUTOPICK_ALL
   } catch {
     return AUTOPICK_ALL

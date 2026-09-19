@@ -54,7 +54,7 @@ const fromXp = (t: number): { level: number; xp: number } => {
 function gear(char: CharacterId, ilvl: number, seed: number): (Item | null)[] {
   const rng = makeRng(seed * 131 + ilvl * 7)
   const out: (Item | null)[] = []
-  for (let slot = 0; slot < SLOT_COUNT; slot++) out.push(rollItem(rng, 900000 + slot, Math.max(1, ilvl), CHARACTERS[char].weapon, 0.1, 1, slot))
+  for (let slot = 0; slot < SLOT_COUNT; slot++) out.push(rollItem(rng, 900000 + slot, Math.max(1, ilvl), CHARACTERS[char].weapon, 'elite', 0, 1, slot))
   return out
 }
 

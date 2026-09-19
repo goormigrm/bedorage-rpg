@@ -5,8 +5,8 @@ import { GameMap, buildMap } from '../src/core/map'
 import { createState, step } from '../src/core/sim'
 import { OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS } from '../src/core/state'
 import { buildAreaMap, townNpcs } from '../src/core/world'
-import { CMD_BUY, CMD_GAMBLE, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../src/core/input'
-import { LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue } from '../src/core/items'
+import { CMD_BUY, CMD_GAMBLE, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../src/core/input'
+import { Item, LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue } from '../src/core/items'
 import { CMD_EQUIP } from '../src/core/input'
 import { makeMonster } from '../src/core/dungeon'
 import { EA_FAST, EA_UNIQUE, GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
@@ -124,7 +124,7 @@ describe('전리품 · 경제', () => {
     expect(count(8, 62).some((k) => k.startsWith(`${OBJ_GOLDCHEST}@`))).toBe(true)
   })
 
-  it('마을 NPC: 곁에서만 거래한다 — 팔기 · 사기 · 다시 굴리기 · 도박 · 보관함', () => {
+  it('마을 NPC: 곁에서만 거래한다 — 팔기 · 사기 · 강화 · 도박 · 보관함', () => {
     const seed = 63
     const map = buildAreaMap(seed, 0)
     const s = createState({ seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 5, gold: 5000 }] }, map)
@@ -155,15 +155,23 @@ describe('전리품 · 경제', () => {
     cmd(CMD_GAMBLE, 3)
     expect(p.bag.length).toBe(1)
     expect(p.bag[0].slot).toBe(3)
-    // 대장장이: 옵션 하나가 바뀐다 (골드가 든다)
+    // 대장장이: 강화 — 같은 부위 · 같은 등급을 (단계 + 1)개 녹인다 (옵션 다시 굴리기는 없앴다 — 2026-09-19)
     at('smith')
-    const before = JSON.stringify(p.bag[0].aff)
+    const keep = p.bag.slice()
+    const ring = (uid: number, rarity = 1): Item => ({ uid, slot: 3, wt: -1, rarity, ilvl: 5, aff: [0, 10], bt: 0 })
+    p.bag.length = 0
+    p.bag.push(ring(501), ring(502), ring(503), ring(504, 2))
     const g2 = p.gold
-    for (let k = 0; k < 6 && JSON.stringify(p.bag[0].aff) === before; k++) cmd(CMD_REROLL, 0)
-    if (p.bag[0].aff.length > 0) {
-      expect(JSON.stringify(p.bag[0].aff)).not.toBe(before)
-      expect(p.gold).toBeLessThan(g2)
-    }
+    cmd(CMD_UPGRADE, 0) // +0 → +1: 같은 등급 반지 하나를 녹인다
+    expect(p.bag.find((i) => i.uid === 501)?.up).toBe(1)
+    expect(p.bag.length).toBe(3)
+    expect(p.gold).toBeLessThan(g2)
+    // +1 → +2 는 재료 둘 — 같은 등급(마법)은 하나뿐이고 희귀 반지는 재료가 안 된다
+    cmd(CMD_UPGRADE, p.bag.findIndex((i) => i.uid === 501))
+    expect(p.bag.find((i) => i.uid === 501)?.up).toBe(1)
+    expect(p.bag.length).toBe(3)
+    p.bag.length = 0
+    p.bag.push(...keep)
     // 보관함: 넣고 꺼낸다
     at('stash')
     cmd(CMD_STASH_PUT, 0)

@@ -2,11 +2,12 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
-import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
+import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, rerollPrice,
+  Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
@@ -65,17 +66,17 @@ function esc(t: string): string {
 /** 아이템 한 줄 (이름 · 옵션 요약) */
 function row(it: Item, right: string, data: string, disabled = false): string {
   const affs = []
-  for (let k = 0; k < it.aff.length; k += 2) affs.push(affixText(it.aff[k], it.aff[k + 1]))
-  if (it.rarity === 3 && it.leg !== undefined && LEGENDS[it.leg]) affs.push(`✦ ${LEGENDS[it.leg].name}`)
+  for (let k = 0; k < it.aff.length; k += 2) affs.push(affixText(it.aff[k], affixValue(it, k)))
+  if (it.rarity >= 3 && it.leg !== undefined && LEGENDS[it.leg]) affs.push(`✦ ${LEGENDS[it.leg].name}`)
   return `<button class="tp-row" ${data} ${disabled ? 'disabled' : ''}>
-    <span class="tp-n" style="color:${RARITY_COLORS[it.rarity]}">${esc(itemName(it))}<small>${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
+    <span class="tp-n" style="color:${RARITY_COLORS[it.rarity]}">${esc(itemName(it))}<small>${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
     <span class="tp-a">${affs.map(esc).join(' · ') || '옵션 없음'}</span>
     <span class="tp-g">${right}</span></button>`
 }
 
 const LINES: Record<NpcId, string> = {
-  merchant: '살 게 있으면 사고, 팔 게 있으면 팔게. 물약 주머니도 늘려 주지.',
-  smith: '옵션 하나가 마음에 안 들면 가져와. 두드려서 다른 걸로 바꿔 주지 — 공짜는 아니고.',
+  merchant: '살 게 있으면 사고, 팔 게 있으면 팔게.',
+  smith: '같은 부위, 같은 등급 물건을 모아 와. 녹여서 네 장비를 한 단계 단단하게 만들어 주지.',
   gambler: '안을 들여다보지 않고 사는 재미를 알아? 뭐가 나올지는 나도 몰라.',
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
   elder: '성당 종이 멈춘 밤부터 모든 게 틀어졌소. 부탁할 것이 있소…',
@@ -114,7 +115,7 @@ export class TownPanel {
     if (!this.open) return
     const me = this.me()
     const s = this.state()
-    const sig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
+    const sig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0)).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     if (sig !== this.lastSig) this.render()
   }
 
@@ -123,7 +124,7 @@ export class TownPanel {
     if (!npc) return
     const me = this.me()
     const s = this.state()
-    this.lastSig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + i.aff.join(',')).join(';')}|${me.stash.length}|${s.shop.length}|${me.potMax}`
+    this.lastSig = `${this.tab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0)).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     let body = ''
     if (npc === 'merchant') {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`
@@ -138,8 +139,22 @@ export class TownPanel {
       const pot = ''
       body = tabs + `<div class="tp-list">${list}</div>` + pot
     } else if (npc === 'smith') {
-      body = `<p class="tp-note">누르면 옵션 하나가 같은 칸의 다른 옵션으로 바뀐다 (무엇이 될지는 모른다).</p><div class="tp-list">${
-        me.bag.map((it, i) => row(it, `${rerollPrice(it)} 골드`, `data-cmd="${CMD_REROLL}" data-arg="${i}"`, it.aff.length === 0 || me.gold < rerollPrice(it))).join('') || '<p class="tp-empty">가방이 비었다. 장비를 벗어 가방에 넣어 오라.</p>'
+      // 강화 (2026-09-19 — 옵션 다시 굴리기를 없앴다): 낀 장비 · 가방. 같은 부위 · 같은 등급 (단계 + 1)개를 녹인다
+      const cand: { it: Item; arg: number; where: string }[] = []
+      me.equip.forEach((it, k) => it && cand.push({ it, arg: 100 + k, where: '낀 것' }))
+      me.bag.forEach((it, i) => cand.push({ it, arg: i, where: '가방' }))
+      const list = cand
+        .map(({ it, arg, where }) => {
+          const lv = it.up ?? 0
+          if (lv >= UPGRADE_MAX) return row(it, `${where} · +${lv} 최대`, '', true)
+          const need = upgradeNeed(it)
+          const have = upgradeMaterials(me.bag, it).length
+          const g = upgradePrice(it)
+          return row(it, `${where} · +${lv} → +${lv + 1}<br>재료 ${Math.min(have, need)}/${need} · ${g} 골드`, `data-cmd="${CMD_UPGRADE}" data-arg="${arg}"`, have < need || me.gold < g)
+        })
+        .join('')
+      body = `<p class="tp-note">같은 부위 · 같은 등급의 아이템을 <b>(지금 단계 + 1)개</b> 녹여 한 단계 올린다 — 단계마다 옵션 · 기본 피해/방어 +10%, 최대 +5. 재료는 가방에서 값싼 것부터 쓴다.</p><div class="tp-list">${
+        list || '<p class="tp-empty">강화할 장비가 없다.</p>'
       }</div>`
     } else if (npc === 'gambler') {
       const price = gamblePrice(me.level)

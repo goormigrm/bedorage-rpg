@@ -7,7 +7,7 @@ import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, BAG_SIZE, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, armorBase, computeStats, itemName, weaponBaseDmg, xpNeed,
+  affixText, affixValue, armorBase, computeStats, hasImplicit, itemName, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -30,8 +30,10 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   if (base) lines.push(`<div class="base">피해 +${base}%</div>`)
   const arm = armorBase(it)
   if (arm) lines.push(`<div class="base">받는 피해 -${arm}%</div>`)
-  for (let k = 0; k < it.aff.length; k += 2) lines.push(`<div class="aff">◆ ${affixText(it.aff[k], it.aff[k + 1])}</div>`)
-  if (it.rarity === 3 && it.leg !== undefined && LEGENDS[it.leg]) lines.push(`<div class="leg">✦ ${LEGENDS[it.leg].name} — ${LEGENDS[it.leg].desc}</div>`)
+  // 바탕 종류의 기본 옵션은 ◇ 로 (그 종류면 늘 붙는다) · 강화는 옵션에 이미 곱해져 있다
+  for (let k = 0; k < it.aff.length; k += 2) lines.push(`<div class="aff">${k === 0 && hasImplicit(it) ? '◇ 기본 ' : '◆ '}${affixText(it.aff[k], affixValue(it, k))}</div>`)
+  if (it.up) lines.push(`<div class="base">강화 +${it.up} — 옵션 · 기본 +${it.up * 10}%</div>`)
+  if (it.rarity >= 3 && it.leg !== undefined && LEGENDS[it.leg]) lines.push(`<div class="leg">✦ ${LEGENDS[it.leg].name} — ${LEGENDS[it.leg].desc}</div>`)
   let warn = ''
   if (me && it.slot === SLOT_WEAPON && !canWield(me, it)) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
   const wd = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]] : undefined

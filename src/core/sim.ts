@@ -7,12 +7,12 @@
 import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_REROLL,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
   CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -508,7 +508,7 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
   const qd = QUESTS[i]
   if (qd.legend) {
     // 전설 하나 (가방이 차 있으면 발밑에)
-    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 0, 3)
+    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 'boss', tierOf(state.tier).loot, 3)
     if (p.bag.length < BAG_SIZE) p.bag.push(it)
     else state.drops.push({ id: state.nextDropId++, owner: p.id, x: p.x, y: p.y + 30, item: it, gold: 0, pot: 0, ttl: 60 * 600, lock: 30 })
   }
@@ -577,18 +577,25 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     state.shop.splice(arg, 1)
     p.bag.push({ ...it, aff: [...it.aff] })
     trade('buy', -g, it.uid)
-  } else if (cmd === CMD_REROLL && npc === 'smith') {
-    const it = p.bag[arg]
-    if (!it || it.aff.length === 0 || p.gold < rerollPrice(it)) return
-    const g = rerollPrice(it)
+  } else if (cmd === CMD_UPGRADE && npc === 'smith') {
+    // 강화: 가방 칸 또는 100 + 장비 칸. 같은 부위 · 같은 등급 (단계 + 1)개를 녹인다 (싼 것부터)
+    const eq = arg >= 100
+    const it = eq ? p.equip[arg - 100] : p.bag[arg]
+    if (!it || (it.up ?? 0) >= UPGRADE_MAX) return
+    const need = upgradeNeed(it)
+    const g = upgradePrice(it)
+    const mats = upgradeMaterials(p.bag, it)
+    if (mats.length < need || p.gold < g) return
     p.gold -= g
-    rerollAffix(state.rng, it)
-    trade('reroll', -g, it.uid)
+    for (const i of mats.slice(0, need).sort((a, b) => b - a)) p.bag.splice(i, 1)
+    it.up = (it.up ?? 0) + 1
+    if (eq) recalc(p)
+    trade('upgrade', -g, it.uid)
   } else if (cmd === CMD_GAMBLE && npc === 'gambler') {
     const g = gamblePrice(p.level)
     if (arg < 0 || arg >= SLOT_COUNT || p.gold < g || p.bag.length >= BAG_SIZE) return
     p.gold -= g
-    const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 0.12, 0, arg)
+    const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 'gamble', tierOf(state.tier).loot, 0, arg)
     p.bag.push(it)
     trade('gamble', -g, it.uid)
   } else if (cmd === CMD_STASH_PUT && npc === 'stash') {
@@ -630,9 +637,11 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
   for (const q of state.players) {
     if (!q.alive || q.left || q.out || len(q.x - o.x, q.y - o.y) > SHARE_RANGE) continue
     const lvl = Math.max(1, areaLevel(state.curArea, q.level, state.tier))
-    if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 1, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 0.2, 2)
-    else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, rand(state.rng) < 0.3 ? 1 : 0, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 0.05, 0)
-    else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.08 ? 1 : 0, rand(state.rng) < 0.04 ? 1 : 0, 0, 0)
+    // 상자는 일반·마법 · 금빛 상자는 희귀 이상 하나 확정(막다른 옆길 · 보스 방 앞의 보상) · 항아리는 드물게 하나
+    const up = tierOf(state.tier).loot
+    if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 'goldchest', up, 2)
+    else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 'chest', up, 0)
+    else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.04 ? 1 : 0, 'chest', up, 0)
   }
 }
 
@@ -829,7 +838,7 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
     // 상인 진열 (게임 시드 — 모두 같다). 여러 무기 · 등급이 조금 높다
     const srng = makeRng((cfg.seed ^ 0x5409) >>> 0)
     const lvl = Math.max(1, Math.round(players.filter((q) => !q.vacant).reduce((a, q) => a + q.level, 0) / Math.max(1, players.filter((q) => !q.vacant).length)))
-    for (let k = 0; k < 10; k++) state.shop.push(rollItem(srng, state.nextItemUid++, lvl + 1, WEAPON_IDS[k % WEAPON_IDS.length], 0.15, 1))
+    for (let k = 0; k < 10; k++) state.shop.push(rollItem(srng, state.nextItemUid++, lvl + 1, WEAPON_IDS[k % WEAPON_IDS.length], 'shop', 0, 1))
   }
   for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
   bindPrimary(state)
@@ -2567,19 +2576,15 @@ function flushSpawns(state: GameState, map: GameMap): void {
 /**
  * 바닥에 전리품을 흩뿌린다 (주인 p): 골드 더미 golds 개(×goldK) · 물약 pots 개 · 아이템 items 개(등급 bonus, 첫 아이템은 minFirst 등급 이상)
  */
-function spill(state: GameState, p: PlayerState, x: number, y: number, lvl: number, golds: number, goldK: number, pots: number, items: number, bonus: number, minFirst: number): void {
+function spill(state: GameState, p: PlayerState, x: number, y: number, lvl: number, golds: number, goldK: number, items: number, src: LootSource, up: number, minFirst: number): void {
   const at = () => ({ x: x + (rand(state.rng) - 0.5) * 60, y: y + (rand(state.rng) - 0.5) * 60 })
   for (let k = 0; k < golds; k++) {
     const g = Math.max(1, Math.round((4 + 1.3 * lvl) * goldK * (0.6 + rand(state.rng) * 0.8)))
     const a = at()
     state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item: null, gold: g, pot: 0, ttl: 60 * 120, lock: 12 })
   }
-  for (let k = 0; k < pots; k++) {
-    const a = at()
-    state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item: null, gold: 0, pot: 1, ttl: 60 * 120, lock: 12 })
-  }
   for (let k = 0; k < items; k++) {
-    const item = rollItem(state.rng, state.nextItemUid++, lvl, p.weapon, bonus, k === 0 ? minFirst : 0)
+    const item = rollItem(state.rng, state.nextItemUid++, lvl, p.weapon, src, up, k === 0 ? minFirst : 0)
     const a = at()
     state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item, gold: 0, pot: 0, ttl: 60 * 240, lock: 20 })
     state.events.push({ type: 'loot', owner: p.id, x: a.x, y: a.y, rarity: item.rarity })
@@ -2595,8 +2600,8 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
     const unique = (m.elite & EA_UNIQUE) !== 0
     gainXp(state, p, Math.round(xpFor(m) * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
-    // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 물약 4% · 아이템 10~16% / 정예는 골드 둘 · 아이템 1~2 · 물약 25% /
-    // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 물약 둘 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상.
+    // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 아이템 10~16%(일반·마법만) / 정예는 골드 둘 · 아이템 1~2(희귀·전설도) /
+    // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상, 신화가 드물게 (items.ts DROP_TABLE).
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
     const lvl = Math.max(1, areaLevel(state.curArea, p.level, state.tier))
     const boss = !!def.boss
@@ -2604,8 +2609,8 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
     const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
     const tier = tierOf(state.tier)
-    const bonus = (fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0) + tier.loot
-    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, 0, items, bonus, fountain ? 2 : 0)
+    const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
+    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, items, src, tier.loot, fountain ? 2 : 0)
   }
 }
 
@@ -2718,7 +2723,7 @@ function pickItem(state: GameState, p: PlayerState): boolean {
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
-  if (cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) {
+  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE) {
     townCommand(state, p, cmd, arg)
     return
   }

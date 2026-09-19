@@ -18,7 +18,7 @@ import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './chara
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
-import { RARITY_COLORS, itemName } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
 export type { RenderOptions }
@@ -468,7 +468,7 @@ export class Renderer3D {
         case 'pickup': {
           if (e.p !== localPlayer) break
           const it = state.players[e.p].bag.find((b) => b.uid === e.uid)
-          if (it) this.hud.notice(`${['', '마법 ', '희귀 ', '전설 '][it.rarity]}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
+          if (it) this.hud.notice(`${it.rarity > 0 ? RARITY_NAMES[it.rarity] + ' ' : ''}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
           break
         }
         case 'chain': {
