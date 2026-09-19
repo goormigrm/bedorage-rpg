@@ -85,6 +85,12 @@ MODEL_SPECS[10] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: SKELETO
 MODEL_SPECS[11] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.0, tint: [0.72, 1.1, 0.55], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 그림자 — 검보라 해골 + 두건 · 빛나는 눈
 MODEL_SPECS[13] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: SKELETON_CLIPS, tint: [0.34, 0.28, 0.46] }
+// 관리인(3막 보스) — 검은 쇠빛 해골 거인 + 투구 · 어깨판 · 쇠곤봉 · 등불
+MODEL_SPECS[12] = { file: 'archer', size: 1.25, yaw: -Math.PI / 2, clips: SKELETON_CLIPS, tint: [0.42, 0.42, 0.48] }
+// 포격 악마 — 검붉은 살찐 좀비 + 뿔 · 포신
+MODEL_SPECS[14] = { file: 'ghoul', size: 1.15, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.2, tint: [1.2, 0.5, 0.42], glow: { 'Sphere.001': 0xffa02a, 'Sphere_1.001': 0xffa02a } }
+// 심연의 군주(최종 보스) — 검붉은 거구 + 뼈 왕관 · 불꽃 균열 · 날개
+MODEL_SPECS[15] = { file: 'ghoul', size: 1.3, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.6, tint: [0.85, 0.32, 0.34], glow: { 'Sphere.001': 0xff5a2a, 'Sphere_1.001': 0xff5a2a } }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
 // (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이

@@ -233,6 +233,8 @@
   - 마리마다 `InstancedMesh.setMorphAt` 으로 프레임 두 장을 섞는다. 예고 `wind` = 공격 클립 앞부분(`windup`) · 휘두름 `swing` = 뒷부분 · 걷기 = 걸음 위상 · 맞음 = 번쩍임.
   - 모양 키 텍스처는 첫 `setMorphAt` 때의 `count` 로 만들어지므로 `count = CAP` 인 채로 한 번 부른 뒤 0 으로 둔다.
   - 받기 전 · 실패 · Esc "실사 괴물 끄기" · 폰(기본) = 도형 괴물. 출처 `CREDITS.md`. 원본 줄이기 `tools/pack-monsters.py`.
+  - 도형 부품 겹쳐 그리기 `MODEL_EXTRAS`(monsters3d): 종류마다 { 부품 번호(음수 = 뒤에서), 크기 s, 높이 dy, 앞뒤 dz }. 부품의 자세 함수(`pose`)를 그대로 써서 예고 · 휘두름에 함께 움직인다.
+    - 받은 모델이 없는 10종은 구울 · 해골 모델 + 색(`tint`) · 살찐 몸(`fat`) + 부품으로 임시 실사화했다(v0.33.1~0.33.3).
 - **손맛**(v0.30.0, 그림 · 소리만 — sim 은 그대로):
   - 맞으면 쏜 방향으로 밀림: `monsters3d.hit(id, crit, dx, dz)` → MVis `kx · kz`, exp(-11t) 로 돌아온다.
   - 피는 쏜 방향으로: `shotDir(state, by, x, y)`.
