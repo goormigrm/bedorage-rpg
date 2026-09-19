@@ -23,6 +23,10 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overscroll-behavior: none; }
 body { font-family: "IBM Plex Sans KR", "Malgun Gothic", "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+/* 한글 줄바꿈 (2026-09-19 사용자): 한글도 **낱말 단위로만** 줄을 바꾼다. 칸이 좁아도 한 글자씩 세로로 쪼개지지 않는다.
+   낱말 하나가 칸보다 길 때만 그 안에서 끊는다(break-word 는 칸의 최소 폭을 낱말 폭으로 둔다). */
+body { word-break: keep-all; overflow-wrap: break-word; }
+button, .btn, .pill, kbd { white-space: nowrap; }
 #app { min-height: 100%; }
 button { font-family: inherit; }
 
@@ -379,26 +383,25 @@ input.nick.big.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,
 .topbar .topacts { display: flex; gap: 10px; flex: 0 0 auto; }
 .btn.lg { padding: 14px 26px; font-size: 16px; border-radius: 12px; }
 .card.wide { width: 100%; }
-/* 방 목록: 한 줄에 한 방, 열이 맞아야 맵·모드·목표가 한눈에 읽힌다 */
-.rhead, .rooms .room { display: grid; grid-template-columns: minmax(120px, 1.3fr) 1fr .8fr .7fr .7fr 1fr auto; align-items: center; column-gap: 10px; }
+/* 방 목록: 방 하나 = 두 줄 (1줄 방 이름 · 상태, 2줄 종류 · 규칙 · 맵 · 인원) + 오른쪽 참가 단추 */
+.rooms .room { display: flex; align-items: center; gap: 12px; }
+.rooms .room .rmain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rooms .room .rtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rooms .room .rmeta { display: flex; flex-wrap: wrap; gap: 2px 0; font-size: 12.5px; color: var(--ink-2); }
+.rooms .room .rmeta span { white-space: nowrap; }
+.rooms .room .rmeta span + span::before { content: "·"; margin: 0 7px; color: var(--ink-3); }
+.rooms .room .ract { flex: 0 0 auto; }
 .rhead { padding: 4px 12px 8px; font: 700 11.5px "IBM Plex Sans KR", sans-serif; color: var(--ink-3); letter-spacing: .04em; border-bottom: 1px solid var(--line-2); margin-bottom: 6px; }
 .rhead[hidden] { display: none; }
 .rooms { max-height: none; overflow: visible; }
 .rooms .room { padding: 10px 12px; font-size: 13.5px; }
 .rooms .room .rhost b { color: var(--ink); }
-.rooms .room .rmap, .rooms .room .rmode, .rooms .room .rkill, .rooms .room .rcount { color: var(--ink-2); }
-.rooms .room .ract { text-align: right; }
 .rooms .room .ract .btn { padding: 8px 16px; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 10px 0 4px; font: 600 12.5px "IBM Plex Mono", monospace; color: var(--ink-2); }
 .pager[hidden] { display: none; }
 .btn.sm { padding: 6px 12px; font-size: 12px; }
 @media (max-width: 760px) {
   .rhead { display: none; }
-  .rooms .room { grid-template-columns: 1fr auto; row-gap: 4px; }
-  .rooms .room .rhost { grid-column: 1 / 2; }
-  .rooms .room .ract { grid-column: 2 / 3; grid-row: 1 / 3; }
-  .rooms .room .rmap::before { content: "맵 "; color: var(--ink-3); }
-  .rooms .room .rmode, .rooms .room .rkill, .rooms .room .rcount, .rooms .room .rstate { display: inline; }
 }
 /* 설정 창 (방 만들기 · 혼자 하기) */
 .dlg { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; background: rgba(6, 9, 14, .78); backdrop-filter: blur(3px); }
@@ -626,14 +629,15 @@ body { background: var(--bg); }
 .d2-side .status:empty { display: none; }
 .d2-side .status { margin-top: 10px; }
 .d2-side .rhead { display: none; }
-.d2-side .rooms .room { flex-wrap: wrap; }
 .d2-side .savebtns { display: flex; gap: 14px; margin-bottom: 8px; }
 .d2-side .notice { background: none; border: 0; padding: 0; color: #7e7260; font-size: 11.5px; }
 .lobby.d2 .foot.d2foot { display: none; }
 .lobby.d2 .foot.d2foot a { color: #7e7260; }
 @media (max-width: 1000px) {
   .lobby.d2 { overflow: auto; }
-  .lobby.d2 .bonfire { position: absolute; height: max(58vh, 320px); }
+  /* 좁은 화면은 로비가 세로로 스크롤된다 — 100vw 면 스크롤바 폭만큼 가로로 넘쳐 가로 스크롤바가 생겼다(2026-09-19) */
+  .lobby.d2 .bonfire { position: absolute; width: 100%; height: max(58vh, 320px); }
+  .lobby.d2 { overflow-x: hidden; }
   .d2-title { position: absolute !important; left: 16px; top: 14px; }
   .d2-title h1 { font-size: 40px !important; }
   .d2-char { position: relative !important; top: auto; bottom: auto; left: auto; transform: none; width: auto; margin: calc(max(58vh, 320px) + 8px) 12px 0; }

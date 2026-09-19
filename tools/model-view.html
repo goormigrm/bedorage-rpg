@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>괴물 모델 보기</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #14110e; color: #e8dcc4; font: 13px "Malgun Gothic", sans-serif; overflow: hidden; }
+  #bar { position: fixed; left: 8px; top: 8px; z-index: 2; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 4px; }
+  #bar button { margin: 2px; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- 확인용 (개발 서버에서만): npm run dev → /bedorage-rpg/tools/model-view.html
+     구운 괴물 모델을 게임과 같은 방식(InstancedMesh + 프레임 모양 키)으로 늘어놓고 동작을 틀어 본다. -->
+<div id="bar">
+  <span id="info">불러오는 중…</span><br />
+  <button data-s="idle">대기</button><button data-s="walk">걷기</button><button data-s="attack">공격</button><button data-s="hit">맞음</button>
+</div>
+<script type="module">
+import * as THREE from 'three'
+import { loadMonsterModel, MODEL_SPECS } from '../src/render3d/monsterModels.ts'
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+renderer.setPixelRatio(devicePixelRatio)
+document.body.appendChild(renderer.domElement)
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(0x14110e)
+const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100)
+cam.position.set(0, 3.2, 6.5)
+cam.lookAt(0, 0.5, 0)
+scene.add(new THREE.HemisphereLight(0xffe8c8, 0x302418, 1.4))
+const sun = new THREE.DirectionalLight(0xffd8a0, 1.6)
+sun.position.set(3, 6, 4)
+scene.add(sun)
+scene.add(new THREE.GridHelper(20, 20, 0x5a4a30, 0x2a2218))
+
+const kinds = MODEL_SPECS.map((s, k) => (s ? k : -1)).filter((k) => k >= 0)
+const items = []
+let segName = 'walk'
+const t0 = performance.now()
+let x = -((kinds.length - 1) * 1.6) / 2
+for (const k of kinds) {
+  const b = await loadMonsterModel(k)
+  const meshes = b.parts.map((p) => {
+    const m = new THREE.InstancedMesh(p.geo, p.mat, 1)
+    m.setMatrixAt(0, new THREE.Matrix4().makeTranslation(x, 0, 0))
+    scene.add(m)
+    return m
+  })
+  items.push({ k, b, meshes, x, infl: new Float32Array(b.frames) })
+  x += 1.6
+}
+document.getElementById('info').textContent = kinds.map((k) => `${k}:${MODEL_SPECS[k].file}`).join(' · ') + ' — 앞이 +z(카메라 쪽)이면 맞다'
+document.querySelectorAll('button[data-s]').forEach((b) => (b.onclick = () => (segName = b.dataset.s)))
+
+function frame() {
+  const t = (performance.now() - t0) / 1000
+  for (const it of items) {
+    const s = it.b.seg[segName] ?? it.b.seg.walk ?? it.b.seg.idle
+    const u = (t * 0.6) % 1
+    const fi = u * (s.loop ? s.count : s.count - 1)
+    const i0 = Math.floor(fi)
+    const i1 = s.loop ? (i0 + 1) % s.count : Math.min(s.count - 1, i0 + 1)
+    const f = fi - i0
+    it.infl.fill(0)
+    it.infl[s.start + i0] = 1 - f
+    it.infl[s.start + i1] += f
+    for (const m of it.meshes) {
+      m.setMorphAt(0, { morphTargetInfluences: it.infl })
+      m.morphTexture.needsUpdate = true
+    }
+  }
+  renderer.render(scene, cam)
+  requestAnimationFrame(frame)
+}
+frame()
+window.__items = items
+
+// ?strip=<종류> : 그 종류의 동작 클립 전체를 장면 N 장으로 구워 한 줄로 늘어놓는다 (클립 안에 어떤 동작이 이어 붙었는지 보기)
+const strip = new URLSearchParams(location.search).get('strip')
+if (strip !== null) {
+  const { MODEL_SPECS: S } = await import('../src/render3d/monsterModels.ts')
+  const k = Number(strip)
+  const spec = S[k]
+  const n = Number(new URLSearchParams(location.search).get('n') ?? 12)
+  const clip = spec.clips.walk.clip
+  const orig = JSON.parse(JSON.stringify(spec.clips))
+  spec.clips = { walk: { clip, frames: n } }
+  const b = await loadMonsterModel(k)
+  spec.clips = orig
+  for (const it of items) for (const m of it.meshes) m.visible = false
+  b.parts.forEach((p) => {
+    for (let f = 0; f < n; f++) {
+      const m = new THREE.InstancedMesh(p.geo, p.mat, 1)
+      m.setMatrixAt(0, new THREE.Matrix4().makeTranslation((f - (n - 1) / 2) * 1.25, 0, 0))
+      const infl = new Float32Array(b.frames)
+      infl[f] = 1
+      m.setMorphAt(0, { morphTargetInfluences: infl })
+      m.morphTexture.needsUpdate = true
+      scene.add(m)
+    }
+  })
+  items.length = 0
+  cam.position.set(0, 4, 12)
+  cam.lookAt(0, 0.3, 0)
+  document.getElementById('info').textContent = `${spec.file} "${clip}" 를 ${n} 장으로 (왼쪽 = 처음)`
+}
+</script>
+</body>
+</html>

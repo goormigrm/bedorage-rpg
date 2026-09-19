@@ -1,0 +1,36 @@
+# 출처 (CREDITS)
+
+배도라지RPG 는 비공식 · 비상업 팬 게임입니다. 캐릭터(오리) · 배경 · 소리는 코드로 만들었고,
+**괴물 모델**은 아래 작가들이 무료로 공개한 것을 줄여서 씁니다. 고마운 분들입니다.
+
+## 괴물 모델 (CC BY 4.0 — 출처 표기)
+
+게임에 넣을 때 고친 것: 면 · 동작 키프레임 · 텍스처를 줄이고(`tools/pack-monsters.py`), 동작을 모양 키 프레임으로 구워 색을 입혔습니다.
+
+| 게임 속 괴물 | 원본 | 만든 이 | 라이선스 |
+|---|---|---|---|
+| 구울 · 부푼 시체 | ["Zombie (Rigged & Animated)"](https://sketchfab.com/3d-models/zombie-rigged-animated-131688807ad444609ed9b2ed572dc4aa) | [Aiden Studios](https://sketchfab.com/aidenstudios) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 해골 궁수 | ["Skeleton animated"](https://sketchfab.com/3d-models/skeleton-animated-9210377c7a514cf6b48a31b9d3991ff3) | [danielmclogan](https://sketchfab.com/danielmclogan) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 굶주린 늑대 | ["Grey Wolf (Rigged and Animated)"](https://sketchfab.com/3d-models/grey-wolf-rigged-and-animated-56de4df672654ed599777d2980bf0f53) | [rhcreations](https://sketchfab.com/rhcreations) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 독거미 | ["Wolf Spider (Rigged) - (Rabidosa rabida)"](https://sketchfab.com/3d-models/wolf-spider-rigged-rabidosa-rabida-6392e4cfb64d407182fdad2cea9e0abe) | [Dreaming In Alternation 27](https://sketchfab.com/DreamingInAlternation27) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 거미 여왕 | ["Amethystine Blight Queen"](https://sketchfab.com/3d-models/amethystine-blight-queen-1a9caad333b049c3a94c7648001d2b57) | [HighPolyDensity](https://sketchfab.com/HighPolyDensity) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+
+원문 표기 (Sketchfab 이 권하는 형식):
+
+- This work is based on "Zombie (Rigged & Animated)" (https://sketchfab.com/3d-models/zombie-rigged-animated-131688807ad444609ed9b2ed572dc4aa) by Aiden Studios (https://sketchfab.com/aidenstudios) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Skeleton animated" (https://sketchfab.com/3d-models/skeleton-animated-9210377c7a514cf6b48a31b9d3991ff3) by danielmclogan (https://sketchfab.com/danielmclogan) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Grey Wolf (Rigged and Animated)" (https://sketchfab.com/3d-models/grey-wolf-rigged-and-animated-56de4df672654ed599777d2980bf0f53) by rhcreations (https://sketchfab.com/rhcreations) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Wolf Spider (Rigged) - (Rabidosa rabida)" (https://sketchfab.com/3d-models/wolf-spider-rigged-rabidosa-rabida-6392e4cfb64d407182fdad2cea9e0abe) by Dreaming In Alternation 27 (https://sketchfab.com/DreamingInAlternation27) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Amethystine Blight Queen" (https://sketchfab.com/3d-models/amethystine-blight-queen-1a9caad333b049c3a94c7648001d2b57) by HighPolyDensity (https://sketchfab.com/HighPolyDensity) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+## 받아 두었지만 아직 쓰지 않는 것
+
+- Quaternius "Universal Animation Library" (Standard) — CC0 1.0 (표기 의무 없음). https://quaternius.itch.io/universal-animation-library
+  사람 모양 괴물에 공격 · 죽음 동작을 옮겨 붙일 때 쓴다. 원본은 `art-src/`(저장소 밖)에 있다.
+
+## 넣는 법 (개발자)
+
+1. 무료 모델을 받는다 — CC0 우선, CC BY 는 이 파일에 적는다. 유료 · NC · SA · ND 는 쓰지 않는다(docs/GUIDE.md 11장).
+2. 원본을 `art-src/monsters/<종류>/src/` 에 풀고, 라이선스 글을 `art-src/licenses/` 에 둔다.
+3. `python tools/pack-monsters.py <종류>` → `public/assets3d/monsters/<종류>.glb`.
+4. `src/render3d/monsterModels.ts` 의 `MODEL_SPECS` 에 동작 · 크기 · 방향을 적고, `npm run dev` 뒤 `/bedorage-rpg/tools/model-view.html` 로 본다.

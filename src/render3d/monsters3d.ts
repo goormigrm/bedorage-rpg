@@ -10,6 +10,14 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { MONSTER_LIST } from '../core/monsters'
 import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
+import { BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
+
+/** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 프레임 고르기용 배열 */
+interface ModelKind {
+  baked: BakedModel
+  meshes: InstancedMesh[]
+  dummy: { morphTargetInfluences: Float32Array }
+}
 
 /** 몬스터가 매 프레임 넘기는 움직임 상태 */
 interface Anim {
@@ -753,10 +761,67 @@ export class MonsterView {
   private prevPos = new Map<number, { x: number; y: number }>()
   /** 그린 위치 (체력 바·조준선이 쓴다) */
   readonly shown = new Map<number, { x: number; z: number }>()
+  /** 실사 모델 (종류 번호 → 받는 중 · 실패 · 준비됨). 2026-09-19 */
+  private models: (ModelKind | 'loading' | 'failed' | undefined)[] = []
+  private mcounts: number[] = []
+  /** 실사 괴물을 쓸지 (Esc 메뉴 — 끄면 도형 괴물) */
+  private real = true
+  private clock = 0
+  private local = new THREE.Matrix4()
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
     for (const parts of this.kinds) for (const p of parts) this.group.add(p.mesh)
+    this.mcounts = this.kinds.map(() => 0)
+  }
+
+  /** 실사 괴물 켜기/끄기. 끄면 받은 모델은 두고 도형 괴물로 그린다 */
+  setReal(on: boolean): void {
+    this.real = on
+  }
+
+  /** 실사 모델 상태 (확인용 — __bd.models()) */
+  modelStatus(): { ready: number[]; loading: number[]; failed: number[] } {
+    const r: { ready: number[]; loading: number[]; failed: number[] } = { ready: [], loading: [], failed: [] }
+    this.models.forEach((m, k) => {
+      if (m === 'loading') r.loading.push(k)
+      else if (m === 'failed') r.failed.push(k)
+      else if (m) r.ready.push(k)
+    })
+    return r
+  }
+
+  /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물) */
+  private want(kind: number): void {
+    if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) return
+    this.models[kind] = 'loading'
+    loadMonsterModel(kind)
+      .then((baked) => {
+        if (!baked) {
+          this.models[kind] = 'failed'
+          return
+        }
+        const meshes = baked.parts.map((p) => {
+          const mesh = new THREE.InstancedMesh(p.geo, p.mat, CAP) as InstancedMesh
+          mesh.frustumCulled = false
+          mesh.castShadow = true
+          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+          const white = new THREE.Color(1, 1, 1)
+          for (let i = 0; i < CAP; i++) mesh.setColorAt(i, white)
+          // 프레임 텍스처는 첫 setMorphAt 때의 count(= CAP) 로 만들어진다 — count 를 줄이기 전에 부른다
+          const init = new Float32Array(baked.frames)
+          init[0] = 1
+          mesh.setMorphAt(0, { morphTargetInfluences: init } as unknown as THREE.Mesh)
+          mesh.count = 0
+          this.group.add(mesh)
+          return mesh
+        })
+        this.models[kind] = { baked, meshes, dummy: { morphTargetInfluences: new Float32Array(baked.frames) } }
+      })
+      .catch((err) => {
+        console.warn('실사 괴물 모델을 받지 못했다 — 도형 괴물로 그린다', kind, err)
+        this.models[kind] = 'failed'
+      })
   }
 
   /** 맞음: 번쩍 + 움찔 */
@@ -809,6 +874,8 @@ export class MonsterView {
     this.prevPos.clear()
     for (const m of prev.monsters) this.prevPos.set(m.id, { x: m.x, y: m.y })
     const counts = this.kinds.map(() => 0)
+    this.mcounts.fill(0)
+    this.clock += dt
     const live = new Set<number>()
     this.shown.clear()
     for (const m of curr.monsters) {
@@ -845,6 +912,7 @@ export class MonsterView {
       v.yaw += d * Math.min(1, dt * 14)
       v.elite = m.elite > 0
       v.unique = (m.elite & 64) !== 0
+      this.want(m.kind)
       if (hidden(m)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
@@ -879,12 +947,26 @@ export class MonsterView {
         if (p.flashes && p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true
       }
     })
+    this.models.forEach((mk, k) => {
+      if (!mk || typeof mk === 'string') return
+      const n = this.real ? this.mcounts[k] : 0
+      for (const mesh of mk.meshes) {
+        mesh.count = n
+        if (n === 0) continue
+        mesh.instanceMatrix.needsUpdate = true
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+        if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true
+      }
+    })
   }
 
   private put(kind: number, counts: number[], x: number, z: number, yaw: number, a: Anim, corpseT: number): void {
-    const i = counts[kind]
+    const mk = this.real ? this.models[kind] : undefined
+    const model = mk && typeof mk !== 'string' ? mk : null
+    const i = model ? this.mcounts[kind] : counts[kind]
     if (i >= CAP) return
-    counts[kind]++
+    if (model) this.mcounts[kind]++
+    else counts[kind]++
     const def = MONSTER_LIST[kind]
     const size = (def.r / 13) * (a.unique ? 1.7 : a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
@@ -904,6 +986,10 @@ export class MonsterView {
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
+    if (model) {
+      this.putModel(model, i, a)
+      return
+    }
     for (const p of this.kinds[kind]) {
       this.o.position.set(0, 0, 0)
       this.o.rotation.set(0, 0, 0)
@@ -916,7 +1002,79 @@ export class MonsterView {
     }
   }
 
+  /**
+   * 실사 모델 한 마리: 동작 상태로 프레임 두 장을 골라 섞고, 뿌리에 예고(몸을 뒤로) · 휘두름(앞으로 내밂) · 움찔을 더한다.
+   * - 예고 wind 0→1 = 공격 클립의 앞부분(windup), 휘두름 swing 1→0 = 뒷부분 — 판정 틱과 보이는 휘두름이 맞는다.
+   * - 걷기는 걸음 위상(walk)으로 — 발이 미끄러지지 않게 이동 속도를 따른다.
+   */
+  private putModel(mk: ModelKind, i: number, a: Anim): void {
+    const b = mk.baked
+    const s = b.seg
+    let seg = s.idle ?? s.walk!
+    let t = 0
+    if (a.dead > 0) {
+      seg = s.hit ?? s.idle ?? s.walk!
+      t = s.hit ? 1 : 0
+    } else if (a.wind > 0 && s.attack) {
+      seg = s.attack
+      t = a.wind * b.windup
+    } else if (a.swing > 0 && s.attack) {
+      seg = s.attack
+      t = b.windup + (1 - a.swing) * (1 - b.windup)
+    } else if (a.flash > 0.5 && s.hit) {
+      seg = s.hit
+      t = 1 - a.flash
+    } else if (a.move > 0.35 && s.walk) {
+      seg = s.walk
+      t = a.walk / (Math.PI * 2)
+    } else if (s.idle) {
+      seg = s.idle
+      t = this.clock * 0.45 + a.walk * 0.13
+    } else {
+      // 대기 동작이 없는 모델: 걷기 첫 장에 멈춰 선다
+      seg = s.walk!
+      t = 0
+    }
+    let fi: number
+    let i0: number
+    let i1: number
+    if (seg.loop) {
+      fi = (((t % 1) + 1) % 1) * seg.count
+      i0 = Math.floor(fi)
+      i1 = (i0 + 1) % seg.count
+    } else {
+      fi = Math.max(0, Math.min(1, t)) * (seg.count - 1)
+      i0 = Math.floor(fi)
+      i1 = Math.min(seg.count - 1, i0 + 1)
+    }
+    const f = fi - i0
+    const infl = mk.dummy.morphTargetInfluences
+    infl[seg.start + i0] = 1 - f
+    infl[seg.start + i1] += f
+    // 뿌리: 예고 때 몸을 뒤로 젖히고, 휘두를 때 앞으로 내민다 · 맞으면 움찔(찌그러짐)
+    this.o.position.set(0, 0, a.swing * 0.16 - a.wind * 0.05)
+    this.o.rotation.set(-a.wind * 0.12 + a.swing * 0.1, 0, 0)
+    this.o.scale.set(1 + a.squash * 0.25, 1 - a.squash * 0.25, 1 + a.squash * 0.25)
+    this.o.updateMatrix()
+    this.local.multiplyMatrices(this.root, this.o.matrix)
+    for (const mesh of mk.meshes) {
+      mesh.setMatrixAt(i, this.local)
+      mesh.setColorAt(i, this.col)
+      mesh.setMorphAt(i, mk.dummy as unknown as THREE.Mesh)
+    }
+    infl[seg.start + i0] = 0
+    infl[seg.start + i1] = 0
+  }
+
   dispose(): void {
+    for (const mk of this.models) {
+      if (!mk || typeof mk === 'string') continue
+      for (const mesh of mk.meshes) {
+        mesh.geometry.dispose()
+        ;(mesh.material as THREE.Material).dispose()
+        mesh.dispose()
+      }
+    }
     for (const parts of this.kinds) {
       for (const p of parts) {
         p.mesh.geometry.dispose()

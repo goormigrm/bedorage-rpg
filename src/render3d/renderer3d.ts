@@ -194,6 +194,8 @@ export class Renderer3D {
   private scopeFlash = 0
   private camTarget = new THREE.Vector3()
   private camDist = FOLLOW_DIST
+  /** 확인용 카메라 당김 (__bd.zoom — 모델 모습 보기) */
+  private debugZoom = 1
   private camInit = false
   private t = 0
   private lastDt = 0.016
@@ -311,6 +313,26 @@ export class Renderer3D {
     for (const g of this.globeMeshes.values()) this.scene.remove(g)
     this.globeMeshes.clear()
     this.camInit = false
+  }
+
+  /** 실사 괴물 켜기/끄기 (Esc 메뉴 — 2026-09-19) */
+  setRealMonsters(on: boolean): void {
+    this.monsterView.setReal(on)
+  }
+
+  /** 확인용: 카메라 거리 배율 (1 = 보통) */
+  setDebugZoom(k: number): void {
+    this.debugZoom = Math.max(0.15, Math.min(2, k))
+  }
+
+  /** 확인용: 괴물 렌더러 */
+  debugMonsters(): unknown {
+    return this.monsterView
+  }
+
+  /** 실사 괴물 모델 상태 (확인용) */
+  monsterModels(): { ready: number[]; loading: number[]; failed: number[] } {
+    return this.monsterView.modelStatus()
   }
 
   resize(): void {
@@ -2571,7 +2593,7 @@ export class Renderer3D {
     const cx = this.camTarget.x + shx
     const cz = this.camTarget.z + shz
     // 카메라 펀치: 잠깐 당겨졌다 돌아온다 (최대 7%)
-    const cd = this.camDist * (1 - Math.min(1, this.punch) * 0.07)
+    const cd = this.camDist * this.debugZoom * (1 - Math.min(1, this.punch) * 0.07)
     const flat = Math.cos(PITCH) * cd
     this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * cd, cz + Math.cos(YAW) * flat)
     this.camera.lookAt(cx, 0.6, cz)

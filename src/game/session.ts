@@ -106,6 +106,17 @@ interface PendingDrop {
   tick: number
 }
 
+/** 실사 괴물을 쓸지 — 저장한 값이 없으면 폰은 끔 · 컴퓨터는 켬 */
+function realMonstersOn(): boolean {
+  try {
+    const v = localStorage.getItem('brpg.real')
+    if (v !== null) return v === '1'
+  } catch {
+    /* 저장소를 못 쓰면 기본값 */
+  }
+  return !isTouchDevice()
+}
+
 export class Session {
   /** 지역별 맵 (게임 시드 · 지역 번호로 만든다 — 모든 브라우저가 같은 세계). 투기장은 지역 0 하나 */
   private maps = new Map<number, GameMap>()
@@ -264,6 +275,7 @@ export class Session {
     this.applyKeys()
     this.viewArea = this.wantedArea()
     this.renderer = new Renderer3D(this.stage, this.map)
+    this.renderer.setRealMonsters(realMonstersOn())
     this.areaBanner()
     // 캔버스가 UI 아래에 오도록 UI 를 맨 뒤로
     const ui = this.stage.querySelector('.game-ui') as HTMLElement
@@ -424,6 +436,11 @@ export class Session {
       },
       resyncs: () => this.resyncs,
       audio: () => this.sfx.stats(),
+      /** 실사 괴물 모델: 받은 종류 · 받는 중 · 실패 */
+      models: () => this.renderer.monsterModels(),
+      /** 확인용 카메라 당김 (0.3 = 가까이) */
+      zoom: (k: number) => this.renderer.setDebugZoom(k),
+      mv: () => this.renderer.debugMonsters(),
     }
   }
 
@@ -842,6 +859,21 @@ export class Session {
                 },
               },
             ]),
+        // 실사 괴물 (2026-09-19): 처음 만날 때 모델을 받는다. 느린 기기는 끈다 (폰은 기본 끔)
+        {
+          label: realMonstersOn() ? '실사 괴물 끄기' : '실사 괴물 켜기',
+          primary: false,
+          onClick: () => {
+            const on = !realMonstersOn()
+            try {
+              localStorage.setItem('brpg.real', on ? '1' : '0')
+            } catch {
+              /* 저장 못 해도 이번 판은 바뀐다 */
+            }
+            this.renderer.setRealMonsters(on)
+            this.showMenu()
+          },
+        },
         // 모바일은 화면 위쪽에 ≡ 하나만 두고 소리·로비로를 이 안에 넣는다
         {
           label: this.sfx.muted ? '소리 켜기' : '소리 끄기',

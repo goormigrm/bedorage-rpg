@@ -222,6 +222,11 @@
   **눈은 조명과 무관하게 빛난다**(MeshBasic) — 어둠 속에서 먼저 보이는 것.
 - 시야 밖 몬스터는 그리지 않는다(덕의 규칙). 미니맵에는 보이는 몬스터만 점으로(잠든 것은 어둡게), 층 입구는 초록 네모.
 - 피해 숫자는 **내가 맞힌 것만** 띄운다 — 동료·폭발 숫자까지 띄우면 무리 싸움에서 화면이 숫자로 덮였다.
+- **실사 괴물**(v0.31.0, 그림만): `render3d/monsterModels.ts`(명세 `MODEL_SPECS` — 종류 번호 → 파일 · 크기 · 방향 · 동작 · 빛나는 눈) + `monsterBake.ts`(처음 받을 때 따로 받는 굽기 코드).
+  - 처음 그 종류를 그릴 때 `public/assets3d/monsters/<파일>.glb` 를 받아 동작을 프레임(대기 · 걷기 · 공격 · 맞음, 합계 30장 안팎)으로 굽는다 — 모양 키(절대 위치, `morphTargetsRelative=false`).
+  - 마리마다 `InstancedMesh.setMorphAt` 으로 프레임 두 장을 섞는다. 예고 `wind` = 공격 클립 앞부분(`windup`) · 휘두름 `swing` = 뒷부분 · 걷기 = 걸음 위상 · 맞음 = 번쩍임.
+  - 모양 키 텍스처는 첫 `setMorphAt` 때의 `count` 로 만들어지므로 `count = CAP` 인 채로 한 번 부른 뒤 0 으로 둔다.
+  - 받기 전 · 실패 · Esc "실사 괴물 끄기" · 폰(기본) = 도형 괴물. 출처 `CREDITS.md`. 원본 줄이기 `tools/pack-monsters.py`.
 - **손맛**(v0.30.0, 그림 · 소리만 — sim 은 그대로):
   - 맞으면 쏜 방향으로 밀림: `monsters3d.hit(id, crit, dx, dz)` → MVis `kx · kz`, exp(-11t) 로 돌아온다.
   - 피는 쏜 방향으로: `shotDir(state, by, x, y)`.

@@ -180,7 +180,9 @@ export class BonfireScene {
       // 이름패: 앞 단은 발판 앞면, 뒤 단은 머리 위 (뒤 단 발판 앞면은 앞 단 사람에게 가린다)
       const tex = plateTexture(CHARACTERS[id].name, sub?.(id) ?? '')
       this.textures.push(tex)
-      const plate = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0.75 }))
+      // 이름표는 늘 맨 위에 (2026-09-19 사용자 — 앞줄 이름표가 옆 받침대 · 모닥불 돌에 가렸다)
+      const plate = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 0.75 }))
+      plate.renderOrder = 10
       plate.scale.set(1.15, 0.36, 1)
       if (back) plate.position.set(x, h + rig.height + 0.32, z)
       else plate.position.set(x, h * 0.5, z + 0.55)

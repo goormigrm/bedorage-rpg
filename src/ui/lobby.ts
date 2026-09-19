@@ -158,7 +158,7 @@ export class Lobby {
             <div class="savebtns"><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
             <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></div>
             <div class="notice" id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</div>
-            <div class="notice">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a></div>
+            <div class="notice">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></div>
           </div>
         </div>
         <div class="chars" id="chars" hidden></div>
@@ -217,7 +217,7 @@ export class Lobby {
           </div>
         </div>
 
-        <div class="foot d2foot">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · <b>문제·제안은 철면수심 다음 카페 게시글로</b> · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a></div>
+        <div class="foot d2foot">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · <b>문제·제안은 철면수심 다음 카페 게시글로</b> · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></div>
       </div>`
 
     const chars = h.querySelector('#chars') as HTMLElement
@@ -601,13 +601,17 @@ export class Lobby {
                 : room
                   ? '<span class="pill ok">난입 가능</span>'
                   : '<span class="pill">게임 중</span>'
+        // 두 줄 (2026-09-19 사용자 — 좁은 칸에 일곱 칸을 늘어놓아 한글이 한 글자씩 세로로 쪼개졌다):
+        // 1줄 "○○의 방 [상태]" · 2줄 "던전 · 보통 · 죽음 없음 · 맵 · 1/4명" · 오른쪽에 참가 단추
+        const rule = arenaRoom
+          ? [ROOM_MODE_LABEL[r.mode] ?? r.mode, `${r.targetKills}킬`]
+          : [TIER_LABEL[r.tier ?? 0] ?? '보통', `죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`]
+        const meta = [arenaRoom ? '투기장' : '던전', ...rule, m, `${r.count}/${r.max}명`]
         return `<div class="room">
-          <span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(r.hostName.trim()) : c ? c.name : r.hostChar}</b>의 방</span>
-          <span class="rmap">${arenaRoom ? '투기장' : '던전'}</span>
-          <span class="rmode">${arenaRoom ? `${ROOM_MODE_LABEL[r.mode] ?? r.mode} · ${r.targetKills}킬` : `${TIER_LABEL[r.tier ?? 0] ?? '보통'} · 죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`}</span>
-          <span class="rkill">${m}</span>
-          <span class="rcount">${r.count}/${r.max}명</span>
-          <span class="rstate">${st}</span>
+          <div class="rmain">
+            <div class="rtop"><span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(r.hostName.trim()) : c ? c.name : r.hostChar}</b>의 방</span>${st}</div>
+            <div class="rmeta">${meta.map((t) => `<span>${esc(String(t))}</span>`).join('')}</div>
+          </div>
           <span class="ract"><button class="btn" data-code="${r.code}" ${canJoin ? '' : 'disabled'}>${r.state === 'playing' ? '난입' : '참가'}</button></span>
         </div>`
       })
