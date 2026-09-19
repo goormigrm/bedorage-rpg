@@ -53,6 +53,10 @@ export interface ModelSpec {
 const UAL_HIT: ClipPick = { clip: 'UAL_Hit_Chest', frames: 3 }
 // 0.35초부터 — 앞은 제자리에서 비틀거림이 길다. 1.5초에 등을 대고 눕는다
 const UAL_DEATH: ClipPick = { clip: 'UAL_Death01', from: 0.35, to: 1.5, frames: 6 }
+// 공격 셋 (좀비 · 해골 모델 모두에 옮겨 붙였다). 검 휘두르기: 앞 0.1초 · 뒤 0.4초는 서 있기만 해서 뺀다
+const SWORD: ClipPick = { clip: 'UAL_Sword_Attack', from: 0.1, to: 1.15, frames: 8 }
+const SPELL: ClipPick = { clip: 'UAL_Spell_Simple_Shoot', frames: 5 }
+const AIM: ClipPick = { clip: 'UAL_Pistol_Shoot', frames: 6 }
 
 const GHOUL_CLIPS: ModelSpec['clips'] = {
   idle: { clip: 'Idle', frames: 6 },
@@ -78,33 +82,32 @@ const skeletonClips = (attack: ClipPick): ModelSpec['clips'] => ({
   hit: UAL_HIT,
   death: UAL_DEATH,
 })
-MODEL_SPECS[1] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips({ clip: 'UAL_Pistol_Shoot', frames: 6 }), windup: 0.4 }
+MODEL_SPECS[1] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(AIM), windup: 0.4 }
 // 부푼 시체 — 구울 모델 + 살찐 몸 모양 키 + 누런 녹색
 MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 2.2, tint: [0.95, 1.05, 0.7], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 도살자(1막 보스) — 구울 모델 + 살찐 몸 + 붉은 살 + 붉은 눈 (식칼은 도형 부품을 겹쳐 그린다 — monsters3d MODEL_EXTRAS).
 // 2차 묶음의 Pig Demon 을 받기 전까지 쓴다 (받을 파일이 늘지 않는다)
-MODEL_SPECS[3] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.4, tint: [1.3, 0.72, 0.64], glow: { 'Sphere.001': 0xff3a1a, 'Sphere_1.001': 0xff3a1a } }
+// 공격은 큰 부채꼴이라 검 휘두르기 동작으로 (식칼은 도형 부품이 같이 휘두른다)
+MODEL_SPECS[3] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: SWORD }, windup: 0.5, fat: 1.4, tint: [1.3, 0.72, 0.64], glow: { 'Sphere.001': 0xff3a1a, 'Sphere_1.001': 0xff3a1a } }
 // ---- 임시 실사화 (2026-09-19): 받은 모델 + 도형 부품(monsters3d MODEL_EXTRAS). 2차 묶음을 받으면 제 모델로 바꾼다 ----
-// 검 휘두르기: 앞 0.1초 · 뒤 0.4초는 서 있기만 해서 뺀다
-const SWORD: ClipPick = { clip: 'UAL_Sword_Attack', from: 0.1, to: 1.15, frames: 8 }
 // 보물 고블린 — 작고 푸르죽죽한 좀비 + 금 자루
 MODEL_SPECS[4] = { file: 'ghoul', size: 0.8, clips: GHOUL_CLIPS, windup: 0.5, tint: [0.78, 1.0, 0.7], glow: { 'Sphere.001': 0xffe05c, 'Sphere_1.001': 0xffe05c } }
 // 버섯 주술사 — 창백한 좀비 + 빛나는 버섯 갓 · 지팡이
-MODEL_SPECS[7] = { file: 'ghoul', size: 1.1, clips: GHOUL_CLIPS, windup: 0.5, tint: [0.85, 0.92, 1.05], glow: { 'Sphere.001': 0x7affc8, 'Sphere_1.001': 0x7affc8 } }
+MODEL_SPECS[7] = { file: 'ghoul', size: 1.1, clips: { ...GHOUL_CLIPS, attack: SPELL }, windup: 0.4, tint: [0.85, 0.92, 1.05], glow: { 'Sphere.001': 0x7affc8, 'Sphere_1.001': 0x7affc8 } }
 // 방패병 — 해골 + 투구 · 눈구멍 빛 · 큰 방패
 MODEL_SPECS[9] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5, tint: [0.82, 0.82, 0.78] }
 // 강령술사 — 검게 삭은 해골 + 해골 지팡이 · 빛나는 구슬
-MODEL_SPECS[10] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips({ clip: 'UAL_Spell_Simple_Shoot', frames: 5 }), windup: 0.4, tint: [0.62, 0.56, 0.7] }
+MODEL_SPECS[10] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(SPELL), windup: 0.4, tint: [0.62, 0.56, 0.7] }
 // 산성 토사꾼 — 초록 살찐 좀비 + 산 주머니
-MODEL_SPECS[11] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.0, tint: [0.72, 1.1, 0.55], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
+MODEL_SPECS[11] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: SPELL }, windup: 0.4, fat: 1.0, tint: [0.72, 1.1, 0.55], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 그림자 — 검보라 해골 + 두건 · 빛나는 눈
 MODEL_SPECS[13] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skeletonClips({ clip: 'UAL_Punch_Cross', frames: 6 }), windup: 0.45, tint: [0.34, 0.28, 0.46] }
 // 관리인(3막 보스) — 검은 쇠빛 해골 거인 + 투구 · 어깨판 · 쇠곤봉 · 등불
 MODEL_SPECS[12] = { file: 'archer', size: 1.25, yaw: -Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5, tint: [0.42, 0.42, 0.48] }
 // 포격 악마 — 검붉은 살찐 좀비 + 뿔 · 포신
-MODEL_SPECS[14] = { file: 'ghoul', size: 1.15, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.2, tint: [1.2, 0.5, 0.42], glow: { 'Sphere.001': 0xffa02a, 'Sphere_1.001': 0xffa02a } }
+MODEL_SPECS[14] = { file: 'ghoul', size: 1.15, clips: { ...GHOUL_CLIPS, attack: AIM }, windup: 0.4, fat: 1.2, tint: [1.2, 0.5, 0.42], glow: { 'Sphere.001': 0xffa02a, 'Sphere_1.001': 0xffa02a } }
 // 심연의 군주(최종 보스) — 검붉은 거구 + 뼈 왕관 · 불꽃 균열 · 날개
-MODEL_SPECS[15] = { file: 'ghoul', size: 1.3, clips: GHOUL_CLIPS, windup: 0.5, fat: 1.6, tint: [0.85, 0.32, 0.34], glow: { 'Sphere.001': 0xff5a2a, 'Sphere_1.001': 0xff5a2a } }
+MODEL_SPECS[15] = { file: 'ghoul', size: 1.3, clips: { ...GHOUL_CLIPS, attack: SWORD }, windup: 0.5, fat: 1.6, tint: [0.85, 0.32, 0.34], glow: { 'Sphere.001': 0xff5a2a, 'Sphere_1.001': 0xff5a2a } }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
 // (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이

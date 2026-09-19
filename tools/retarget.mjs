@@ -80,7 +80,7 @@ const TARGETS = {
       foot_r: 'foot.r_010',
       ball_r: 'toes_01.r_011',
     },
-    clips: ['Death01', 'Hit_Chest'],
+    clips: ['Death01', 'Hit_Chest', 'Sword_Attack', 'Spell_Simple_Shoot', 'Pistol_Shoot'],
   },
   // 해골 궁수 (3ds Max Biped 뼈대)
   archer: {

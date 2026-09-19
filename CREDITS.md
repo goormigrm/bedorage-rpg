@@ -27,7 +27,7 @@
 
 - Quaternius "Universal Animation Library" (Standard) — CC0 1.0. https://quaternius.itch.io/universal-animation-library
   - 좀비 · 해골 모델에 없던 동작을 옮겨 붙였다(`tools/retarget.mjs`, 2026-09-19).
-  - 좀비: 죽음 · 맞음. 해골: 대기 · 걷기 · 맞음 · 죽음 · 공격 넷(검 휘두르기 · 마법 쏘기 · 겨누기 · 주먹).
+  - 좀비: 죽음 · 맞음 · 공격 셋(검 휘두르기 · 마법 쏘기 · 겨누기). 해골: 대기 · 걷기 · 맞음 · 죽음 · 공격 넷(검 휘두르기 · 마법 쏘기 · 겨누기 · 주먹).
   - 원본은 `art-src/`(저장소 밖)에 있다.
 
 ## 넣는 법 (개발자)
