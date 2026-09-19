@@ -28,12 +28,17 @@ function showLobby(): void {
     onStart: (cfg: Omit<SessionConfig, 'onExit'>) => {
       lobby?.dispose()
       lobby = null
-      app.innerHTML = ''
-      session = new Session(app, { ...cfg, onExit: showLobby })
-      // 스크린샷·GIF 를 뜰 때(?shot=1)만 세션을 밖에 내놓는다 — 장면 연출용(자리 옮기기, 조준점 계산). 평소엔 없다
-      if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session
+      startSession(cfg)
     },
   })
+}
+
+/** 게임 세션 열기 — 로비에서, 그리고 "혼자 이어하기"(호스트가 나갔을 때 지금 판 그대로)에서 */
+function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
+  app.innerHTML = ''
+  session = new Session(app, { ...cfg, onExit: showLobby, onRestart: startSession })
+  // 스크린샷·GIF 를 뜰 때(?shot=1)만 세션을 밖에 내놓는다 — 장면 연출용(자리 옮기기, 조준점 계산). 평소엔 없다
+  if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session
 }
 
 setFavicon()

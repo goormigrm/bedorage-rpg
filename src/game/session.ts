@@ -99,6 +99,8 @@ export interface SessionConfig {
   resumeState?: any
   resumeTick?: number
   onExit: () => void
+  /** 새 판으로 갈아타기 (호스트가 나갔을 때 "혼자 이어하기" — main.ts 가 새 세션을 연다) */
+  onRestart?: (cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>) => void
 }
 
 interface PendingDrop {
@@ -1039,8 +1041,15 @@ export class Session {
     this.dropped.add(idx)
     this.lockstep?.drop(idx)
     if (idx === 0) {
-      // 호스트가 나가면 방은 끝
-      this.showOverlay('호스트가 나갔습니다', '방이 닫혔습니다.', [{ label: '로비로', primary: true, onClick: () => this.exit() }])
+      // 호스트가 나가면 방은 끝. 던전이면 **지금 판 그대로 혼자 이어하기**를 고를 수 있다(2026-09-19 M8) —
+      // 판은 모두가 똑같이 들고 있으므로(락스텝) 내 것을 그대로 쓰면 된다
+      const buttons = [{ label: '로비로', primary: !this.canContinueSolo(), onClick: () => this.exit() }]
+      if (this.canContinueSolo()) buttons.unshift({ label: '혼자 이어하기', primary: true, onClick: () => this.continueSolo() })
+      this.showOverlay(
+        '호스트가 나갔습니다',
+        this.canContinueSolo() ? '방이 닫혔습니다. 지금 판을 그대로 혼자 이어 갈 수 있습니다(봇 동료는 함께 남습니다).' : '방이 닫혔습니다.',
+        buttons,
+      )
       this.paused = true
       return
     }
@@ -1055,6 +1064,32 @@ export class Session {
         if (this.message.startsWith(this.names[idx])) this.message = ''
       }, 4000)
     }
+  }
+
+  /** 혼자 이어하기가 되는가: 던전 · 판이 끝나지 않음 · 내가 자리에 앉아 있음 */
+  private canContinueSolo(): boolean {
+    const me = this.state.players[this.cfg.localPlayer]
+    return !!this.cfg.onRestart && this.state.mode === 'dungeon' && this.state.phase !== 'over' && !!me && !me.left && !me.vacant && !this.joiningIn
+  }
+
+  /**
+   * 혼자 이어하기: 지금 판을 복사해 사람 자리(나 빼고)는 비우고, 봇 자리는 내가 이어서 몬다.
+   * 새 세션은 방 없이(mode 'solo') 같은 시드 · 같은 판에서 시작한다 — 퀘스트 · 웨이포인트 · 가방은 그대로다.
+   */
+  private continueSolo(): void {
+    this.saveMine(true)
+    const lp = this.cfg.localPlayer
+    const st = JSON.parse(JSON.stringify(this.state)) as GameState
+    st.players.forEach((p, i) => {
+      if (i !== lp && !this.cfg.bots?.[i] && !p.left) dropPlayer(st, i)
+    })
+    const { link: _link, lobby: _lobby, peerIds: _peers, onExit: _exit, onRestart, ...rest } = this.cfg
+    void _link
+    void _lobby
+    void _peers
+    void _exit
+    this.dispose()
+    onRestart!({ ...rest, mode: 'solo', resumeState: st, resumeTick: st.tick, absent: st.players.map((p, i) => i !== lp && !!p.left) })
   }
 
   /** step 직후 호출: 정해진 틱에 도달한 이탈을 상태에 반영하고, 혼자 남았는지 본다 */
