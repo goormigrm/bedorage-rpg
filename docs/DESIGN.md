@@ -230,8 +230,10 @@
   - 옛 무기 아이템 변환: `LEGACY_WEAPON`(makePlayer). `WEAPON_IDS` 는 끝에만 붙인다(세이브 번호).
 - **실사 괴물**(v0.31.0, 그림만): `render3d/monsterModels.ts`(명세 `MODEL_SPECS` — 종류 번호 → 파일 · 크기 · 방향 · 동작 · 빛나는 눈) + `monsterBake.ts`(처음 받을 때 따로 받는 굽기 코드).
   - 처음 그 종류를 그릴 때 `public/assets3d/monsters/<파일>.glb` 를 받아 동작을 프레임(대기 · 걷기 · 공격 · 맞음, 합계 30장 안팎)으로 굽는다 — 모양 키(절대 위치, `morphTargetsRelative=false`).
-  - 마리마다 `InstancedMesh.setMorphAt` 으로 프레임 두 장을 섞는다. 예고 `wind` = 공격 클립 앞부분(`windup`) · 휘두름 `swing` = 뒷부분 · 걷기 = 걸음 위상 · 맞음 = 번쩍임.
-  - 모양 키 텍스처는 첫 `setMorphAt` 때의 `count` 로 만들어지므로 `count = CAP` 인 채로 한 번 부른 뒤 0 으로 둔다.
+  - 마리마다 프레임 두 장을 섞는다. 예고 `wind` = 공격 클립 앞부분(`windup`) · 휘두름 `swing` = 뒷부분 · 걷기 = 걸음 위상 · 맞음 = 번쩍임.
+  - 섞기(v0.34.1): 인스턴스 속성 `aFrame` = (장 a, 장 b, 비율). `frameShader` 가 Lambert · 그림자 깊이 재질의 모양 키 부분을 두 장만 읽도록 바꾼다.
+    three 의 `setMorphAt` 은 정점마다 모든 장의 가중치(30~40개)를 읽고, 가중치 텍스처를 매 프레임 올렸다 — 괴물 200마리에서 한 장면 42~47ms → 34ms.
+    InstancedMesh 는 `morphTargetInfluences` 를 비워 두므로 0 배열을 넣어 준다(three 가 길이를 읽는다).
   - 받기 전 · 실패 · Esc "실사 괴물 끄기" · 폰(기본) = 도형 괴물. 출처 `CREDITS.md`. 원본 줄이기 `tools/pack-monsters.py`.
   - 도형 부품 겹쳐 그리기 `MODEL_EXTRAS`(monsters3d): 종류마다 { 부품 번호(음수 = 뒤에서), 크기 s, 높이 dy, 앞뒤 dz }. 부품의 자세 함수(`pose`)를 그대로 써서 예고 · 휘두름에 함께 움직인다.
     - 받은 모델이 없는 10종은 구울 · 해골 모델 + 색(`tint`) · 살찐 몸(`fat`) + 부품으로 임시 실사화했다(v0.33.1~0.33.3).

@@ -12,11 +12,13 @@ import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
 import { AnchorName, BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
 
-/** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 프레임 고르기용 배열 + 겹쳐 그리는 도형 부품 */
+/** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 마리마다 고른 프레임(aFrame) + 겹쳐 그리는 도형 부품 */
 interface ModelKind {
   baked: BakedModel
   meshes: InstancedMesh[]
-  dummy: { morphTargetInfluences: Float32Array }
+  /** 마리마다 (프레임 a, 프레임 b, 섞는 비율) — 부품 지오메트리 모두가 같이 쓴다 */
+  frame: THREE.InstancedBufferAttribute
+  depth: THREE.Material
   extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean }[]
 }
 
@@ -65,6 +67,31 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
   11: [{ part: 2, s: 0.95, dy: 0, at: 'chest' }], // 산성 토사꾼: 산 주머니
   14: [{ part: 2, s: 0.6, dy: 0.46, dz: 0.03, at: 'head' }, { part: 4, s: 0.75, dy: 0.2, at: 'chest' }, { part: 5, s: 0.75, dy: 0.2, at: 'chest' }], // 포격 악마: 뿔 · 포신 · 포구 불빛
   15: [{ part: 1, s: 0.62, dy: 0.35, at: 'hips' }, { part: 3, s: 0.6, dy: 0.51, dz: 0.1, at: 'head' }, { part: 5, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }, { part: 6, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }], // 심연의 군주: 균열 띠 · 뼈 왕관 · 날개 둘
+}
+
+/**
+ * 프레임 고르기 셰이더 (2026-09-19 · 성능): three 의 인스턴스 모양 키는 정점마다 프레임 수(30~40장)만큼 가중치를 읽어 더한다.
+ * 이 게임은 한 마리에 늘 두 장만 섞으므로, 인스턴스 속성 aFrame = (a, b, t) 로 두 장만 읽게 바꾼다 —
+ * 정점마다 읽기가 40번 → 4번, 매 프레임 올리던 가중치 텍스처(마리 × 장 수)도 없어진다. 그림자(깊이) 재질도 같이 바꾼다.
+ */
+function frameShader(mat: THREE.Material): void {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aFrame;')
+      .replace(
+        '#include <morphtarget_vertex>',
+        `#ifdef USE_MORPHTARGETS
+	transformed = mix( getMorph( gl_VertexID, int( aFrame.x + 0.5 ), 0 ).xyz, getMorph( gl_VertexID, int( aFrame.y + 0.5 ), 0 ).xyz, aFrame.z );
+#endif`,
+      )
+      .replace(
+        '#include <morphnormal_vertex>',
+        `#ifdef USE_MORPHNORMALS
+	objectNormal = mix( getMorph( gl_VertexID, int( aFrame.x + 0.5 ), 1 ).xyz, getMorph( gl_VertexID, int( aFrame.y + 0.5 ), 1 ).xyz, aFrame.z );
+#endif`,
+      )
+  }
+  mat.customProgramCacheKey = () => 'monster-frame'
 }
 
 /** 손에 든 부품: 도형 자체의 움직임 없이 (모델의 팔이 휘두른다) */
@@ -868,17 +895,22 @@ export class MonsterView {
           this.models[kind] = 'failed'
           return
         }
+        const frame = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3), 3)
+        frame.setUsage(THREE.DynamicDrawUsage)
+        const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
+        frameShader(depth)
         const meshes = baked.parts.map((p) => {
+          p.geo.setAttribute('aFrame', frame)
+          frameShader(p.mat)
           const mesh = new THREE.InstancedMesh(p.geo, p.mat, CAP) as InstancedMesh
           mesh.frustumCulled = false
           mesh.castShadow = true
+          mesh.customDepthMaterial = depth
+          // InstancedMesh 는 가중치 배열을 비워 둔다(setMorphAt 을 쓰라고) — 셰이더가 aFrame 을 쓰지만 three 가 이 배열을 읽는다
+          mesh.morphTargetInfluences = new Array(baked.frames).fill(0)
           mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
           const white = new THREE.Color(1, 1, 1)
           for (let i = 0; i < CAP; i++) mesh.setColorAt(i, white)
-          // 프레임 텍스처는 첫 setMorphAt 때의 count(= CAP) 로 만들어진다 — count 를 줄이기 전에 부른다
-          const init = new Float32Array(baked.frames)
-          init[0] = 1
-          mesh.setMorphAt(0, { morphTargetInfluences: init } as unknown as THREE.Mesh)
           mesh.count = 0
           this.group.add(mesh)
           return mesh
@@ -892,7 +924,7 @@ export class MonsterView {
           this.group.add(mesh)
           return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
         })
-        this.models[kind] = { baked, meshes, dummy: { morphTargetInfluences: new Float32Array(baked.frames) }, extras }
+        this.models[kind] = { baked, meshes, frame, depth, extras }
       })
       .catch((err) => {
         console.warn('실사 괴물 모델을 받지 못했다 — 도형 괴물로 그린다', kind, err)
@@ -1033,7 +1065,11 @@ export class MonsterView {
         if (n === 0) continue
         mesh.instanceMatrix.needsUpdate = true
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-        if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true
+      }
+      if (n > 0) {
+        mk.frame.clearUpdateRanges()
+        mk.frame.addUpdateRange(0, n * 3)
+        mk.frame.needsUpdate = true
       }
       for (const ex of mk.extras) {
         ex.mesh.count = n
@@ -1138,9 +1174,7 @@ export class MonsterView {
       i1 = Math.min(seg.count - 1, i0 + 1)
     }
     const f = fi - i0
-    const infl = mk.dummy.morphTargetInfluences
-    infl[seg.start + i0] = 1 - f
-    infl[seg.start + i1] += f
+    mk.frame.setXYZ(i, seg.start + i0, seg.start + i1, f)
     // 뿌리: 예고 때 몸을 뒤로 젖히고, 휘두를 때 앞으로 내민다 · 맞으면 움찔(찌그러짐)
     this.o.position.set(0, 0, a.swing * 0.16 - a.wind * 0.05)
     this.o.rotation.set(-a.wind * 0.12 + a.swing * 0.1, 0, 0)
@@ -1150,10 +1184,7 @@ export class MonsterView {
     for (const mesh of mk.meshes) {
       mesh.setMatrixAt(i, this.local)
       mesh.setColorAt(i, this.col)
-      mesh.setMorphAt(i, mk.dummy as unknown as THREE.Mesh)
     }
-    infl[seg.start + i0] = 0
-    infl[seg.start + i1] = 0
     // 겹쳐 그리는 도형 부품 (활 · 눈 · 투구 …): 도형 몸의 자세를 모델 크기로 줄여 붙인다.
     // 뼈 자리(at)가 있으면 그 뼈의 움직임(프레임 두 장을 섞은 것)을 더한다 — 쓰러지면 투구도 같이 넘어진다
     for (const ex of mk.extras) {
@@ -1190,6 +1221,7 @@ export class MonsterView {
         ;(mesh.material as THREE.Material).dispose()
         mesh.dispose()
       }
+      mk.depth.dispose()
       // 겹쳐 그리는 부품의 지오메트리 · 재질은 도형 부품 것이라 그쪽에서 치운다
       for (const ex of mk.extras) ex.mesh.dispose()
     }
