@@ -8,6 +8,14 @@ import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { ACID, LORD, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
+
+/** 보스 등장 배너의 한 줄 (막 보스 넷) */
+const BOSS_INTRO: Record<string, string> = {
+  butcher: '성당 지하의 푸줏간 — 갈고리에 걸린 것은 모두 고기가 된다',
+  queen: '늪 깊은 둥지에서 여왕이 깨어났다 — 알이 터지기 전에',
+  warden: '지하 감옥의 열쇠를 쥔 자 — 이 문으로 나간 죄수는 없다',
+  lord: '옥좌에서 심연이 일어선다 — 마지막 싸움이다',
+}
 import { ACTS, AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
@@ -151,6 +159,8 @@ export class Renderer3D {
   private monsterView = new MonsterView()
   /** 시야 밖이라 숨긴 몬스터 id · 경계에서 깜빡이지 않게 남은 시간 */
   private hiddenM = new Set<number>()
+  /** 이미 등장을 알린 보스 (몬스터 번호) */
+  private bossSeen = new Set<number>()
   private seenM = new Map<number, number>()
   /** 몬스터 투사체 (빛나는 구슬) */
   private shotPool: THREE.Sprite[] = []
@@ -1012,6 +1022,7 @@ export class Renderer3D {
     }
     this.updateSandbags(curr)
     this.updateVision(curr, opts)
+    this.announceBoss(curr)
     for (let i = 0; i < n; i++) this.updateRig(i, curr.players[i], pos[i], sdt)
     this.monsterView.update(prev, curr, alpha, sdt, (m) => this.hiddenM.has(m.id))
     this.updateBullets(prev, curr, alpha)
@@ -1089,6 +1100,22 @@ export class Renderer3D {
   }
 
   /** 시야: 나(와 아군)가 보는 곳만 밝히고, 그 밖의 적은 숨긴다. 관전(-1)이나 fog:false 면 전부 보인다 */
+  /**
+   * 보스 등장 (2026-09-19): 막 보스가 깨어나 처음 눈에 들어오면 이름 배너 · 한 줄 소개 · 화면 흔들림 · 카메라 펀치.
+   * 깨어남 이벤트(wake)에는 종류가 없어서, 그리는 쪽이 "깨어 있고 보이는 보스" 를 처음 볼 때 한 번만 알린다.
+   */
+  private announceBoss(curr: GameState): void {
+    if (curr.mode !== 'dungeon') return
+    for (const m of curr.monsters) {
+      const def = MONSTER_LIST[m.kind]
+      if (!def.boss || m.st === 0 || m.hp <= 0 || this.bossSeen.has(m.id) || this.hiddenM.has(m.id)) continue
+      this.bossSeen.add(m.id)
+      this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
+      this.shake = Math.max(this.shake, 0.55)
+      this.punch = Math.max(this.punch, 1)
+    }
+  }
+
   private updateVision(curr: GameState, opts: RenderOptions): void {
     const lp = opts.viewer ?? opts.localPlayer
     const fog = (opts.fog ?? true) && lp >= 0
