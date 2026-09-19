@@ -3,7 +3,7 @@
 
 import * as THREE from 'three'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import type { BakedModel, ModelSpec, SegName } from './monsterModels'
+import { FILE_ANCHORS, type AnchorName, type BakedModel, type ModelSpec, type SegName } from './monsterModels'
 
 const SEG_ORDER: SegName[] = ['idle', 'walk', 'attack', 'hit', 'death']
 
@@ -51,6 +51,13 @@ function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
   }
   const pos: Float32Array[][] = meshes.map(() => [])
   const nrm: Float32Array[][] = meshes.map(() => [])
+  // 뼈 자리: 프레임마다 그 뼈의 월드 행렬
+  const anchorBones: [AnchorName, THREE.Object3D][] = []
+  for (const [a, name] of Object.entries(FILE_ANCHORS[spec.file] ?? {}) as [AnchorName, string][]) {
+    const b = root.getObjectByName(name)
+    if (b) anchorBones.push([a, b])
+  }
+  const boneW: THREE.Matrix4[][] = anchorBones.map(() => [])
   const mixer = new THREE.AnimationMixer(root)
   for (const s of segs) {
     const pick = spec.clips[s]!
@@ -72,6 +79,7 @@ function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
         pos[i].push(p)
         nrm[i].push(n)
       })
+      anchorBones.forEach(([, b], i) => boneW[i].push(b.matrixWorld.clone()))
     }
   }
   mixer.stopAllAction()
@@ -109,6 +117,29 @@ function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
     }
   }
 
+  // 뼈 자리: A(f) = N · B(f) · B(0)⁻¹ · N⁻¹ (N = 위의 크기 · 자리 · 방향 맞추기). 첫 장면에서는 A = 단위
+  const N = new THREE.Matrix4()
+    .makeRotationY(spec.yaw ?? 0)
+    .multiply(new THREE.Matrix4().makeScale(scale, scale, scale))
+    .multiply(new THREE.Matrix4().makeTranslation(-cx, -box.min.y, -cz))
+  const Ni = N.clone().invert()
+  const anchors: BakedModel['anchors'] = {}
+  const anchorRest: BakedModel['anchorRest'] = {}
+  const ap = new THREE.Vector3()
+  const aq = new THREE.Quaternion()
+  const as = new THREE.Vector3()
+  anchorBones.forEach(([a], i) => {
+    const r0 = new THREE.Vector3().setFromMatrixPosition(boneW[i][0]).applyMatrix4(N)
+    anchorRest[a] = [+r0.x.toFixed(3), +r0.y.toFixed(3), +r0.z.toFixed(3)]
+    const B0i = boneW[i][0].clone().invert()
+    const out = new Float32Array(frames * 7)
+    boneW[i].forEach((B, f) => {
+      new THREE.Matrix4().multiplyMatrices(N, B).multiply(B0i).multiply(Ni).decompose(ap, aq, as)
+      out.set([ap.x, ap.y, ap.z, aq.x, aq.y, aq.z, aq.w], f * 7)
+    })
+    anchors[a] = out
+  })
+
   const parts = meshes.map((m, i) => {
     const src = m.geometry
     const geo = new THREE.BufferGeometry()
@@ -122,7 +153,7 @@ function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
     geo.computeBoundingSphere()
     return { geo, mat: toLambert(m.material as THREE.MeshStandardMaterial, spec) }
   })
-  return { parts, frames, seg, windup: spec.windup ?? 0.5 }
+  return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest }
 }
 
 /** 한 프레임의 정점 위치 · 노멀 (장면 좌표) */

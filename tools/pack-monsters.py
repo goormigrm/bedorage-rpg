@@ -32,7 +32,8 @@ OUT = os.path.join(ROOT, 'public', 'assets3d', 'monsters')
 SPECS = {
     # 구울 · 부푼 시체(같은 파일에 "살찐 몸" 모양 키를 켜서 굽는다)
     'ghoul': dict(tex=512, normal=False, anims=['Attack1.001', 'Idle', 'Walk1'], morph={0: [0, 2], 2: [9, 10]}),
-    'archer': dict(tex=512, normal=False, anims=None, morph={}),
+    # 해골: 받은 동작(Take 001)은 쓰지 않는다 — 대기 · 걷기 · 공격 · 맞음 · 죽음 모두 옮겨 붙인 UAL_ 동작 (2026-09-19)
+    'archer': dict(tex=512, normal=False, anims=[], morph={}),
     'wolf': dict(tex=512, normal=False, anims=None, morph={}),
     'spider': dict(tex=512, normal=False, anims=['Wolf Spider Armature|Spider walking', 'Wolf Spider Armature|Spider running'], morph={}),
     'queen': dict(tex=512, normal=True, normal_tex=256, anims=['Basic Idle', 'Walk Cycle', 'Leap', 'Take Damage'], morph={}),
@@ -53,8 +54,11 @@ def pack(kind: str) -> None:
 
     def read_floats(ai):
         a = acc[ai]
-        v = bvs[a['bufferView']]
         n = NCOMP[a['type']]
+        if a['bufferView'] < 0:  # 여기서 새로 만든 데이터 (빈틈 없이 붙어 있다)
+            data = new_views[-a['bufferView'] - 1]
+            return [struct.unpack_from('<%df' % n, data, i * 4 * n) for i in range(a['count'])]
+        v = bvs[a['bufferView']]
         off = v.get('byteOffset', 0) + a.get('byteOffset', 0)
         st = v.get('byteStride', 4 * n)
         return [struct.unpack_from('<%df' % n, bin_, off + i * st) for i in range(a['count'])]
@@ -97,6 +101,24 @@ def pack(kind: str) -> None:
         miss = [n for n in spec['anims'] if n not in names]
         assert not miss, (kind, 'no anim', miss, names)
         j['animations'] = [a for a in j.get('animations', []) if a.get('name') in spec['anims']]
+    # 1.5) 옮겨 붙인 동작 (tools/retarget.mjs — UAL CC0): "UAL_<동작>" 으로 덧붙인다
+    rt_file = os.path.join(SRC, kind, 'retarget.json')
+    if os.path.exists(rt_file):
+        rt = json.load(open(rt_file, encoding='utf-8'))
+        for clip in rt['clips']:
+            if spec.get('ual') is not None and clip['name'] not in spec['ual']:
+                continue
+            t_in = add_floats([(t,) for t in clip['times']], 1, 'SCALAR')
+            an = {'name': clip['name'], 'samplers': [], 'channels': []}
+            for tr in clip['tracks']:
+                for p, typ in (('rotation', 'VEC4'), ('translation', 'VEC3'), ('scale', 'VEC3')):
+                    if p not in tr:
+                        continue
+                    an['samplers'].append({'input': t_in, 'output': add_floats(tr[p], NCOMP[typ], typ), 'interpolation': 'LINEAR'})
+                    an['channels'].append({'sampler': len(an['samplers']) - 1, 'target': {'node': tr['node'], 'path': p}})
+            j.setdefault('animations', []).append(an)
+    one_key = {}
+    one_val = {}
     for an in j.get('animations', []):
         for s in an['samplers']:
             if s.get('interpolation', 'LINEAR') != 'LINEAR':
@@ -107,9 +129,15 @@ def pack(kind: str) -> None:
             out = read_floats(s['output'])
             typ = acc[s['output']]['type']
             if all(max(abs(a - b) for a, b in zip(o, out[0])) < 1e-4 for o in out):
-                # 움직이지 않는 뼈 — 키 하나로
-                s['input'] = add_floats([(times[0],)], 1, 'SCALAR')
-                s['output'] = add_floats([out[0]], NCOMP[typ], typ)
+                # 움직이지 않는 뼈 — 키 하나로 (시간 키는 같이 쓴다)
+                if times[0] not in one_key:
+                    one_key[times[0]] = add_floats([(times[0],)], 1, 'SCALAR')
+                s['input'] = one_key[times[0]]
+                # 값도 같으면 같이 쓴다 (옮겨 붙인 동작마다 묶음 자세 값이 되풀이된다)
+                vk = (typ, tuple(round(x, 5) for x in out[0]))
+                if vk not in one_val:
+                    one_val[vk] = add_floats([out[0]], NCOMP[typ], typ)
+                s['output'] = one_val[vk]
                 continue
             if len(times) < 3:
                 continue

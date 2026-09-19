@@ -37,7 +37,9 @@ sun.position.set(3, 6, 4)
 scene.add(sun)
 scene.add(new THREE.GridHelper(20, 20, 0x5a4a30, 0x2a2218))
 
-const kinds = MODEL_SPECS.map((s, k) => (s ? k : -1)).filter((k) => k >= 0)
+const q = new URLSearchParams(location.search)
+// ?strip 이면 전체 줄은 굽지 않는다 (16종을 다 굽느라 느리다)
+const kinds = q.get('strip') !== null ? [] : MODEL_SPECS.map((s, k) => (s ? k : -1)).filter((k) => k >= 0)
 const items = []
 let segName = 'walk'
 const t0 = performance.now()
@@ -78,15 +80,18 @@ function frame() {
 }
 frame()
 window.__items = items
+// 가려진 창에서 사진 뜨기용 (render → canvas.toDataURL → /__shot)
+window.__view = { renderer, scene, cam }
 
-// ?strip=<종류> : 그 종류의 동작 클립 전체를 장면 N 장으로 구워 한 줄로 늘어놓는다 (클립 안에 어떤 동작이 이어 붙었는지 보기)
+// ?strip=<종류>&n=<장>&clip=<동작 이름> : 그 종류의 동작 클립(기본 = 걷기 클립) 전체를 장면 N 장으로 구워 한 줄로 늘어놓는다
+// (클립 안에 어떤 동작이 이어 붙었는지 · 옮겨 붙인 UAL_ 동작이 제대로인지 보기)
 const strip = new URLSearchParams(location.search).get('strip')
 if (strip !== null) {
   const { MODEL_SPECS: S } = await import('../src/render3d/monsterModels.ts')
   const k = Number(strip)
   const spec = S[k]
   const n = Number(new URLSearchParams(location.search).get('n') ?? 12)
-  const clip = spec.clips.walk.clip
+  const clip = q.get('clip') ?? spec.clips.walk.clip
   const orig = JSON.parse(JSON.stringify(spec.clips))
   spec.clips = { walk: { clip, frames: n } }
   const b = await loadMonsterModel(k)

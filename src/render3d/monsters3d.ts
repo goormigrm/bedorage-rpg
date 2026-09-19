@@ -10,40 +10,66 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { MONSTER_LIST } from '../core/monsters'
 import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
-import { BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
+import { AnchorName, BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
 
 /** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 프레임 고르기용 배열 + 겹쳐 그리는 도형 부품 */
 interface ModelKind {
   baked: BakedModel
   meshes: InstancedMesh[]
   dummy: { morphTargetInfluences: Float32Array }
-  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dy: number; dz: number }[]
+  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean }[]
 }
 
 /**
  * 실사 모델에 없는 것을 도형 부품으로 겹쳐 그린다 (2026-09-19): 해골 궁수의 **활**(예고 때 당긴다) · **빛나는 눈**.
  * part = BUILDERS 부품 번호(음수면 뒤에서 — -1 = 마지막), s = 크기(도형 몸이 모델보다 조금 크다), dy · dz = 자리 보정. 따로 인스턴스를 둔다
  * (도형 부품과 번호를 같이 쓰면 다른 부품의 옛 자리가 유령처럼 남는다).
+ * at = 붙일 뼈(monsterModels FILE_ANCHORS) — 그 뼈가 첫 장면(대기 첫 장)에서 움직인 만큼 부품도 움직인다(자리 값은 첫 장면 기준).
+ * still = 도형 부품 자체의 예고 · 휘두름 움직임을 끈다 (손에 든 것 — 모델의 팔이 대신 휘두른다).
  */
-const MODEL_EXTRAS: Record<number, { part: number; s: number; dy: number; dz?: number }[]> = {
+const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: number; dz?: number; at?: AnchorName; still?: boolean }[]> = {
+  // 해골 모델 (궁수 · 방패병 · 강령술사 · 그림자 · 관리인): 기준 자세는 UAL 대기 첫 장(곧게 선 자세, 두개골이 맨 위).
+  // 자리 값은 굽기가 적어 둔 뼈 자리(anchorRest)에서 계산했다 — 머리 뼈는 두개골 아래끝, 몸이 조금 뒤(-z) · 머리가 조금 오른쪽(-x)
   1: [
-    { part: 4, s: 0.88, dy: -0.02 },
-    { part: 3, s: 0.9, dy: -0.03, dz: -0.05 },
+    { part: 4, s: 0.88, dx: 0.131, dy: -0.088, dz: -0.255, at: 'handL', still: true }, // 활 (왼손)
+    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
   ],
-  // 도살자: 식칼 (도형 도살자의 마지막 부품 — 휘두를 때 팔과 함께 돈다)
-  3: [{ part: -1, s: 1.05, dy: 0.02 }],
-  // 임시 실사화 (2026-09-19 — 2차 묶음을 받기 전까지): 도형 부품 번호는 각 Parts() 의 순서
-  4: [{ part: 4, s: 0.85, dy: 0 }, { part: 5, s: 0.85, dy: 0 }], // 고블린: 금 자루 · 반짝임
-  7: [{ part: 2, s: 0.95, dy: -0.12 }, { part: 3, s: 0.95, dy: 0 }], // 버섯 주술사: 버섯 갓 · 지팡이
-  9: [{ part: 1, s: 0.92, dy: 0.04, dz: 0.09 }, { part: 2, s: 0.92, dy: 0.04, dz: 0.09 }, { part: 3, s: 0.92, dy: 0 }, { part: 4, s: 0.92, dy: 0 }], // 방패병: 투구 · 눈 · 방패 · 방패 징 (해골이 앞으로 숙여 머리가 앞 · 위)
-  10: [{ part: 3, s: 0.85, dy: -0.12, dz: -0.04 }, { part: 4, s: 0.9, dy: 0 }, { part: 5, s: 0.9, dy: 0 }, { part: 6, s: 0.9, dy: 0 }], // 강령술사: 눈 · 지팡이 · 해골 · 구슬
-  11: [{ part: 2, s: 0.95, dy: 0 }], // 산성 토사꾼: 산 주머니
-  13: [{ part: 1, s: 0.95, dy: -0.08 }, { part: 2, s: 0.95, dy: -0.08 }], // 그림자: 두건 · 눈
-  // 보스 셋: 모델 몸(해골 · 좀비)이 도형 몸보다 훨씬 가늘다 — 부품을 줄이고(s) 머리 · 어깨 · 손 높이로 올린다(dy). 게임 안에서 앞 · 옆으로 찍어 맞춤
-  12: [{ part: 1, s: 0.5, dy: 0.71, dz: 0.01 }, { part: 2, s: 0.5, dy: 0.71, dz: 0.01 }, { part: 3, s: 0.5, dy: 0.6 }, { part: 4, s: 0.6, dy: 0.3 }, { part: 5, s: 0.6, dy: 0.35 }], // 관리인: 투구 · 눈구멍 · 어깨판 · 쇠곤봉 · 등불
-  14: [{ part: 2, s: 0.6, dy: 0.46, dz: 0.03 }, { part: 4, s: 0.75, dy: 0.2 }, { part: 5, s: 0.75, dy: 0.2 }], // 포격 악마: 뿔 · 포신 · 포구 불빛
-  15: [{ part: 1, s: 0.62, dy: 0.35 }, { part: 3, s: 0.6, dy: 0.51, dz: 0.1 }, { part: 5, s: 0.5, dy: 0.45, dz: -0.08 }, { part: 6, s: 0.5, dy: 0.45, dz: -0.08 }], // 심연의 군주: 균열 띠 · 뼈 왕관 · 날개 둘
+  9: [
+    { part: 1, s: 0.55, dx: -0.056, dy: 0.496, dz: -0.096, at: 'head' }, // 투구
+    { part: 2, s: 0.55, dx: -0.056, dy: 0.48, dz: -0.09, at: 'head' }, // 눈구멍 빛
+    { part: 3, s: 0.7, dx: 0.092, dy: 0.186, dz: -0.192, at: 'chest' }, // 방패 (몸 앞 — 손에 붙이면 검을 휘두를 때 방패가 춤춘다)
+    { part: 4, s: 0.7, dx: 0.092, dy: 0.186, dz: -0.192, at: 'chest' }, // 방패 징
+  ],
+  10: [
+    { part: 3, s: 0.75, dx: -0.058, dy: 0.25, dz: -0.158, at: 'head' }, // 눈
+    { part: 4, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 지팡이 (예고 때 치켜든다)
+    { part: 5, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 지팡이 끝 해골
+    { part: 6, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 빛나는 구슬
+  ],
+  13: [
+    { part: 0, s: 0.7, dx: -0.04, dy: 0.286, dz: -0.09, at: 'chest' }, // 반투명 망토
+    { part: 1, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.136, at: 'head' }, // 두건
+    { part: 2, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.112, at: 'head' }, // 눈
+  ],
+  12: [
+    { part: 1, s: 0.5, dx: -0.061, dy: 0.66, dz: -0.115, at: 'head' }, // 관리인: 투구
+    { part: 2, s: 0.5, dx: -0.061, dy: 0.655, dz: -0.11, at: 'head' }, // 눈구멍
+    { part: 3, s: 0.5, dx: -0.043, dy: 0.55, dz: -0.094, at: 'chest' }, // 어깨판
+    { part: 4, s: 0.6, dx: -0.395, dy: 0.187, dz: -0.216, at: 'handR', still: true }, // 쇠곤봉 (오른손 — 검 휘두르기 동작이 휘두른다)
+    { part: 5, s: 0.6, dx: 0.408, dy: 0.348, dz: -0.116, at: 'handL', still: true }, // 등불 (왼손)
+  ],
+  // 좀비 모델 (도살자 · 고블린 · 버섯 주술사 · 토사꾼 · 포격 악마 · 군주): 기준 자세는 좀비 대기 첫 장 그대로 — 자리 값은 전에 맞춘 것
+  3: [{ part: -1, s: 1.05, dy: 0.02, at: 'chest' }], // 도살자: 식칼 (도형 식칼이 스스로 휘두른다)
+  4: [{ part: 4, s: 0.85, dy: 0, at: 'chest' }, { part: 5, s: 0.85, dy: 0, at: 'chest' }], // 고블린: 금 자루 · 반짝임
+  7: [{ part: 2, s: 0.95, dy: -0.12, at: 'head' }, { part: 3, s: 0.95, dy: 0, at: 'chest' }], // 버섯 주술사: 버섯 갓 · 지팡이
+  11: [{ part: 2, s: 0.95, dy: 0, at: 'chest' }], // 산성 토사꾼: 산 주머니
+  14: [{ part: 2, s: 0.6, dy: 0.46, dz: 0.03, at: 'head' }, { part: 4, s: 0.75, dy: 0.2, at: 'chest' }, { part: 5, s: 0.75, dy: 0.2, at: 'chest' }], // 포격 악마: 뿔 · 포신 · 포구 불빛
+  15: [{ part: 1, s: 0.62, dy: 0.35, at: 'hips' }, { part: 3, s: 0.6, dy: 0.51, dz: 0.1, at: 'head' }, { part: 5, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }, { part: 6, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }], // 심연의 군주: 균열 띠 · 뼈 왕관 · 날개 둘
 }
+
+/** 손에 든 부품: 도형 자체의 움직임 없이 (모델의 팔이 휘두른다) */
+const STILL = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }
+const ONE = new THREE.Vector3(1, 1, 1)
 
 /** 몬스터가 매 프레임 넘기는 움직임 상태 */
 interface Anim {
@@ -799,6 +825,11 @@ export class MonsterView {
   private real = true
   private clock = 0
   private local = new THREE.Matrix4()
+  // 뼈 자리 섞기용
+  private ap = new THREE.Vector3()
+  private aq = new THREE.Quaternion()
+  private aqa = [0, 0, 0, 1]
+  private am = new THREE.Matrix4()
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
@@ -859,7 +890,7 @@ export class MonsterView {
           mesh.frustumCulled = false
           mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
           this.group.add(mesh)
-          return { mesh, pose: src.pose, s: e.s, dy: e.dy, dz: e.dz ?? 0 }
+          return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
         })
         this.models[kind] = { baked, meshes, dummy: { morphTargetInfluences: new Float32Array(baked.frames) }, extras }
       })
@@ -1123,18 +1154,30 @@ export class MonsterView {
     }
     infl[seg.start + i0] = 0
     infl[seg.start + i1] = 0
-    // 겹쳐 그리는 도형 부품 (활 · 눈): 도형 몸의 자세를 모델 크기로 줄여 뿌리에 붙인다
+    // 겹쳐 그리는 도형 부품 (활 · 눈 · 투구 …): 도형 몸의 자세를 모델 크기로 줄여 붙인다.
+    // 뼈 자리(at)가 있으면 그 뼈의 움직임(프레임 두 장을 섞은 것)을 더한다 — 쓰러지면 투구도 같이 넘어진다
     for (const ex of mk.extras) {
       this.o.position.set(0, 0, 0)
       this.o.rotation.set(0, 0, 0)
       this.o.scale.setScalar(1)
-      ex.pose(a, this.o)
+      ex.pose(ex.still ? STILL : a, this.o)
       this.o.position.multiplyScalar(ex.s)
+      this.o.position.x += ex.dx
       this.o.position.y += ex.dy
       this.o.position.z += ex.dz
       this.o.scale.multiplyScalar(ex.s)
       this.o.updateMatrix()
-      this.tmp.multiplyMatrices(this.root, this.o.matrix)
+      if (ex.anchor) {
+        const A = ex.anchor
+        const o0 = (seg.start + i0) * 7
+        const o1 = (seg.start + i1) * 7
+        this.ap.set(A[o0] + (A[o1] - A[o0]) * f, A[o0 + 1] + (A[o1 + 1] - A[o0 + 1]) * f, A[o0 + 2] + (A[o1 + 2] - A[o0 + 2]) * f)
+        const Aa = A as unknown as number[]
+        THREE.Quaternion.slerpFlat(this.aqa, 0, Aa, o0 + 3, Aa, o1 + 3, f)
+        this.aq.fromArray(this.aqa)
+        this.am.compose(this.ap, this.aq, ONE)
+        this.tmp.multiplyMatrices(this.local, this.am).multiply(this.o.matrix)
+      } else this.tmp.multiplyMatrices(this.local, this.o.matrix)
       ex.mesh.setMatrixAt(i, this.tmp)
     }
   }

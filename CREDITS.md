@@ -23,10 +23,12 @@
 - This work is based on "Wolf Spider (Rigged) - (Rabidosa rabida)" (https://sketchfab.com/3d-models/wolf-spider-rigged-rabidosa-rabida-6392e4cfb64d407182fdad2cea9e0abe) by Dreaming In Alternation 27 (https://sketchfab.com/DreamingInAlternation27) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "Amethystine Blight Queen" (https://sketchfab.com/3d-models/amethystine-blight-queen-1a9caad333b049c3a94c7648001d2b57) by HighPolyDensity (https://sketchfab.com/HighPolyDensity) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 
-## 받아 두었지만 아직 쓰지 않는 것
+## 동작 (CC0 — 표기 의무는 없지만 적어 둔다)
 
-- Quaternius "Universal Animation Library" (Standard) — CC0 1.0 (표기 의무 없음). https://quaternius.itch.io/universal-animation-library
-  사람 모양 괴물에 공격 · 죽음 동작을 옮겨 붙일 때 쓴다. 원본은 `art-src/`(저장소 밖)에 있다.
+- Quaternius "Universal Animation Library" (Standard) — CC0 1.0. https://quaternius.itch.io/universal-animation-library
+  - 좀비 · 해골 모델에 없던 동작을 옮겨 붙였다(`tools/retarget.mjs`, 2026-09-19).
+  - 좀비: 죽음 · 맞음. 해골: 대기 · 걷기 · 맞음 · 죽음 · 공격 넷(검 휘두르기 · 마법 쏘기 · 겨누기 · 주먹).
+  - 원본은 `art-src/`(저장소 밖)에 있다.
 
 ## 넣는 법 (개발자)
 
@@ -34,3 +36,6 @@
 2. 원본을 `art-src/monsters/<종류>/src/` 에 풀고, 라이선스 글을 `art-src/licenses/` 에 둔다.
 3. `python tools/pack-monsters.py <종류>` → `public/assets3d/monsters/<종류>.glb`.
 4. `src/render3d/monsterModels.ts` 의 `MODEL_SPECS` 에 동작 · 크기 · 방향을 적고, `npm run dev` 뒤 `/bedorage-rpg/tools/model-view.html` 로 본다.
+5. 동작이 모자라면(클립 하나뿐인 모델이 많다) `tools/retarget.mjs` 의 `TARGETS` 에 뼈 짝을 적고 `node tools/retarget.mjs <종류>` → 다시 3.
+   - `?strip=<종류>&n=10&clip=UAL_Death01` 로 옮긴 동작을 장면별로 늘어놓아 본다.
+   - 원래 동작과 보는 쪽이 다르면 `turn`, 뼈 이름에 점이 있으면 `FILE_ANCHORS` 에는 점을 뺀 이름을 쓴다(GLTFLoader 가 뺀다).
