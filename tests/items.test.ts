@@ -86,25 +86,19 @@ describe('전리품 · 성장 (sim)', () => {
     const [a, b] = s.players
     b.x = a.x + 60
     b.y = a.y
+    // 부푼 시체(2)는 터진다 — 이 시험은 전리품이 목적이라 죽지 않게 (죽어 있으면 줍지 못해 운에 따라 실패했다)
+    a.invuln = b.invuln = 1e9
+    // 자동 줍기는 끈다 — 선 자리에서 발밑 아이템을 다 주워 버리면 아래의 F 줍기를 볼 수 없다 (자동 줍기는 따로 본다)
+    step(s, map, [cmd(CMD_AUTOPICK, 0), cmd(CMD_AUTOPICK, 0)])
     for (let k = 0; k < 60; k++) killNear(s, map, 0, 2)
     expect(a.xpGain).toBeGreaterThan(0)
     expect(b.xpGain).toBe(a.xpGain)
-    // 전리품은 사람마다 따로 굴린다: 골드 더미 · 물약 · 아이템이 각자 몫으로 바닥에
-    const mine = s.drops.filter((d) => d.owner === 0)
-    const theirs = s.drops.filter((d) => d.owner === 1)
-    expect(mine.some((d) => d.gold > 0)).toBe(true)
-    expect(theirs.some((d) => d.gold > 0)).toBe(true)
-    expect(mine.some((d) => d.item) || a.bag.length > 0).toBe(true)
-    // 골드는 밟으면 줍는다
-    const g = mine.find((d) => d.gold > 0)!
-    const gold0 = a.gold
-    a.x = g.x
-    a.y = g.y
-    for (let t = 0; t < 20; t++) step(s, map, [idle(), idle()])
-    expect(a.gold).toBeGreaterThanOrEqual(gold0 + g.gold)
-    expect(s.drops.some((d) => d.id === g.id)).toBe(false)
-    // 아이템: 기본은 밟으면 줍는다(자동 줍기 — 2026-09-19). 자동 줍기를 끄면 F 로
-    step(s, map, [cmd(CMD_AUTOPICK, 0), idle()])
+    // 전리품은 사람마다 따로 굴린다: 골드는 각자 자기 몫을 자석(2칸)으로 줍고, 아이템은 각자 몫으로 바닥에 (자동 줍기를 껐다)
+    expect(a.goldGain).toBeGreaterThan(0)
+    expect(b.goldGain).toBeGreaterThan(0)
+    expect(s.drops.some((d) => d.owner === 0 && d.item)).toBe(true)
+    expect(s.drops.some((d) => d.owner === 1 && d.item)).toBe(true)
+    // 아이템: 자동 줍기를 끄면 F 로 (기본은 밟으면 줍는다 — 아래 자동 줍기 시험)
     expect(a.autoPick).toBe(0)
     const it = s.drops.find((d) => d.owner === 0 && d.item)!
     a.x = it.x
@@ -131,6 +125,17 @@ describe('전리품 · 성장 (sim)', () => {
     expect(a.autoPick).toBe(AUTOPICK_ALL)
     const put = (uid: number, rarity: number, owner: number, dx: number) =>
       s.drops.push({ id: 9000 + uid, owner, x: a.x + dx, y: a.y, item: { uid, slot: SLOT_WEAPON, wt: 0, rarity, ilvl: 3, aff: [] }, gold: 0, pot: 0, ttl: 6000, lock: 0 })
+    // 자석: 2칸(64px) 안의 내 아이템 · 골드는 끌려와 줍는다, 그 밖은 그대로 (2026-09-19)
+    put(90, 1, 0, 55)
+    put(91, 1, 0, 110)
+    s.drops.push({ id: 9500, owner: 0, x: a.x, y: a.y - 50, item: null, gold: 30, pot: 0, ttl: 6000, lock: 0 })
+    const gold0 = a.gold
+    for (let t = 0; t < 30; t++) step(s, map, [idle()])
+    expect(a.bag.map((i) => i.uid)).toEqual([90])
+    expect(a.gold).toBe(gold0 + 30)
+    expect(s.drops.some((d) => d.item?.uid === 91)).toBe(true)
+    a.bag.length = 0
+    s.drops = s.drops.filter((d) => d.item?.uid !== 91)
     // 희귀 · 전설만 켠다
     step(s, map, [cmd(CMD_AUTOPICK, (1 << 2) | (1 << 3))])
     put(1, 0, 0, 0) // 일반 — 끔

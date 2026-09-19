@@ -1,16 +1,16 @@
-// 전리품 · 경제 (GUIDE 9장 — D3): 물약(3) · 상자 · 금빛 상자 · 항아리(쏘면 깨짐) · 제단 · 지역마다 물건 배치.
+// 전리품 · 경제 (GUIDE 9장 — D3): 체력 구슬(물약은 없앴다) · 상자 · 금빛 상자 · 항아리(쏘면 깨짐) · 제단 · 지역마다 물건 배치.
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_POTION, BTN_USE, Input } from '../src/core/input'
 import { GameMap, buildMap } from '../src/core/map'
 import { createState, step } from '../src/core/sim'
 import { OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS } from '../src/core/state'
 import { buildAreaMap, townNpcs } from '../src/core/world'
-import { CMD_BUY, CMD_GAMBLE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../src/core/input'
-import { LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue, potUpPrice } from '../src/core/items'
+import { CMD_BUY, CMD_GAMBLE, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../src/core/input'
+import { LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue } from '../src/core/items'
 import { CMD_EQUIP } from '../src/core/input'
 import { makeMonster } from '../src/core/dungeon'
-import { GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
-import { MS_CHASE } from '../src/core/state'
+import { EA_FAST, EA_UNIQUE, GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
+import { MS_CHASE, MS_RECOVER, Monster } from '../src/core/state'
 import { BTN_DASH, BTN_SKILL1, CMD_HIRE, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP } from '../src/core/input'
 import { freePoints, nodeCd, nodePow, slotNode } from '../src/core/skills'
 import { hashState, mercPrice } from '../src/core/sim'
@@ -29,19 +29,45 @@ function field(seed = 61) {
 }
 
 describe('전리품 · 경제', () => {
-  it('물약(3): 한 칸을 써서 3초에 걸쳐 최대 체력 35% 를 채운다 · 곧바로 또 마시지는 못한다', () => {
-    const { s, run } = field()
+  it('물약(3)은 없다 — 회복은 체력 구슬: 정예는 하나 확정 · 우두머리는 체력 25% 가 줄 때마다 큰 구슬 (2026-09-19)', () => {
+    const { s, map, run } = field()
     const p = s.players[0]
-    p.hp = Math.round(p.maxHp * 0.3)
-    const hp0 = p.hp
-    const n0 = p.potions
+    p.hp = 50
     run(1, { ...idle(), buttons: BTN_POTION })
-    expect(p.potions).toBe(n0 - 1)
-    run(1)
-    run(1, { ...idle(), buttons: BTN_POTION })
-    expect(p.potions).toBe(n0 - 1)
-    run(190)
-    expect(p.hp).toBeGreaterThanOrEqual(hp0 + Math.round(p.maxHp * 0.35) - 2)
+    run(200)
+    expect(p.hp).toBe(50)
+    // 괴물을 앞(+x)에 붙잡아 두고 쏜다
+    const hold = (m: Monster) => {
+      m.st = MS_RECOVER
+      m.t = 999
+      m.x = p.x + 70
+      m.y = p.y
+    }
+    const shoot = (m: Monster, until: () => boolean) => {
+      for (let t = 0; t < 900 && !until(); t++) {
+        step(s, map, [{ ...idle(), buttons: t % 2 ? BTN_FIRE : 0, aim: 0, aimDist: 15 }])
+        hold(m)
+      }
+    }
+    // 정예: 쓰러지면 구슬 하나는 반드시
+    const e = makeMonster(s, 0, p.x + 70, p.y, 901, 0.3, 100, 1)
+    e.elite = EA_FAST
+    s.monsters.push(e)
+    s.monstersTotal++
+    const g0 = s.globes.length
+    shoot(e, () => e.hp <= 0)
+    expect(e.hp).toBeLessThanOrEqual(0)
+    expect(s.globes.length).toBeGreaterThanOrEqual(g0 + 1)
+    // 우두머리: 쓰러지기 전에도 체력 25% 가 줄면 큰 구슬(35%)
+    s.globes.length = 0
+    const u = makeMonster(s, 0, p.x + 70, p.y, 902, 30, 100, 5)
+    u.elite = EA_UNIQUE
+    s.monsters.push(u)
+    s.monstersTotal++
+    shoot(u, () => u.hp < u.maxHp * 0.7)
+    expect(u.hp).toBeGreaterThan(0)
+    expect(u.hp).toBeLessThan(u.maxHp * 0.75)
+    expect(s.globes.some((g) => g.heal === 35)).toBe(true)
   })
 
   it('상자: F 로 열면 주인 몫의 골드·아이템이 쏟아지고, 다시 열리지 않는다', () => {
@@ -98,7 +124,7 @@ describe('전리품 · 경제', () => {
     expect(count(8, 62).some((k) => k.startsWith(`${OBJ_GOLDCHEST}@`))).toBe(true)
   })
 
-  it('마을 NPC: 곁에서만 거래한다 — 팔기 · 사기 · 물약 칸 · 다시 굴리기 · 도박 · 보관함', () => {
+  it('마을 NPC: 곁에서만 거래한다 — 팔기 · 사기 · 다시 굴리기 · 도박 · 보관함', () => {
     const seed = 63
     const map = buildAreaMap(seed, 0)
     const s = createState({ seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 5, gold: 5000 }] }, map)
@@ -124,10 +150,6 @@ describe('전리품 · 경제', () => {
     cmd(CMD_SELL, 0)
     expect(p.bag.length).toBe(0)
     expect(p.gold).toBe(g1 + itemValue(it))
-    const pm = p.potMax
-    const pp = potUpPrice(pm)
-    cmd(CMD_POTUP, 0)
-    expect(p.potMax).toBe(pm + 1)
     // 도박꾼: 고른 칸의 아이템
     at('gambler')
     cmd(CMD_GAMBLE, 3)
@@ -149,7 +171,6 @@ describe('전리품 · 경제', () => {
     expect(p.bag.length).toBe(0)
     cmd(CMD_STASH_TAKE, 0)
     expect(p.bag.length).toBe(1)
-    void pp
   })
 
   it('전설 고유 효과: 낀 전설의 효과가 켜진다 (피의 갈증 · 황금 손 · 불굴 · 집중)', () => {

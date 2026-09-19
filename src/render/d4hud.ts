@@ -278,31 +278,7 @@ export class D4Hud {
     const bx = cx - barW / 2
     const by = baseY - S / 2 - 12
     ironPanel(c, bx, by - 14, barW, S + 44)
-    // 물약 (3): 스킬 바 왼쪽 아래 — 붉은 병 + 남은 칸 (디아블로 4 충전식)
-    {
-      const px = bx - 22
-      const py = by + S + 14
-      c.save()
-      c.globalAlpha = me.potions > 0 ? 1 : 0.35
-      if (me.potHot > 0) {
-        c.shadowColor = '#ff4a3a'
-        c.shadowBlur = 12
-      }
-      c.fillStyle = '#b81a22'
-      c.beginPath()
-      c.arc(px, py, 9, 0, Math.PI * 2)
-      c.fill()
-      c.fillStyle = '#d8c8a8'
-      c.fillRect(px - 3, py - 16, 6, 7)
-      c.shadowBlur = 0
-      c.font = `700 11px ${SANS}`
-      c.textAlign = 'center'
-      c.fillStyle = '#ffd0c0'
-      c.fillText(`${me.potions}/${me.potMax}`, px, py + 22)
-      c.fillStyle = GOLD
-      c.fillText('3', px + 14, py - 8)
-      c.restore()
-    }
+    // 물약(3)은 없앴다 — 회복은 체력 구슬 하나로 (2026-09-19)
     // 기력 (위 가는 막대)
     const stK = Math.max(0, Math.min(1, me.stamina / me.staminaMax))
     c.fillStyle = 'rgba(255,255,255,0.08)'

@@ -53,6 +53,13 @@ export const GIYEOL = { perHit: 0.08, maxStacks: 8 }
  * 가까이 있던 동료도 12% 를 받는다(협동에서 "구슬 먹으러 들어가" 가 생긴다). 체력이 가득이면 줍지 않고 남는다.
  */
 export const GLOBE_HEAL_FRAC = 0.25
+/**
+ * 회복은 **체력 구슬 하나로** (2026-09-19 "물약은 왜 있는 거야? 몬스터를 죽여서 할지 물약을 따로 가질지 정해서 정리") —
+ * 물약(3)을 없앴다. 대신: 졸개 구슬 확률 ×1.5 · 정예는 하나 확정 · 우두머리·보스는 체력 25% 가 줄 때마다 큰 구슬, 쓰러지면 둘.
+ */
+export const GLOBE_DROP_MUL = 1.5
+/** 우두머리·보스가 체력 25% 마다 떨어뜨리는 큰 구슬 */
+export const GLOBE_BIG_FRAC = 0.35
 export const GLOBE_SHARE_FRAC = 0.12
 export const GLOBE_SHARE_RANGE = 260
 export const GLOBE_TTL = 60 * 30

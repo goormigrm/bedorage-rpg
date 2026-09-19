@@ -7,12 +7,12 @@
 import { CHARACTERS, CharacterId, PLAYABLE, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_POTION, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_POTUP, CMD_REROLL,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_REROLL,
   CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, potUpPrice, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, rerollAffix, rerollPrice, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -33,7 +33,7 @@ import {
 } from './skills'
 import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
-  COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
+  COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
@@ -389,25 +389,12 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     p.btnPrev = btn
     // 건너온 뒤 30틱은 출구가 안 먹는다 (F 를 누르고 있다가 도로 넘어가지 않게)
     if (p.exitLock > 0) p.exitLock--
-    if (p.potCd > 0) p.potCd--
     if (p.shrineT > 0) p.shrineT--
     if (p.legCd > 0) p.legCd--
-    // 물약: 3초에 걸쳐 채운다 (쓰러지면 끊긴다)
-    if (p.potHot > 0) {
-      if (isActive(p)) p.hp = Math.min(p.maxHp, p.hp + (p.maxHp * 0.35) / POT_TICKS)
-      p.potHot--
-    }
-    if (town && p.alive) p.potions = p.potMax
+    // 물약(3)은 없앴다 — 회복은 체력 구슬 하나로 (GLOBE_DROP_MUL 머리말). potions·potMax 칸은 옛 세이브를 위해 남겨 둔다
     if (!isActive(p) || state.phase !== 'playing') {
       p.portalCast = 0
       continue
-    }
-    // 물약 (3)
-    if ((pressed & BTN_POTION) !== 0 && p.potions > 0 && p.potCd === 0 && !town) {
-      p.potions--
-      p.potHot = POT_TICKS
-      p.potCd = 90
-      state.events.push({ type: 'potion', p: p.id })
     }
     // 웨이포인트: 밟으면 열린다 (캐릭터에 남는다)
     if (l.wp && len(p.x - l.wp.x, p.y - l.wp.y) <= WP_R) {
@@ -461,7 +448,6 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
   }
 }
 
-const POT_TICKS = 180
 
 /** 스킬 트리 명령 (어디서나) · 재분배 · 용병 (마을에서만) */
 function buildCommand(state: GameState, p: PlayerState, cmd: number, arg: number): void {
@@ -591,13 +577,6 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     state.shop.splice(arg, 1)
     p.bag.push({ ...it, aff: [...it.aff] })
     trade('buy', -g, it.uid)
-  } else if (cmd === CMD_POTUP && npc === 'merchant') {
-    const g = potUpPrice(p.potMax)
-    if (p.potMax >= 8 || p.gold < g) return
-    p.gold -= g
-    p.potMax++
-    p.potions = p.potMax
-    trade('potup', -g, 0)
   } else if (cmd === CMD_REROLL && npc === 'smith') {
     const it = p.bag[arg]
     if (!it || it.aff.length === 0 || p.gold < rerollPrice(it)) return
@@ -2452,8 +2431,11 @@ function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit
     if (crit) shooter.heads++
     shooter.dmgDealt += Math.min(dmg, m.hp)
   }
+  const quarter0 = Math.ceil((m.hp / m.maxHp) * 4)
   m.hp -= dmg
   m.hitTick = state.tick
+  // 우두머리·보스: 체력이 25% 줄 때마다 큰 구슬 (긴 싸움에서 회복할 길 — 물약 대신)
+  if (state.mode === 'dungeon' && isBossLike(m) && m.hp > 0 && Math.ceil((m.hp / m.maxHp) * 4) < quarter0) dropGlobe(state, m.x, m.y + 30, GLOBE_BIG_FRAC)
   if (by >= 0) m.lastBy = by
   if (shooter && state.mode === 'dungeon') {
     // 전설: 피의 갈증 · 서리탄 · 연쇄 번개 (연쇄는 치명타에서만 — 번개는 치명타가 아니라 다시 튀지 않는다)
@@ -2503,10 +2485,9 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
       if (hasLeg(killer, LEG_AMMO)) killer.pierceShots = Math.min(6, killer.pierceShots + 3)
     }
     reward(state, m, def)
-    if (rand(state.rng) < def.globe) {
-      state.globes.push({ id: state.nextGlobeId++, x: m.x, y: m.y, ttl: GLOBE_TTL, heal: Math.round(GLOBE_HEAL_FRAC * 100), share: true })
-      state.events.push({ type: 'drop', x: m.x, y: m.y })
-    }
+    // 체력 구슬: 졸개는 종류별 확률 ×1.5 · 정예는 하나 확정 · 우두머리·보스는 둘 (물약을 없앤 몫 — GLOBE_DROP_MUL)
+    const nGlobe = isBossLike(m) ? 2 : m.elite ? 1 : rand(state.rng) < def.globe * GLOBE_DROP_MUL ? 1 : 0
+    for (let k = 0; k < nGlobe; k++) dropGlobe(state, m.x + k * 20, m.y + k * 8, GLOBE_HEAL_FRAC)
     // 쓰러뜨려도 터진다 — 약하게
     if (def.attack === 'explode') booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round(def.dmg * DEATH_BLAST_MULT), by })
   }
@@ -2578,11 +2559,10 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const boss = !!def.boss
     const fountain = boss || unique || m.kind === GOBLIN_KIND
     const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
-    const pots = fountain ? 2 : m.elite ? (rand(state.rng) < 0.25 ? 1 : 0) : rand(state.rng) < 0.04 ? 1 : 0
     const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
     const tier = tierOf(state.tier)
     const bonus = (fountain ? 0.25 : m.elite ? ELITE.lootBonus : 0) + tier.loot
-    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, pots, items, bonus, fountain ? 2 : 0)
+    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, 0, items, bonus, fountain ? 2 : 0)
   }
 }
 
@@ -2603,9 +2583,13 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
   state.events.push({ type: 'levelup', p: p.id, level: p.level })
 }
 
+/** 자석: 내 골드·아이템은 2칸 안이면 끌려와 줍는다 (2026-09-19 "밟는 건 이동이 너무 많다 — 2칸쯤은 자석처럼") */
+const MAGNET_R = 2 * TILE
+const MAGNET_SPEED = 8
+
 /**
- * 밟으면 줍는 것: 골드 더미 · 물약(칸이 찼으면 두고 간다) · **내 아이템 중 자동 줍기를 켠 등급**(가방에 자리가 있으면).
- * 버려진 것·남에게 준 것(주인 -1)은 자동으로 줍지 않는다 — 버리자마자 도로 줍게 된다. 그런 것과 끈 등급은 F (pickItem).
+ * 줍기: 골드 더미 · **내 아이템 중 자동 줍기를 켠 등급**(가방에 자리가 있으면). 2칸(MAGNET_R) 안이면 끌려와서 닿으면 줍는다.
+ * 버려진 것·남에게 준 것(주인 -1) 아이템은 자동으로 줍지 않는다 — 버리자마자 도로 줍게 된다. 그런 것과 끈 등급은 F (pickItem).
  */
 function pickUp(state: GameState, p: PlayerState): void {
   if (!isActive(p)) return
@@ -2615,15 +2599,28 @@ function pickUp(state: GameState, p: PlayerState): void {
   for (let i = state.drops.length - 1; i >= 0; i--) {
     const d = state.drops[i]
     if (d.lock > 0) continue
-    if (d.item) {
-      if (d.owner !== p.id || ((p.autoPick >> d.item.rarity) & 1) === 0) continue
-      if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > RI2) continue
-      if (p.bag.length >= BAG_SIZE) full = true
-      else takeItem(state, p, i)
+    const want = d.item ? d.owner === p.id && ((p.autoPick >> d.item.rarity) & 1) === 1 : d.owner === p.id || d.owner === -1
+    if (!want) continue
+    const dx = d.x - p.x
+    const dy = d.y - p.y
+    const dd = dx * dx + dy * dy
+    if (dd > MAGNET_R * MAGNET_R) continue
+    if (d.item && p.bag.length >= BAG_SIZE) {
+      full = true
       continue
     }
-    if (d.owner !== p.id && d.owner !== -1) continue
-    if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 > R2) continue
+    // 아직 닿지 않았으면 끌려온다 (틱마다 MAGNET_SPEED px)
+    if (dd > (d.item ? RI2 : R2)) {
+      const dist = Math.sqrt(dd)
+      const k = Math.min(1, MAGNET_SPEED / dist)
+      d.x -= dx * k
+      d.y -= dy * k
+      continue
+    }
+    if (d.item) {
+      takeItem(state, p, i)
+      continue
+    }
     if (d.gold > 0) {
       const g = hasLeg(p, LEG_GOLD) ? Math.round(d.gold * 1.5) : d.gold
       p.gold += g
@@ -2638,6 +2635,12 @@ function pickUp(state: GameState, p: PlayerState): void {
     state.drops.splice(i, 1)
   }
   if (full && state.tick % 120 === 0) state.events.push({ type: 'bagFull', p: p.id })
+}
+
+/** 체력 구슬 하나 (곁의 동료도 조금 — share) */
+function dropGlobe(state: GameState, x: number, y: number, frac: number): void {
+  state.globes.push({ id: state.nextGlobeId++, x, y, ttl: GLOBE_TTL, heal: Math.round(frac * 100), share: true })
+  state.events.push({ type: 'drop', x, y })
 }
 
 /** 바닥의 아이템 하나(drops[i])를 가방에 */

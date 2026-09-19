@@ -2,11 +2,11 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
-import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_POTUP, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
+import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_REROLL, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE } from '../core/input'
 import { CHARACTERS, PLAYABLE } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, potUpPrice, rerollPrice,
+  Item, LEGENDS, RARITY_COLORS, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, affixText, buyPrice, gamblePrice, itemName, itemValue, rerollPrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
@@ -134,7 +134,8 @@ export class TownPanel {
               return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price)
             }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
           : me.bag.map((it, i) => row(it, `+${itemValue(it)} 골드`, `data-cmd="${CMD_SELL}" data-arg="${i}"`)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
-      const pot = me.potMax >= 8 ? '<p class="tp-note">물약 주머니가 가장 크다 (8칸).</p>' : `<button class="btn tp-pot" data-cmd="${CMD_POTUP}" data-arg="0" ${me.gold < potUpPrice(me.potMax) ? 'disabled' : ''}>물약 주머니 늘리기 ${me.potMax} → ${me.potMax + 1}칸 · ${potUpPrice(me.potMax)} 골드</button>`
+      // 물약 주머니는 없앴다 (회복은 체력 구슬 하나로 — 2026-09-19)
+      const pot = ''
       body = tabs + `<div class="tp-list">${list}</div>` + pot
     } else if (npc === 'smith') {
       body = `<p class="tp-note">누르면 옵션 하나가 같은 칸의 다른 옵션으로 바뀐다 (무엇이 될지는 모른다).</p><div class="tp-list">${
