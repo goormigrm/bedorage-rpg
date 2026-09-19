@@ -219,21 +219,23 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     melee: true, meleeRange: 82, meleeArc: deg(90),
   },
   // ---------------- 근접 탱커 (철면덕, 2026-09-19 사용자 "딱딱한 고기 바이올린") ----------------
-  // 넓게(±75°) 후려치고 세게 밀친다. 58 · 30틱 = 1.93. 앞에서 오는 공격을 기력으로 막는다(근접 무기 공통)
+  // 2026-09-20 사용자 "철면덕 공격 범위 · 공격력이 너무 높다": 58 → 52 · 사거리 78 → 70 · ±75° → ±62°.
+  // 휘두르는 넓이가 후라이팬과 비슷해지고(7964 → 5302 px²), 한 대 피해는 근접 중 가장 낮다(52 · 30틱 = 1.73).
+  // 대신 체력 290(1위) · 탱커 보정 · 막기는 그대로다 — 가장 튼튼한 대신 덜 아프게.
   violin: {
-    ...INF, pvp: 0.75, id: 'violin', family: 'violin', name: '고기 바이올린', desc: '얼린 고기로 만든 딱딱한 바이올린. 넓게 후려치고 세게 밀친다. 앞에서 오는 공격은 기력으로 막는다.',
-    knock: 6, damage: 58, pellets: 1, fireInterval: 30,
+    ...INF, pvp: 1.05, id: 'violin', family: 'violin', name: '고기 바이올린', desc: '얼린 고기로 만든 딱딱한 바이올린. 넓게 후려치고 세게 밀친다. 앞에서 오는 공격은 기력으로 막는다.',
+    knock: 6, damage: 52, pellets: 1, fireInterval: 30,
     spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
     speed: 0, life: 0, moveMul: 0.98, length: 24, color: 0xa8392c, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
-    melee: true, meleeRange: 78, meleeArc: deg(75),
+    melee: true, meleeRange: 70, meleeArc: deg(62),
   },
-  // 고기 첼로: 더 크고 느리다 — 둘레 거의 반 바퀴(±100°) · 96 · 46틱 = 2.09
+  // 고기 첼로: 더 크고 느리다 — 96 → 84 · 사거리 92 → 82 · ±100° → ±80° (2026-09-20 바이올린과 같은 이유). 84 · 46틱 = 1.83
   cello: {
-    ...INF, pvp: 0.75, id: 'cello', family: 'violin', name: '고기 첼로', desc: '통째로 얼린 고기 첼로. 느리지만 반 바퀴를 한 번에 쓸고 멀리 날린다.',
-    knock: 9, damage: 96, pellets: 1, fireInterval: 46,
+    ...INF, pvp: 1.05, id: 'cello', family: 'violin', name: '고기 첼로', desc: '통째로 얼린 고기 첼로. 느리지만 반 바퀴를 한 번에 쓸고 멀리 날린다.',
+    knock: 9, damage: 84, pellets: 1, fireInterval: 46,
     spreadHip: 0, spreadAds: 0, recoil: 0, recoilRecover: 0,
     speed: 0, life: 0, moveMul: 0.94, length: 30, color: 0x8e2c22, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
-    melee: true, meleeRange: 92, meleeArc: deg(100),
+    melee: true, meleeRange: 82, meleeArc: deg(80),
   },
   // ---------------- 근접 딜러 (우재덕, 2026-09-19 사용자 "길고 얇은 검") ----------------
   // 멀리(104px) 좁게(±28°) 빠르게 찌른다. 30 · 14틱 = 2.14. 앞에서 오는 공격은 검으로 쳐 낸다(기력)
