@@ -79,10 +79,10 @@ export interface Look {
  * 효과는 **던전에서만**(투기장 밸런스는 그대로) — sim.ts roleOn.
  */
 export type Role = 'tank' | 'dps' | 'heal'
-export const ROLE_INFO: Record<Role, { name: string; color: string; desc: string }> = {
-  tank: { name: '탱커', color: '#7ab8ff', desc: '던전: 최대 체력 +30% · 받는 피해 -20% · 괴물이 나를 먼저 노린다' },
-  dps: { name: '딜러', color: '#ff8a6a', desc: '던전: 무기 피해 +20%' },
-  heal: { name: '힐러', color: '#7aff9a', desc: '던전: 2초마다 7칸 안 동료(나 포함) 체력 3% 회복 · 치유 스킬 1.5배 · 무기 피해 -20%' },
+export const ROLE_INFO: Record<Role, { name: string; color: string; desc: string; short: string }> = {
+  tank: { name: '탱커', color: '#7ab8ff', desc: '던전: 최대 체력 +30% · 받는 피해 -20% · 괴물이 나를 먼저 노린다', short: '체력 +30% · 받는 피해 -20% · 괴물이 먼저 노림' },
+  dps: { name: '딜러', color: '#ff8a6a', desc: '던전: 무기 피해 +20%', short: '무기 피해 +20%' },
+  heal: { name: '힐러', color: '#7aff9a', desc: '던전: 2초마다 7칸 안 동료(나 포함) 체력 3% 회복 · 치유 스킬 1.5배 · 무기 피해 -20%', short: '동료 치유 · 치유 스킬 ×1.5 · 무기 피해 -20%' },
 }
 
 export interface CharacterDef {

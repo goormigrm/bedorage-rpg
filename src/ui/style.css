@@ -787,3 +787,6 @@ body { background: var(--bg); }
 .roomhint.party { margin-top: 8px; font-weight: 600; }
 .tp-role { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 .tp-role .role-chip { margin: 0 4px 0 0; min-width: 44px; text-align: center; }
+/* 로비 카드: 역할 효과 한 줄 (폰은 칩에 마우스를 올릴 수 없다) */
+.crole { margin-top: 6px; font-size: 12px; color: #b8a67e; line-height: 1.5; }
+.crole b { color: var(--rc); margin-right: 4px; }

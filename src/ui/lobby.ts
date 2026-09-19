@@ -437,7 +437,8 @@ export class Lobby {
     const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
     const role = ROLE_INFO[c.role]
     el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
-      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div></div>
+      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div>
+      <div class="crole" style="--rc:${role.color}" title="${role.desc}"><b>${role.name}</b> ${role.short} <small>(던전)</small></div></div>
       <div class="ch-r"><div class="skd">${own
         .map(
           (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i><div><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em><span>${SKILLS[sid].desc}</span></div></div>`,
