@@ -663,7 +663,7 @@ export class Renderer3D {
               this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
             }
             // 바닥 핏자국: 내 치명타는 늘, 내 명중은 가끔 (쏜 방향 뒤쪽에)
-            if (mine && (head || Math.random() < 0.25)) this.addDecal(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.55 : 0.32)
+            if (mine && (head || Math.random() < 0.25)) this.addDecal(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.4 : 0.24)
             this.spawnImpact(e.x * U, 0.8, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.2 : 1.1)
             if (head) this.spawnRing(e.x * U, e.y * U, 0.3, 1.4, 0.35, 0xffd84a)
           }
@@ -691,7 +691,7 @@ export class Renderer3D {
             if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
           }
           if (this.hiddenM.has(e.m)) break
-          if (e.kind !== 1) this.addDecal(e.x * U + dir.x * 0.7, e.y * U + dir.z * 0.7, rank >= 1 ? 1.1 : 0.75)
+          if (e.kind !== 1) this.addDecal(e.x * U + dir.x * 0.7, e.y * U + dir.z * 0.7, rank >= 1 ? 0.85 : 0.5)
           // 검붉은 피 · 뼛조각이 튀고 바닥에 얼룩 링
           const bone = e.kind === 1
           for (let k = 0; k < 10; k++) {
@@ -2663,7 +2663,7 @@ export class Renderer3D {
     if (!this.decals) {
       const geo = new THREE.CircleGeometry(0.5, 14)
       geo.rotateX(-Math.PI / 2)
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })
       this.decals = new THREE.InstancedMesh(geo, mat, DECAL_MAX)
       this.decals.count = 0
       this.decals.frustumCulled = false
@@ -2674,8 +2674,9 @@ export class Renderer3D {
     this.decalNext = (this.decalNext + 1) % DECAL_MAX
     this.decalData[i] = { x, z, s: s * (0.8 + Math.random() * 0.5), r: Math.random() * Math.PI, life: DECAL_LIFE }
     // 조명을 받지 않는 재질이라 어두운 던전에서 튀지 않게 검붉게 (밝으면 분홍빛으로 떴다)
-    const shade = 0.2 + Math.random() * 0.14
-    this.decals.setColorAt(i, new THREE.Color(shade * 1.2, shade * 0.08, shade * 0.07))
+    // 2026-09-19 떼를 쓸면 바닥이 붉은 물감처럼 덮였다 → 더 작고 검붉게 (등불 아래서도 튀지 않게)
+    const shade = 0.15 + Math.random() * 0.12
+    this.decals.setColorAt(i, new THREE.Color(shade * 1.1, shade * 0.07, shade * 0.06))
     if (this.decals.instanceColor) this.decals.instanceColor.needsUpdate = true
     this.decals.count = Math.max(this.decals.count, i + 1)
   }
