@@ -61,6 +61,7 @@ export class Sfx {
   /** 몬스터 소리 되풀이 제한 (무리 전투에서 같은 소리가 수십 번 겹치면 귀가 아프다) */
   private lastMHit = 0
   private lastMDeath = 0
+  private lastMelee = 0
   private lastKill = 0
   private lastGrowl = 0
   private lastCountdownSec = -1
@@ -315,8 +316,18 @@ export class Sfx {
           break
         }
         case 'mhit': {
-          // 치명타는 늘 들리게, 보통 명중은 35ms 에 한 번
           const now = performance.now()
+          // 근접(바이올린 · 검 · 후라이팬)은 무기에 맞는 타격음 — 한 번 휘둘러 여럿을 쳐도 한 번만 (2026-09-19 손맛)
+          const by = e.by >= 0 ? state.players[e.by] : undefined
+          const mw = by ? WEAPONS[by.weapon] : undefined
+          if (mw?.melee) {
+            if (now - this.lastMelee > 90) {
+              this.lastMelee = now
+              this.meleeHit(sp(e.x, e.y), e.crit, mw.family)
+            }
+            break
+          }
+          // 치명타는 늘 들리게, 보통 명중은 35ms 에 한 번
           if (e.crit || now - this.lastMHit > 35) {
             this.lastMHit = now
             this.hit(sp(e.x, e.y), e.crit)
@@ -623,6 +634,23 @@ export class Sfx {
       this.tone(node, t0 + 0.01, 0.14, 'sine', 1500, 1100, 0.6)
       this.tone(node, t0 + 0.02, 0.2, 'triangle', 2400, 1900, 0.45)
     }
+  }
+
+  /** 근접 타격음: 바이올린 = 살을 치는 묵직한 퍽 · 검 = 베는 쉭 · 후라이팬 = 쇠 울림 (+ 치명타 팅) */
+  private meleeHit(s: Spatial, crit: boolean, fam: string): void {
+    const { node, t0 } = this.bus(s, 0.95)
+    if (fam === 'violin') {
+      this.tone(node, t0, 0.13, 'sine', 170, 55, 0.85, 0.002)
+      this.noiseBurst(node, t0, 0.09, 'lowpass', 1100, 220, 0.65, 1)
+    } else if (fam === 'rapier') {
+      this.noiseBurst(node, t0, 0.06, 'highpass', 3200, 6400, 0.45, 0.8)
+      this.tone(node, t0, 0.09, 'triangle', 1900, 900, 0.3, 0.002)
+      this.noiseBurst(node, t0 + 0.02, 0.05, 'lowpass', 900, 300, 0.35, 1)
+    } else {
+      this.tone(node, t0, 0.22, 'sine', 640, 560, 0.3, 0.002)
+      this.noiseBurst(node, t0, 0.07, 'bandpass', 1600, 700, 0.5, 1.2)
+    }
+    if (crit) this.tone(node, t0 + 0.01, 0.16, 'triangle', 2300, 1800, 0.4)
   }
 
   /** 내가 잡았다: 낮게 울리는 "퍽" + 짧은 파열 (손맛 — 2026-09-19) */
