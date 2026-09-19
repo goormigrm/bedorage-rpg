@@ -207,12 +207,13 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   },
   giyeol: {
     id: 'giyeol', name: '기열덕', basedOn: '기열킹', tagline: '뇌절의 왕. 입을 크게 벌리고 달려든다.',
-    prominence: 7, role: 'tank',
+    // 2026-09-19 사용자: 탱커 → 딜러. 고함의 도발 · 피해 감소를 빼고, 던전 고함이 뇌절을 쌓는다(skills.ts)
+    prominence: 7, role: 'dps',
     // 2026-09-05 SMG → 소총. 연속 명중 패시브인데 SMG 는 애초에 잘 안 맞아 특성과 어긋났다
     // 소총이 되면서 세져(계측 67%) 체력을 우재덕과 같은 185 로 내렸다
     // 2026-09-19 재장전을 없앤 뒤 투기장 1:1 에서 17~21% (머리가 커서 헤드샷을 잘 맞는다) → 205
     maxHp: 205, speed: 3.2, weapon: 'rifle', dashCooldown: 55,
-    passiveName: '뇌절', passiveDesc: '연달아 맞힐수록 한 발 한 발이 점점 아파집니다. 빗나가면 조금 식습니다.\n시끄러운 탱커 — 고함으로 괴물을 끌어모으고 버팁니다.',
+    passiveName: '뇌절', passiveDesc: '연달아 맞힐수록 한 발 한 발이 점점 아파집니다. 빗나가면 조금 식습니다.\n시끄러운 딜러 — 고함으로 밀쳐 내며 맞힌 만큼 뇌절을 단숨에 쌓고 몰아칩니다.',
     bodyColor: 0xff5f5f, accentColor: 0xd42b2b,
     look: {
       // 사진: 갈색 짧은 머리, 크게 벌린 입, 검은 정장 + 흰 셔츠 + 빨간 넥타이
@@ -348,7 +349,7 @@ export const ATTR_REC: Record<CharacterId, [number, number]> = {
   oknyang: [0, 1],
   jupeol: [3, 2],
   uwon: [3, 1],
-  giyeol: [2, 0],
+  giyeol: [0, 1],
   pungwol: [0, 2],
   tongdak: [3, 2],
   juwoojae: [0, 1],

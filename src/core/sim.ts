@@ -2153,19 +2153,12 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.streak = Math.max(p.streak, GIYEOL.maxStacks)
       buffRate(p, 300, 1.3)
       break
-    case 'shout':
-      aoe(state, map, p, p.x, p.y, 5 * T, 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
-      // 던전 (기열덕 탱커): 8칸 안 괴물이 5초간 나만 노리고, 나는 5초간 받는 피해 -30%
-      if (dun) {
-        for (const m of state.monsters) {
-          if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 8 * T) continue
-          if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
-          m.target = p.id
-          m.taunt = Math.max(m.taunt, 300)
-        }
-        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 300)
-      }
+    case 'shout': {
+      // 던전 (기열덕 딜러 — 2026-09-19 탱커에서 바뀜): 앞 6칸 · 120 피해, 맞힌 괴물 하나마다 뇌절 한 칸
+      const n = aoe(state, map, p, p.x, p.y, (dun ? 6 : 5) * T, dun ? 120 : 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
+      if (dun) p.streak = Math.min(GIYEOL.maxStacks, p.streak + n)
       break
+    }
     case 'kingrage':
       p.fx[FX_KING] = dun ? 600 : 480
       if (dun) buffRate(p, 600, 1.5)

@@ -95,6 +95,20 @@ describe('나머지 여섯 (D7)', () => {
     expect(b.hp).toBeLessThan(5000)
   })
 
+  it('고함(기열 — 딜러): 던전에서 앞 6칸을 치고 맞힌 괴물마다 뇌절 한 칸, 도발은 없다', () => {
+    const { s, map, o } = ready('giyeol')
+    const p = s.players[0]
+    const ms = [2, 4, 5.5].map((k) => dummy(s, o.x + k * TILE, o.y))
+    p.streak = 0
+    p.cd[1] = 0
+    step(s, map, [press(BTN_SKILL2)])
+    expect(p.streak).toBe(3)
+    for (const m of ms) {
+      expect(m.hp).toBeLessThan(5000)
+      expect(m.taunt).toBe(0)
+    }
+  })
+
   it('태풍(풍월): 커서 지점 소용돌이가 괴물을 끌어당기며 친다', () => {
     const { s, map, o } = ready('pungwol')
     const p = s.players[0]
