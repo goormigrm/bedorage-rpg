@@ -458,8 +458,13 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .char .pv .sk span { font-size: 11px; color: #d8cfbf; background: rgba(255,255,255,0.05); border: 1px solid rgba(201,162,74,0.35); border-radius: 5px; padding: 1px 7px 1px 4px; }
 .char .pv .sk span.ult { border-color: rgba(241,213,138,0.8); color: #f1d58a; }
 .char .pv .sk i { font-style: normal; font-weight: 700; color: #c9a24a; margin-right: 4px; }
-/* 디아블로 4 풍 HUD: 아래는 스킬 바 자리라 조작 안내 띠를 위로, 소리·로비 버튼은 왼쪽 위 */
-.keys { top: 0; bottom: auto !important; }
+/* 디아블로 4 풍 HUD: 소리·로비 버튼은 왼쪽 위.
+   조작 안내는 위쪽 띠였다가 왼쪽 위 버튼 · 파티 · 미니맵과 겹쳐(2026-09-19 요청) 아래 스킬 바 묶음 바로 위로 옮겼다.
+   스킬 바 · 오브 묶음의 위 끝이 화면 아래에서 약 140px (d4hud drawBottom: baseY = H - 70, 오브 반지름 54) */
+.keys { display: block; top: auto; bottom: 150px !important; left: 50%; right: auto; transform: translateX(-50%); height: auto; width: max-content; max-width: min(900px, calc(100% - 40px));
+  flex-wrap: wrap; white-space: normal; gap: 2px 0; justify-content: center; text-align: center; line-height: 1.7; padding: 5px 14px;
+  font: 500 11.5px "IBM Plex Sans KR", sans-serif; color: #b8a67e; background: rgba(8,7,6,.62); border: 1px solid rgba(201,162,74,.25); border-radius: 4px; pointer-events: none; }
+.keys b { color: #f1d58a; }
 .game-ui .top-right { right: auto !important; left: 16px; top: 16px; }
 
 /* 캐릭터 레벨 · 세이브 버튼 */
@@ -712,3 +717,33 @@ body { background: var(--bg); }
 .ending-go { margin-top: 18px; }
 @keyframes ending-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ending-line { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---- 로비 다듬기 (2026-09-19 요청: "게임 만들기 창이 위에 붙어 보기 불편 · 방 자리의 닉네임이 … 로 잘림") ---- */
+/* 창: .lobby.d2 > * 의 position: relative 가 창의 fixed 를 덮어 써서 창이 화면 맨 위 글처럼 붙고 어둡게 덮는 것도 창 높이만큼이었다 */
+.lobby.d2 > .dlg { position: fixed !important; inset: 0; z-index: 60 !important; }
+.lobby.d2 .dlg .dbox { padding: 20px 22px; }
+.lobby.d2 .dlg .cardp { font-size: 13px; line-height: 1.6; color: #d8cfbf; margin: 0 0 4px; }
+/* 줄 이름: 덕의 좁은 고정폭 대문자(자간 넓음)는 한글이 "정 원" 처럼 벌어져 보였다 */
+.lobby.d2 .row { margin-top: 14px; gap: 6px; }
+.lobby.d2 .row label { font: 700 12.5px "Nanum Myeongjo", serif; color: #c9b27e; letter-spacing: 0; text-transform: none; }
+.lobby.d2 .dlg .hintline { margin: 6px 0 0; font-size: 12px; color: #9a8a70; }
+.lobby.d2 .dlg .warn { margin-top: 16px; }
+.lobby.d2 .seg button.on { background: linear-gradient(180deg, #6a4a1c, #3e2a10); color: #ffe6a8; box-shadow: inset 0 0 0 1px rgba(241,213,138,.55); }
+/* 방 정보 칩 */
+.lobby.d2 .setrow span { font-size: 13px; padding: 4px 10px; background: rgba(0,0,0,.3); border-color: rgba(201,162,74,.22); border-radius: 4px; }
+.lobby.d2 .setrow b { font: 600 11.5px "IBM Plex Sans KR", sans-serif; letter-spacing: 0; color: #9a8a70; }
+.lobby.d2 .setrow.botrow .hintline { flex-basis: 100%; margin: 0; font-size: 11.5px; color: #8a7a60; }
+.lobby.d2 .setrow.botrow .chk { font-size: 13.5px; }
+/* 자리: 좁은 패널에 넷을 가로로 세우면 닉네임이 한두 글자로 잘렸다 → 한 줄에 한 자리 (번호 | 닉네임 | 캐릭터 · 준비) */
+.d2-side .slots { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
+.d2-side .slot { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 0; padding: 9px 12px; }
+.d2-side .slot .who { font: 700 12px "IBM Plex Sans KR", sans-serif; letter-spacing: 0; color: #b8a67e; flex-wrap: wrap; gap: 4px; }
+.d2-side .slot.mine .who { color: #f1d58a; }
+.d2-side .slot .cname { font: 800 17px "Nanum Myeongjo", serif; margin: 0; color: #f1d58a; line-height: 1.3; }
+.d2-side .slot.empty .cname { font: 600 13.5px "IBM Plex Sans KR", sans-serif; color: #7e7260; }
+.d2-side .slot .rd { display: flex; flex-direction: column; align-items: flex-end; font-size: 12px; line-height: 1.35; white-space: nowrap; color: #9a8a70; }
+.d2-side .slot .rd .rc { color: #d8cfbf; }
+.d2-side .slot.ready .rd .rs { color: #7ee787; }
+.d2-side .room-actions { margin-top: 12px; }
+.d2-side .roomhint { font-size: 12px; line-height: 1.55; }
+.lobby.d2 .dlg .maprow[hidden] { display: none; }

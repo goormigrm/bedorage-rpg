@@ -67,7 +67,8 @@ describe('결정론', () => {
     const b = run(11, PARTY, 60 * 90)
     expect(a.hashes.length).toBeGreaterThan(10)
     expect(a.hashes).toEqual(b.hashes)
-  })
+    // 90초 판을 두 번 돈다 — 혼자는 2.3초지만 시험 파일이 나란히 돌면 기본 5초를 넘길 때가 있다
+  }, 20000)
 
   it('스냅샷에서 이어 돌려도 같은 결과 (리싱크·난입과 같은 길)', () => {
     const seed = 21

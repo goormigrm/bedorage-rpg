@@ -1914,22 +1914,29 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
         m.vuln = 480
         m.vulnPct = Math.max(m.vulnPct, 25)
       }
+      // 카메라 앞이라 괴물이 몸을 사린다: 던전에서 8초간 나와 곁의 동료가 받는 피해 -30% (포효의 가호와 같은 효과)
+      if (state.mode === 'dungeon') for (const q of alliesNear(state, p, 8 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 480)
       break
     }
     case 'fanfire': {
       const { x: mx, y: my } = muzzle(map, p)
       const headTarget = aimedEnemy(state, p)
       const critMon = aimedMonster(state, map, p)
+      // 던전: 떼를 치는 스킬이 되게 한 발 28 피해 · 하나를 더 꿰뚫는다 (권총 자체는 그대로 — 2026-09-19 요청). 투기장은 예전 그대로
+      const dun = state.mode === 'dungeon' ? { damage: Math.round(28 * skillPow), pierce: 1 } : {}
       for (let i = 0; i < 8; i++) {
         const a = (p.aim + Math.round(((i - 3.5) / 3.5) * deg(15))) & 1023
-        spawnBullet(state, p, mx, my, a, 'pistol', { headTarget, critMon, over: false, overR: 0 })
+        spawnBullet(state, p, mx, my, a, 'pistol', { headTarget, critMon, over: false, overR: 0, ...dun })
       }
       p.shots += 8
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'pistol' })
+      // 던전: 달라붙은 떼를 밀쳐 낸다 (앞쪽 3칸 · 1.5초 느리게) — 권총은 한 마리씩이라 떼에 둘러싸이면 빠져나올 길이 없었다
+      if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 3 * T, 15, { knock: 10, slow: 90, arcAim: p.aim, arc: deg(40), id, quiet: true })
       break
     }
     case 'spotlight':
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480, dmg: 0 })
+      // 던전: 무대 위 괴물이 0.5초마다 18 피해 (투기장은 피해 없음 — 예전 그대로)
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: 4 * T, t: 480, max: 480, dmg: state.mode === 'dungeon' ? Math.round(18 * skillPow) : 0 })
       break
     // ---- 매직덕
     case 'firstaid': {
@@ -2004,27 +2011,35 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     // ---- 우원덕
     case 'stunt': {
-      p.dashDx = cosA(p.aim)
-      p.dashDy = sinA(p.aim)
+      // 뒤로 구른다 (앞으로 구르면 조준한 괴물 떼 한가운데로 들어갔다)
+      p.dashDx = -cosA(p.aim)
+      p.dashDy = -sinA(p.aim)
       p.fx[FX_CHARGE] = 11
       p.chargeTag = 0
       p.ads = false
       const { x: mx, y: my } = muzzle(map, p)
       const headTarget = aimedEnemy(state, p)
       const critMon = aimedMonster(state, map, p)
-      for (let i = 0; i < 6; i++) spawnBullet(state, p, mx, my, (p.aim + Math.round(((i - 2.5) / 2.5) * deg(18))) & 1023, 'pistol', { headTarget, critMon, over: false, overR: 0 })
-      p.shots += 6
+      // 던전: 8발 · 한 발 28 피해 · 하나를 더 꿰뚫는다 (투기장은 6발 그대로)
+      const dun = state.mode === 'dungeon'
+      const n = dun ? 8 : 6
+      const o = dun ? { damage: Math.round(28 * skillPow), pierce: 1 } : {}
+      for (let i = 0; i < n; i++) spawnBullet(state, p, mx, my, (p.aim + Math.round(((i - (n - 1) / 2) / ((n - 1) / 2)) * deg(18))) & 1023, 'pistol', { headTarget, critMon, over: false, overR: 0, ...o })
+      p.shots += n
       state.events.push({ type: 'fire', p: p.id, x: mx, y: my, aim: p.aim, weapon: 'pistol' })
       break
     }
     case 'curtain':
       for (const m of state.monsters) {
         if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 7 * T) continue
+        m.stun = Math.max(m.stun, 60)
         m.slow = Math.max(m.slow, 240)
         m.mark = Math.max(m.mark, 240)
         m.vuln = Math.max(m.vuln, 240)
         m.vulnPct = Math.max(m.vulnPct, 20)
       }
+      // 던전: 40 피해도 (받는 피해 +20% 가 걸린 뒤라 48) — 떼를 한 번에 깎는 수단
+      if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 7 * T, 40, { id, quiet: true })
       break
     case 'redcarpet':
       p.fx[FX_CARPET] = 480
@@ -2147,6 +2162,8 @@ function stepZones(state: GameState, map: GameMap): void {
         }
       }
     } else if (z.kind === ZONE_SPOTLIGHT) {
+      const lit = state.players[z.owner]
+      if (lit && z.dmg > 0 && z.t % 30 === 0) aoe(state, map, lit, z.x, z.y, z.r, z.dmg, { id: 'spotlight', quiet: true })
       for (const m of state.monsters) {
         if (m.hp <= 0 || len(m.x - z.x, m.y - z.y) > z.r) continue
         m.slow = Math.max(m.slow, 6)
@@ -2338,6 +2355,7 @@ function applyHitPlayer(state: GameState, b: Bullet, victim: PlayerState, dOff: 
   const shooter = state.players[b.owner]
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
   if (shooter.char === 'giyeol') dmg *= 1 + Math.min(GIYEOL.maxStacks, shooter.streak) * GIYEOL.perHit
+  if (shooter.char === 'pungwol') dmg *= PUNGWOL.pvpMul
   // 투기장 배율 (2026-09-19 재장전을 없앤 뒤 tools/arena.ts 로 맞춘 값 — 던전 밸런스와 따로)
   dmg *= w.pvp ?? 1
   dmg = Math.round(dmg)

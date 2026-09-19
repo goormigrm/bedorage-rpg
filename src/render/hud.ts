@@ -350,7 +350,7 @@ export class Hud {
       sub = '하드코어 — 이번 원정은 관전만 할 수 있습니다'
     } else if (!me.alive) {
       title = '사망'
-      sub = s.mode === 'arena' ? `${Math.ceil(me.respawnTimer / 60)}초 뒤 다시 나갑니다` : `${Math.ceil(me.respawnTimer / 60)}초 뒤 층 입구에서 다시 일어납니다`
+      sub = s.mode === 'arena' ? `${Math.ceil(me.respawnTimer / 60)}초 뒤 다시 나갑니다` : `${Math.ceil(me.respawnTimer / 60)}초 뒤 마을에서 다시 일어납니다`
     } else return
     const ctx = this.ctx
     ctx.save()

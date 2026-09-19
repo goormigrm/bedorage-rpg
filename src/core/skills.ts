@@ -46,9 +46,11 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   grenade: { id: 'grenade', name: '수류탄', desc: '커서 지점(9칸까지)에 던진다. 0.7초 뒤 3칸에 80 피해 · 1초 기절.', cd: s(12), reach: 9 * 32 },
   composure: { id: 'composure', name: '침착 모드', desc: '6초간 모든 탄이 치명타, 연사 1.5배, 반동 없음.', cd: s(60), ult: true },
   // 단군덕 — 정찰: 보여 주고 약하게 만든다 (소음기라 무리를 깨우지 않는다)
-  broadcast: { id: 'broadcast', name: '생중계', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%.', cd: s(16) },
-  fanfire: { id: 'fanfire', name: '난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에 쏜다.', cd: s(8) },
-  spotlight: { id: 'spotlight', name: '스포트라이트', desc: '커서 지점(10칸까지)에 8초짜리 무대. 안의 괴물은 절반 속도 · 받는 피해 +50%, 안의 동료는 연사 +30%.', cd: s(60), ult: true, reach: 10 * 32 },
+  // 2026-09-19 권총 둘이 던전에서 떼에 둘러싸여 가장 많이 죽었다(단군 195 · 우원 421, 다른 캐릭터 31~119) —
+  // 권총 수치 대신 스킬로 살아남게 한다(사용자 요청): 생중계 = 받는 피해 감소, 난사 = 밀쳐 내기. 투기장은 그대로
+  broadcast: { id: 'broadcast', name: '생중계', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.', cd: s(16) },
+  fanfire: { id: 'fanfire', name: '난사', desc: '조준 방향 30° 부채꼴로 8발을 한꺼번에 쏜다. 던전에서는 한 발 28 피해로 하나를 더 꿰뚫고, 앞쪽 3칸 안의 괴물을 밀쳐 내 1.5초 느리게.', cd: s(8) },
+  spotlight: { id: 'spotlight', name: '스포트라이트', desc: '커서 지점(10칸까지)에 8초짜리 무대. 안의 괴물은 절반 속도 · 받는 피해 +50%, 안의 동료는 연사 +30%. 던전에서는 안의 괴물이 0.5초마다 18 피해.', cd: s(60), ult: true, reach: 10 * 32 },
   // 매직덕 — 치유: 파티를 살린다
   firstaid: { id: 'firstaid', name: '응급 처치', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다.', cd: s(15) },
   flame: { id: 'flame', name: '소독 화염', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다.', cd: s(9) },
@@ -67,8 +69,9 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   mirror: { id: 'mirror', name: '반사광', desc: '3초간 받는 피해 -60% · 나를 때린 괴물은 그 피해의 1.5배를 돌려받는다.', cd: s(14) },
   supernova: { id: 'supernova', name: '초신성', desc: '주변 6칸에 200 피해 · 밀쳐 내고 2.5초 기절.', cd: s(75), ult: true },
   // 우원덕 — 배우: 구르고 무대를 지배한다
-  stunt: { id: 'stunt', name: '스턴트', desc: '조준 방향으로 구르며(무적) 부채꼴로 6발을 쏜다.', cd: s(9) },
-  curtain: { id: 'curtain', name: '커튼콜', desc: '7칸 안의 괴물이 4초간 절반 속도 · 드러남 · 받는 피해 +20%.', cd: s(14) },
+  // 2026-09-19 스턴트는 조준 방향(= 괴물 쪽)으로 굴러 떼 한가운데로 뛰어들었다 → 뒤로 구르며 앞으로 쏜다. 커튼콜에 1초 기절
+  stunt: { id: 'stunt', name: '스턴트', desc: '뒤로 구르며(무적) 조준 방향 부채꼴로 6발을 쏜다. 던전에서는 8발 · 한 발 28 피해 · 하나를 더 꿰뚫는다.', cd: s(9) },
+  curtain: { id: 'curtain', name: '커튼콜', desc: '7칸 안의 괴물이 1초 기절하고, 4초간 절반 속도 · 드러남 · 받는 피해 +20%. 던전에서는 40 피해도 준다.', cd: s(14) },
   redcarpet: { id: 'redcarpet', name: '레드카펫', desc: '8초간 구르기가 줄지 않고, 구를 때마다 주변 2.5칸에 70 피해 · 0.5초 기절.', cd: s(70), ult: true },
   // 기열덕 — 뇌절: 쌓아서 터뜨린다
   overdrive: { id: 'overdrive', name: '폭주', desc: '뇌절을 바로 가득 채우고 5초간 연사 +30%.', cd: s(14) },

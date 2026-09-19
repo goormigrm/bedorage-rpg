@@ -33,12 +33,14 @@ export const BLOCK_LOCK_TICKS = 30
 /** 앞에서 오는 몬스터 공격을 후라이팬으로 막을 확률 (덕 오픈 베타 값 그대로. PvE 에서는 M5 에서 다시 본다) */
 export const BLOCK_CHANCE = 0.25
 /** 통천덕 패시브(치킨): 킬마다 최대 체력이 늘고 조금 회복한다. 죽으면 원래대로 (M7 에서 PvE 값으로) */
-export const CHICKEN_MAXHP_PER_KILL = 15
-export const CHICKEN_MAXHP_CAP = 60
-export const CHICKEN_HEAL = 20
+// 통천덕 "치킨"(투기장): 잡을 때마다 최대 체력 · 회복. 2026-09-19 투기장 1:1 67%(혼자 높음) → 15/60/20 에서 줄였다
+export const CHICKEN_MAXHP_PER_KILL = 10
+export const CHICKEN_MAXHP_CAP = 30
+export const CHICKEN_HEAL = 15
 /** 침착덕 패시브(침착): 탄퍼짐 배율 · 발당 반동 배율 · 반동 회복 배율 */
 export const CHIM = { spreadMul: 0.55, recoilMul: 0.45, recoverMul: 3 }
-export const PUNGWOL = { dashCost: 22 }
+/** 풍월덕: 구르기 기력 · 투기장 피해 배율 (2026-09-19 투기장 1:1 38% — 가장 낮아서) */
+export const PUNGWOL = { dashCost: 22, pvpMul: 1.12 }
 export const UWON = { invulnAfterDash: 24 }
 /** 주펄덕 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }

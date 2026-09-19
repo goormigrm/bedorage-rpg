@@ -19,7 +19,8 @@ import { AREAS, QUESTS, buildAreaMap, questPoints } from '../src/core/world'
 
 const arg = (k: string, d: number) => Number(process.argv.find((a) => a.startsWith(k + '='))?.split('=')[1] ?? d)
 const PARTY = arg('party', 1)
-const SEEDS = Array.from({ length: arg('seeds', 2) }, (_, i) => 101 + i * 17)
+// from=N: N 번째 시드부터 (시드를 프로세스 여러 개로 나눠 동시에 돌릴 때)
+const SEEDS = Array.from({ length: arg('seeds', 2) }, (_, i) => 101 + (i + arg('from', 0)) * 17)
 const ONLY_ACT = arg('act', -1)
 const CAP_MIN = arg('cap', 20)
 /** 장비 한 벌의 등급 (0 = 맨몸 · 1 = 마법 이상) */

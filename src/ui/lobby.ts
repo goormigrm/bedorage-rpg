@@ -46,9 +46,9 @@ const KILL_OPTIONS = [5, 10, 15, 20, 30]
 const ARENA_MAPS = MAP_LIST.filter((m) => !m.fixedScale)
 /** 죽음 규칙 설명 (방 만들기·혼자 하기 창) */
 const DEATH_RULE_DESC = [
-  '쓰러져도 잃는 것이 없습니다. 죽으면 층 입구에서 다시 일어납니다.',
-  '죽으면 골드와 경험치 일부를 잃습니다 (디아블로 2 방식 · 장비·레벨이 생기면 적용).',
-  '한 번 죽으면 그 원정은 끝 — 관전만 합니다. 모두 탈락하면 전멸.',
+  '쓰러져도 잃는 것이 없습니다. 죽으면 그 막의 마을에서 다시 일어납니다.',
+  '죽으면 골드 20% · 지금 레벨 경험치 10% 를 잃습니다 (디아블로 2 방식 · 레벨은 떨어지지 않음).',
+  '한 번 죽으면 그 게임은 끝 — 관전만 합니다. 캐릭터는 마을에 들어설 때만 저장됩니다.',
 ]
 
 /** 닉네임 등 사용자 입력을 HTML 에 넣기 전에 */
@@ -166,7 +166,7 @@ export class Lobby {
         <div class="dlg" id="dlg-host" hidden>
           <div class="dbox">
             <h3>게임 만들기</h3>
-            <p class="cardp"><b>던전</b>: 1막 순례자 야영지에서 시작 — 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채운다.<br><b>투기장</b>: 키운 캐릭터끼리 배도라지 덕의 대전(PvP) — 둘 이상, 빈 자리는 봇으로도 채울 수 있다.</p>
+            <p class="cardp"><b>던전</b>: 방장이 연 가장 뒤 막의 마을에서 시작합니다. 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채웁니다.<br><b>투기장</b>: 키운 캐릭터끼리 배도라지 덕의 대전(PvP). 둘 이상이면 되고, 빈 자리는 봇으로 채울 수 있습니다.</p>
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>
@@ -194,7 +194,7 @@ export class Lobby {
                 ${ARENA_MAPS.map((m) => `<button data-v="${m.id}" class="${m.id === 'studio' ? 'on' : ''}" title="${m.desc}">${m.name}</button>`).join('')}
               </div></div>
             </div>
-            <div class="maprow">
+            <div class="maprow arena-only" hidden>
               <p class="hintline" id="map-desc">${MAPS[this.mapId].name} — ${MAPS[this.mapId].desc} 판마다 새로 만들어집니다.</p>
               <canvas id="map-preview" class="mappv"></canvas>
             </div>
@@ -1151,18 +1151,18 @@ export class Lobby {
     for (let i = 0; i < this.roomSize; i++) {
       const m = this.members[i]
       if (!m) {
-  slots.push(`<div class="slot empty"><div class="who">${i + 1}번 자리</div><div class="cname">비어 있음</div><div class="rd">기다리는 중</div></div>`)
+        slots.push(`<div class="slot empty"><div class="who">${i + 1}번</div><div class="cname">빈 자리</div><div class="rd">기다리는 중</div></div>`)
         continue
       }
       const mine = m.id === link.selfId
       const c = (CHARACTERS as Record<string, { name: string } | undefined>)[m.char]
-      const who = (i === 0 ? '호스트' : `${i + 1}`) + (mine ? ' · 나' : '')
+      const who = (i === 0 ? '방장' : `${i + 1}번`) + (mine ? ' · 나' : '')
       const badge = teams ? `<span class="team ${m.team === 0 ? 'team-a' : 'team-b'}">${m.team === 0 ? 'A팀' : 'B팀'}</span>` : ''
       const nick = (m.name ?? '').trim()
       slots.push(`<div class="slot ${m.ready ? 'ready' : ''} ${mine ? 'mine' : ''}">
         <div class="who">${who}${badge}</div>
         <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}</div>
-        <div class="rd">${nick ? `${c ? c.name : m.char}<br>` : ''}${m.ready ? '준비 완료' : '준비 안 됨'}</div>
+        <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
       </div>`)
     }
     const html = `
@@ -1180,11 +1180,11 @@ export class Lobby {
       ${
         this.role === 'host'
           ? `<div class="setrow botrow">
-        <label class="chk"><input type="checkbox" id="chk-bots" ${this.fillBots ? 'checked' : ''}> 빈 자리는 <b>봇</b>으로 채우기</label>
+        <label class="chk"><input type="checkbox" id="chk-bots" ${this.fillBots ? 'checked' : ''}> 빈 자리는 봇으로 채우기</label>
         <div class="seg small" id="seg-botdiff" ${this.fillBots ? '' : 'hidden'}>
           ${(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => `<button data-v="${d}" class="${d === this.botDiff ? 'on' : ''}">${DIFFICULTY_LABEL[d]}</button>`).join('')}
         </div>
-        <span class="dim hintline">봇 자리는 난입으로 채워지지 않습니다</span>
+        <p class="dim hintline">봇 자리는 난입으로 채워지지 않습니다.</p>
       </div>`
           : this.fillBotsRemote
             ? `<p class="roomhint dim">빈 자리는 호스트가 <b>봇</b>으로 채웁니다.</p>`
@@ -1194,7 +1194,7 @@ export class Lobby {
         <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : this.role === 'host' ? '▶ 게임 시작' : '준비'}</button>
         ${teams ? `<button class="btn secondary" id="btn-team" ${connected ? '' : 'disabled'}>팀 바꾸기</button>` : ''}
       </div>
-      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 시작합니다 (빈 자리는 봇으로 채울 수 있다).' : '"게임 시작" 을 누르면 바로 시작합니다 — 들어온 사람이 있으면 모두 준비한 뒤. 남은 자리는 게임 중에도 들어올 수 있다.'}</p>`
+      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 시작합니다. 빈 자리는 봇으로 채울 수 있습니다.' : '"게임 시작" 을 누르면 바로 시작합니다(들어온 사람이 있으면 모두 준비한 뒤). 남은 자리는 게임 중에도 들어올 수 있습니다.'}</p>`
     const readyCount = this.members.filter((m) => m.ready).length
     const st = !connected
       ? '연결 중… (최대 20초)'
@@ -1206,7 +1206,9 @@ export class Lobby {
           ? '모두 준비. 시작합니다…'
           : this.myReady
             ? `준비 ${readyCount}/${this.members.length} · 나머지를 기다리는 중…`
-            : '준비를 누르세요.'
+            : this.role === 'host'
+              ? '▶ 게임 시작을 누르세요.'
+              : '준비를 누르세요.'
     this.status(st, connected ? 'ok' : '', html)
     this.bindCancel()
     const chk = this.host.querySelector('#chk-bots') as HTMLInputElement | null
