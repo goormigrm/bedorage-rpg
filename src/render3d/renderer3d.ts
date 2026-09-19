@@ -192,6 +192,8 @@ export class Renderer3D {
   private shake = 0
   /** 손맛 (2026-09-19): 역경직(연출 시간을 잠깐 거의 멈춤) · 카메라 펀치(잠깐 당겨짐) */
   private hitStop = 0
+  /** 모델을 미리 받아 둔 막 (-1 = 아직) */
+  private prefetchedAct = -1
   private punch = 0
   /** 바닥 핏자국 (인스턴스 — 오래된 것부터 덮어쓴다) */
   private decals!: THREE.InstancedMesh
@@ -937,9 +939,31 @@ export class Renderer3D {
     this.slashes.push({ mesh, life: 0.14, max: 0.14 })
   }
 
+  /** 막마다 나오는 괴물 종류 (막 무리 + 그 막 지역의 무리 · 우두머리 · 보스) — 모델 미리 받기용 */
+  private static actKinds(act: number): number[] {
+    const set = new Set<number>()
+    for (const p of ACTS[act]?.packs ?? []) for (const g of p.groups) set.add(g[0])
+    for (const a of AREAS) {
+      if (a.act !== act) continue
+      for (const p of a.packs ?? []) for (const g of p.groups) set.add(g[0])
+      if (a.boss !== undefined) set.add(a.boss)
+      if (a.unique) set.add(a.unique.kind)
+    }
+    return [...set]
+  }
+
   // ---------- 프레임 ----------
   draw(prev: GameState, curr: GameState, alpha: number, dt: number, opts: RenderOptions): void {
     this.ensureRigs(curr)
+    // 던전: 새 막에 들어서면 그 막 괴물의 실사 모델을 미리 받아 둔다 (마을에 있는 동안 받는다)
+    if (curr.mode === 'dungeon') {
+      const me = curr.players[opts.viewer ?? opts.localPlayer]
+      const act = me ? areaDef(me.area).act : -1
+      if (act >= 0 && act !== this.prefetchedAct) {
+        this.prefetchedAct = act
+        this.monsterView.prefetch(Renderer3D.actKinds(act))
+      }
+    }
     // 역경직: 내 치명타 · 처치 · 정예·보스 쓰러짐에 연출(입자 · 괴물 몸짓)을 잠깐 거의 멈춘다 — sim 은 그대로 (그림만)
     const ts = (opts.timeScale ?? 1) * (this.hitStop > 0 ? 0.08 : 1)
     this.hitStop = Math.max(0, this.hitStop - dt)

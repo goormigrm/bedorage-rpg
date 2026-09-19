@@ -809,6 +809,11 @@ export class MonsterView {
     return r
   }
 
+  /** 미리 받기 (2026-09-19): 막에 들어서면(마을에 있을 때) 그 막 괴물의 모델을 미리 받아 굽는다 — 싸우다가 모습이 바뀌지 않게 */
+  prefetch(kinds: number[]): void {
+    for (const k of kinds) this.want(k)
+  }
+
   /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물) */
   private want(kind: number): void {
     if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) return
