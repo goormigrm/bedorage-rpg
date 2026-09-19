@@ -39,8 +39,13 @@ export const CHICKEN_MAXHP_CAP = 30
 export const CHICKEN_HEAL = 15
 /** 침착덕 패시브(침착): 탄퍼짐 배율 · 발당 반동 배율 · 반동 회복 배율 */
 export const CHIM = { spreadMul: 0.55, recoilMul: 0.45, recoverMul: 3 }
-/** 풍월덕: 구르기 기력 · 투기장 피해 배율 (2026-09-19 투기장 1:1 38% — 가장 낮아서) */
-export const PUNGWOL = { dashCost: 22, pvpMul: 1.12 }
+/**
+ * 풍월덕 패시브(근성) — 2026-09-20 사용자: "풍월량은 바람과 상관없다" → 바람(자주 구르기)을 버리고 **탱커**가 됐다.
+ * 실제 풍월량: 키 167cm · 92.5kg 단신 통통 체형(배도라지 '삼돼장'), 남들이 포기하는 게임을 끝까지 붙드는 근성.
+ * 맞을 때마다 한 칸씩 단단해지고(받는 피해 -5%/칸), 2초간 안 맞으면 식는다. 기열덕의 뇌절(연속 명중)과 거울쌍.
+ * 투기장(역할 효과가 없는 곳)에서는 구르기 특혜를 뗀 만큼 27% 까지 떨어져, 피해 배율 · 받는 피해로 따로 맞춘다.
+ */
+export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpMul: 1.35, pvpTaken: 0.88 }
 export const UWON = { invulnAfterDash: 24 }
 /** 주펄덕 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }
@@ -156,6 +161,8 @@ export interface PlayerState {
   choosing: boolean
   /** 연속 명중 수 (기열덕 패시브) */
   streak: number
+  /** 연속 피격 칸 (풍월덕 패시브 '근성' — 맞을수록 단단해진다) */
+  grit: number
   stamina: number
   staminaMax: number
   blockLock: number

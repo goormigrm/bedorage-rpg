@@ -15,7 +15,7 @@ const TONE: Record<BaseSkillId, string> = {
   flash: '#fff4a0', mirror: '#c8f0ff', supernova: '#ffe070',
   stunt: '#e8c070', curtain: '#d0506a', redcarpet: '#ff4a5a',
   overdrive: '#ff9a3a', shout: '#ffb050', kingrage: '#ffd040',
-  gust: '#a0f0e0', windstep: '#a0f0e0', typhoon: '#70d0ff',
+  advice: '#ffd06a', cluck: '#ffb84a', kenwang: '#ff9a3a', bladewind: '#a0f0e0',
   snack: '#ffc070', trap: '#c09060', angelshot: '#fff0c0',
   catwalk: '#f0a0d0', flashbulb: '#ffffff', encore: '#ffd0f0',
 }
@@ -344,28 +344,68 @@ const P: Record<BaseSkillId, Painter> = {
     c.closePath()
     c.fill()
   },
-  // 돌풍: 바람 줄 셋
-  gust: (c, s) => wind(c, s, 3),
-  // 순풍: 바람 둘 + 화살
-  windstep: (c, s) => {
-    wind(c, s, 2)
+  // 칼바람(우재덕 트리): 바람 줄 셋
+  bladewind: (c, s) => wind(c, s, 3),
+  // 훈수: 말풍선 셋이 쏟아진다
+  advice: (c, s) => {
     const k = s / 2
-    line(c, [[k * 0.45, k * 0.35], [k * 0.8, k * 0.55], [k * 0.45, k * 0.75]], s * 0.06)
-  },
-  // 태풍: 굵은 소용돌이
-  typhoon: (c, s) => {
-    const k = s / 2
-    c.lineWidth = s * 0.1
-    c.beginPath()
-    for (let t = 0; t < 1; t += 0.02) {
-      const a = -t * Math.PI * 3.2
-      const r = k * 0.08 + t * k * 0.78
-      const x = Math.cos(a) * r
-      const y = Math.sin(a) * r
-      if (t === 0) c.moveTo(x, y)
-      else c.lineTo(x, y)
+    const bubble = (x: number, y: number, r: number) => {
+      c.beginPath()
+      c.ellipse(x, y, r, r * 0.74, 0, 0, Math.PI * 2)
+      c.fill()
+      c.beginPath()
+      c.moveTo(x - r * 0.3, y + r * 0.55)
+      c.lineTo(x - r * 0.05, y + r * 1.05)
+      c.lineTo(x + r * 0.2, y + r * 0.6)
+      c.closePath()
+      c.fill()
     }
+    bubble(-k * 0.38, -k * 0.34, k * 0.42)
+    bubble(k * 0.42, -k * 0.12, k * 0.34)
+    bubble(-k * 0.1, k * 0.42, k * 0.3)
+  },
+  // 꼬꼬꼬: 닭 머리 (이득 봤을 때 내는 소리)
+  cluck: (c, s) => {
+    const k = s / 2
+    c.beginPath()
+    c.ellipse(-k * 0.05, k * 0.05, k * 0.46, k * 0.42, 0, 0, Math.PI * 2)
+    c.fill()
+    // 볏
+    c.beginPath()
+    c.moveTo(-k * 0.3, -k * 0.34)
+    c.quadraticCurveTo(-k * 0.16, -k * 0.78, 0, -k * 0.4)
+    c.quadraticCurveTo(k * 0.14, -k * 0.74, k * 0.24, -k * 0.34)
+    c.closePath()
+    c.fill()
+    // 부리
+    c.beginPath()
+    c.moveTo(k * 0.38, k * 0.02)
+    c.lineTo(k * 0.86, k * 0.16)
+    c.lineTo(k * 0.38, k * 0.28)
+    c.closePath()
+    c.fill()
+  },
+  // 켠왕: 전원 단추를 쥔 방패 (깰 때까지 안 끈다)
+  kenwang: (c, s) => {
+    const k = s / 2
+    c.beginPath()
+    c.moveTo(0, -k * 0.86)
+    c.lineTo(k * 0.66, -k * 0.5)
+    c.lineTo(k * 0.58, k * 0.2)
+    c.quadraticCurveTo(k * 0.34, k * 0.66, 0, k * 0.86)
+    c.quadraticCurveTo(-k * 0.34, k * 0.66, -k * 0.58, k * 0.2)
+    c.lineTo(-k * 0.66, -k * 0.5)
+    c.closePath()
+    c.fill()
+    // 전원 기호 (구멍)
+    c.save()
+    c.globalCompositeOperation = 'destination-out'
+    c.lineWidth = s * 0.09
+    c.beginPath()
+    c.arc(0, k * 0.05, k * 0.3, -Math.PI * 0.35, Math.PI * 1.35)
     c.stroke()
+    line(c, [[0, -k * 0.42], [0, k * 0.02]], s * 0.09)
+    c.restore()
   },
   // 치킨 한 입: 닭다리
   snack: (c, s) => {

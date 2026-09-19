@@ -18,9 +18,9 @@ export type BaseSkillId =
   | 'flash' | 'mirror' | 'supernova'
   | 'stunt' | 'curtain' | 'redcarpet'
   | 'overdrive' | 'shout' | 'kingrage'
-  | 'gust' | 'windstep' | 'typhoon'
+  | 'advice' | 'cluck' | 'kenwang'
   | 'snack' | 'trap' | 'angelshot'
-  | 'catwalk' | 'flashbulb' | 'encore'
+  | 'catwalk' | 'flashbulb' | 'encore' | 'bladewind'
 
 /**
  * 스킬 트리(K)에서 더 배우는 스킬 — 캐릭터마다 셋, **모두 그 캐릭터만의 이름** (2026-09-19 요청
@@ -94,10 +94,10 @@ const BASE_SKILLS: Record<BaseSkillId, SkillDef> = {
   // 2026-09-19 기열덕 = 딜러 (탱커였을 때 붙였던 도발 · 피해 감소는 뺐다): 던전 고함이 뇌절을 쌓는다
   shout: { id: 'shout', name: '고함', desc: '앞 5칸 부채꼴에 50 피해 · 멀리 밀치고 2초 느리게. 던전에서는 앞 6칸 · 120 피해이고, 맞힌 괴물 하나마다 뇌절이 한 칸 찬다.', cd: s(10) },
   kingrage: { id: 'kingrage', name: '킹의 분노', desc: '8초간 모든 탄이 2마리를 꿰뚫고 피해 +30% · 뇌절이 두 배로 쌓인다. 던전에서는 10초 · 연사 1.5배.', cd: s(70), ult: true },
-  // 풍월덕 — 바람: 휩쓸고 지나간다
-  gust: { id: 'gust', name: '돌풍', desc: '주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.', cd: s(9) },
-  windstep: { id: 'windstep', name: '순풍', desc: '구르기가 모두 차고 4초간 이동 +40%.', cd: s(12) },
-  typhoon: { id: 'typhoon', name: '태풍', desc: '커서 지점(8칸까지)에 6초 소용돌이 — 안의 괴물을 가운데로 끌어당기고 0.5초마다 30 피해. 던전에서는 8초 · 4.5칸 · 0.5초마다 60 피해.', cd: s(70), ult: true, reach: 8 * 32 },
+  // 풍월덕 — 근성 탱커 (2026-09-20 사용자 "풍월량은 바람과 상관없다"): 끌어모으고, 버티고, 안 끈다
+  advice: { id: 'advice', name: '훈수', desc: '채팅창의 훈수가 쏟아진다 — 8칸 안 괴물이 5초간 나만 노리고 받는 피해 +25%. 던전에서는 10칸 · 6초.', cd: s(12) },
+  cluck: { id: 'cluck', name: '꼬꼬꼬', desc: '주변 3.5칸에 70 피해 · 밀치고 1.5초 느리게. 맞힌 하나마다 체력 6% 를 회복한다(다섯까지). 던전에서는 4칸 · 120 피해 · 하나마다 8%.', cd: s(11) },
+  kenwang: { id: 'kenwang', name: '켠왕', desc: '깰 때까지 안 끈다 — 10초간 받는 피해 -60%, 8칸 안 괴물이 계속 나만 노리고, 6칸 안 동료는 받는 피해 -30%. 던전에서는 12초, 그동안 쓰러질 만큼 맞아도 한 번은 체력 1 로 버틴다.', cd: s(70), ult: true },
   // 통천덕 — 치킨: 버티며 한 방
   // 2026-09-19 통천덕 = 힐러: 혼자 먹던 치킨을 나눈다
   snack: { id: 'snack', name: '치킨 나눔', desc: '나와 7칸 안 동료가 체력 25% 를 회복하고, 나는 4초간 연사 +30%. 던전에서는 모두 4초간 받는 피해 -30% · 나는 이동 +40%.', cd: s(15) },
@@ -107,6 +107,8 @@ const BASE_SKILLS: Record<BaseSkillId, SkillDef> = {
   catwalk: { id: 'catwalk', name: '런웨이 워크', desc: '조준 방향으로 7칸 긴 돌진(무적). 지나는 괴물에 60 피해 · 밀침. 던전에서는 출발할 때 둘레 3칸을 밀쳐 내고 1.5초 느리게.', cd: s(8) },
   flashbulb: { id: 'flashbulb', name: '플래시 세례', desc: '커서 지점(9칸까지) 3칸(던전 4칸)에 20 피해(던전 40) · 2초 기절 · 6초간 드러남과 받는 피해 +30%.', cd: s(12), reach: 9 * 32 },
   encore: { id: 'encore', name: '앙코르', desc: '다른 스킬의 재사용 대기를 모두 끝내고 집중을 가득 · 6초간 공격 속도 +50%. 던전에서는 8칸 안 동료도 6초간 공격 속도 +50%, 나는 공격 속도 2배 · 받는 피해 -30%.', cd: s(80), ult: true },
+  // 우재덕 트리 스킬 "칼바람" 의 바탕 (2026-09-20 풍월덕이 바람을 버리면서 옛 '돌풍' 을 이리로 옮겼다 — 트리에서만 쓴다)
+  bladewind: { id: 'bladewind', name: '칼바람', desc: '주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.', cd: s(9) },
 }
 
 /** 트리 스킬: 이름 · 설명만 따로, 재사용 · 거리 · 궁극기 여부는 바탕을 따른다 */
@@ -138,15 +140,15 @@ const TREE_SKILLS: { id: TreeSkillId; base: BaseSkillId; name: string; desc: str
   { id: 'gy_rant', base: 'pierce', name: '뇌절 관통탄', desc: '다음 6발이 괴물 3마리를 꿰뚫고 피해 +30%.' },
   { id: 'gy_tantrum', base: 'grenade', name: '분노 투척', desc: '커서 지점(9칸까지)에 던진다. 0.7초 뒤 3칸에 80 피해 · 1초 기절.' },
   { id: 'gy_glare', base: 'flashbulb', name: '째려보기', desc: '커서 지점(9칸까지) 3칸(던전 4칸)에 20 피해(던전 40) · 2초 기절 · 6초간 드러남과 받는 피해 +30%.' },
-  { id: 'pw_heat', base: 'flame', name: '열풍', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 둘레 4칸 모두를 친다.' },
-  { id: 'pw_breeze', base: 'firstaid', name: '산들바람', desc: '나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.' },
-  { id: 'pw_gale', base: 'pancharge', name: '질풍 돌격', desc: '조준 방향으로 5칸 돌진. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.' },
+  { id: 'pw_heat', base: 'flame', name: '매운맛', desc: '앞 4칸 부채꼴에 60 피해 · 밀쳐 낸다. 던전에서는 둘레 4칸 모두를 친다.' },
+  { id: 'pw_breeze', base: 'firstaid', name: '과자 포션', desc: '과자를 한 봉 뜯는다 — 나와 6칸 안의 동료가 최대 체력 25% 를 회복한다. 던전에서는 4초간 받는 피해 -30%.' },
+  { id: 'pw_gale', base: 'pancharge', name: '견자단', desc: '몸으로 밀고 조준 방향으로 5칸 돌진. 지나는 괴물에 60 피해 · 밀침, 돌진 중 무적.' },
   { id: 'td_drumstick', base: 'railshot', name: '닭다리 관통탄', desc: '모든 괴물을 꿰뚫는 한 발 — 200 피해, 약점을 겨누면 치명타. 던전에서는 260 피해에 방패도 뚫는다.' },
   { id: 'td_flap', base: 'catstep', name: '날개 퍼덕', desc: '뒤로 4칸 도약(무적). 다음 한 발 피해 2배. 던전에서는 떠난 자리 3칸의 괴물에 40 피해 · 2초 기절, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초.' },
   { id: 'td_crow', base: 'broadcast', name: '새벽 울음', desc: '18칸 안의 괴물을 8초간 드러내고(벽 너머도) 받는 피해 +25%. 던전에서는 그동안 나와 8칸 안 동료가 받는 피해 -30%.' },
   // 2026-09-19 우재덕이 검을 든 뒤로 총 스킬 둘을 검 스킬로
   { id: 'jw_pose', base: 'oil', name: '회전 베기', desc: '검을 크게 돌려 주변 3칸에 50 피해 · 2.5초간 절반 속도.' },
-  { id: 'jw_turn', base: 'gust', name: '칼바람', desc: '검풍으로 주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.' },
+  { id: 'jw_turn', base: 'bladewind', name: '칼바람', desc: '검풍으로 주변 4칸의 괴물을 멀리 날리고 30 피해 · 1초 기절.' },
   { id: 'jw_finale', base: 'curtain', name: '피날레', desc: '7칸 안의 괴물이 1초 기절하고, 4초간 절반 속도 · 드러남 · 받는 피해 +20%. 던전에서는 40 피해도 준다.' },
 ]
 
@@ -176,7 +178,7 @@ export const TREE_ACTIVE: Record<string, SkillId[]> = {
   jupeol: ['flash', 'mirror', 'jp_prism', 'jp_overheat', 'jp_glare'],
   uwon: ['stunt', 'curtain', 'uw_lead', 'uw_exit', 'uw_ng'],
   giyeol: ['overdrive', 'shout', 'gy_rant', 'gy_tantrum', 'gy_glare'],
-  pungwol: ['gust', 'windstep', 'pw_heat', 'pw_breeze', 'pw_gale'],
+  pungwol: ['advice', 'cluck', 'pw_heat', 'pw_breeze', 'pw_gale'],
   tongdak: ['snack', 'trap', 'td_drumstick', 'td_flap', 'td_crow'],
   juwoojae: ['catwalk', 'flashbulb', 'jw_pose', 'jw_turn', 'jw_finale'],
 }
@@ -263,7 +265,7 @@ export const CHAR_SKILLS: Record<CharacterId, [SkillId, SkillId, SkillId]> = {
   jupeol: ['flash', 'mirror', 'supernova'],
   uwon: ['stunt', 'curtain', 'redcarpet'],
   giyeol: ['overdrive', 'shout', 'kingrage'],
-  pungwol: ['gust', 'windstep', 'typhoon'],
+  pungwol: ['advice', 'cluck', 'kenwang'],
   tongdak: ['snack', 'trap', 'angelshot'],
   juwoojae: ['catwalk', 'flashbulb', 'encore'],
 }
@@ -301,6 +303,8 @@ export const FX_REFLECT = 8
 export const FX_CARPET = 9
 /** 킹의 분노 (기열덕): 탄 관통 2 · 피해 +30% · 뇌절 두 배 */
 export const FX_KING = 10
-/** 순풍 (풍월덕): 이동 +40% */
+/** 이동 +40% (통천덕 치킨 나눔) */
 export const FX_SWIFT = 11
-export const FX_COUNT = 12
+/** 켠왕 (풍월덕): 받는 피해 -60% · 계속 도발 · 던전에서는 한 번 버틴다 */
+export const FX_KENWANG = 12
+export const FX_COUNT = 13

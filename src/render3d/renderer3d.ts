@@ -2798,7 +2798,7 @@ const SKILL_COLOR: Record<string, number> = {
   flash: 0xfff4a0, mirror: 0xc8f0ff, supernova: 0xffe070,
   stunt: 0xe8c070, curtain: 0xd0506a, redcarpet: 0xff4a5a,
   overdrive: 0xff9a3a, shout: 0xffb050, kingrage: 0xffd040,
-  gust: 0xa0f0e0, windstep: 0xa0f0e0, typhoon: 0x70d0ff,
+  advice: 0xffd06a, cluck: 0xffb84a, kenwang: 0xff9a3a, bladewind: 0xa0f0e0,
   snack: 0xffc070, trap: 0xc09060, angelshot: 0xfff0c0,
   catwalk: 0xf0a0d0, flashbulb: 0xffffff, encore: 0xffd0f0,
 }

@@ -224,18 +224,21 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   pungwol: {
-    id: 'pungwol', name: '풍월덕', basedOn: '풍월량', tagline: '금발 버섯머리에 파란 후드. 산탄총을 들고 바람처럼 구른다.',
-    prominence: 8, role: 'dps',
-    // 재사용 25틱 + 구르기 기력 22(state.ts PUNGWOL) — 재사용만 짧아서는 기력 회복에 막혀 남들과 같았다 (2026-09-05)
-    maxHp: 220, speed: 3.7, weapon: 'shotgun', dashCooldown: 25,
-    passiveName: '바람', passiveDesc: '남들보다 훨씬 자주 구릅니다.\n산탄총을 들고 바람처럼 파고들어 한 번에 정리하는 돌격형.',
+    id: 'pungwol', name: '풍월덕', basedOn: '풍월량', tagline: '노랗게 물들인 머리에 파란 후드. 작고 통통한 몸으로 앞에서 버티는 근성의 아저씨.',
+    // 2026-09-20 사용자: "풍월량은 사실 바람과 상관없다" (닉네임은 '풍월주인한량'의 준말) → 바람(자주 구르기)을 버리고 **탱커**로.
+    // 나무위키: 키 167cm · 92.5kg(배도라지 '삼돼장') · 욕 안 하는 클린 방송 · 남들이 포기하는 게임을 끝까지 붙드는 근성.
+    prominence: 8, role: 'tank',
+    // 탱커가 되며 몸이 무거워졌다: 이동 3.7 → 3.2 · 구르기 재사용 25 → 50 (옛 구르기 기력 할인도 뗐다)
+    maxHp: 220, speed: 3.2, weapon: 'shotgun', dashCooldown: 50,
+    passiveName: '근성', passiveDesc: '두들겨 맞을수록 요령이 늘어 받는 피해가 줄고, 잠깐 안 맞으면 식습니다.\n남들이 포기하는 자리에서 끝까지 버티는 탱커 — 산탄총을 들고 앞에서 떼를 막습니다.\n덩치가 커서 느리고 구르기도 느립니다.',
     bodyColor: 0x8fd3ff, accentColor: 0x7fa8d4,
     look: {
-      // 사진: 금발 버섯머리(바가지), 통통한 볼, 가늘게 뜬 눈, 옅은 미소, 하늘색 후드티
+      // 사진: 노랗게 물들인 버섯머리(바가지), 통통한 볼, 가늘게 뜬 눈, 옅은 미소, 하늘색 후드티
+      // 2026-09-20 "키는 작지만 뚱뚱하고 귀여운" 쪽으로 — 가로 폭을 키웠다(slim 1.14)
       skin: 0xf6d6ba, hair: 'bowl', hairColor: 0xe6c568, glasses: 'none', beard: 'none',
       eyes: 'squint', brows: 'normal', mouth: 'smile',
       shirt: 0x8fb4d9, hood: 0x7fa4c9,
-      pants: 0x3b4a63, headScale: 1.15, bodyScale: 1.1, tall: 0.79, extra: 'none',
+      pants: 0x3b4a63, headScale: 1.15, bodyScale: 1.12, slim: 1.14, tall: 0.79, extra: 'none',
     },
   },
   oknyang: {
@@ -350,7 +353,7 @@ export const ATTR_REC: Record<CharacterId, [number, number]> = {
   jupeol: [3, 2],
   uwon: [3, 1],
   giyeol: [0, 1],
-  pungwol: [0, 2],
+  pungwol: [2, 0],
   tongdak: [3, 2],
   juwoojae: [0, 1],
 }

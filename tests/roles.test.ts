@@ -42,12 +42,13 @@ function ready(chars: CharacterId[], mode: 'dungeon' | 'arena' = 'dungeon', bag:
 describe('역할 · 근접 캐릭터 (2026-09-19)', () => {
   it('12명 모두 역할이 있고 탱커 · 딜러 · 힐러가 고루 있다', () => {
     const roles = CHARACTER_LIST.map((c) => c.role)
-    // 2026-09-19 기열덕 탱커 → 딜러 (탱 2 · 딜 7 · 힐 3)
-    expect(roles.filter((r) => r === 'tank').length).toBe(2)
+    // 2026-09-19 기열덕 탱커 → 딜러, 2026-09-20 풍월덕 딜러 → 탱커 (탱 3 · 딜 6 · 힐 3)
+    expect(roles.filter((r) => r === 'tank').length).toBe(3)
     expect(roles.filter((r) => r === 'heal').length).toBe(3)
-    expect(roles.filter((r) => r === 'dps').length).toBe(7)
+    expect(roles.filter((r) => r === 'dps').length).toBe(6)
     expect(CHARACTERS.cheolmyeon.role).toBe('tank')
     expect(CHARACTERS.seungwoo.role).toBe('tank')
+    expect(CHARACTERS.pungwol.role).toBe('tank')
     expect(CHARACTERS.giyeol.role).toBe('dps')
     expect(CHARACTERS.chim.role).toBe('dps')
     expect(CHARACTERS.dangun.role).toBe('dps')

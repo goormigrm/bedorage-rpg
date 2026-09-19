@@ -28,7 +28,7 @@ import { botInput, makeBot } from './bot'
 import { ACTS, AreaLayout, QUESTS, WAYPOINTS, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
-  CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_SNIPE, FX_SWIFT, FX_WHIRL,
+  CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_KENWANG, FX_SNIPE, FX_SWIFT, FX_WHIRL,
   MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
 import {
@@ -930,6 +930,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     vacant: false,
     choosing: false,
     streak: 0,
+    grit: 0,
     stamina: c.staminaMax ?? STAMINA_MAX,
     staminaMax: c.staminaMax ?? STAMINA_MAX,
     blockLock: 0,
@@ -1329,6 +1330,10 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (roleOn && c.role === 'heal' && isActive(p) && (state.tick + p.id * 29) % 120 === 0) {
     for (const q of alliesNear(state, p, 7 * TILE)) healPlayer(state, q, Math.max(1, q.maxHp * 0.03))
   }
+  // 풍월덕 패시브(근성): 잠깐 안 맞으면 쌓인 칸이 식는다
+  if (c.id === 'pungwol' && p.grit > 0 && state.tick - p.lastHitTick > PUNGWOL.gritCool) p.grit = 0
+  // 풍월덕 궁극기(켠왕): 켜져 있는 동안 8칸 안 괴물이 계속 나만 노린다 (0.5초마다 다시 건다)
+  if (p.fx[FX_KENWANG] > 0 && isActive(p) && state.tick % 30 === 0) tauntNear(state, p, 8 * TILE, 60)
 
   p.aim = input.aim & 1023
   p.aimDist = (input.aimDist ?? 0) * 4
@@ -1376,7 +1381,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   }
 
   // 구르기
-  const dashCost = c.id === 'pungwol' ? PUNGWOL.dashCost : DASH_COST
+  const dashCost = DASH_COST
   const dungeon = state.mode === 'dungeon'
   const canDash = dungeon ? p.dashCharges > 0 && p.dashCooldown < dashRecharge(p) - 20 : p.dashCooldown === 0 && p.stamina >= dashCost
   if (playing && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
@@ -1525,6 +1530,7 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   p.aliveTicks = 0
   p.lastHitTick = -10000
   p.streak = 0
+  p.grit = 0
   p.staminaMax = c.staminaMax ?? STAMINA_MAX
   p.stamina = p.staminaMax
   p.blockLock = 0
@@ -1534,6 +1540,16 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   state.events.push({ type: 'respawn', p: p.id, x: p.x, y: p.y })
 }
 
+/** 도발: 반경 안의 (깨어 있는) 몬스터가 ticks 동안 이 사람만 노린다 (철면덕 철벽 · 풍월덕 훈수 · 켠왕) */
+function tauntNear(state: GameState, p: PlayerState, r: number, ticks: number): void {
+  for (const m of state.monsters) {
+    if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > r) continue
+    if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
+    m.target = p.id
+    m.taunt = Math.max(m.taunt, ticks)
+  }
+}
+
 /** 받는 피해 배율: 철벽 · 회전 공격 · 포효의 가호 (곱한다) */
 function takenMul(p: PlayerState): number {
   let k = 1 - p.st[ST_DR] / 100
@@ -1541,6 +1557,10 @@ function takenMul(p: PlayerState): number {
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
   if (p.fx[FX_REFLECT] > 0) k *= 0.4
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
+  // 풍월덕 궁극기(켠왕): 깰 때까지 버틴다
+  if (p.fx[FX_KENWANG] > 0) k *= 0.4
+  // 풍월덕 패시브(근성): 맞을수록 단단해진다 (최대 -30%)
+  if (p.char === 'pungwol' && p.grit > 0) k *= 1 - Math.min(PUNGWOL.gritMax, p.grit) * PUNGWOL.gritPer
   if (roleOn && roleOf(p) === 'tank') k *= 0.8
   if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
   if (hasLeg(p, LEG_GUARD)) k *= 0.92
@@ -1579,6 +1599,14 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
   p.dmgTaken += dmg
   p.lastHitTick = state.tick
   p.portalCast = 0
+  // 풍월덕 패시브(근성): 맞을 때마다 한 칸 더 단단해진다
+  if (p.char === 'pungwol') p.grit = Math.min(PUNGWOL.gritMax, p.grit + 1)
+  // 풍월덕 궁극기(켠왕, 던전): 그동안은 쓰러지지 않는다 — 대신 한 번 버티면 끝난다 ("다시 갈게요")
+  if (p.hp <= 0 && p.fx[FX_KENWANG] > 0 && state.mode === 'dungeon') {
+    p.hp = 1
+    p.fx[FX_KENWANG] = 0
+    p.invuln = Math.max(p.invuln, 60)
+  }
   // 전설 "불굴": 체력이 30% 아래로 떨어지는 순간 2초 무적 (40초에 한 번) — 쓰러질 만큼 맞았으면 1 을 남긴다
   if (hasLeg(p, LEG_UNDYING) && p.legCd === 0 && p.hp < p.maxHp * 0.3) {
     p.hp = Math.max(1, p.hp)
@@ -1613,7 +1641,8 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
  */
 function hurtPvp(state: GameState, shooter: PlayerState, victim: PlayerState, dmg: number, part: number, hx: number, hy: number): void {
   if (dmg <= 0 || !victim.alive || victim.left) return
-  dmg = Math.round(dmg * takenMul(victim))
+  // 풍월덕은 투기장에서도 탱커답게 조금 덜 맞는다 (역할 효과는 던전에만 있다 — state.ts PUNGWOL)
+  dmg = Math.round(dmg * takenMul(victim) * (victim.char === 'pungwol' ? PUNGWOL.pvpTaken : 1))
   if (dmg <= 0) return
   shooter.hits++
   if (part === PART_HEAD) shooter.heads++
@@ -1955,13 +1984,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     // ---- 철면덕
     case 'ironwall': {
       p.fx[FX_GUARD] = 240
-      // 도발: 7칸 안의 (깨어 있는) 몬스터가 나를 노린다
-      for (const m of state.monsters) {
-        if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 7 * T) continue
-        if (m.st === MS_SLEEP) wakePack(state, m.pack, m.x, m.y)
-        m.target = p.id
-        m.taunt = 240
-      }
+      tauntNear(state, p, 7 * T, 240)
       break
     }
     case 'barrage':
@@ -2164,18 +2187,31 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       if (dun) buffRate(p, 600, 1.5)
       break
     // ---- 풍월덕
-    case 'gust':
+    // 우재덕 트리 스킬 "칼바람" (옛 돌풍)
+    case 'bladewind':
       aoe(state, map, p, p.x, p.y, 4 * T, 30, { knock: 12, stun: 60, id })
       break
-    case 'windstep':
-      if (state.mode === 'dungeon') {
-        p.dashCharges = DASH_MAX
-        p.dashCooldown = 0
+    // ---- 풍월덕 (2026-09-20 탱커: 바람 셋 → 훈수 · 꼬꼬꼬 · 켠왕)
+    case 'advice':
+      // 훈수: 채팅창의 훈수가 쏟아진다 — 끌어모으고 약하게 만든다
+      tauntNear(state, p, (dun ? 10 : 8) * T, dun ? 360 : 300)
+      for (const m of state.monsters) {
+        if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > (dun ? 10 : 8) * T) continue
+        m.vuln = Math.max(m.vuln, dun ? 360 : 300)
+        m.vulnPct = Math.max(m.vulnPct, 25)
       }
-      p.fx[FX_SWIFT] = 240
       break
-    case 'typhoon':
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_VORTEX, owner: p.id, x: tx, y: ty, r: (dun ? 4.5 : 3.5) * T, t: dun ? 480 : 360, max: dun ? 480 : 360, dmg: Math.round((dun ? 60 : 30) * skillPow) })
+    case 'cluck': {
+      // 꼬꼬꼬: 이득 봤을 때 내는 소리 — 둘러싸일수록 많이 회복한다
+      const n = aoe(state, map, p, p.x, p.y, (dun ? 4 : 3.5) * T, dun ? 120 : 70, { knock: 10, slow: 90, id })
+      if (n > 0) healPlayer(state, p, p.maxHp * (dun ? 0.08 : 0.06) * Math.min(5, n))
+      break
+    }
+    case 'kenwang':
+      // 켠왕: 깰 때까지 안 끈다 — 버티고 끌어모은다
+      p.fx[FX_KENWANG] = dun ? 720 : 600
+      tauntNear(state, p, 8 * T, 120)
+      for (const q of alliesNear(state, p, 6 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], dun ? 720 : 600)
       break
     // ---- 통천덕
     case 'snack': {
