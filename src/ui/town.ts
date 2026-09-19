@@ -3,7 +3,7 @@
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
 import { CMD_BUY, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
-import { CHARACTERS, PLAYABLE } from '../core/characters'
+import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
   Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
@@ -175,9 +175,16 @@ export class TownPanel {
         ? `<p class="tp-note">지금 <b>${CHARACTERS[mine.char].name}</b>(레벨 ${mine.level})이 따라다닌다. 쓰러지면 마을에서 다시 일어나 곁으로 온다.</p><button class="btn" data-cmd="${CMD_HIRE}" data-arg="255">내보내기</button>`
         : !free
           ? '<p class="tp-empty">게임 자리가 다 찼다 — 용병을 앉힐 자리가 없다 (최대 4명).</p>'
-          : `<p class="tp-note">빈 자리에 용병 하나 (내 레벨 · 나를 따라다닌다) — ${price} 골드.</p><div class="tp-slots">${PLAYABLE.filter((id) => id !== me.char)
-              .map((id) => `<button class="btn" data-cmd="${CMD_HIRE}" data-arg="${PLAYABLE.indexOf(id)}" ${me.gold < price ? 'disabled' : ''}>${CHARACTERS[id].name}</button>`)
-              .join('')}</div>`
+          : `<p class="tp-note">빈 자리에 용병 하나 (내 레벨 · 나를 따라다닌다) — ${price} 골드. 내게 모자란 역할을 붙이면 좋다.</p>${(['tank', 'heal', 'dps'] as const)
+              .map((r) => {
+                // 역할별로 묶는다 (2026-09-19 탱 · 딜 · 힐)
+                const ids = PLAYABLE.filter((id) => id !== me.char && CHARACTERS[id].role === r)
+                const info = ROLE_INFO[r]
+                return `<div class="tp-role"><span class="role-chip" style="--rc:${info.color}" title="${info.desc}">${info.name}</span>${ids
+                  .map((id) => `<button class="btn" data-cmd="${CMD_HIRE}" data-arg="${PLAYABLE.indexOf(id)}" ${me.gold < price ? 'disabled' : ''}>${CHARACTERS[id].name}</button>`)
+                  .join('')}</div>`
+              })
+              .join('')}`
     } else {
       body = ''
     }
