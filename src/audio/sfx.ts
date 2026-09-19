@@ -24,7 +24,20 @@ interface Spatial {
  * **화면 기준으로 돌려서** 패닝한다. 카메라가 45° 돌아가 있어 월드 x 를 그대로 쓰면
  * 헤드폰에서 들리는 방향과 눈에 보이는 방향이 어긋난다.
  */
+/**
+ * 2026-09-19 "게임 중에 갑자기 소리가 안 들리다가 시간이 지나면 다시 들린다" — 재현은 못 했고 아래 셋을 막는다:
+ *  ① 위치가 없는 이벤트(NaN)로 gain 에 NaN 을 넣으면 예외가 나 그 프레임의 소리가 모두 빠졌다 → 가운데 소리로
+ *  ② 떼 전투에서 음원이 수백 개 겹치면 오디오 스레드가 밀려 소리가 끊긴다 → 한 프레임 남의 소리 16개 · 동시 음원 140개까지
+ *  ③ 오디오 장치가 바뀌거나 잠들어 AudioContext 가 멈추면(suspended) 키를 누를 때까지 조용했다 → statechange 에서 바로 되살린다
+ * 상태는 `__bd.audio()` 로 본다 (멈춘 적 · 버린 소리 수).
+ */
+const MAX_LIVE = 140
+const FRAME_BUDGET = 16
+/** 버리지 않는 소리 (드물고 중요하다) */
+const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop'])
+
 function spatial(wdx: number, wdy: number): Spatial {
+  if (!Number.isFinite(wdx) || !Number.isFinite(wdy)) return { gain: 1, pan: 0, far: 0 }
   const d = Math.hypot(wdx, wdy)
   const s = worldDirToScreen(wdx, wdy)
   const sl = Math.hypot(s.x, s.y) || 1
@@ -61,6 +74,10 @@ export class Sfx {
   private stepPhase: number[] = []
   /** 발소리 좌우 번갈아 */
   private stepFlip: boolean[] = []
+  /** 지금 울리는 음원 수 · 버린 소리 수 · AudioContext 가 멈췄던 횟수 (진단 — __bd.audio()) */
+  private live = 0
+  private dropped = 0
+  private stalls = 0
 
   constructor() {
     let m = false
@@ -125,6 +142,13 @@ export class Sfx {
     this.master = master
     this.bgmGain = bgm
     this.noise = buf
+    // 장치가 바뀌거나 잠들어 멈추면 바로 되살린다 (한 번이라도 누른 페이지는 몸짓 없이도 resume 된다)
+    ctx.onstatechange = () => {
+      if (ctx.state === 'running' || ctx.state === 'closed' || this.ctx !== ctx) return
+      this.stalls++
+      console.info(`[소리] AudioContext ${ctx.state} — 다시 켭니다`)
+      void ctx.resume().catch(() => {})
+    }
     if (this.bgmOn) this.startBgmScheduler()
     return true
   }
@@ -197,7 +221,11 @@ export class Sfx {
     } else {
       this.lastCountdownSec = -1
     }
-    if (events.length === 0 || !this.ready()) return
+    if (events.length === 0) return
+    // 멈춰 있으면 되살린다 (onstatechange 를 놓친 경우)
+    if (this.ctx && this.ctx.state === 'suspended' && !this.mutedFlag) void this.ctx.resume().catch(() => {})
+    if (!this.ready()) return
+    let budget = FRAME_BUDGET
     // 듣는 위치: 나, 관전이면 산 사람들의 중심
     let lx = 0
     let ly = 0
@@ -223,6 +251,12 @@ export class Sfx {
       return sp(q.x, q.y)
     }
     for (const e of events) {
+      // 남의 소리는 한 프레임 16개 · 동시에 140개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
+      const mineEv = 'p' in e && e.p === localPlayer
+      if (!mineEv && !KEEP.has(e.type) && (this.live > MAX_LIVE || budget-- <= 0)) {
+        this.dropped++
+        continue
+      }
       switch (e.type) {
         case 'fire':
           this.gun(e.weapon, sp(e.x, e.y), e.p === localPlayer)
@@ -450,6 +484,8 @@ export class Sfx {
     src.connect(flt)
     flt.connect(g)
     g.connect(bus)
+    this.live++
+    src.onended = () => this.live--
     src.start(t0)
     src.stop(t0 + dur + 0.05)
   }
@@ -464,8 +500,15 @@ export class Sfx {
     this.env(g, t0, peak, attack, dur)
     osc.connect(g)
     g.connect(bus)
+    this.live++
+    osc.onended = () => this.live--
     osc.start(t0)
     osc.stop(t0 + attack + dur + 0.05)
+  }
+
+  /** 진단: AudioContext 상태 · 지금 울리는 음원 · 버린 소리 · 멈췄던 횟수 */
+  stats(): { state: string; live: number; dropped: number; stalls: number; muted: boolean } {
+    return { state: this.ctx?.state ?? 'none', live: this.live, dropped: this.dropped, stalls: this.stalls, muted: this.mutedFlag }
   }
 
   // ---------- 소리들 ----------

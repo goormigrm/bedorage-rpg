@@ -3,7 +3,7 @@
 //   ① 링크가 양쪽으로 이어졌나 · 마을에서 모든 지역에 닿나
 //   ② 출구 · 도착 자리 · 웨이포인트 · 처음 자리가 벽 속이 아닌가
 //   ③ 처음 자리에서 모든 출구 · 웨이포인트까지 걸어갈 수 있나 (흐름장)
-//   ④ 출구로 들어와 서는 자리가 어느 출구의 반경(30px) 안이 아닌가 (들어오자마자 도로 튕겨 나가지 않게)
+//   ④ 출구로 들어와 서는 자리가 어느 출구의 F 거리(52px) 안이 아닌가 (들어와서 누른 F 가 출구로 가지 않게)
 //   ⑤ 막다른 곳(링크 하나 · 보스 방 아님) 목록 — 옆길 던전
 //
 //   npx vite-node tools/links.ts            (시드 8개)
@@ -14,7 +14,8 @@ import { ACTS, AREAS, areaLayout, buildAreaMap, isTown } from '../src/core/world
 
 const arg = (k: string, d: number) => Number(process.argv.find((a) => a.startsWith(k + '='))?.split('=')[1] ?? d)
 const SEEDS = Array.from({ length: arg('seeds', 8) }, (_, i) => 1 + i * 7919)
-const EXIT_R = 30
+/** 출구 곁에서 F 가 먹는 거리 (sim EXIT_USE_R) */
+const EXIT_R = 52
 
 const problems: string[] = []
 const bad = (s: string) => problems.push(s)

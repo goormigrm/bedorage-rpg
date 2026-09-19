@@ -275,11 +275,13 @@ describe('성장 · 전투 (D4)', () => {
       expect(merc.merc).toBe(0)
       expect(merc.left).toBe(false)
       expect(p.gold).toBe(2000 - mercPrice(4))
-      // 성문 밖으로 나가면 따라온다
+      // 성문 밖으로 나가면(성문 곁에서 F) 따라온다
       const gate = areaLayout(0, mapOf(0)).exits[0]
       p.x = gate.x
       p.y = gate.y
       p.exitLock = 0
+      p.btnPrev = 0
+      step(s, mapOf, [{ ...idle(), buttons: BTN_USE }, idle()])
       for (let t = 0; t < 400; t++) step(s, mapOf, [idle(), idle()])
       expect(merc.area).toBe(1)
       return hashState(s)

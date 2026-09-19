@@ -497,7 +497,7 @@ export class Renderer3D {
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
         case 'gold':
-          if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${e.n} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
+          if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${Math.round(e.n)} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
           break
         case 'potGet':
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: '+물약', life: 0.9, max: 0.9, color: '#ff7a7a', big: false, pop: 0.4 })
@@ -570,7 +570,7 @@ export class Renderer3D {
             v.vsx += 0.28
             v.vsy -= 0.24
           }
-          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.9, text: `-${e.dmg}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6 })
+          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.9, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6 })
           if (e.p === localPlayer) {
             this.shake = Math.max(this.shake, 0.18)
             const me = state.players[e.p]
@@ -726,7 +726,10 @@ export class Renderer3D {
           break
         }
         case 'heal': {
-          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.7, text: `+${e.amount}`, life: 0.9, max: 0.9, color: '#7ef0a0', big: true })
+          // 체력은 물약처럼 틱마다 조금씩 차 소수가 남는다 — "가득 채우기" 회복량이 +37.4 처럼 보였다(2026-09-19) → 정수로, 1 미만은 띄우지 않는다
+          const healed = Math.round(e.amount)
+          if (healed < 1) break
+          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.7, text: `+${healed}`, life: 0.9, max: 0.9, color: '#7ef0a0', big: true })
           for (let i = 0; i < 8; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.02 + Math.random() * 0.05
@@ -1784,7 +1787,7 @@ export class Renderer3D {
       ctx.fillStyle = color
       ctx.fillText(text, s.x, s.y + 0.5)
     }
-    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · F`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
     for (const n of townNpcs(curr.curArea)) {
       // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로)
       const q = me.quests ?? []

@@ -31,18 +31,32 @@ function game(chars: CharacterId[], seed = 51, extra: Partial<Parameters<typeof 
   const mapOf = world(seed)
   const s = createState({ seed, chars, ...extra }, mapOf)
   const run = (n: number, input: (i: number, t: number) => Input = () => idle()) => {
-    for (let t = 0; t < n; t++) step(s, mapOf, chars.map((_, i) => input(i, t)))
+    for (let t = 0; t < n; t++)
+      step(
+        s,
+        mapOf,
+        chars.map((_, i) => {
+          const inp = input(i, t)
+          if (t > 0 || !useNext.delete(i)) return inp
+          return { ...inp, buttons: (inp.buttons ?? 0) | BTN_USE }
+        }),
+      )
   }
   return { s, mapOf, run }
 }
 
-/** 사람을 지역의 출구 위에 세운다 (걸어가는 대신) */
+/** 다음 run 의 첫 틱에 이 사람이 F 를 누른다 — 출구는 곁에서 F (2026-09-19) */
+const useNext = new Set<number>()
+
+/** 사람을 지역의 출구 위에 세우고 다음 틱에 F 를 누르게 한다 (걸어가는 대신) */
 function standOnExit(s: GameState, mapOf: (id: number) => GameMap, p: number, to: number) {
   const pl = s.players[p]
   const e = areaLayout(pl.area, mapOf(pl.area)).exits.find((x) => x.to === to)!
   pl.x = e.x
   pl.y = e.y
   pl.exitLock = 0
+  pl.btnPrev = 0
+  useNext.add(p)
 }
 
 describe('이어진 세계', () => {
@@ -177,7 +191,7 @@ describe('이어진 세계', () => {
     expect(s.portals.length).toBe(0)
   })
 
-  it('타운 포털이 출구 곁에 열려도 포털로 온 사람이 출구로 튕겨 나가지 않는다 — 한 번 벗어나야 출구가 다시 먹는다', () => {
+  it('출구는 곁에서 F 를 눌러야 건너간다 — 출구 곁에 열린 포털로 와서 서 있어도 넘어가지 않는다', () => {
     const { s, mapOf, run } = game(['chim', 'magic'])
     standOnExit(s, mapOf, 0, 1)
     run(1)
@@ -202,17 +216,11 @@ describe('이어진 세계', () => {
     run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(mate.area).toBe(1)
     expect(Math.hypot(mate.x - e.x, mate.y - e.y)).toBeLessThanOrEqual(30)
-    // 가만히 있어도 들판에 남는다 (예전에는 30틱 뒤 마을로 튕겨 나갔다)
+    // 가만히 있어도 들판에 남는다 (예전에는 원에 들어서기만 하면 넘어갔다 — 전투 중에 뜬금없이)
     run(120)
     expect(mate.area).toBe(1)
-    expect(mate.exitLock).toBe(1)
-    // 출구에서 벗어났다가 다시 밟으면 건너간다
-    mate.y = e.y - 120
-    run(2)
-    expect(mate.exitLock).toBe(0)
-    mate.x = e.x
-    mate.y = e.y
-    run(2)
+    // F 를 누르면 건너간다
+    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(mate.area).toBe(TOWN)
   })
 
@@ -317,7 +325,8 @@ describe('퀘스트 (D5)', () => {
       a.x = e.x
       a.y = e.y
       a.exitLock = 0
-      step(s, mapOf, [idle(), idle()])
+      a.btnPrev = 0
+      step(s, mapOf, [{ ...idle(), buttons: BTN_USE }, idle()])
     }
     expect(a.area).toBe(2)
     for (const m of areaView(s, 2).monsters) m.hp = 0

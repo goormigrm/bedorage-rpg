@@ -240,7 +240,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>3</b> 물약 · <b>F</b> 줍기·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>3</b> 물약 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -410,6 +410,7 @@ export class Session {
         return r ? { p: r.p, sent: r.sent, ready: r.ready, heard: this.lockstep?.heardFrom(r.p), latest: this.lockstep?.latestFrom(r.p), tick: this.state.tick, left: Math.round(r.deadline - performance.now()) } : null
       },
       resyncs: () => this.resyncs,
+      audio: () => this.sfx.stats(),
     }
   }
 

@@ -99,7 +99,8 @@ function mapFn(maps: MapSource): (area: number) => GameMap {
 }
 
 /** 출구에 이만큼 다가서면 건너간다 · 웨이포인트를 밟으면 열린다 · 포털에 이만큼 가까이서 F */
-const EXIT_R = 30
+/** 출구 곁에서 F 로 건너간다 (고리 반지름 약 36px + 몸) — 2026-09-19 "원에 들어가면 바로 이동이라 전투 중에 뜬금없이 넘어간다" */
+const EXIT_USE_R = 52
 /** 보스 방 바로 앞 지역 (금빛 상자) */
 const AREAS_BOSS_BEFORE = [8]
 const WP_R = 44
@@ -386,9 +387,8 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     const btn = inp?.buttons ?? 0
     const pressed = btn & ~p.btnPrev
     p.btnPrev = btn
-    // 건너온 뒤 30틱은 출구가 안 먹는다. 출구 위에 내려섰다면(출구 곁에 열린 타운 포털로 온 경우 등) 한 번 벗어날 때까지 1 에 머문다
-    // — 안 그러면 포털로 온 사람이 0.5초 뒤 출구로 튕겨 나간다 (2026-09-19 P2P 탭 확인에서 찾음)
-    if (p.exitLock > 1 || (p.exitLock === 1 && !l.exits.some((e) => len(p.x - e.x, p.y - e.y) <= EXIT_R))) p.exitLock--
+    // 건너온 뒤 30틱은 출구가 안 먹는다 (F 를 누르고 있다가 도로 넘어가지 않게)
+    if (p.exitLock > 0) p.exitLock--
     if (p.potCd > 0) p.potCd--
     if (p.shrineT > 0) p.shrineT--
     if (p.legCd > 0) p.legCd--
@@ -408,14 +408,6 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
       p.potHot = POT_TICKS
       p.potCd = 90
       state.events.push({ type: 'potion', p: p.id })
-    }
-    // 출구: 걸어 들어가면 그 사람만 건너간다
-    if (p.exitLock === 0) {
-      for (const e of l.exits) {
-        if (len(p.x - e.x, p.y - e.y) > EXIT_R) continue
-        queueMove(p, { to: e.to, how: 'exit' })
-        break
-      }
     }
     // 웨이포인트: 밟으면 열린다 (캐릭터에 남는다)
     if (l.wp && len(p.x - l.wp.x, p.y - l.wp.y) <= WP_R) {
@@ -453,6 +445,15 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
         }
         used = true
         break
+      }
+      // 출구: 곁에서 F — 그 사람만 건너간다 (예전에는 원에 들어서기만 하면 넘어갔다)
+      if (!used && p.exitLock === 0) {
+        for (const e of l.exits) {
+          if (len(p.x - e.x, p.y - e.y) > EXIT_USE_R) continue
+          queueMove(p, { to: e.to, how: 'exit' })
+          used = true
+          break
+        }
       }
       if (!used) used = useObject(state, p)
       if (!used) pickItem(state, p)

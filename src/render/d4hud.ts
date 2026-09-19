@@ -13,7 +13,7 @@ import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
-import { QUESTS, areaDef, isDeadEnd, isTown } from '../core/world'
+import { AREAS, QUESTS, areaDef, isDeadEnd, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -446,6 +446,42 @@ export class D4Hud {
     c.restore()
   }
 
+  /**
+   * 추적 칸 아래: 이 막의 퀘스트와 진행 — ○ 아직(촌장) · ▸ 진행 중(여기면 남은 괴물 / 아니면 지역) · ◆ 이룸(촌장에게 보고) · ✓ 끝.
+   * 자세한 글은 J(퀘스트 기록).
+   */
+  private drawQuestList(c: CanvasRenderingContext2D, s: GameState, q: number[], list: { d: (typeof QUESTS)[number]; i: number }[], x: number, y: number, W: number): void {
+    c.fillStyle = 'rgba(201,162,74,0.25)'
+    c.fillRect(x + 12, y + 2, W - 24, 1)
+    c.font = `700 11px ${SANS}`
+    c.fillStyle = '#b8a67e'
+    c.textAlign = 'left'
+    c.fillText(`${areaDef(s.curArea).act + 1}막 퀘스트 · J`, x + 12, y + 17)
+    list.forEach(({ d, i }, k) => {
+      const st = q[i] ?? 0
+      const ly = y + 36 + k * 18
+      const here = d.area === s.curArea
+      const left = s.monsters.filter((m) => MONSTER_LIST[m.kind].attack !== 'flee').length
+      const [mark, color, right, rc] =
+        st >= 3
+          ? ['✓', '#7f9a78', '끝', '#6a8a64']
+          : st === 2
+            ? ['◆', GOLD_HI, '촌장에게 보고', GOLD_HI]
+            : st === 1
+              ? ['▸', '#e8dcc4', here ? (d.goal === 'clear' ? `남은 ${left}` : '여기') : AREAS[d.area].name, here ? '#ffd88a' : '#9d8f78']
+              : ['○', '#7e7260', '촌장', '#6a5e4c']
+      c.textAlign = 'left'
+      c.font = `600 12px ${SANS}`
+      c.fillStyle = color
+      c.fillText(`${mark} ${d.name}`, x + 12, ly)
+      c.textAlign = 'right'
+      c.font = `500 11px ${SANS}`
+      c.fillStyle = rc
+      c.fillText(right, x + W - 12, ly)
+    })
+    c.textAlign = 'left'
+  }
+
   /** 오른쪽 위, 미니맵 아래: 목표 추적 (던전) · 점수판 (투기장) */
   drawTracker(h: HudCtx, s: GameState, opts: RenderOptions): void {
     const c = h.ctx
@@ -458,7 +494,9 @@ export class D4Hud {
     if (s.mode === 'dungeon') {
       const left = s.monsters.length
       const total = Math.max(1, s.monstersTotal)
-      ironPanel(c, x, y, W, 84, false)
+      // 이 막의 퀘스트 넷을 아래에 늘어놓는다 (2026-09-19 요청 "퀘스트 진행 사항을 맵 아래에서 확인")
+      const actQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act)
+      ironPanel(c, x, y, W, 84 + (actQuests.length > 0 ? 22 + actQuests.length * 18 : 0), false)
       c.font = `800 16px ${SERIF}`
       c.fillStyle = GOLD_HI
       c.fillText(opts.floorName ?? '던전', x + 12, y + 24)
@@ -493,6 +531,7 @@ export class D4Hud {
       c.font = `600 11px ${SANS}`
       c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#8d8170'
       c.fillText(`죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, x + 12, y + 74)
+      if (actQuests.length > 0) this.drawQuestList(c, s, q, actQuests, x, y + 84, W)
     } else {
       const teams = isTeamMatch(s)
       const rows = teams
