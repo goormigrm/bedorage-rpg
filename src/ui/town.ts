@@ -10,6 +10,7 @@ import {
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
+import { itemHtml } from './inventory'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
 import { CMD_QUEST } from '../core/input'
 
@@ -107,6 +108,8 @@ export class TownPanel {
   private sellArmed = false
   /** 벼리기에서 고른 재료 등급 (1 마법 · 2 희귀 · 3 전설) */
   private forgeRarity = 2
+  /** 마지막 벼리기 결과 (창 위에 카드로 — 2026-09-20 "뭐가 나왔는지 확실하게") */
+  private lastForge: { it: Item; up: boolean } | null = null
   private lastSig = ''
 
   constructor(
@@ -122,8 +125,16 @@ export class TownPanel {
     parent.appendChild(this.el)
   }
 
+  /** 세션이 벼리기 결과를 알려 준다 (sim 이벤트) */
+  forgeResult(it: Item, up: boolean): void {
+    this.lastForge = { it, up }
+    this.lastSig = ''
+    if (this.open === 'smith') this.render()
+  }
+
   show(npc: NpcId | null): void {
     this.sellArmed = false
+    this.lastForge = null
     this.open = npc
     this.el.hidden = !npc
     this.lastSig = ''
@@ -190,8 +201,16 @@ export class TownPanel {
         const fromStash = use.filter((k) => k >= STASH_AT).length
         const tier = (r: number) =>
           `<button data-frar="${r}" class="${r === rar ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${forgeNeed(r)}개<small>→ ${RARITY_NAMES[r + 1]} ${Math.round(forgeOdds(r) * 100)}%</small></button>`
+        const lf = this.lastForge
+        const card = lf
+          ? `<div class="forge-out ${lf.up ? 'win' : 'lose'}" style="--rc:${RARITY_COLORS[lf.it.rarity]}">
+              <div class="fo-h"><b>${lf.up ? '한 단계 올랐다' : '등급 그대로'}</b><span>방금 벼린 것 — 가방에 들어갔다</span></div>
+              ${itemHtml(lf.it)}
+            </div>`
+          : ''
         body =
           tabs +
+          card +
           `<p class="tp-note">같은 등급 여럿을 녹여 <b>한 단계 위</b>를 노린다. 실패해도 <b>같은 등급</b> 하나는 나온다.
             재료는 가방과 <b>보관함</b>에서 <b>싼 것부터</b> 쓴다(잠근 것은 빼고).</p>
           <div class="seg forge-tier">${[FORGE_MIN, 2, FORGE_MAX].map(tier).join('')}</div>

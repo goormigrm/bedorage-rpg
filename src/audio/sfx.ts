@@ -304,6 +304,20 @@ export class Sfx {
           for (const [i, f] of [392, 523, 659, 784, 1047].entries()) this.tone(b.node, b.t0 + i * 0.07, 0.6, 'sine', f, f, 0.25, 0.01)
           break
         }
+        case 'forge': {
+          // 벼리기 (2026-09-20): 성공은 모루를 때리고 종이 울리듯 올라가는 음 · 실패는 둔탁하게 떨어진다
+          if (e.p !== localPlayer) break
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
+          // 모루 소리 (둘 다 같다 — 벼리는 동작은 똑같으니)
+          this.tone(b.node, b.t0, 0.09, 'triangle', 1400, 900, 0.22, 0.002)
+          if (e.up) {
+            const up = e.rarity >= 4 ? [784, 1047, 1319, 1568] : [659, 880, 1109]
+            for (const [i, f] of up.entries()) this.tone(b.node, b.t0 + 0.12 + i * 0.1, 0.55, 'triangle', f, f, 0.26, 0.01)
+          } else {
+            for (const [i, f] of [330, 262].entries()) this.tone(b.node, b.t0 + 0.12 + i * 0.13, 0.4, 'sine', f, f * 0.85, 0.2, 0.01)
+          }
+          break
+        }
         case 'levelup': {
           if (e.p !== localPlayer) break
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)

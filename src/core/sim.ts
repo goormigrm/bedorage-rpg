@@ -633,6 +633,8 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', 0, out, slot)
     p.bag.push(it)
     trade('forge', -g, it.uid)
+    // 화면 가운데 연출용 (성공 = 등급이 올랐다)
+    state.events.push({ type: 'forge', p: p.id, uid: it.uid, rarity: out, up: out > rar })
   } else if (cmd === CMD_GAMBLE && npc === 'gambler') {
     const g = gamblePrice(p.level)
     if (arg < 0 || arg >= SLOT_COUNT || p.gold < g || p.bag.length >= BAG_SIZE) return

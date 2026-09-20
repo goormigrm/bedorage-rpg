@@ -13,6 +13,7 @@ import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
 import { showEnding, showIntro } from '../ui/ending'
+import { showForgeFx } from '../ui/forgefx'
 import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
@@ -1373,6 +1374,14 @@ export class Session {
       const view = this.view()
       this.renderer.onEvents(view.events, view, lp, this.names)
       this.sfx.onEvents(view.events, view, lp)
+      // 벼리기 결과는 대장장이 창에도 카드로 띄운다 (2026-09-20 "뭐가 나왔는지 확실하게")
+      for (const e of view.events) {
+        if (e.type !== 'forge' || e.p !== this.cfg.localPlayer) continue
+        const it = this.state.players[e.p]?.bag.find((b) => b.uid === e.uid)
+        if (!it) continue
+        this.town.forgeResult(it, e.up)
+        showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, it, e.up)
+      }
       if (this.lockstep && this.state.tick % 60 === 0) {
         const h = hashState(this.state)
         this.hashes.set(this.state.tick, h)

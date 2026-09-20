@@ -877,3 +877,45 @@ body { background: var(--bg); }
 .forge-tier button small { font: 500 10.5px "IBM Plex Sans KR", sans-serif; color: #6a6050; }
 .forge-tier button.on { color: var(--rc); border-color: var(--rc); background: rgba(255,255,255,.05); }
 .forge-tier button.on small { color: #b8a67e; }
+
+/* 벼리기 결과 카드 (대장장이 창 — 2026-09-20) */
+.forge-out { margin: 8px 0 10px; padding: 9px 11px; border: 1px solid var(--rc); border-radius: 4px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 18px rgba(0,0,0,.5); }
+.forge-out.win { box-shadow: inset 0 0 22px rgba(255,200,90,.16), 0 0 14px rgba(255,200,90,.12); }
+.forge-out .fo-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.forge-out .fo-h b { font: 800 13px "Nanum Myeongjo", serif; color: var(--rc); }
+.forge-out.lose .fo-h b { color: #9a8a70; }
+.forge-out .fo-h span { font-size: 11px; color: #8d8170; }
+.forge-out .it-name { font: 800 14px "Nanum Myeongjo", serif; }
+.forge-out .it-kind { font-size: 11px; color: #8d8170; margin-bottom: 3px; }
+.forge-out .aff, .forge-out .base { font-size: 11.5px; color: #a89878; line-height: 1.6; }
+.forge-out .leg { color: #ff9a3a; font-weight: 700; margin-top: 4px; }
+
+/* 벼리기 결과 연출 — 대장장이 창 위에 뜬다 (2026-09-20) */
+.forge-fx { position: absolute; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.forge-fx .ffx-box { position: relative; width: 0; height: 0; display: flex; align-items: center; justify-content: center; }
+.forge-fx .ffx-ring { position: absolute; width: 60px; height: 60px; margin: -30px 0 0 -30px; left: 50%; top: 50%; border-radius: 50%;
+  border: 3px solid var(--rc); opacity: .9; animation: ffx-ring 1.1s cubic-bezier(.2,.7,.3,1) forwards; }
+.forge-fx .ffx-ring.d2 { animation-delay: .18s; border-width: 2px; }
+.forge-fx.lose .ffx-ring { border-color: #6a6050; animation-duration: .9s; opacity: .5; }
+@keyframes ffx-ring { from { transform: scale(.4); opacity: .95; } to { transform: scale(7.5); opacity: 0; } }
+.forge-fx .ffx-s { position: absolute; left: 50%; top: 50%; width: 3px; height: 16px; margin: -8px 0 0 -1.5px; background: linear-gradient(180deg, #fff4d8, var(--rc));
+  border-radius: 2px; transform-origin: 50% 50%; animation: ffx-spark .85s ease-out forwards; }
+@keyframes ffx-spark {
+  from { transform: rotate(var(--a)) translateY(-30px) scaleY(.6); opacity: 1; }
+  to { transform: rotate(var(--a)) translateY(-170px) scaleY(1.5); opacity: 0; }
+}
+/* 글은 뒤(대장장이 창)와 겹쳐도 읽히게 어두운 바탕을 깐다 */
+.forge-fx .ffx-t { position: relative; text-align: center; white-space: nowrap; padding: 14px 34px 16px; border-radius: 10px;
+  background: radial-gradient(ellipse at center, rgba(6,5,4,.92), rgba(6,5,4,.66) 70%, rgba(6,5,4,0));
+  animation: ffx-t 3s ease forwards; }
+.forge-fx .ffx-t b { display: block; font: 400 46px "Black Han Sans", "IBM Plex Sans KR", sans-serif; color: var(--rc);
+  text-shadow: 0 0 26px var(--rc), 0 3px 10px rgba(0,0,0,.9); letter-spacing: .04em; }
+.forge-fx.lose .ffx-t b { color: #9a8a70; text-shadow: 0 3px 10px rgba(0,0,0,.9); font-size: 36px; }
+.forge-fx .ffx-t span { display: block; margin-top: 6px; font: 800 20px "Nanum Myeongjo", serif; color: var(--rc); text-shadow: 0 2px 8px rgba(0,0,0,.95); }
+.forge-fx .ffx-t small { display: block; margin-top: 4px; font: 600 12.5px "IBM Plex Sans KR", sans-serif; color: #d8cfbf; text-shadow: 0 2px 8px rgba(0,0,0,.95); }
+@keyframes ffx-t {
+  0% { transform: scale(1.5); opacity: 0; }
+  12% { transform: scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-14px); opacity: 0; }
+}

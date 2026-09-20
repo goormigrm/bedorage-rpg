@@ -536,6 +536,8 @@ export type SimEvent =
   | { type: 'shrine'; p: number; kind: number; x: number; y: number }
   /** 마을 NPC 와 거래했다 (what: sell · buy · potup · reroll · gamble · stash) */
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }
+  /** 벼리기 결과 (2026-09-20): 등급이 올랐나(up) · 나온 등급 · 만든 물건 uid — 화면 가운데 연출에 쓴다 */
+  | { type: 'forge'; p: number; uid: number; rarity: number; up: boolean }
   /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */
   | { type: 'goblinGone'; x: number; y: number }
   /** 용병 고용 · 내보냄 */
