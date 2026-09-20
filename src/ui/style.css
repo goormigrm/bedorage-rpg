@@ -742,6 +742,10 @@ body { background: var(--bg); }
 /* 엔딩 (4막 끝) — 어둠 위로 명조체 글이 한 줄씩 떠오른다 */
 .ending { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default;
   background: radial-gradient(ellipse at center, rgba(20,10,6,0.82), rgba(0,0,0,0.96)); animation: ending-in 2.4s ease both; }
+/* 도입은 게임 화면 위에 뜬다 — 뒤 HUD 가 비치지 않게 더 짙게 덮고, 시작 단추는 조작 안내 띠와 떨어뜨린다 (2026-09-20) */
+.ending.intro { background: radial-gradient(ellipse at center, rgba(14,8,4,0.93), rgba(0,0,0,0.985)); animation-duration: 1.2s; }
+.ending.intro .ending-box { padding-bottom: 40px; }
+.ending.intro .ending-go { margin-top: 26px; padding: 10px 30px; font-size: 15px; }
 .ending-box { max-width: 620px; padding: 0 24px; text-align: center; color: #e2d4b4; font: 500 16px/1.9 "Nanum Myeongjo", serif; }
 .ending-box h2 { font: 800 38px "Nanum Myeongjo", serif; color: #ffcf6a; letter-spacing: .18em; margin: 0 0 26px; text-shadow: 0 0 24px rgba(255,160,60,.45); animation: ending-in 2s ease both; }
 .ending-box p, .ending-go { opacity: 0; animation: ending-line 1.6s ease forwards; }

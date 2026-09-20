@@ -128,7 +128,7 @@ export class Lobby {
         <canvas class="bonfire" id="bonfire"></canvas>
         <div class="d2-title">
           <h1><span class="t1">배도라지</span><span class="t2">RPG</span></h1>
-          <p class="tag">성당 종이 멈춘 밤 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
+          <p class="tag">종소리에 끌려 떨어진 배도라지 크루 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
         </div>
         <div class="d2-char" id="my-char">
           <button class="arrow" id="char-prev" title="이전 캐릭터">◀</button>

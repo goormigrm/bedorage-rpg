@@ -12,7 +12,7 @@ import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, 
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
-import { showEnding } from '../ui/ending'
+import { showEnding, showIntro } from '../ui/ending'
 import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
@@ -319,6 +319,13 @@ export class Session {
       },
     )
     this.bindWinButtons()
+    // 도입 장면: **새 캐릭터로 처음** 던전에 들어섰을 때 한 번 (레벨 1 · 아직 아무 퀘스트도 받지 않았다)
+    if (!this.arena && !cfg.resumeState) {
+      const me = this.state.players[this.cfg.localPlayer]
+      if (me && me.level === 1 && !(me.quests ?? []).some((q) => q > 0)) {
+        showIntro(this.stage.querySelector('.game-ui') as HTMLElement, () => this.sfx.blip())
+      }
+    }
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.exit()
     // 음성 대화: 같은 게임(방)에 있는 사람끼리 (최대 4명)
     if (cfg.link) {
