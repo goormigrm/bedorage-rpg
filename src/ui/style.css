@@ -865,3 +865,11 @@ body { background: var(--bg); }
 .sell-all .btn small { font-weight: 500; font-size: 11px; opacity: .75; }
 .sell-all .btn.danger { border-color: #c9524a; color: #ffb0a8; background: rgba(90,32,28,.5); }
 .sell-all .tp-hint { margin: 2px 0 0; }
+
+/* 벼리기 등급 고르기 (2026-09-20 — 같은 등급 여럿 → 한 단계 위) */
+.forge-tier { display: flex; gap: 6px; margin: 8px 0 4px; }
+.forge-tier button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px; cursor: pointer;
+  font: 700 12px "Nanum Myeongjo", serif; color: #8d8170; background: rgba(0,0,0,.4); border: 1px solid #3a3024; border-radius: 3px; }
+.forge-tier button small { font: 500 10.5px "IBM Plex Sans KR", sans-serif; color: #6a6050; }
+.forge-tier button.on { color: var(--rc); border-color: var(--rc); background: rgba(255,255,255,.05); }
+.forge-tier button.on small { color: #b8a67e; }

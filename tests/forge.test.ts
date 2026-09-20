@@ -1,11 +1,11 @@
-// 전설 벼리기 (2026-09-20 요청): 희귀 다섯을 대장장이에게 주면 고른 부위의 물건 하나가 나온다 — 전설 30% · 신화 2%.
+// 벼리기 (2026-09-20): 같은 등급 여럿을 대장장이에게 주면 **한 단계 위**를 노린다 (마법 5→희귀 45% · 희귀 5→전설 30% · 전설 3→신화 20%).
 // 그리고 **다음 막으로 가는 문**: 막 보스를 쓰러뜨리면 보스가 섰던 자리에 문이 열린다.
 import { describe, expect, it } from 'vitest'
 import { BTN_USE, CMD_FORGE, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { ACTS, AREAS, actBossQuest, areaLayout, buildAreaMap, townNpcs } from '../src/core/world'
 import { createState, gateOpen, step } from '../src/core/sim'
-import { DROP_TABLE, FORGE_NEED, forgeIlvl, forgeMaterials, forgePrice, gearScore, rollItem, Item, SLOT_COUNT } from '../src/core/items'
+import { FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, gearScore, rollItem, Item, SLOT_COUNT } from '../src/core/items'
 import { makeRng } from '../src/core/rng'
 import { GameState } from '../src/core/state'
 import { areaDef } from '../src/core/world'
@@ -51,7 +51,7 @@ function atSmith(s: GameState): void {
   p.btnPrev = 0
 }
 
-describe('전설 벼리기', () => {
+describe('벼리기', () => {
   it('희귀 다섯 + 골드를 쓰고 고른 부위의 물건 하나가 나온다', () => {
     const { s, run } = game()
     const p = s.players[0]
@@ -59,10 +59,11 @@ describe('전설 벼리기', () => {
     fillRares(s, 6)
     atSmith(s)
     p.gold = 9999
-    const ilvl = forgeIlvl(p.bag, p.stash, forgeMaterials(p.bag, p.stash).slice(0, FORGE_NEED))
-    const price = forgePrice(ilvl)
+    const need = forgeNeed(2)
+    const ilvl = forgeIlvl(p.bag, p.stash, forgeMaterials(p.bag, p.stash, 2).slice(0, need))
+    const price = forgePrice(ilvl, 2)
     const gold0 = p.gold
-    step(s, (id) => buildAreaMap(61, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 }])
+    step(s, (id) => buildAreaMap(61, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 2 }])
     // 희귀 다섯이 사라지고 하나가 들어왔다 (6 - 5 + 1)
     expect(p.bag.length).toBe(2)
     expect(gold0 - p.gold).toBe(price)
@@ -72,36 +73,63 @@ describe('전설 벼리기', () => {
     expect(made.ilvl).toBe(ilvl)
   })
 
-  it('희귀가 넷뿐이거나 골드가 모자라면 아무 일도 없다', () => {
+  it('재료가 모자라거나 골드가 없으면 아무 일도 없다', () => {
     const { s, run } = game(62)
     const p = s.players[0]
     run(2)
     fillRares(s, 4)
     atSmith(s)
     p.gold = 9999
-    step(s, (id) => buildAreaMap(62, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 0 }])
+    step(s, (id) => buildAreaMap(62, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 0 }])
     expect(p.bag.length).toBe(4)
     expect(p.gold).toBe(9999)
     // 골드가 없으면
     fillRares(s, 5)
     p.gold = 1
-    step(s, (id) => buildAreaMap(62, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 0 }])
+    step(s, (id) => buildAreaMap(62, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 0 }])
     expect(p.bag.length).toBe(5)
   })
 
-  it('전설이 나올 확률은 30% 안팎이다 (배율표)', () => {
-    const t = DROP_TABLE.forge
-    expect(t[3]).toBeCloseTo(0.3, 5)
-    expect(t[4]).toBeCloseTo(0.02, 5)
-    // 일반 · 마법은 나오지 않는다 — 재료가 통째로 사라지지 않게
-    expect(t[0] + t[1]).toBe(0)
-    // 실제로 굴려 봐도 그쯤이다
-    const rng = makeRng(5)
+  it('등급 사다리: 위로 갈수록 적게 들고 덜 나온다 · 신화가 가장 낮다', () => {
+    expect(forgeOdds(1)).toBeCloseTo(0.45, 5)
+    expect(forgeOdds(2)).toBeCloseTo(0.3, 5)
+    expect(forgeOdds(3)).toBeCloseTo(0.2, 5)
+    // 위 등급일수록 확률이 낮다
+    expect(forgeOdds(FORGE_MIN)).toBeGreaterThan(forgeOdds(FORGE_MAX))
+    // 전설은 귀하니 셋만 (마법 · 희귀는 다섯)
+    expect(forgeNeed(3)).toBe(3)
+    expect(forgeNeed(2)).toBe(5)
+    // 신화(4)는 위가 없어 재료가 되지 않는다
+    expect(forgeOdds(4)).toBe(0)
+    // 값은 등급이 오를수록 비싸다
+    expect(forgePrice(20, 3)).toBeGreaterThan(forgePrice(20, 2))
+    expect(forgePrice(20, 2)).toBeGreaterThan(forgePrice(20, 1))
+  })
+
+  it('전설 셋을 녹이면 신화가 나오기도 한다 (실패해도 전설 하나)', () => {
+    const { s, run } = game(64)
+    const p = s.players[0]
+    run(2)
+    let myth = 0
     let leg = 0
-    const N = 4000
-    for (let i = 0; i < N; i++) if (rollItem(rng, i, 14, 'rifle', 'forge').rarity >= 3) leg++
-    expect(leg / N).toBeGreaterThan(0.26)
-    expect(leg / N).toBeLessThan(0.38)
+    for (let t = 0; t < 60; t++) {
+      const rng = makeRng(200 + t)
+      p.bag.length = 0
+      for (let i = 0; i < 3; i++) p.bag.push(rollItem(rng, 92000 + t * 10 + i, 24, p.weapon, 'boss', 0, 3))
+      p.bag.forEach((it) => (it.rarity = 3))
+      atSmith(s)
+      p.gold = 99999
+      step(s, (id) => buildAreaMap(64, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 3 * 16 + 1 }])
+      const made = p.bag[p.bag.length - 1]
+      expect(p.bag.length).toBe(1)
+      if (made.rarity === 4) myth++
+      else if (made.rarity === 3) leg++
+      p.btnPrev = 0
+    }
+    // 60번 중 신화가 몇 번은 나오고, 실패해도 전설이다 (둘 말고는 없다)
+    expect(myth + leg).toBe(60)
+    expect(myth).toBeGreaterThan(0)
+    expect(myth).toBeLessThan(30)
   })
 
   it('보관함에 있는 희귀도 재료가 된다 (2026-09-20)', () => {
@@ -116,7 +144,7 @@ describe('전설 벼리기', () => {
     atSmith(s)
     p.gold = 9999
     expect(forgeMaterials(p.bag, p.stash).length).toBe(5)
-    step(s, (id) => buildAreaMap(63, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 1 }])
+    step(s, (id) => buildAreaMap(63, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 1 }])
     // 가방 둘이 사라지고 만든 것 하나가 들어왔다 · 보관함 셋도 사라졌다
     expect(p.bag.length).toBe(1)
     expect(p.stash.length).toBe(0)
@@ -127,7 +155,7 @@ describe('전설 벼리기', () => {
     const rng = makeRng(3)
     const bag: Item[] = []
     for (const lv of [20, 10, 30, 12, 14, 16]) bag.push(rollItem(rng, lv, lv, 'rifle', 'goldchest', 0, 2))
-    const mats = forgeMaterials(bag).slice(0, FORGE_NEED)
+    const mats = forgeMaterials(bag, [], 2).slice(0, forgeNeed(2))
     expect(mats.length).toBe(5)
     // 가장 비싼 것(레벨 30)은 남는다
     expect(mats.some((i) => bag[i].ilvl === 30)).toBe(false)

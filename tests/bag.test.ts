@@ -4,7 +4,7 @@ import { BTN_USE, CMD_DROP, CMD_LOCK, CMD_SELL_ALL, CMD_SORT, Input } from '../s
 import { GameMap, buildMap } from '../src/core/map'
 import { buildAreaMap, townNpcs } from '../src/core/world'
 import { createState, step } from '../src/core/sim'
-import { FORGE_RARITY, Item, forgeMaterials, isJunk, itemValue, rollItem, sortItems, upgradeMaterials } from '../src/core/items'
+import { Item, forgeMaterials, isJunk, itemValue, rollItem, sortItems, upgradeMaterials } from '../src/core/items'
 import { makeRng } from '../src/core/rng'
 import { GameState } from '../src/core/state'
 
@@ -124,9 +124,9 @@ describe('잠금', () => {
     expect(p.bag.length).toBe(3)
     // 재료
     expect(forgeMaterials(p.bag).includes(0)).toBe(false)
-    expect(p.bag[0].rarity).toBe(FORGE_RARITY)
+    expect(p.bag[0].rarity).toBe(2)
     const target = p.bag[1]
-    expect(upgradeMaterials(p.bag, target).includes(0)).toBe(false)
+    expect(upgradeMaterials(p.bag, p.stash, target).includes(0)).toBe(false)
     // 한 번 더 누르면 풀린다
     cmd(CMD_LOCK, 0)
     expect(p.bag[0].lk).toBeUndefined()

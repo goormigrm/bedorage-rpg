@@ -12,7 +12,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -589,10 +589,11 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     if (!it || (it.up ?? 0) >= UPGRADE_MAX) return
     const need = upgradeNeed(it)
     const g = upgradePrice(it)
-    const mats = upgradeMaterials(p.bag, it)
+    // 재료는 가방과 **보관함**에서 함께 고른다 (2026-09-20 요청)
+    const mats = upgradeMaterials(p.bag, p.stash, it)
     if (mats.length < need || p.gold < g) return
     p.gold -= g
-    for (const i of mats.slice(0, need).sort((a, b) => b - a)) p.bag.splice(i, 1)
+    takeMaterials(p.bag, p.stash, mats.slice(0, need))
     it.up = (it.up ?? 0) + 1
     if (eq) recalc(p)
     trade('upgrade', -g, it.uid)
@@ -614,21 +615,22 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     p.gold += gold
     state.events.push({ type: 'trade', p: p.id, what: 'sellAll', gold, uid: n })
   } else if (cmd === CMD_FORGE && npc === 'smith') {
-    // 전설 벼리기: 가방의 희귀 다섯 + 골드 → 고른 부위 하나 (전설 30% · 신화 2% · 나머지 희귀)
-    if (arg < 0 || arg >= SLOT_COUNT || p.bag.length >= BAG_SIZE) return
-    // 재료는 가방과 **보관함**에서 함께 고른다 (싼 것부터 — 2026-09-20)
-    const mats = forgeMaterials(p.bag, p.stash).slice(0, FORGE_NEED)
-    if (mats.length < FORGE_NEED) return
+    // 벼리기 (2026-09-20 등급 사다리): arg = 재료 등급 × 16 + 부위.
+    // 같은 등급 여럿 + 골드 → 그 **윗 등급**이 나올 확률을 굴린다. 실패해도 같은 등급 하나는 나온다.
+    const slot = arg & 15
+    const rar = arg >> 4
+    if (slot < 0 || slot >= SLOT_COUNT || rar < FORGE_MIN || rar > FORGE_MAX || p.bag.length >= BAG_SIZE) return
+    const need = forgeNeed(rar)
+    // 재료는 가방과 **보관함**에서 함께 고른다 (싼 것부터)
+    const mats = forgeMaterials(p.bag, p.stash, rar).slice(0, need)
+    if (mats.length < need) return
     const ilvl = forgeIlvl(p.bag, p.stash, mats)
-    const g = forgePrice(ilvl)
+    const g = forgePrice(ilvl, rar)
     if (p.gold < g) return
     p.gold -= g
-    // 뒤에서부터 지워야 앞 칸 번호가 밀리지 않는다 (보관함 칸이 1000 대라 보관함부터 지워진다)
-    for (const k of [...mats].sort((a, b) => b - a)) {
-      if (k >= FORGE_STASH) p.stash.splice(k - FORGE_STASH, 1)
-      else p.bag.splice(k, 1)
-    }
-    const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', tierOf(state.tier).loot, 0, arg)
+    takeMaterials(p.bag, p.stash, mats)
+    const out = rand(state.rng) < forgeOdds(rar) ? rar + 1 : rar
+    const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', 0, out, slot)
     p.bag.push(it)
     trade('forge', -g, it.uid)
   } else if (cmd === CMD_GAMBLE && npc === 'gambler') {

@@ -227,8 +227,8 @@ export const DROP_TABLE: Record<LootSource, number[]> = {
   goldchest: [0.1, 0.55, 0.3, 0.05, 0],
   gamble: [0, 0.55, 0.35, 0.095, 0.005],
   shop: [0.25, 0.6, 0.15, 0, 0],
-  // 전설 벼리기 (희귀 다섯 → 하나). 실패해도 희귀는 나온다 — 재료가 통째로 사라지지 않게
-  forge: [0, 0, 0.68, 0.3, 0.02],
+  // 벼리기: 등급은 벼리기 쪽에서 정해 minRarity 로 넘긴다 (forgeOdds) — 표는 쓰지 않는다
+  forge: [1, 0, 0, 0, 0],
 }
 /** 등급을 고른다. up = 난이도 전리품 보너스(악몽 0.08 · 지옥 0.16) — 희귀 이상의 몫을 (1 + up × 6) 배 */
 export function pickRarity(rng: Rng, src: LootSource, up = 0): number {
@@ -311,30 +311,47 @@ export const upgradePrice = (it: Item) => Math.round(itemValue(it) * 0.5 * ((it.
  * 희귀 다섯의 판매값(아이템 레벨 20 기준 약 2,000골드)에 벼리는 값을 더하면 도박으로 전설 하나를 노리는 값과 비슷한데,
  * 벼리기는 **부위를 고를 수 있고 아이템 레벨이 재료를 따라간다**. 그만큼만 낫게 두려고 30% 로 맞췄다.
  */
-export const FORGE_NEED = 5
-export const FORGE_RARITY = 2
-/** 벼리는 값 — 희귀 하나 값쯤 (재료를 모으는 수고가 주된 비용이다) */
-export const forgePrice = (ilvl: number) => Math.round((6 + ilvl * 3) * 6 * 0.6)
 /**
- * 재료 칸 번호: 가방은 `i`, **보관함은 `FORGE_STASH + i`**
- * (2026-09-20 사용자: "전설 벼리기는 내 아이템 창칸뿐 아니라 창고에 들어 있는 것으로도 되게" — 모아 둔 희귀가 거기 있다).
+ * 벼리기는 **등급 사다리**다 (2026-09-20 사용자: "전설 벼리기만 있고 신화 벼리기는 없다 —
+ * 그냥 아이템 벼리기로 재료 단계를 고르고 그 윗 단계를 만들 수 있는 게 좋겠다. 신화는 확률을 더 낮추고").
+ *
+ * | 재료 | 개수 | 윗 등급이 나올 확률 | 값 |
+ * |---|---|---|---|
+ * | 마법 | 5 | 45% → 희귀 | 싸다(×0.5) |
+ * | 희귀 | 5 | 30% → 전설 | ×1 |
+ * | 전설 | 3 | 20% → 신화 | ×2.5 |
+ *
+ * 실패해도 **재료와 같은 등급**이 하나 나온다 — 통째로 사라지지 않게. 신화는 위가 없어 재료가 되지 않는다.
+ * 전설 셋에 20% 면 신화 하나에 전설 열다섯이 든다. 신화는 보스에게서도 1% 뿐이라 이 길이 주된 통로가 된다.
  */
-export const FORGE_STASH = 1000
-/** 재료가 될 칸 (가방 + 보관함의 희귀만, 싼 것부터 — 결정론) */
-export function forgeMaterials(bag: Item[], stash: Item[] = []): number[] {
-  return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: FORGE_STASH + i }))]
-    .filter(({ it }) => it.rarity === FORGE_RARITY && !it.lk)
+export const FORGE_MIN = 1
+export const FORGE_MAX = 3
+const FORGE_NEED_BY: Record<number, number> = { 1: 5, 2: 5, 3: 3 }
+const FORGE_ODDS_BY: Record<number, number> = { 1: 0.45, 2: 0.3, 3: 0.2 }
+const FORGE_COST_BY: Record<number, number> = { 1: 0.5, 2: 1, 3: 2.5 }
+/** 그 등급으로 벼리려면 몇 개가 드나 */
+export const forgeNeed = (rarity: number) => FORGE_NEED_BY[rarity] ?? 5
+/** 윗 등급이 나올 확률 */
+export const forgeOdds = (rarity: number) => FORGE_ODDS_BY[rarity] ?? 0
+/** 벼리는 값 (재료를 모으는 수고가 주된 비용이라 값 자체는 무겁지 않다) */
+export const forgePrice = (ilvl: number, rarity: number) => Math.round((6 + ilvl * 3) * 6 * 0.6 * (FORGE_COST_BY[rarity] ?? 1))
+/**
+ * 재료 칸 번호: 가방은 `i`, **보관함은 `STASH_AT + i`**
+ * (2026-09-20 사용자: "벼리기·강화 재료를 창고에 들어 있는 것으로도 쓰게" — 모아 둔 재료는 보통 거기 있다).
+ * 벼리기와 강화가 같이 쓴다.
+ */
+export const STASH_AT = 1000
+/** 재료가 될 칸 (가방 + 보관함에서 그 등급만, 싼 것부터 — 결정론) */
+export function forgeMaterials(bag: Item[], stash: Item[] = [], rarity = 2): number[] {
+  return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
+    .filter(({ it }) => it.rarity === rarity && !it.lk)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
-}
-/** 재료 칸 하나 (가방 · 보관함) */
-export function forgeItem(bag: Item[], stash: Item[], k: number): Item | undefined {
-  return k >= FORGE_STASH ? stash[k - FORGE_STASH] : bag[k]
 }
 /** 벼려 나올 아이템 레벨 — 재료 평균 + 1 (좋은 재료를 넣을 값어치가 있게) */
 export function forgeIlvl(bag: Item[], stash: Item[], mats: number[]): number {
   if (mats.length === 0) return 1
-  const avg = mats.reduce((a, k) => a + (forgeItem(bag, stash, k)?.ilvl ?? 1), 0) / mats.length
+  const avg = mats.reduce((a, k) => a + (matAt(bag, stash, k)?.ilvl ?? 1), 0) / mats.length
   return Math.max(1, Math.min(60, Math.round(avg) + 1))
 }
 
@@ -351,13 +368,28 @@ export function sortItems(list: Item[]): Item[] {
 /** 잡템 = 일반 · 마법 (전부 팔기의 "쓸 것만 남기기") */
 export const isJunk = (it: Item) => it.rarity <= 1
 
-/** 재료가 될 가방 칸 (대상은 빼고, 싼 것부터 — 결정론) */
-export function upgradeMaterials(bag: Item[], target: Item): number[] {
-  return bag
-    .map((it, i) => ({ it, i }))
+/**
+ * 재료가 될 칸 (가방 + **보관함**, 대상은 빼고, 싼 것부터 — 결정론).
+ * 칸 번호는 벼리기와 같다: 가방 `i` · 보관함 `STASH_AT + i` (2026-09-20 요청).
+ */
+export function upgradeMaterials(bag: Item[], stash: Item[], target: Item): number[] {
+  return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
     .filter(({ it }) => it !== target && !it.lk && it.slot === target.slot && it.rarity === target.rarity)
-    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.i - b.i)
-    .map((o) => o.i)
+    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
+    .map((o) => o.k)
+}
+
+/** 재료 칸 하나 꺼내기 (가방 · 보관함 공용) */
+export function matAt(bag: Item[], stash: Item[], k: number): Item | undefined {
+  return k >= STASH_AT ? stash[k - STASH_AT] : bag[k]
+}
+
+/** 재료로 쓴 칸들을 지운다 (뒤에서부터 — 앞 칸 번호가 밀리지 않게. 보관함 칸이 1000 대라 보관함부터 지워진다) */
+export function takeMaterials(bag: Item[], stash: Item[], mats: number[]): void {
+  for (const k of [...mats].sort((a, b) => b - a)) {
+    if (k >= STASH_AT) stash.splice(k - STASH_AT, 1)
+    else bag.splice(k, 1)
+  }
 }
 
 // ---------- 레벨 ----------

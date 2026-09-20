@@ -6,7 +6,7 @@ import { CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_S
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, isJunk, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_SIZE, FORGE_MAX, FORGE_MIN, STASH_AT, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, isJunk, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -90,7 +90,7 @@ function row(it: Item, right: string, data: string, disabled = false, short = fa
 
 const LINES: Record<NpcId, string> = {
   merchant: '살 게 있으면 사고, 팔 게 있으면 팔게.',
-  smith: '같은 부위, 같은 등급 물건을 모아 와 — 녹여서 단단하게 해 주지. 노란 물건이 다섯이면 전설을 벼려 볼 수도 있고.',
+  smith: '같은 부위, 같은 등급 물건을 모아 와 — 녹여서 단단하게 해 주지. 같은 등급을 여럿 모아 오면 한 단계 위를 벼려 볼 수도 있고.',
   gambler: '안을 들여다보지 않고 사는 재미를 알아? 뭐가 나올지는 나도 몰라.',
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
   elder: '성당 종이 멈춘 밤부터 모든 게 틀어졌소. 부탁할 것이 있소…',
@@ -105,6 +105,8 @@ export class TownPanel {
   private smithTab: 'up' | 'forge' = 'up'
   /** "전부 팔기" 를 한 번 눌렀다 (한 번 더 눌러야 실제로 판다 — 실수 방지) */
   private sellArmed = false
+  /** 벼리기에서 고른 재료 등급 (1 마법 · 2 희귀 · 3 전설) */
+  private forgeRarity = 2
   private lastSig = ''
 
   constructor(
@@ -134,7 +136,7 @@ export class TownPanel {
     if (!this.open) return
     const me = this.me()
     const s = this.state()
-    const sig = `${this.tab}|${this.smithTab}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    const sig = `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     if (sig !== this.lastSig) this.render()
   }
 
@@ -143,7 +145,7 @@ export class TownPanel {
     if (!npc) return
     const me = this.me()
     const s = this.state()
-    this.lastSig = `${this.tab}|${this.smithTab}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    this.lastSig = `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     let body = ''
     if (npc === 'merchant') {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`
@@ -173,28 +175,39 @@ export class TownPanel {
       // 한꺼번에 팔기는 **목록 위**에 — 아래 두면 물건이 많을 때 스크롤해야 보인다
       body = tabs + bulk + `<div class="tp-list">${list}</div>` + pot
     } else if (npc === 'smith') {
-      // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **전설 벼리기**(희귀 다섯 → 고른 부위 하나)
-      const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">전설 벼리기</button></div>`
+      // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **벼리기**(같은 등급 여럿 → 윗 등급을 노린다)
+      const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">벼리기</button></div>`
       if (this.smithTab === 'forge') {
-        // 재료는 가방 + 보관함 (2026-09-20 요청 — 모아 둔 희귀는 보통 보관함에 있다)
-        const mats = forgeMaterials(me.bag, me.stash)
+        // 재료 등급을 고르면 그 **윗 등급**을 노린다 (2026-09-20 요청). 재료는 가방 + 보관함
+        const rar = this.forgeRarity
+        const need = forgeNeed(rar)
+        const mats = forgeMaterials(me.bag, me.stash, rar)
         const have = mats.length
-        const use = mats.slice(0, FORGE_NEED)
+        const use = mats.slice(0, need)
         const ilvl = forgeIlvl(me.bag, me.stash, use)
-        const price = forgePrice(ilvl)
-        const ok = have >= FORGE_NEED && me.gold >= price && me.bag.length < BAG_SIZE
-        const fromStash = use.filter((k) => k >= FORGE_STASH).length
+        const price = forgePrice(ilvl, rar)
+        const ok = have >= need && me.gold >= price && me.bag.length < BAG_SIZE
+        const fromStash = use.filter((k) => k >= STASH_AT).length
+        const tier = (r: number) =>
+          `<button data-frar="${r}" class="${r === rar ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${forgeNeed(r)}개<small>→ ${RARITY_NAMES[r + 1]} ${Math.round(forgeOdds(r) * 100)}%</small></button>`
         body =
           tabs +
-          `<p class="tp-note">가방과 <b>보관함</b>의 <b>희귀 ${FORGE_NEED}개</b>를 녹여 고른 부위의 물건 하나를 벼린다 —
-            <b class="leg-p">전설 30%</b> · 신화 2% · 나머지는 희귀. 재료는 <b>싼 것부터</b> 쓴다.</p>
-          <div class="forge-st"><span>희귀 재료 <b class="${have >= FORGE_NEED ? 'ok' : 'bad'}">${Math.min(have, FORGE_NEED)}/${FORGE_NEED}</b>${
-            have > 0 ? ` <small>(가방 ${use.length - fromStash} · 보관함 ${fromStash})</small>` : ''
+          `<p class="tp-note">같은 등급 여럿을 녹여 <b>한 단계 위</b>를 노린다. 실패해도 <b>같은 등급</b> 하나는 나온다.
+            재료는 가방과 <b>보관함</b>에서 <b>싼 것부터</b> 쓴다(잠근 것은 빼고).</p>
+          <div class="seg forge-tier">${[FORGE_MIN, 2, FORGE_MAX].map(tier).join('')}</div>
+          <div class="forge-st"><span>${RARITY_NAMES[rar]} 재료 <b class="${have >= need ? 'ok' : 'bad'}">${Math.min(have, need)}/${need}</b>${
+            use.length > 0 ? ` <small>(가방 ${use.length - fromStash} · 보관함 ${fromStash})</small>` : ''
           }</span>
-            <span>아이템 레벨 <b>${have >= FORGE_NEED ? ilvl : '—'}</b> <small>(재료 평균 + 1)</small></span>
-            <span>값 <b class="${me.gold >= price ? 'ok' : 'bad'}">${have >= FORGE_NEED ? price : '—'} 골드</b></span></div>
-          <div class="tp-slots">${Array.from({ length: SLOT_COUNT }, (_, k) => `<button class="btn" data-cmd="${CMD_FORGE}" data-arg="${k}" ${ok ? '' : 'disabled'}>${SLOT_NAMES[k]}</button>`).join('')}</div>
-          ${have < FORGE_NEED ? '<p class="tp-empty">희귀 아이템을 더 모아 오라 — 가방과 보관함을 함께 센다. (파란 것 말고 노란 것)</p>' : me.bag.length >= BAG_SIZE ? '<p class="tp-empty">가방이 가득 찼다.</p>' : ''}`
+            <span>아이템 레벨 <b>${have >= need ? ilvl : '—'}</b> <small>(재료 평균 + 1)</small></span>
+            <span>값 <b class="${me.gold >= price ? 'ok' : 'bad'}">${have >= need ? price : '—'} 골드</b></span></div>
+          <div class="tp-slots">${Array.from({ length: SLOT_COUNT }, (_, k) => `<button class="btn" data-cmd="${CMD_FORGE}" data-arg="${rar * 16 + k}" ${ok ? '' : 'disabled'}>${SLOT_NAMES[k]}</button>`).join('')}</div>
+          ${
+            have < need
+              ? `<p class="tp-empty">${RARITY_NAMES[rar]} 아이템을 더 모아 오라 — 가방과 보관함을 함께 센다.</p>`
+              : me.bag.length >= BAG_SIZE
+                ? '<p class="tp-empty">가방이 가득 찼다.</p>'
+                : ''
+          }`
         return this.paint(npc, me, body)
       }
       // 강화 (2026-09-19 — 옵션 다시 굴리기를 없앴다): 낀 장비 · 가방. 같은 부위 · 같은 등급 (단계 + 1)개를 녹인다
@@ -206,12 +219,12 @@ export class TownPanel {
           const lv = it.up ?? 0
           if (lv >= UPGRADE_MAX) return row(it, `${where} · +${lv} 최대`, '', true)
           const need = upgradeNeed(it)
-          const have = upgradeMaterials(me.bag, it).length
+          const have = upgradeMaterials(me.bag, me.stash, it).length
           const g = upgradePrice(it)
           return row(it, `${where} · +${lv} → +${lv + 1}<br>재료 ${Math.min(have, need)}/${need} · ${g} 골드`, `data-cmd="${CMD_UPGRADE}" data-arg="${arg}"`, have < need || me.gold < g)
         })
         .join('')
-      body = tabs + `<p class="tp-note">같은 부위 · 같은 등급의 아이템을 <b>(지금 단계 + 1)개</b> 녹여 한 단계 올린다 — 단계마다 옵션 · 기본 피해/방어 +10%, 최대 +5. 재료는 가방에서 값싼 것부터 쓴다.</p><div class="tp-list">${
+      body = tabs + `<p class="tp-note">같은 부위 · 같은 등급의 아이템을 <b>(지금 단계 + 1)개</b> 녹여 한 단계 올린다 — 단계마다 옵션 · 기본 피해/방어 +10%, 최대 +5. 재료는 <b>가방과 보관함</b>에서 값싼 것부터 쓴다(잠근 것은 빼고).</p><div class="tp-list">${
         list || '<p class="tp-empty">강화할 장비가 없다.</p>'
       }</div>`
     } else if (npc === 'gambler') {
@@ -268,6 +281,12 @@ export class TownPanel {
       b.onclick = () => {
         this.sellArmed = false
         this.tab = b.dataset.tab === 'sell' ? 'sell' : 'buy'
+        this.render()
+      }
+    })
+    this.el.querySelectorAll<HTMLButtonElement>('[data-frar]').forEach((b) => {
+      b.onclick = () => {
+        this.forgeRarity = Number(b.dataset.frar)
         this.render()
       }
     })
