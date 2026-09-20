@@ -2,12 +2,13 @@
 // 협동: 플레이어 0 = 호스트. 호스트가 해시 비교·리싱크·이탈자 드롭 틱·난입을 정한다.
 
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
+import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { CMD_ATTR, CMD_AUTOPICK, Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, townNpcs, tierQuests } from '../core/world'
+import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, questPoints, townNpcs, tierQuests } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
@@ -19,27 +20,9 @@ import { Voice } from '../net/voice'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES, Sheet, attrFree, emptySheet, sanitizeSheet } from '../core/items'
+import { Sheet, attrFree, sanitizeSheet } from '../core/items'
+import { bindSettings, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
-/** 자동 줍기 등급 옵션 (브라우저에 기억 — 기본은 모두) */
-const AUTOPICK_KEY = 'brpg.autopick'
-function loadAutoPick(): number {
-  try {
-    const v = Number(localStorage.getItem(AUTOPICK_KEY) ?? AUTOPICK_ALL)
-    // 신화 등급(비트 16)이 생기기 전의 "모두"(15)는 모두로 (2026-09-19)
-    if (v === 15) return AUTOPICK_ALL
-    return Number.isInteger(v) && v >= 0 && v <= AUTOPICK_ALL ? v : AUTOPICK_ALL
-  } catch {
-    return AUTOPICK_ALL
-  }
-}
-function saveAutoPick(v: number): void {
-  try {
-    localStorage.setItem(AUTOPICK_KEY, String(v))
-  } catch {
-    /* 저장 못 해도 이번 판은 반영된다 */
-  }
-}
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
@@ -106,17 +89,6 @@ export interface SessionConfig {
 interface PendingDrop {
   p: number
   tick: number
-}
-
-/** 실사 괴물을 쓸지 — 저장한 값이 없으면 폰은 끔 · 컴퓨터는 켬 */
-function realMonstersOn(): boolean {
-  try {
-    const v = localStorage.getItem('brpg.real')
-    if (v !== null) return v === '1'
-  } catch {
-    /* 저장소를 못 쓰면 기본값 */
-  }
-  return !isTouchDevice()
 }
 
 export class Session {
@@ -637,18 +609,26 @@ export class Session {
   }
 
   /**
-   * 자리별 기록. 사람은 받은 것(내 것은 세이브), 봇은 내 레벨에 맞춘 맨몸 — 동료 봇이 너무 약하거나 세지 않게.
+   * 자리별 기록. 사람은 받은 것(내 것은 세이브), 봇은 **방장에 맞춘 한 벌** — 레벨 · 그 레벨짜리 장비 · 스킬 · 능력치.
+   * 전에는 레벨만 맞고 맨몸이라 "하다가 껐다 다시 켜면 봇이 너무 약했다"(2026-09-20 제보).
+   * 방장(0번 자리) 기준인 것이 중요하다 — 내 세이브로 정하면 사람마다 봇이 달라져 판이 어긋난다(락스텝).
    */
   private sheetsFor(): (Sheet | undefined)[] {
-    const mine = this.cfg.sheets?.[this.cfg.localPlayer]
-    const lvl = mine?.level ?? 1
     const tier = this.cfg.tier ?? 0
-    return this.cfg.chars.map((_, i) => {
-      const s = this.cfg.sheets?.[i]
+    const sheets = this.cfg.sheets
+    // 방장 = 0번 자리. 아직 안 왔으면 자리 순서로 처음 있는 사람 (모두가 같은 답을 낸다)
+    const host = sheets?.[0] ?? sheets?.find((s) => s)
+    const hostLvl = host?.level ?? 1
+    const hostQuests = host ? tierQuests(host, tier) : []
+    const hostBonus = questPoints(hostQuests)
+    // 템 수준도 방장에 맞춘다 (레벨만 보면 장비를 안 갈아입은 방장 곁에 봇만 번쩍인다)
+    const hostIlvl = gearLevelOf(host)
+    return this.cfg.chars.map((c, i) => {
+      const s = sheets?.[i]
       // 퀘스트·웨이포인트는 이 판의 난이도 것으로 (악몽·지옥은 따로 진행한다 — 디아블로 2)
       if (s) return { ...s, quests: tierQuests(s, tier), wps: tier > 0 ? (s.twps?.[tier] ?? 0) : s.wps }
       const botSeat = this.cfg.mode === 'solo' || this.cfg.bots?.[i]
-      return botSeat ? { ...emptySheet(), level: lvl } : undefined
+      return botSeat ? botSheet(c, hostLvl, hostIlvl, this.cfg.seed + i * 977, hostQuests, hostBonus) : undefined
     })
   }
 
@@ -838,76 +818,32 @@ export class Session {
   private showMenu(): void {
     const solo = this.cfg.mode === 'solo'
     if (solo) this.paused = true
+    // 설정은 대기실과 같은 칸을 쓴다 (ui/settings.ts) — 바꾸면 이 판에 바로 반영한다
     this.showOverlay(
       solo ? '일시정지' : '메뉴',
       solo ? '봇은 기다려 줍니다.' : '대전 중에는 게임이 멈추지 않습니다.',
       [
-        // 조작 안내 띠 켜고 끄기 (터치는 띠 자체가 없다)
-        ...(this.touch
-          ? []
-          : [
-              {
-                label: this.keysShown ? '조작 안내 숨기기' : '조작 안내 보기',
-                primary: false,
-                onClick: () => {
-                  this.keysShown = !this.keysShown
-                  try {
-                    localStorage.setItem('brpg.keys', this.keysShown ? '1' : '0')
-                  } catch {
-                    /* 저장 못 해도 이번 판은 반영된다 */
-                  }
-                  this.applyKeys()
-                  this.showMenu()
-                },
-              },
-            ]),
-        // 실사 괴물 (2026-09-19): 처음 만날 때 모델을 받는다. 느린 기기는 끈다 (폰은 기본 끔)
-        {
-          label: realMonstersOn() ? '실사 괴물 끄기' : '실사 괴물 켜기',
-          primary: false,
-          onClick: () => {
-            const on = !realMonstersOn()
-            try {
-              localStorage.setItem('brpg.real', on ? '1' : '0')
-            } catch {
-              /* 저장 못 해도 이번 판은 바뀐다 */
-            }
-            this.renderer.setRealMonsters(on)
-            this.showMenu()
-          },
-        },
-        // 모바일은 화면 위쪽에 ≡ 하나만 두고 소리·로비로를 이 안에 넣는다
-        {
-          label: this.sfx.muted ? '소리 켜기' : '소리 끄기',
-          primary: false,
-          onClick: () => {
-            this.sfx.toggle()
-            this.syncMute()
-            this.showMenu() // 라벨 갱신
-          },
-        },
         { label: '계속', primary: true, onClick: () => this.hideOverlay() },
         { label: '로비로', primary: false, onClick: () => this.exit() },
       ],
-      this.autoPickHtml(),
+      settingsHtml({ keys: !this.touch }),
     )
-    // 자동 줍기: 등급 단추를 누르면 그 등급을 켜고 끈다 (2026-09-19 요청)
-    this.overlay.querySelectorAll<HTMLButtonElement>('.autopick button[data-r]').forEach((b) => {
-      b.onclick = () => {
-        const v = loadAutoPick() ^ (1 << Number(b.dataset.r))
-        saveAutoPick(v)
-        this.input.queueCmd(CMD_AUTOPICK, v)
-        this.showMenu()
-      }
-    })
-  }
-
-  /** Esc 메뉴의 자동 줍기 칸: 등급마다 켜고 끄는 단추 */
-  private autoPickHtml(): string {
-    const ap = loadAutoPick()
-    const btns = RARITY_NAMES.map((n, r) => `<button type="button" data-r="${r}" class="${ap & (1 << r) ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}" title="${n} 아이템을 밟으면 ${ap & (1 << r) ? '줍습니다 (누르면 끔)' : '줍지 않습니다 (누르면 켬)'}">${n}</button>`).join('')
-    const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? '꺼짐 — F 로만' : '켠 등급만'
-    return `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div><p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>`
+    const box = this.overlay.querySelector('.settings') as HTMLElement | null
+    if (box)
+      bindSettings(box, {
+        keys: !this.touch,
+        onSound: (m) => {
+          if (this.sfx.muted !== m) this.sfx.toggle()
+          this.syncMute()
+        },
+        onReal: (on) => this.renderer.setRealMonsters(on),
+        onKeys: (on) => {
+          this.keysShown = on
+          this.applyKeys()
+        },
+        // 자동 줍기 등급은 각자의 옵션이지만 줍기는 sim 이 한다 → 명령으로 모두에게 알린다
+        onAutoPick: (v) => this.input.queueCmd(CMD_AUTOPICK, v),
+      })
   }
 
   private showOverlay(

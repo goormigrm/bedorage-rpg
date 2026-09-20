@@ -4,7 +4,8 @@
 // **투기장(PvP)**: 배도라지 덕의 대전 방식(개인전·팀전·목표 킬·맵)을 이 게임 안에 이식했다 — RPG 에서 키운 캐릭터끼리 싸운다
 // (2026-09-18 사용자: "덕 링크가 아니라 덕의 방식을 RPG 안에 이식"). 방 만들기·혼자 하기 창에서 '종류' 로 고른다.
 
-import { DIFFICULTY_LABEL, Difficulty } from '../core/bot'
+import { DIFFICULTY_HINT, DIFFICULTY_LABEL, Difficulty } from '../core/bot'
+import { bindSettings, settingsHtml } from './settings'
 import { CHARACTERS, CharacterId, PLAYABLE, isPlayable, ROLE_INFO } from '../core/characters'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
@@ -155,7 +156,7 @@ export class Lobby {
             </div>
           </div>
           <div class="panel small">
-            <div class="savebtns"><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
+            <div class="savebtns"><button class="lnk" id="btn-settings" title="소리 · 실사 괴물 · 조작 안내 · 자동 줍기">설정</button><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
             <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></div>
             <div class="notice" id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</div>
             <div class="notice">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></div>
@@ -200,6 +201,15 @@ export class Lobby {
             </div>
             <div class="warn">방장의 연결이 곧 방입니다.<br>와이파이나 폰 회선이면 중간에 방이 터질 수 있어요.<br>랜선을 꽂은 PC가 가장 안전합니다.</div>
             <div class="dacts"><button class="btn secondary" data-close>취소</button><button class="btn main" id="btn-host-go">만들기</button></div>
+          </div>
+        </div>
+
+        <div class="dlg" id="dlg-settings" hidden>
+          <div class="dbox">
+            <h3>설정</h3>
+            <p class="cardp">여기서 바꾼 것은 이 브라우저에 남고, <b>게임에 들어가면 그대로 적용</b>됩니다. 게임 안에서는 <b>Esc</b> 로 같은 화면을 엽니다.</p>
+            <div id="settings-box"></div>
+            <div class="dacts"><button class="btn main" data-close>닫기</button></div>
           </div>
         </div>
 
@@ -313,6 +323,7 @@ export class Lobby {
     nickEl.addEventListener('change', () => applyNick(true))
     ;(h.querySelector('#btn-refresh') as HTMLButtonElement).onclick = () => this.refreshRooms()
     ;(h.querySelector('#btn-export') as HTMLButtonElement).onclick = () => exportSave()
+    ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.openSettings()
     const fileEl = h.querySelector('#file-import') as HTMLInputElement
     fileEl.onchange = async () => {
       const f = fileEl.files?.[0]
@@ -637,6 +648,19 @@ export class Lobby {
   }
 
   /** 방 만들기·혼자 하기 창. 닉네임이 없으면 먼저 채우게 한다 */
+  /** 설정 창 (게임 안 Esc 메뉴와 같은 칸 — ui/settings.ts). 로비에서도 대기실에서도 연다 (2026-09-20 요청) */
+  private openSettings(): void {
+    this.closeDlg()
+    const d = this.host.querySelector('#dlg-settings') as HTMLElement | null
+    const box = this.host.querySelector('#settings-box') as HTMLElement | null
+    if (!d || !box) return
+    // 조작 안내 띠는 컴퓨터에만 있다
+    const o = { keys: !isTouchDevice() }
+    box.innerHTML = settingsHtml(o)
+    bindSettings(box, o)
+    d.hidden = false
+  }
+
   private openDlg(sel: string): void {
     if (!this.requireNick()) return
     if (sel === '#dlg-host' && isTouchDevice()) {
@@ -1187,7 +1211,7 @@ export class Lobby {
     }
     const html = `
       <div class="room-head"><div class="section-t" style="margin:0">${title}</div>
-        <div class="row"><button class="btn secondary" id="btn-cancel">${this.role === 'host' ? '방 닫기' : '나가기'}</button></div></div>
+        <div class="row"><button class="btn secondary" id="btn-settings-room">설정</button><button class="btn secondary" id="btn-cancel">${this.role === 'host' ? '방 닫기' : '나가기'}</button></div></div>
       <p class="roomhint dim">이 사이트 안에서만 함께합니다.<br>친구는 <b>방 목록</b>에서 이 방을 찾아 들어옵니다.</p>
       <div class="setrow">
         ${this.kind === 'arena'
@@ -1202,10 +1226,11 @@ export class Lobby {
         this.role === 'host'
           ? `<div class="setrow botrow">
         <label class="chk"><input type="checkbox" id="chk-bots" ${this.fillBots ? 'checked' : ''}> 빈 자리는 봇으로 채우기</label>
+        <span class="botdifflabel" id="lbl-botdiff" ${this.fillBots ? '' : 'hidden'}><b>봇 실력</b></span>
         <div class="seg small" id="seg-botdiff" ${this.fillBots ? '' : 'hidden'}>
-          ${(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => `<button data-v="${d}" class="${d === this.botDiff ? 'on' : ''}">${DIFFICULTY_LABEL[d]}</button>`).join('')}
+          ${(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => `<button data-v="${d}" class="${d === this.botDiff ? 'on' : ''}" title="${DIFFICULTY_HINT[d]}">${DIFFICULTY_LABEL[d]}</button>`).join('')}
         </div>
-        <p class="dim hintline">봇 자리는 난입으로 채워지지 않습니다.</p>
+        <p class="dim hintline" id="hint-botdiff" ${this.fillBots ? '' : 'hidden'}>봇이 얼마나 잘 싸우는가입니다 — 게임 난이도(보통 · 악몽 · 지옥)와는 다릅니다. ${DIFFICULTY_HINT[this.botDiff]}.<br>봇은 <b>방장과 같은 레벨 · 그 레벨의 장비</b>로 들어옵니다. 봇 자리는 난입으로 채워지지 않습니다.</p>
       </div>`
           : this.fillBotsRemote
             ? `<p class="roomhint dim">빈 자리는 호스트가 <b>봇</b>으로 채웁니다.</p>`
@@ -1232,6 +1257,8 @@ export class Lobby {
               : '준비를 누르세요.'
     this.status(st, connected ? 'ok' : '', html)
     this.bindCancel()
+    const setBtn = this.host.querySelector('#btn-settings-room') as HTMLButtonElement | null
+    if (setBtn) setBtn.onclick = () => this.openSettings()
     const chk = this.host.querySelector('#chk-bots') as HTMLInputElement | null
     if (chk) {
       chk.onchange = () => {

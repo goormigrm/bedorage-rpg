@@ -1718,24 +1718,10 @@ export class Renderer3D {
     }
     // 정조준: 팔을 조금 더 앞으로
     rig.arms.position.z = p.ads ? 0.18 : 0.1
-    // 휘두르기: 보통은 옆으로 쓸지만, 고기 바이올린 · 첼로(철면덕)는 **파리채처럼 위에서 아래로 내려친다**
-    // (2026-09-20 사용자). swing 은 1 → 0 으로 준다: 1 에서 머리 위로 치켜들고, 0 에 가까워질수록 앞으로 내리꽂는다.
-    if (v.swing > 0 && WEAPONS[p.weapon].family === 'violin') {
-      const k = Math.min(1, (1 - v.swing) * 1.4) // 0 치켜듦 → 1 내려침 (뒷부분은 내린 채 머문다)
-      const e = Math.pow(k, 0.55)
-      // 머리 위(-1.15)에서 앞(+0.25)으로 내리꽂는다. 더 내리면 위에서 보는 화면에서 고기가 몸에 가려 안 보인다
-      rig.arms.rotation.x += -1.15 + 1.4 * e
-      rig.arms.rotation.y = 0
-      // 내려치며 팔을 앞으로 내민다 — 쿼터뷰에서 고기가 몸 앞에 보이도록
-      rig.arms.position.z += 0.1 * e
-      // 치켜들 때는 머리 위로 살짝 (위에서 보는 화면에서도 "들었다 내리친다" 가 보이게)
-      rig.arms.position.y = armsBaseY(rig) + 0.13 * (1 - e)
-      // 내려칠 때 몸도 같이 숙인다
-      rig.body.rotation.x = 0.26 * Math.pow(k, 0.7)
-    } else {
-      rig.arms.rotation.y = v.swing > 0 ? Math.sin(v.swing * Math.PI) * 1.5 : v.reloadSwing
-      rig.arms.position.y = armsBaseY(rig)
-    }
+    // 휘두르기: 옆으로 쓸어 친다. (2026-09-20 철면덕만 파리채처럼 내려치게 해 봤지만
+    // 게임 안에서 보기 나빠 원래대로 되돌렸다 — 사용자 "그냥 원래처럼 옆으로 휘두르도록 해 줘")
+    rig.arms.rotation.y = v.swing > 0 ? Math.sin(v.swing * Math.PI) * 1.5 : v.reloadSwing
+    rig.arms.position.y = armsBaseY(rig)
     if (p.fx[FX_WHIRL] > 0) root.rotation.y = this.t * 18
     root.scale.set(v.sx, v.sy, v.sx)
     // 무적(스폰 보호 · 우원덕이 구른 뒤): **황금 보호막**. 전에는 몸을 반투명하게 깜빡였는데

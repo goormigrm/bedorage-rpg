@@ -16,10 +16,19 @@ import { flowField, flowStep } from './flow'
 
 export type Difficulty = 'easy' | 'normal' | 'hard'
 
+/** 봇의 **실력** 이름. 게임 난이도(보통 · 악몽 · 지옥)와 헷갈리지 않게 사람 실력처럼 부른다
+ *  (2026-09-20 사용자: "쉬움/보통/어려움은 봇의 AI 수준 같은데 게임의 난이도인지 헷갈리게 되어 있어") */
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = {
-  easy: '쉬움',
+  easy: '초보',
   normal: '보통',
-  hard: '어려움',
+  hard: '고수',
+}
+
+/** 그 실력이 무엇을 뜻하는지 (대기실 설명) */
+export const DIFFICULTY_HINT: Record<Difficulty, string> = {
+  easy: '천천히 조준하고 잘 피하지 못합니다',
+  normal: '사람만큼 조준하고 피합니다',
+  hard: '빠르게 조준하고 스킬도 잘 씁니다',
 }
 
 interface DiffDef {
