@@ -180,6 +180,8 @@ export class Renderer3D {
   /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
   private lastKiller = -1
   /** 계단 (층마다) */
+  /** 전체 지도(M) 가 열려 있다 */
+  mapOpen = false
   /** 다음 막으로 가는 문 (보스를 잡으면 보인다) */
   private gate: THREE.Group | null = null
   /** 지역의 붙박이 표시(출구 · 웨이포인트) — 맵이 바뀌면 새로 만든다 */
@@ -1119,6 +1121,7 @@ export class Renderer3D {
     this.drawDowned(curr, pos, opts)
     this.hud.drawMain(curr, { ...opts, cursorOn })
     if (opts.showHud) this.drawMinimap(curr, opts)
+    if (opts.showHud && this.mapOpen && curr.mode === 'dungeon') this.drawFullMap(curr, opts)
   }
 
   /** 모래주머니가 닳으면 색이 어두워진다 (곧 터진다는 신호) */
@@ -1451,6 +1454,135 @@ export class Renderer3D {
     ctx.moveTo(cx, cy - 6)
     ctx.lineTo(cx, cy + 6)
     ctx.stroke()
+    ctx.restore()
+  }
+
+  /**
+   * **전체 지도** (M — 2026-09-20 "RPG 에 보통 있는데 없는 것" 검토): 미니맵은 내 주변만 보여 주므로
+   * 지역이 어떻게 생겼는지 · 아직 안 가 본 쪽이 어디인지 알 수 없었다(디아블로의 지도). 화면 위에 반투명으로 덮는다.
+   * 미니맵과 **같은 회전**을 써서 화면에서 보이는 방향과 어긋나지 않게 한다. 몬스터는 찍지 않는다 — 길을 보는 창이다.
+   */
+  private drawFullMap(curr: GameState, opts: RenderOptions): void {
+    const map = this.map
+    if (!this.miniCanvas) this.miniCanvas = renderMapTiles(map)
+    const ctx = this.hud.ctx
+    const lp = opts.viewer ?? opts.localPlayer
+    const me = lp >= 0 ? curr.players[lp] : null
+    const pad = 40
+    const w = VIEW_W - pad * 2
+    const h = VIEW_H - pad * 2 - 40
+    const x = pad
+    const y = pad + 28
+    ctx.save()
+    ctx.fillStyle = 'rgba(6,8,11,0.82)'
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    // 제목: 지역 이름 · 레벨
+    const def = curr.mode === 'dungeon' && curr.curArea >= 0 ? areaDef(curr.curArea) : null
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#f1d58a'
+    ctx.font = '800 22px "Nanum Myeongjo", serif'
+    ctx.fillText(def ? `${def.name}${def.level ? ` · 지역 레벨 ${def.level}` : ''}` : '지도', VIEW_W / 2, y - 16)
+    ctx.beginPath()
+    roundRect(ctx, x, y, w, h, 8)
+    ctx.clip()
+    ctx.fillStyle = '#05070a'
+    ctx.fillRect(x, y, w, h)
+    // 회전한 맵이 창에 꽉 차도록: 돌린 뒤의 폭·높이로 배율을 잡는다
+    const d = worldDirToScreen(1, 0)
+    const rot = Math.atan2(d.y, d.x)
+    const ca = Math.abs(Math.cos(rot))
+    const sa = Math.abs(Math.sin(rot))
+    const rw = map.w * ca + map.h * sa
+    const rh = map.w * sa + map.h * ca
+    const sc = Math.min(w / rw, h / rh) * 0.96
+    ctx.translate(x + w / 2, y + h / 2)
+    ctx.rotate(rot)
+    ctx.scale(sc, sc)
+    ctx.translate(-map.w / 2, -map.h / 2)
+    ctx.imageSmoothingEnabled = false
+    ctx.globalAlpha = 0.95
+    ctx.drawImage(this.miniCanvas, 0, 0, map.w, map.h)
+    ctx.globalAlpha = 1
+    const rp = 1 / sc
+    const dot = (px: number, py: number, color: string, r: number) => {
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(px / TILE, py / TILE, r * rp, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    // 이름표는 회전을 풀고 그린다 (글자가 기울면 못 읽는다)
+    const labels: { x: number; y: number; t: string; c: string }[] = []
+    const place = (wx: number, wy: number, t: string, c: string) => {
+      const tx = wx / TILE - map.w / 2
+      const ty = wy / TILE - map.h / 2
+      labels.push({ x: x + w / 2 + (tx * Math.cos(rot) - ty * Math.sin(rot)) * sc, y: y + h / 2 + (tx * Math.sin(rot) + ty * Math.cos(rot)) * sc, t, c })
+    }
+    if (curr.mode === 'dungeon' && curr.curArea >= 0) {
+      const l = areaLayout(curr.curArea, this.map)
+      for (const e of l.exits) {
+        ctx.strokeStyle = isTown(e.to) ? '#ffd88a' : '#ff9a5a'
+        ctx.lineWidth = 2.5 * rp
+        ctx.strokeRect(e.x / TILE - 4 * rp, e.y / TILE - 4 * rp, 8 * rp, 8 * rp)
+        place(e.x, e.y - 34, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+      }
+      if (l.wp) {
+        dot(l.wp.x, l.wp.y, '#7ab8ff', 4)
+        place(l.wp.x, l.wp.y - 34, '웨이포인트', '#9ac8ff')
+      }
+      const gdef = areaDef(curr.curArea)
+      if (gdef.gate !== undefined && l.special && me && gateOpen(gdef, me)) {
+        dot(l.special.x, l.special.y, '#c86aff', 5)
+        place(l.special.x, l.special.y - 34, `→ ${AREAS[gdef.gate].name}`, '#e0a8ff')
+      }
+      for (const q of curr.portals) {
+        const at = isTown(curr.curArea) ? townPortalSpot(l, q.owner) : q.area === curr.curArea ? q : null
+        if (at) dot(at.x, at.y, '#5a8cff', 4)
+      }
+      for (const n of townNpcs(curr.curArea)) {
+        dot(n.x, n.y, '#e8d6a8', 3.5)
+        place(n.x, n.y - 30, NPC_NAMES[n.id], '#e8d6a8')
+      }
+    }
+    // 사람들 (나는 노랑 · 동료는 파랑). 내 것은 테두리와 바라보는 방향까지 — 넓은 지도에서 점 하나는 잘 안 보인다
+    for (let i = 0; i < curr.players.length; i++) {
+      const p = curr.players[i]
+      if (!p.alive || p.left || p.away) continue
+      const mine = i === (opts.localPlayer ?? -1)
+      if (mine) {
+        ctx.strokeStyle = '#0a0806'
+        ctx.lineWidth = 2.5 * rp
+        ctx.beginPath()
+        ctx.arc(p.x / TILE, p.y / TILE, 6 * rp, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      dot(p.x, p.y, p.downed ? '#ff8a7a' : mine ? '#ffd84a' : '#5aa9ff', mine ? 6 : 4.5)
+      if (mine) {
+        const r = angleToRad(p.aim)
+        ctx.strokeStyle = '#ffd84a'
+        ctx.lineWidth = 2.5 * rp
+        ctx.beginPath()
+        ctx.moveTo(p.x / TILE, p.y / TILE)
+        ctx.lineTo(p.x / TILE + Math.cos(r) * 16 * rp, p.y / TILE + Math.sin(r) * 16 * rp)
+        ctx.stroke()
+      }
+    }
+    ctx.restore()
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = '700 12px "Nanum Myeongjo", serif'
+    for (const t of labels) {
+      if (t.x < x || t.x > x + w || t.y < y || t.y > y + h) continue
+      const tw = ctx.measureText(t.t).width + 10
+      ctx.fillStyle = 'rgba(8,7,6,0.78)'
+      ctx.fillRect(t.x - tw / 2, t.y - 9, tw, 18)
+      ctx.fillStyle = t.c
+      ctx.fillText(t.t, t.x, t.y)
+    }
+    ctx.fillStyle = '#8d8170'
+    ctx.font = '500 12px "IBM Plex Sans KR", sans-serif'
+    ctx.fillText('M · Esc 로 닫기', VIEW_W / 2, VIEW_H - 26)
     ctx.restore()
   }
 

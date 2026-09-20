@@ -8,12 +8,12 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_FORGE, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_SELL_ALL, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
   AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
-  ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
+  ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
 import { SNIPER_GRAZE_FRAC, WeaponId } from './weapons'
@@ -596,6 +596,23 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     it.up = (it.up ?? 0) + 1
     if (eq) recalc(p)
     trade('upgrade', -g, it.uid)
+  } else if (cmd === CMD_SELL_ALL && npc === 'merchant') {
+    // 한꺼번에 팔기 (2026-09-20 요청): arg 0 = 잡템(일반 · 마법)만 · 1 = 전부. **잠근 것은 빼고** 판다
+    let gold = 0
+    let n = 0
+    const keep: Item[] = []
+    for (const it of p.bag) {
+      if (it.lk || (arg === 0 && !isJunk(it))) {
+        keep.push(it)
+        continue
+      }
+      gold += itemValue(it)
+      n++
+    }
+    if (n === 0) return
+    p.bag = keep
+    p.gold += gold
+    state.events.push({ type: 'trade', p: p.id, what: 'sellAll', gold, uid: n })
   } else if (cmd === CMD_FORGE && npc === 'smith') {
     // 전설 벼리기: 가방의 희귀 다섯 + 골드 → 고른 부위 하나 (전설 30% · 신화 2% · 나머지 희귀)
     if (arg < 0 || arg >= SLOT_COUNT || p.bag.length >= BAG_SIZE) return
@@ -2892,8 +2909,22 @@ function pickItem(state: GameState, p: PlayerState): boolean {
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
-  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE) {
+  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE || cmd === CMD_SELL_ALL) {
     townCommand(state, p, cmd, arg)
+    return
+  }
+  if (cmd === CMD_SORT) {
+    // 가방은 어디서나, 보관함은 보관함 곁에서 (2026-09-20 요청)
+    if (arg === 0) p.bag = sortItems(p.bag)
+    else if (npcNear(p.area, p.x, p.y) === 'stash') p.stash = sortItems(p.stash)
+    return
+  }
+  if (cmd === CMD_LOCK) {
+    const it = p.bag[arg]
+    if (it) {
+      if (it.lk) delete it.lk
+      else it.lk = 1
+    }
     return
   }
   if (cmd === CMD_QUEST) {
@@ -2940,7 +2971,7 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     state.events.push({ type: 'equip', p: p.id, slot: arg })
   } else if (cmd === CMD_DROP) {
     const it = p.bag[arg]
-    if (!it || !p.alive) return
+    if (!it || !p.alive || it.lk) return
     p.bag.splice(arg, 1)
     // 버린 것은 누구나 볼 수 있고 누구나 줍는다 (친구에게 주는 방법). 바로 다시 줍지 않게 잠깐 잠근다
     state.drops.push({ id: state.nextDropId++, owner: -1, x: p.x + cosA(p.aim) * 30, y: p.y + sinA(p.aim) * 30, item: it, gold: 0, pot: 0, ttl: 60 * 240, lock: 90 })

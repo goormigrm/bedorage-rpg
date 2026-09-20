@@ -4,7 +4,7 @@
 // 창이 열려 있어도 게임은 멈추지 않는다(협동). 대신 사격·스킬 입력은 막는다(클릭이 총질이 되지 않게).
 
 import { CHARACTERS } from '../core/characters'
-import { CMD_DROP, CMD_EQUIP, CMD_UNEQUIP } from '../core/input'
+import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, BAG_SIZE, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
   affixText, affixValue, armorBase, computeStats, hasImplicit, itemName, weaponBaseDmg, xpNeed,
@@ -101,7 +101,7 @@ export class Inventory {
 
   private render(): void {
     const me = this.me()
-    const key = JSON.stringify([me.level, me.xp, me.gold, me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => b.uid)])
+    const key = JSON.stringify([me.level, me.xp, me.gold, me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}`)])
     if (key === this.lastKey) return
     this.lastKey = key
     const c = CHARACTERS[me.char]
@@ -124,7 +124,10 @@ export class Inventory {
       }
       const col = RARITY_COLORS[it.rarity]
       const cant = it.slot === SLOT_WEAPON && !canWield(me, it)
-      cells.push(`<div class="cell${cant ? ' cant' : ''}" data-bag="${i}" style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(itemName(it).split(' ')[1] ?? '')}</b></div>`)
+      // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료에서 빠진다 (2026-09-20)
+      cells.push(
+        `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}" data-bag="${i}" style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(itemName(it).split(' ')[1] ?? '')}</b>${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`,
+      )
     }
     this.el.innerHTML = `
       <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">◈ ${me.gold}</span><button class="inv-x" title="닫기 (I · Tab · Esc)">✕</button></div>
@@ -135,20 +138,30 @@ export class Inventory {
           <div class="inv-stats">${stats.join('')}</div>
         </div>
         <div class="inv-right">
-          <div class="bag-h">가방 ${me.bag.length} / ${BAG_SIZE} <small>왼클릭 끼기 · 오른클릭 버리기(동료에게 선물)</small></div>
+          <div class="bag-h">가방 ${me.bag.length} / ${BAG_SIZE}
+            <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
+            <small>왼클릭 끼기 · 오른클릭 버리기 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)</small></div>
           <div class="bag">${cells.join('')}</div>
         </div>
       </div>`
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
+    const sortBtn = this.el.querySelector('[data-sort]') as HTMLButtonElement | null
+    if (sortBtn)
+      sortBtn.onclick = () => {
+        this.send(CMD_SORT, 0)
+        this.lastKey = ''
+      }
     this.el.querySelectorAll<HTMLElement>('[data-bag]').forEach((cell) => {
       const i = Number(cell.dataset.bag)
-      cell.onclick = () => {
-        this.send(CMD_EQUIP, i)
+      cell.onclick = (e) => {
+        // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝)
+        this.send((e as MouseEvent).shiftKey ? CMD_LOCK : CMD_EQUIP, i)
+        this.lastKey = ''
         this.tip.hidden = true
       }
       cell.oncontextmenu = (e) => {
         e.preventDefault()
-        this.send(CMD_DROP, i)
+        if (!me.bag[i]?.lk) this.send(CMD_DROP, i)
         this.tip.hidden = true
       }
       cell.onmouseenter = () => this.showTip(cell, me.bag[i], true)

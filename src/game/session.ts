@@ -229,12 +229,13 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>M</b> 지도 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="winbtns" id="winbtns">
               <button class="wbtn" data-win="bag" title="가방 (I)">가방<small>I</small></button>
               <button class="wbtn" data-win="skill" title="스킬 (K)">스킬<small>K</small></button>
               <button class="wbtn" data-win="attr" title="능력치 (C)">능력치<small>C</small></button>
               <button class="wbtn" data-win="quest" title="퀘스트 (J)">퀘스트<small>J</small></button>
+              <button class="wbtn" data-win="map" title="지도 (M)">지도<small>M</small></button>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
@@ -734,6 +735,19 @@ export class Session {
       e.preventDefault()
       return
     }
+    // 전체 지도: M (2026-09-20 — 미니맵은 주변만 보여 준다)
+    if (k === 'm' && !this.arena) {
+      if (this.overlay.hidden) this.renderer.mapOpen = !this.renderer.mapOpen
+      this.applyKeys()
+      e.preventDefault()
+      return
+    }
+    if (e.key === 'Escape' && this.renderer.mapOpen) {
+      this.renderer.mapOpen = false
+      this.applyKeys()
+      e.preventDefault()
+      return
+    }
     // 스킬 창: K (Esc 로도 닫힌다)
     if (k === 'k') {
       if (this.overlay.hidden) this.skills.toggle()
@@ -821,7 +835,8 @@ export class Session {
 
   private applyKeys(): void {
     const el = this.stage.querySelector('.keys') as HTMLElement | null
-    if (el) el.hidden = !this.keysShown
+    // 전체 지도가 열려 있으면 띠를 감춘다 — 지도 위에 겹쳐 글자가 섞인다 (2026-09-20)
+    if (el) el.hidden = !this.keysShown || this.renderer?.mapOpen === true
   }
 
   /**
@@ -836,10 +851,14 @@ export class Session {
       skill: () => this.skills.toggle(),
       attr: () => this.chars.toggle(),
       quest: () => this.quests.toggle(),
+      map: () => {
+        this.renderer.mapOpen = !this.renderer.mapOpen
+        this.applyKeys()
+      },
     }
     box.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
       const w = b.dataset.win as string
-      if (this.arena && (w === 'attr' || w === 'quest')) {
+      if (this.arena && (w === 'attr' || w === 'quest' || w === 'map')) {
         b.hidden = true
         return
       }
@@ -861,6 +880,7 @@ export class Session {
       skill: this.skills.open,
       attr: this.chars.open,
       quest: this.quests.open,
+      map: this.renderer.mapOpen,
     }
     box.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => b.classList.toggle('on', !!on[b.dataset.win as string]))
   }

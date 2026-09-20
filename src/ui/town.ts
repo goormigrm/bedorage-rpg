@@ -2,11 +2,11 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
-import { CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
+import { CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SORT, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, isJunk, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -103,6 +103,8 @@ export class TownPanel {
   private tab: 'buy' | 'sell' = 'buy'
   /** 대장장이 탭 (강화 · 전설 벼리기) */
   private smithTab: 'up' | 'forge' = 'up'
+  /** "전부 팔기" 를 한 번 눌렀다 (한 번 더 눌러야 실제로 판다 — 실수 방지) */
+  private sellArmed = false
   private lastSig = ''
 
   constructor(
@@ -119,6 +121,7 @@ export class TownPanel {
   }
 
   show(npc: NpcId | null): void {
+    this.sellArmed = false
     this.open = npc
     this.el.hidden = !npc
     this.lastSig = ''
@@ -131,7 +134,7 @@ export class TownPanel {
     if (!this.open) return
     const me = this.me()
     const s = this.state()
-    const sig = `${this.tab}|${this.smithTab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0)).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    const sig = `${this.tab}|${this.smithTab}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     if (sig !== this.lastSig) this.render()
   }
 
@@ -140,7 +143,7 @@ export class TownPanel {
     if (!npc) return
     const me = this.me()
     const s = this.state()
-    this.lastSig = `${this.tab}|${this.smithTab}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0)).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    this.lastSig = `${this.tab}|${this.smithTab}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
     let body = ''
     if (npc === 'merchant') {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`
@@ -150,10 +153,25 @@ export class TownPanel {
               const price = Math.round(buyPrice(it) * questDiscount(me.quests))
               return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price)
             }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
-          : me.bag.map((it, i) => row(it, `+${itemValue(it)} 골드`, `data-cmd="${CMD_SELL}" data-arg="${i}"`)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
-      // 물약 주머니는 없앴다 (회복은 체력 구슬 하나로 — 2026-09-19)
+          : me.bag.map((it, i) => row(it, it.lk ? '🔒 잠금' : `+${itemValue(it)} 골드`, it.lk ? '' : `data-cmd="${CMD_SELL}" data-arg="${i}"`, !!it.lk)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
+      // 한꺼번에 팔기 (2026-09-20 요청). 잠근 것은 빠진다 — 가방 창에서 Shift+클릭으로 잠근다
+      let bulk = ''
+      if (this.tab === 'sell') {
+        const junk = me.bag.filter((it) => !it.lk && isJunk(it))
+        const all = me.bag.filter((it) => !it.lk)
+        const sum = (a: Item[]) => a.reduce((g, it) => g + itemValue(it), 0)
+        const locked = me.bag.length - all.length
+        bulk = `<div class="sell-all">
+          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템 팔기 — ${junk.length}개 · ${sum(junk)} 골드<small>일반 · 마법</small></button>
+          <button class="btn ${this.sellArmed ? 'danger' : 'secondary'}" data-sellall ${all.length ? '' : 'disabled'}>${
+            this.sellArmed ? `정말 전부? — ${all.length}개 · ${sum(all)} 골드` : `전부 팔기 — ${all.length}개 · ${sum(all)} 골드`
+          }<small>${this.sellArmed ? '한 번 더 누르면 팝니다' : '낀 것은 빼고'}</small></button>
+          <p class="tp-hint">잠근 것 ${locked}개는 팔지 않습니다 — 가방(I) 에서 <b>Shift+클릭</b>으로 잠급니다.</p>
+        </div>`
+      }
       const pot = ''
-      body = tabs + `<div class="tp-list">${list}</div>` + pot
+      // 한꺼번에 팔기는 **목록 위**에 — 아래 두면 물건이 많을 때 스크롤해야 보인다
+      body = tabs + bulk + `<div class="tp-list">${list}</div>` + pot
     } else if (npc === 'smith') {
       // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **전설 벼리기**(희귀 다섯 → 고른 부위 하나)
       const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">전설 벼리기</button></div>`
@@ -202,10 +220,10 @@ export class TownPanel {
     } else if (npc === 'stash') {
       const full = me.stash.length >= STASH_SIZE
       body = `<div class="tp-cols">
-        <div class="tp-col"><div class="tp-h">가방 <span>${me.bag.length}/${BAG_SIZE}</span></div>
+        <div class="tp-col"><div class="tp-h">가방 <span>${me.bag.length}/${BAG_SIZE}</span><button class="bag-sort" data-cmd="${CMD_SORT}" data-arg="0">정렬</button></div>
           <p class="tp-colhint">누르면 보관함에 <b>넣는다</b> →</p>
           <div class="tp-list">${me.bag.map((it, i) => row(it, '→', `data-cmd="${CMD_STASH_PUT}" data-arg="${i}"`, full, true)).join('') || '<p class="tp-empty">비었다</p>'}</div></div>
-        <div class="tp-col"><div class="tp-h">보관함 <span class="${full ? 'bad' : ''}">${me.stash.length}/${STASH_SIZE}</span></div>
+        <div class="tp-col"><div class="tp-h">보관함 <span class="${full ? 'bad' : ''}">${me.stash.length}/${STASH_SIZE}</span><button class="bag-sort" data-cmd="${CMD_SORT}" data-arg="1">정렬</button></div>
           <p class="tp-colhint">← 누르면 가방으로 <b>꺼낸다</b></p>
           <div class="tp-list">${me.stash.map((it, i) => row(it, '←', `data-cmd="${CMD_STASH_TAKE}" data-arg="${i}"`, me.bag.length >= BAG_SIZE, true)).join('') || '<p class="tp-empty">비었다</p>'}</div></div></div>
         ${full ? '<p class="tp-note">보관함이 가득 찼다 — 먼저 꺼내거나 팔아야 넣을 수 있다.</p>' : ''}`
@@ -248,6 +266,7 @@ export class TownPanel {
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
     this.el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
       b.onclick = () => {
+        this.sellArmed = false
         this.tab = b.dataset.tab === 'sell' ? 'sell' : 'buy'
         this.render()
       }
@@ -258,8 +277,23 @@ export class TownPanel {
         this.render()
       }
     })
+    const sa = this.el.querySelector('[data-sellall]') as HTMLButtonElement | null
+    if (sa)
+      sa.onclick = () => {
+        // 두 번 눌러야 판다 — 한 판 모은 것을 한 번에 날리지 않게
+        if (!this.sellArmed) {
+          this.sellArmed = true
+          this.render()
+          return
+        }
+        this.sellArmed = false
+        this.send(CMD_SELL_ALL, 1)
+      }
     this.el.querySelectorAll<HTMLButtonElement>('[data-cmd]').forEach((b) => {
-      b.onclick = () => this.send(Number(b.dataset.cmd), Number(b.dataset.arg))
+      b.onclick = () => {
+        this.sellArmed = false
+        this.send(Number(b.dataset.cmd), Number(b.dataset.arg))
+      }
     })
   }
 }

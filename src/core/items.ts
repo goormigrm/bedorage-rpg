@@ -58,6 +58,8 @@ export type Item = {
   bt?: number
   /** 강화 단계 0~5 (대장장이 — 같은 부위 · 같은 등급을 녹여서) */
   up?: number
+  /** 잠금 (2026-09-20): 팔기 · 버리기 · 강화 재료 · 벼리기 재료에서 빠진다. "전부 팔기" 의 안전장치 */
+  lk?: 1
 }
 
 /** 능력치 번호 (PlayerState.st 배열) */
@@ -321,7 +323,7 @@ export const FORGE_STASH = 1000
 /** 재료가 될 칸 (가방 + 보관함의 희귀만, 싼 것부터 — 결정론) */
 export function forgeMaterials(bag: Item[], stash: Item[] = []): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: FORGE_STASH + i }))]
-    .filter(({ it }) => it.rarity === FORGE_RARITY)
+    .filter(({ it }) => it.rarity === FORGE_RARITY && !it.lk)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -336,11 +338,24 @@ export function forgeIlvl(bag: Item[], stash: Item[], mats: number[]): number {
   return Math.max(1, Math.min(60, Math.round(avg) + 1))
 }
 
+/**
+ * 가방 · 보관함 정렬 (2026-09-20 요청): **등급이 높은 것부터** — 같으면 부위 · 아이템 레벨 · 강화 · uid 순.
+ * uid 까지 보므로 어디서 돌려도 같은 차례가 나온다(락스텝).
+ */
+export function sortItems(list: Item[]): Item[] {
+  return [...list].sort(
+    (a, b) => b.rarity - a.rarity || a.slot - b.slot || b.ilvl - a.ilvl || (b.up ?? 0) - (a.up ?? 0) || a.uid - b.uid,
+  )
+}
+
+/** 잡템 = 일반 · 마법 (전부 팔기의 "쓸 것만 남기기") */
+export const isJunk = (it: Item) => it.rarity <= 1
+
 /** 재료가 될 가방 칸 (대상은 빼고, 싼 것부터 — 결정론) */
 export function upgradeMaterials(bag: Item[], target: Item): number[] {
   return bag
     .map((it, i) => ({ it, i }))
-    .filter(({ it }) => it !== target && it.slot === target.slot && it.rarity === target.rarity)
+    .filter(({ it }) => it !== target && !it.lk && it.slot === target.slot && it.rarity === target.rarity)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.i - b.i)
     .map((o) => o.i)
 }
@@ -462,6 +477,7 @@ export function sanitizeSheet(s: unknown): Sheet {
     if (!it || typeof it !== 'object') return false
     const x = it as Item
     if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
+    if (x && x.lk !== undefined && x.lk !== 1) return false
     return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && x.aff.every((v) => Number.isFinite(v))
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))

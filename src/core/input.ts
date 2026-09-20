@@ -79,8 +79,14 @@ export const CMD_AUTOPICK = 18
 export const CMD_UPGRADE = 19
 /** 능력치 (C 창): arg 0~3 = 그 능력치에 1점 · 10 = 추천대로 모두 분배 · 99 = 되돌리기(마을에서만) */
 export const CMD_ATTR = 20
-/** 대장장이 **전설 벼리기**: arg = 만들 부위(장비 칸). 가방의 희귀 다섯을 녹인다 (2026-09-20 요청) */
+/** 대장장이 **전설 벼리기**: arg = 만들 부위(장비 칸). 가방 · 보관함의 희귀 다섯을 녹인다 (2026-09-20 요청) */
 export const CMD_FORGE = 21
+/** 정렬: arg 0 = 가방 · 1 = 보관함 (등급 높은 것부터) */
+export const CMD_SORT = 22
+/** 상인에게 **한꺼번에 팔기**: arg 0 = 잡템(일반 · 마법)만 · 1 = 잠그지 않은 것 전부 */
+export const CMD_SELL_ALL = 23
+/** 잠금 토글: arg = 가방 칸 (잠그면 팔기 · 버리기 · 재료에서 빠진다) */
+export const CMD_LOCK = 24
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 
