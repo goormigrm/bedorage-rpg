@@ -50,6 +50,36 @@ function rr(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: num
   c.closePath()
 }
 
+/**
+ * 가는 막대 (기력 · 경험치). 홈을 파고 그 안에 그라데이션 물을 채운 느낌 —
+ * 납작한 단색 사각형은 싸구려로 보인다 (2026-09-20 "퀄리티가 낮아 보인다").
+ */
+function thinBar(c: CanvasRenderingContext2D, x: number, y: number, w: number, hgt: number, k: number, col: [string, string]): void {
+  c.save()
+  // 홈
+  c.fillStyle = 'rgba(0,0,0,0.55)'
+  rr(c, x, y, w, hgt, hgt / 2)
+  c.fill()
+  c.strokeStyle = 'rgba(0,0,0,0.6)'
+  c.lineWidth = 1
+  rr(c, x + 0.5, y + 0.5, w - 1, hgt - 1, hgt / 2)
+  c.stroke()
+  const fw = Math.max(0, Math.min(1, k)) * (w - 2)
+  if (fw > 1) {
+    const g = c.createLinearGradient(0, y, 0, y + hgt)
+    g.addColorStop(0, col[0])
+    g.addColorStop(1, col[1])
+    c.fillStyle = g
+    rr(c, x + 1, y + 1, fw, hgt - 2, (hgt - 2) / 2)
+    c.fill()
+    // 윗면 광택
+    c.fillStyle = 'rgba(255,255,255,0.22)'
+    rr(c, x + 1, y + 1, fw, Math.max(1, (hgt - 2) / 2.6), 1)
+    c.fill()
+  }
+  c.restore()
+}
+
 /** 쇠 패널: 어두운 바탕 + 금테 두 줄 + 모서리 마름모 장식 */
 export function ironPanel(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, ornate = true): void {
   c.save()
@@ -98,10 +128,16 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
   c.beginPath()
   c.arc(cx, cy, r * 1.2, 0, Math.PI * 2)
   c.fill()
-  c.strokeStyle = 'rgba(201,162,74,0.75)'
+  c.strokeStyle = 'rgba(201,162,74,0.8)'
   c.lineWidth = 2
   c.beginPath()
   c.arc(cx, cy, r * 1.2, 0, Math.PI * 2)
+  c.stroke()
+  // 고리 안쪽에 얇은 금선 하나 더 (두 겹이라야 쇠테처럼 보인다)
+  c.strokeStyle = 'rgba(241,213,138,0.35)'
+  c.lineWidth = 1
+  c.beginPath()
+  c.arc(cx, cy, r * 1.07, 0, Math.PI * 2)
   c.stroke()
   // 안쪽 어두운 유리
   c.fillStyle = '#070606'
@@ -150,21 +186,36 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
   c.beginPath()
   c.arc(cx, cy, r, 0, Math.PI * 2)
   c.fill()
-  // 글자
+  // 안쪽 그림자 (유리 두께)
+  const sh = c.createRadialGradient(cx, cy, r * 0.72, cx, cy, r)
+  sh.addColorStop(0, 'rgba(0,0,0,0)')
+  sh.addColorStop(1, 'rgba(0,0,0,0.55)')
+  c.fillStyle = sh
+  c.beginPath()
+  c.arc(cx, cy, r, 0, Math.PI * 2)
+  c.fill()
+  // 글자: 수치는 가운데, **딸린 말(/ 최대 · 집중)은 고리 밖 아래**로 — 물 위에 겹쳐 쓰면 읽기 어렵다 (2026-09-20)
   c.textAlign = 'center'
   c.textBaseline = 'middle'
-  c.font = `700 ${Math.round(r * 0.42)}px ${SANS}`
-  c.lineWidth = 4
-  c.strokeStyle = 'rgba(0,0,0,0.75)'
-  c.strokeText(label, cx, cy - 2)
-  c.fillStyle = '#f4ece0'
-  c.fillText(label, cx, cy - 2)
+  c.font = `800 ${Math.round(r * 0.46)}px ${SANS}`
+  c.lineWidth = 5
+  c.strokeStyle = 'rgba(0,0,0,0.8)'
+  c.strokeText(label, cx, cy - 1)
+  c.fillStyle = '#f7f1e6'
+  c.fillText(label, cx, cy - 1)
   if (sub) {
-    c.font = `600 ${Math.round(r * 0.2)}px ${SANS}`
-    c.lineWidth = 3
-    c.strokeText(sub, cx, cy + r * 0.38)
-    c.fillStyle = '#d8ccb8'
-    c.fillText(sub, cx, cy + r * 0.38)
+    c.font = `700 ${Math.round(r * 0.21)}px ${SANS}`
+    const w = c.measureText(sub).width + 12
+    const by2 = cy + r * 1.2 - 8
+    c.fillStyle = 'rgba(10,9,8,0.9)'
+    rr(c, cx - w / 2, by2, w, 15, 4)
+    c.fill()
+    c.strokeStyle = 'rgba(201,162,74,0.4)'
+    c.lineWidth = 1
+    rr(c, cx - w / 2 + 0.5, by2 + 0.5, w - 1, 14, 4)
+    c.stroke()
+    c.fillStyle = '#d8c79a'
+    c.fillText(sub, cx, by2 + 8)
   }
   c.restore()
 }
@@ -173,7 +224,12 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
 function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: number, secs: number, draw: (dim: boolean) => void, gold = false, active = 0): void {
   const c = h.ctx
   c.save()
-  c.fillStyle = '#0b0a09'
+  // 칸 바탕: 위가 조금 밝은 돌 — 평평한 검정보다 깊이가 산다
+  const bg = c.createLinearGradient(0, y, 0, y + s)
+  bg.addColorStop(0, '#191512')
+  bg.addColorStop(0.5, '#0d0b09')
+  bg.addColorStop(1, '#141110')
+  c.fillStyle = bg
   rr(c, x, y, s, s, 5)
   c.fill()
   const ready = cdK <= 0
@@ -196,7 +252,7 @@ function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: numb
     c.save()
     rr(c, x + 1, y + 1, s - 2, s - 2, 4)
     c.clip()
-    c.fillStyle = 'rgba(0,0,0,0.62)'
+    c.fillStyle = 'rgba(0,0,0,0.72)'
     c.beginPath()
     c.moveTo(x + s / 2, y + s / 2)
     c.arc(x + s / 2, y + s / 2, s, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cdK)
@@ -204,14 +260,19 @@ function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: numb
     c.fill()
     c.restore()
     c.save()
-    c.font = `700 ${Math.round(s * 0.34)}px ${SANS}`
+    c.font = `800 ${Math.round(s * 0.36)}px ${SANS}`
     c.textAlign = 'center'
     c.textBaseline = 'middle'
-    c.lineWidth = 3
-    c.strokeStyle = 'rgba(0,0,0,0.8)'
     const txt = secs >= 10 ? `${Math.ceil(secs)}` : secs.toFixed(1)
+    // 숫자가 그림에 묻히지 않게: 어두운 알약 위에 흰 글씨
+    const tw = c.measureText(txt).width + 12
+    c.fillStyle = 'rgba(6,5,4,0.72)'
+    rr(c, x + s / 2 - tw / 2, y + s / 2 - 11, tw, 22, 11)
+    c.fill()
+    c.lineWidth = 3
+    c.strokeStyle = 'rgba(0,0,0,0.85)'
     c.strokeText(txt, x + s / 2, y + s / 2)
-    c.fillStyle = '#ffffff'
+    c.fillStyle = '#f4ece0'
     c.fillText(txt, x + s / 2, y + s / 2)
     c.restore()
   }
@@ -220,21 +281,26 @@ function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: numb
     c.fillStyle = GOLD_HI
     c.fillRect(x + 4, y + s - 5, (s - 8) * Math.min(1, active), 2.5)
   }
-  // 키 표시
+  // 키 표시: **칸 밖 아래**에 명패로 (2026-09-20 사용자 "글씨가 아이콘과 겹친다" — 전에는 칸 안쪽이라 그림을 가렸다)
   c.save()
-  c.font = `700 11px ${SANS}`
-  const kw = Math.max(15, c.measureText(key).width + 8)
-  c.fillStyle = 'rgba(0,0,0,0.85)'
-  rr(c, x - 3, y + s - 13, kw, 16, 3)
+  c.font = `700 10.5px ${SANS}`
+  const kw = Math.min(s + 10, Math.max(18, c.measureText(key).width + 12))
+  const kx = x + s / 2 - kw / 2
+  const ky = y + s + 3
+  const kg = c.createLinearGradient(0, ky, 0, ky + 14)
+  kg.addColorStop(0, 'rgba(38,31,22,0.96)')
+  kg.addColorStop(1, 'rgba(14,12,9,0.96)')
+  c.fillStyle = kg
+  rr(c, kx, ky, kw, 14, 3)
   c.fill()
-  c.strokeStyle = 'rgba(201,162,74,0.7)'
+  c.strokeStyle = ready ? 'rgba(201,162,74,0.55)' : 'rgba(120,100,70,0.35)'
   c.lineWidth = 1
-  rr(c, x - 3, y + s - 13, kw, 16, 3)
+  rr(c, kx + 0.5, ky + 0.5, kw - 1, 13, 3)
   c.stroke()
-  c.fillStyle = GOLD_HI
+  c.fillStyle = ready ? GOLD_HI : '#8d8170'
   c.textAlign = 'center'
   c.textBaseline = 'middle'
-  c.fillText(key, x - 3 + kw / 2, y + s - 5)
+  c.fillText(key, x + s / 2, ky + 7.5)
   c.restore()
 }
 
@@ -271,20 +337,18 @@ export class D4Hud {
     const baseY = h.H - 70
     const w = WEAPONS[me.weapon]
     // ---- 스킬 바
-    const S = 50
-    const GAP = 9
+    const S = 52
+    const GAP = 10
     const n = 7
     const barW = n * S + (n - 1) * GAP + 40
     const bx = cx - barW / 2
-    const by = baseY - S / 2 - 12
-    ironPanel(c, bx, by - 14, barW, S + 44)
+    const by = baseY - S / 2 - 16
+    // 위: 기력 바 · 무기 이름 / 아래: 키 명패 · 경험치 줄
+    ironPanel(c, bx, by - 30, barW, S + 76)
     // 물약(3)은 없앴다 — 회복은 체력 구슬 하나로 (2026-09-19)
-    // 기력 (위 가는 막대)
+    // 기력 (위 가는 막대): 형광 하늘색이 화면에서 튀어 **놋쇠빛**으로 (2026-09-20)
     const stK = Math.max(0, Math.min(1, me.stamina / me.staminaMax))
-    c.fillStyle = 'rgba(255,255,255,0.08)'
-    c.fillRect(bx + 20, by - 6, barW - 40, 4)
-    c.fillStyle = stK > 0.34 ? '#7fd0f0' : '#e08a5a'
-    c.fillRect(bx + 20, by - 6, (barW - 40) * stK, 4)
+    thinBar(c, bx + 20, by - 22, barW - 40, 5, stK, stK > 0.34 ? ['#e8c46a', '#8a6a28'] : ['#ff9a5a', '#7a3a18'])
     // 칸들: Q · E · R · 구르기 · 무기(좌클릭)
     const x0 = bx + 20
     const slotX = (i: number) => x0 + i * (S + GAP)
@@ -294,12 +358,25 @@ export class D4Hud {
     order.forEach((k, pos) => {
       const node = slotNode(me, k)
       if (node < 0) {
+        // 빈 칸: 점선 네모 + 옅은 '+' (전에는 'K' 글자만 덩그러니 놓여 뜻이 통하지 않았다 — 2026-09-20)
         slot(h, slotX(pos), by, S, SKILL_KEYS[k], 0, 0, () => {
+          const mx = slotX(pos) + S / 2
+          const my = by + S / 2
           c.save()
-          c.fillStyle = 'rgba(255,255,255,0.12)'
-          c.font = `700 11px ${SANS}`
-          c.textAlign = 'center'
-          c.fillText('K', slotX(pos) + S / 2, by + S / 2 + 4)
+          c.strokeStyle = 'rgba(201,162,74,0.22)'
+          c.setLineDash([3, 3])
+          c.lineWidth = 1
+          rr(c, slotX(pos) + 9, by + 9, S - 18, S - 18, 3)
+          c.stroke()
+          c.setLineDash([])
+          c.strokeStyle = 'rgba(201,162,74,0.3)'
+          c.lineWidth = 1.5
+          c.beginPath()
+          c.moveTo(mx - 5, my)
+          c.lineTo(mx + 5, my)
+          c.moveTo(mx, my - 5)
+          c.lineTo(mx, my + 5)
+          c.stroke()
           c.restore()
         })
         return
@@ -327,6 +404,7 @@ export class D4Hud {
       }
     }
     // 무기 (재장전이 없다 — 2026-09-19): 그림과 이름만
+    // 무기 이름은 칸 안에 겹쳐 쓰지 않고 **칸 위**에 적는다 (2026-09-20 — 전에는 그림 위에 글자가 얹혔다)
     slot(h, slotX(6), by, S, '좌클릭', 0, 0, (dim) => {
       c.save()
       c.globalAlpha = dim ? 0.4 : 1
@@ -334,27 +412,31 @@ export class D4Hud {
       c.restore()
     })
     c.save()
-    c.font = `700 11px ${SANS}`
-    c.textAlign = 'right'
-    c.fillStyle = '#efe4cf'
-    c.font = `600 9px ${SANS}`
-    c.fillText(w.name, slotX(6) + S - 3, by + S - 4)
+    c.font = `700 9.5px ${SANS}`
+    c.textAlign = 'center'
+    c.textBaseline = 'middle'
+    const nw = c.measureText(w.name).width + 10
+    c.fillStyle = 'rgba(10,9,8,0.9)'
+    rr(c, slotX(6) + S / 2 - nw / 2, by - 13, nw, 13, 3)
+    c.fill()
+    c.fillStyle = '#d8c79a'
+    c.fillText(w.name, slotX(6) + S / 2, by - 6)
     c.restore()
-    // 경험치 (아래 가는 막대)
+    // 경험치 (아래 가는 막대) — 키 명패 아래
+    const xpY = by + S + 24
     const xpK = Math.min(1, me.xp / xpNeed(me.level))
-    c.fillStyle = 'rgba(255,255,255,0.06)'
-    c.fillRect(bx + 20, by + S + 16, barW - 40, 3)
-    c.fillStyle = '#c9a24a'
-    c.fillRect(bx + 20, by + S + 16, (barW - 40) * xpK, 3)
-    c.font = `700 11px ${SERIF}`
-    c.fillStyle = GOLD
+    thinBar(c, bx + 20, xpY, barW - 40, 4, xpK, ['#f1d58a', '#8a6a28'])
+    c.save()
+    c.font = `800 11.5px ${SERIF}`
+    c.fillStyle = GOLD_HI
     c.textAlign = 'left'
     c.textBaseline = 'middle'
-    c.fillText(`Lv ${me.level}`, bx + 20, by + S + 26)
+    c.fillText(`Lv ${me.level}`, bx + 20, xpY + 14)
     c.textAlign = 'right'
     c.font = `600 10px ${SANS}`
-    c.fillStyle = '#8d8170'
-    c.fillText(`◈ ${me.gold}  ·  가방 ${me.bag.length} (I)`, bx + barW - 20, by + S + 26)
+    c.fillStyle = '#9a8a70'
+    c.fillText(`◈ ${me.gold}  ·  가방 ${me.bag.length} (I)`, bx + barW - 20, xpY + 14)
+    c.restore()
 
     // ---- 체력 오브 (왼쪽)
     const hpK = me.maxHp > 0 ? me.hp / me.maxHp : 0

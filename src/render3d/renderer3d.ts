@@ -1330,12 +1330,31 @@ export class Renderer3D {
     const d = worldDirToScreen(1, 0)
     const rot = Math.atan2(d.y, d.x)
     ctx.save()
-    ctx.fillStyle = 'rgba(13,17,23,0.82)'
-    roundRect(ctx, x - 6, y - 6, S + 12, S + 12, 10)
+    // 테두리: 쇠 바탕 + 금선 두 겹 (한 줄짜리 얇은 테는 싸구려로 보인다 — 2026-09-20)
+    const frame = ctx.createLinearGradient(0, y - 6, 0, y + S + 6)
+    frame.addColorStop(0, 'rgba(30,25,20,0.92)')
+    frame.addColorStop(1, 'rgba(10,9,8,0.92)')
+    ctx.fillStyle = frame
+    roundRect(ctx, x - 7, y - 7, S + 14, S + 14, 10)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(227,179,65,0.35)'
-    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(201,162,74,0.55)'
+    ctx.lineWidth = 1.5
     ctx.stroke()
+    ctx.strokeStyle = 'rgba(241,213,138,0.22)'
+    ctx.lineWidth = 1
+    roundRect(ctx, x - 3, y - 3, S + 6, S + 6, 7)
+    ctx.stroke()
+    // 네 모서리 마름모
+    ctx.fillStyle = 'rgba(201,162,74,0.7)'
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const px = x - 7 + dx * (S + 14)
+      const py = y - 7 + dy * (S + 14)
+      ctx.save()
+      ctx.translate(px, py)
+      ctx.rotate(Math.PI / 4)
+      ctx.fillRect(-2.6, -2.6, 5.2, 5.2)
+      ctx.restore()
+    }
     // 네모 창 안만 그린다
     ctx.beginPath()
     roundRect(ctx, x, y, S, S, 6)
@@ -1349,6 +1368,10 @@ export class Renderer3D {
     ctx.globalAlpha = 0.92
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(this.miniCanvas, 0, 0, map.w, map.h)
+    // 바닥이 너무 밝아 어두운 던전 화면에서 종이처럼 떴다 → 갈색 어둠을 한 겹 덮는다 (2026-09-20)
+    ctx.globalAlpha = 0.42
+    ctx.fillStyle = '#140e08'
+    ctx.fillRect(0, 0, map.w, map.h)
     ctx.globalAlpha = 1
     const rp = 1 / MINIMAP_PX_PER_TILE // 타일 좌표계에서 1px
     // 보이는 몬스터: 작은 빨간 점 (잠든 것은 어둡게)

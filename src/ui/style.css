@@ -466,8 +466,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .char .pv .sk i { font-style: normal; font-weight: 700; color: #c9a24a; margin-right: 4px; }
 /* 디아블로 4 풍 HUD: 소리·로비 버튼은 왼쪽 위.
    조작 안내는 위쪽 띠였다가 왼쪽 위 버튼 · 파티 · 미니맵과 겹쳐(2026-09-19 요청) 아래 스킬 바 묶음 바로 위로 옮겼다.
-   스킬 바 · 오브 묶음의 위 끝이 화면 아래에서 약 140px (d4hud drawBottom: baseY = H - 70, 오브 반지름 54) */
-.keys { display: block; top: auto; bottom: 150px !important; left: 50%; right: auto; transform: translateX(-50%); height: auto; width: max-content; max-width: min(900px, calc(100% - 40px));
+   스킬 바 묶음의 위 끝이 화면 아래에서 약 142px 이다 (d4hud drawBottom: baseY = H - 70 · 패널이 그 위로 30px 더 — 2026-09-20 에 커졌다) */
+.keys { display: block; top: auto; bottom: 164px !important; left: 50%; right: auto; transform: translateX(-50%); height: auto; width: max-content; max-width: min(900px, calc(100% - 40px));
   flex-wrap: wrap; white-space: normal; gap: 2px 0; justify-content: center; text-align: center; line-height: 1.7; padding: 5px 14px;
   font: 500 11.5px "IBM Plex Sans KR", sans-serif; color: #b8a67e; background: rgba(8,7,6,.62); border: 1px solid rgba(201,162,74,.25); border-radius: 4px; pointer-events: none; }
 .keys b { color: #f1d58a; }
