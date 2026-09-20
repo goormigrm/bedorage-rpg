@@ -47,6 +47,16 @@ const GUN_H = 0.95
  * 미니맵 창 한 변(px)과 타일당 px. 회전돼 있어 대각선으로는 더 멀리 보인다.
  * 처음 170/11(한 변 ≈ 15칸)은 "보여 주는 게 너무 적다"(2026-09-05) → 190/7 로 넓혔다 (한 변 ≈ 27칸, 대각선 ≈ 38칸).
  */
+/** 미니맵 · 전체 지도의 NPC 점 색 (2026-09-20 요청). 가까이 가면 이름표가 뜨므로 눈에 띄는 정도면 된다 */
+const NPC_DOT: Record<string, string> = {
+  merchant: '#ffd86a',
+  smith: '#c8c8c8',
+  gambler: '#d8a8ff',
+  stash: '#c98a4a',
+  elder: '#8affa8',
+  captain: '#ff9a7a',
+}
+
 const MINIMAP_SIZE = 190
 /** 바닥 핏자국 수 · 남는 시간(초) — 손맛 (2026-09-19) */
 const DECAL_MAX = 160
@@ -1426,6 +1436,27 @@ export class Renderer3D {
         ctx.arc(at.x / TILE, at.y / TILE, 3 * rp, 0, Math.PI * 2)
         ctx.stroke()
       }
+      // 마을 NPC (2026-09-20 요청): 종류마다 다른 색 점. 촌장은 맡거나 보고할 것이 있으면 노란 테가 깜빡인다
+      const meQ = lp >= 0 ? curr.players[lp]?.quests ?? [] : []
+      for (const n of townNpcs(curr.curArea)) {
+        const busy = n.id === 'elder' && meQ.some((v) => v === 0 || v === 2)
+        const r = (busy ? 4 : 3.2) * rp
+        ctx.beginPath()
+        ctx.arc(n.x / TILE, n.y / TILE, r, 0, Math.PI * 2)
+        ctx.fillStyle = NPC_DOT[n.id] ?? '#e8d6a8'
+        ctx.fill()
+        // 바닥색에 묻히지 않게 테두리
+        ctx.strokeStyle = 'rgba(8,7,6,0.85)'
+        ctx.lineWidth = 1.2 * rp
+        ctx.stroke()
+        if (busy) {
+          ctx.strokeStyle = '#ffd84a'
+          ctx.lineWidth = 1.4 * rp
+          ctx.beginPath()
+          ctx.arc(n.x / TILE, n.y / TILE, r + (2 + Math.sin(this.t * 4) * 1.2) * rp, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+      }
     }
     // 단군덕 패시브(중계): 시야 밖 총성 위치를 미니맵에도 찍는다(창 안이면). 화면 가장자리 화살표만으로는
     // 방향은 알아도 거리를 모른다 (2026-09-05 요청). 좌표는 이미 타일 단위(x·U)
@@ -1540,8 +1571,9 @@ export class Renderer3D {
         if (at) dot(at.x, at.y, '#5a8cff', 4)
       }
       for (const n of townNpcs(curr.curArea)) {
-        dot(n.x, n.y, '#e8d6a8', 3.5)
-        place(n.x, n.y - 30, NPC_NAMES[n.id], '#e8d6a8')
+        const c = NPC_DOT[n.id] ?? '#e8d6a8'
+        dot(n.x, n.y, c, 4)
+        place(n.x, n.y - 30, NPC_NAMES[n.id], c)
       }
     }
     // 사람들 (나는 노랑 · 동료는 파랑). 내 것은 테두리와 바라보는 방향까지 — 넓은 지도에서 점 하나는 잘 안 보인다
