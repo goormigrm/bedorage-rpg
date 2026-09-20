@@ -23,8 +23,8 @@ const BOSS_INTRO: Record<string, string> = {
   warden: '지하 감옥의 열쇠를 쥔 자 — 이 문으로 나간 죄수는 없다',
   lord: '옥좌에서 심연이 일어선다 — 마지막 싸움이다',
 }
-import { ACTS, AREAS, NPC_NAMES, QUESTS, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
-import { townPortalSpot } from '../core/sim'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
+import { gateOpen, townPortalSpot } from '../core/sim'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
@@ -180,6 +180,8 @@ export class Renderer3D {
   /** 투기장: 나를 마지막으로 죽인 사람 (복수 알림) */
   private lastKiller = -1
   /** 계단 (층마다) */
+  /** 다음 막으로 가는 문 (보스를 잡으면 보인다) */
+  private gate: THREE.Group | null = null
   /** 지역의 붙박이 표시(출구 · 웨이포인트) — 맵이 바뀌면 새로 만든다 */
   private markers: THREE.Group | null = null
   private markersFor: GameMap | null = null
@@ -223,6 +225,12 @@ export class Renderer3D {
   private scopeFlash = 0
   private camTarget = new THREE.Vector3()
   private camDist = FOLLOW_DIST
+  /** GPU 상태 (확인용 — __bd.gpu(): 컴파일된 셰이더 · 지오메트리 · 텍스처 수). 첫 던전 버벅임을 재는 데 쓴다 */
+  gpuInfo(): { programs: number; geometries: number; textures: number; calls: number; tris: number } {
+    const i = this.gl.info
+    return { programs: this.gl.info.programs?.length ?? 0, geometries: i.memory.geometries, textures: i.memory.textures, calls: i.render.calls, tris: i.render.triangles }
+  }
+
   /** 확인용 카메라 당김 (__bd.zoom — 모델 모습 보기) */
   private debugZoom = 1
   private camInit = false
@@ -281,6 +289,15 @@ export class Renderer3D {
     this.vision = new Vision(map)
     this.scene.add(this.vision.group)
     this.scene.add(this.monsterView.group)
+    // 구운 실사 모델을 그 자리에서 데운다 — 셰이더 컴파일 · 텍스처 올리기를 마을에서 끝내 둔다 (2026-09-20 첫 던전 버벅임)
+    this.monsterView.setWarm((o) => {
+      void this.gl.compileAsync(o, this.camera, this.scene)
+      const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined
+      // 모양 키 텍스처(수 MB)는 처음 그릴 때 GPU 로 올라간다 — 미리 올린다
+      for (const t of [mat?.map, mat?.normalMap, (mat as unknown as { morphTexture?: THREE.Texture })?.morphTexture]) if (t) this.gl.initTexture(t)
+      const mt = ((o as THREE.Mesh).geometry as THREE.BufferGeometry & { morphTexture?: THREE.Texture }).morphTexture
+      if (mt) this.gl.initTexture(mt)
+    })
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -553,9 +570,18 @@ export class Renderer3D {
         case 'summon':
           this.spawnRing(e.x * U, e.y * U, 0.3, 2.4, 0.7, 0xd8c8ff)
           break
-        case 'questDone':
-          this.hud.banner(`퀘스트 이룸 — ${QUESTS[e.q].name}`, '마을의 촌장 카인에게 보고하라', '#ffd86a')
+        case 'questDone': {
+          // 막 보스 퀘스트면 **다음 막으로 가는 문**이 열렸다고 크게 알린다
+          // (2026-09-20 사용자: "1막 보스를 잡았는데 어디로 가야 하는지 몰랐다")
+          const qd = QUESTS[e.q]
+          const nextAct = e.q === actBossQuest(qd.act) ? qd.act + 1 : -1
+          if (nextAct > 0 && nextAct < ACTS.length) {
+            this.hud.banner(`${qd.act + 1}막을 끝냈다 — ${ACTS[nextAct].name}`, '보스가 섰던 자리에 문이 열렸다 · F 로 건너간다 (마을 촌장에게도 부탁할 수 있다)', '#e0a8ff')
+          } else {
+            this.hud.banner(`퀘스트 이룸 — ${qd.name}`, '마을의 촌장 카인에게 보고하라', '#ffd86a')
+          }
           break
+        }
         case 'questReward':
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
@@ -1036,7 +1062,7 @@ export class Renderer3D {
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
     this.updateDrops(curr, opts.localPlayer)
-    this.updateMarkers(curr)
+    this.updateMarkers(curr, opts.localPlayer)
     this.updatePortals(curr)
     this.updateObjects(curr)
     this.updateZones(curr)
@@ -1746,7 +1772,12 @@ export class Renderer3D {
    * 지역의 붙박이 표시: **출구**(바닥의 어두운 문턱 + 따뜻한 불빛 — 걸어 들어가면 건너간다)와
    * **웨이포인트**(푸르게 빛나는 돌 원판). 맵이 바뀌면 새로 만든다.
    */
-  private updateMarkers(curr: GameState): void {
+  private updateMarkers(curr: GameState, lp = -1): void {
+    // 다음 막 문은 **보스를 잡는 순간** 켜진다 — 맵이 그대로라 표시를 새로 만들지는 않고 보이기만 켠다
+    if (this.gate) {
+      const me = lp >= 0 ? curr.players[lp] : undefined
+      this.gate.visible = !!me && gateOpen(areaDef(curr.curArea), me)
+    }
     if (this.markersFor === this.map && this.markers) {
       const k = 1 + Math.sin(this.t * 2.2) * 0.06
       for (const c of this.markers.children) if (c.userData.pulse) c.scale.setScalar(k)
@@ -1776,6 +1807,27 @@ export class Renderer3D {
       ex.add(hole, rim, light)
       ex.position.set(e.x * U, 0, e.y * U)
       g.add(ex)
+    }
+    // 다음 막으로 가는 문 (2026-09-20): 보스가 섰던 자리에 선다. 보스를 잡기 전에는 감춰 둔다 — draw 에서 켠다
+    const def = areaDef(curr.curArea)
+    this.gate = null
+    if (def.gate !== undefined && l.special) {
+      const gate = new THREE.Group()
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.13, 10, 40), new THREE.MeshBasicMaterial({ color: 0xc86aff }))
+      ring.position.y = 1.25
+      const sheet = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x6a2aa8, transparent: true, opacity: 0.55, side: THREE.DoubleSide }))
+      sheet.position.y = 1.25
+      const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.3, 36), new THREE.MeshBasicMaterial({ color: 0xc86aff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+      disc.rotation.x = -Math.PI / 2
+      disc.position.y = 0.05
+      disc.userData.pulse = true
+      const light = new THREE.PointLight(0xc86aff, 14, 10, 1.4)
+      light.position.y = 1.4
+      gate.add(ring, sheet, disc, light)
+      gate.position.set(l.special.x * U, 0, l.special.y * U)
+      gate.visible = false
+      g.add(gate)
+      this.gate = gate
     }
     // 마을 사람들: 두건 쓴 사람(망토 색이 저마다) · 보관함은 쇠테 두른 큰 궤짝
     const cloak: Record<string, number> = { merchant: 0x6a4a2a, smith: 0x4a3a30, gambler: 0x4a2a52, elder: 0x5a5a4a, captain: 0x5a2a22 }
@@ -1951,6 +2003,11 @@ export class Renderer3D {
       ctx.fillText(text, s.x, s.y + 0.5)
     }
     for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · F`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    // 다음 막 문 (보스를 잡았을 때만 보인다)
+    const gdef = areaDef(curr.curArea)
+    if (gdef.gate !== undefined && l.special && gateOpen(gdef, me)) {
+      label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · F`, '#e0a8ff')
+    }
     for (const n of townNpcs(curr.curArea)) {
       // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로)
       const q = me.quests ?? []

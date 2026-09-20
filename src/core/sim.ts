@@ -8,11 +8,11 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_FORGE, CMD_HIRE, CMD_QUEST, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, BAG_SIZE, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_NEED, forgeIlvl, forgeMaterials, forgePrice, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -25,7 +25,7 @@ import {
 export { nodeSkill, slotNode } from './skills'
 import { affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
 import { botInput, makeBot } from './bot'
-import { ACTS, AreaLayout, QUESTS, WAYPOINTS, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
+import { ACTS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_KENWANG, FX_SNIPE, FX_SWIFT, FX_WHIRL,
@@ -442,6 +442,11 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
           break
         }
       }
+      // 다음 막으로 가는 문: 보스를 쓰러뜨리면 보스가 섰던 자리에 열린다 (2026-09-20 — 보스를 잡고 갈 곳이 없던 문제)
+      if (!used && p.exitLock === 0 && gateOpen(areaDef(area), p) && l.special && len(p.x - l.special.x, p.y - l.special.y) <= EXIT_USE_R) {
+        queueMove(p, { to: areaDef(area).gate!, how: 'exit' })
+        used = true
+      }
       if (!used) used = useObject(state, p)
       if (!used) pickItem(state, p)
     }
@@ -591,6 +596,20 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     it.up = (it.up ?? 0) + 1
     if (eq) recalc(p)
     trade('upgrade', -g, it.uid)
+  } else if (cmd === CMD_FORGE && npc === 'smith') {
+    // 전설 벼리기: 가방의 희귀 다섯 + 골드 → 고른 부위 하나 (전설 30% · 신화 2% · 나머지 희귀)
+    if (arg < 0 || arg >= SLOT_COUNT || p.bag.length >= BAG_SIZE) return
+    const mats = forgeMaterials(p.bag).slice(0, FORGE_NEED)
+    if (mats.length < FORGE_NEED) return
+    const ilvl = forgeIlvl(p.bag, mats)
+    const g = forgePrice(ilvl)
+    if (p.gold < g) return
+    p.gold -= g
+    // 뒤에서부터 지워야 앞 칸 번호가 밀리지 않는다
+    for (const i of [...mats].sort((a, b) => b - a)) p.bag.splice(i, 1)
+    const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', tierOf(state.tier).loot, 0, arg)
+    p.bag.push(it)
+    trade('forge', -g, it.uid)
   } else if (cmd === CMD_GAMBLE && npc === 'gambler') {
     const g = gamblePrice(p.level)
     if (arg < 0 || arg >= SLOT_COUNT || p.gold < g || p.bag.length >= BAG_SIZE) return
@@ -1168,6 +1187,14 @@ function stepAll(state: GameState, mapOf: (area: number) => GameMap, inputs: Inp
   }
   checkOver(state)
   state.tick++
+}
+
+/**
+ * 이 사람에게 **다음 막 문**이 열렸는가 — 그 막 보스를 쓰러뜨렸으면(퀘스트 "이룸" 이상).
+ * 사람마다 따로 본다: 늦게 난입한 사람은 문이 아직 닫혀 있다 (퀘스트가 그 사람 것이 아니므로).
+ */
+export function gateOpen(def: AreaDef, p: { quests: number[] }): boolean {
+  return def.gate !== undefined && (p.quests[actBossQuest(def.act)] ?? 0) >= 2
 }
 
 /** 퀘스트 목표를 이뤘다: 같은 게임에 있는 모두의 그 퀘스트가 "이룸" 이 된다 (디아블로 2) */
@@ -2861,7 +2888,7 @@ function pickItem(state: GameState, p: PlayerState): boolean {
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
-  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE) {
+  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE) {
     townCommand(state, p, cmd, arg)
     return
   }

@@ -79,6 +79,8 @@ export const CMD_AUTOPICK = 18
 export const CMD_UPGRADE = 19
 /** 능력치 (C 창): arg 0~3 = 그 능력치에 1점 · 10 = 추천대로 모두 분배 · 99 = 되돌리기(마을에서만) */
 export const CMD_ATTR = 20
+/** 대장장이 **전설 벼리기**: arg = 만들 부위(장비 칸). 가방의 희귀 다섯을 녹인다 (2026-09-20 요청) */
+export const CMD_FORGE = 21
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

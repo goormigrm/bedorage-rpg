@@ -230,6 +230,12 @@ export class Session {
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="winbtns" id="winbtns">
+              <button class="wbtn" data-win="bag" title="가방 (I)">가방<small>I</small></button>
+              <button class="wbtn" data-win="skill" title="스킬 (K)">스킬<small>K</small></button>
+              <button class="wbtn" data-win="attr" title="능력치 (C)">능력치<small>C</small></button>
+              <button class="wbtn" data-win="quest" title="퀘스트 (J)">퀘스트<small>J</small></button>
+            </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -311,6 +317,7 @@ export class Session {
         this.sfx.blip()
       },
     )
+    this.bindWinButtons()
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.exit()
     // 음성 대화: 같은 게임(방)에 있는 사람끼리 (최대 4명)
     if (cfg.link) {
@@ -410,6 +417,8 @@ export class Session {
       },
       resyncs: () => this.resyncs,
       audio: () => this.sfx.stats(),
+      /** GPU: 컴파일된 셰이더 · 지오메트리 · 텍스처 수 (첫 던전 버벅임 확인 — 2026-09-20) */
+      gpu: () => this.renderer.gpuInfo(),
       /** 실사 괴물 모델: 받은 종류 · 받는 중 · 실패 */
       models: () => this.renderer.monsterModels(),
       /** 확인용 카메라 당김 (0.3 = 가까이) */
@@ -813,6 +822,47 @@ export class Session {
   private applyKeys(): void {
     const el = this.stage.querySelector('.keys') as HTMLElement | null
     if (el) el.hidden = !this.keysShown
+  }
+
+  /**
+   * 오른쪽 아래 창 단추 (2026-09-20 사용자: "가방 · 스킬 · 능력치 · 퀘스트는 단축키 안 써도 클릭으로 열 수 있게").
+   * 누르면 단축키와 똑같이 여닫는다. 투기장에는 능력치 · 퀘스트가 없다.
+   */
+  private bindWinButtons(): void {
+    const box = this.stage.querySelector('#winbtns') as HTMLElement | null
+    if (!box) return
+    const open: Record<string, () => void> = {
+      bag: () => this.inventory.toggle(),
+      skill: () => this.skills.toggle(),
+      attr: () => this.chars.toggle(),
+      quest: () => this.quests.toggle(),
+    }
+    box.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
+      const w = b.dataset.win as string
+      if (this.arena && (w === 'attr' || w === 'quest')) {
+        b.hidden = true
+        return
+      }
+      b.onclick = () => {
+        if (!this.overlay.hidden) return
+        // 다른 창이 열려 있으면 닫고 연다 (창끼리 겹치지 않게 — 키로 열 때와 같다)
+        open[w]?.()
+        this.sfx.blip()
+      }
+    })
+  }
+
+  /** 창 단추에 지금 열린 창을 표시한다 */
+  private syncWinButtons(): void {
+    const box = this.stage.querySelector('#winbtns') as HTMLElement | null
+    if (!box) return
+    const on: Record<string, boolean> = {
+      bag: this.inventory.open,
+      skill: this.skills.open,
+      attr: this.chars.open,
+      quest: this.quests.open,
+    }
+    box.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => b.classList.toggle('on', !!on[b.dataset.win as string]))
   }
 
   private showMenu(): void {
@@ -1369,6 +1419,7 @@ export class Session {
     this.skills.refresh()
     this.chars.refresh()
     this.quests.refresh()
+    this.syncWinButtons()
     // NPC 창: 멀어지면 닫고, 거래가 끝나면 다시 그린다
     if (this.town.open) {
       const me = this.state.players[this.cfg.localPlayer]

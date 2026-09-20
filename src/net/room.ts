@@ -55,6 +55,9 @@ export interface RoomInfo {
   tier?: number
   /** 판 종류: dungeon(협동) · arena(투기장 PvP) */
   kind?: string
+  /** 방 사람들의 평균 레벨 · 평균 템 수준 (2026-09-20 — 목록에서 내게 맞는 방을 고르라고) */
+  lv?: number
+  gs?: number
   /** open = 참가 가능, full = 정원 참, playing = 게임 중 */
   state: 'open' | 'full' | 'playing' | 'closed'
   /** 수신 시각 (로컬) */

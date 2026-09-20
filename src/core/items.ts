@@ -216,7 +216,7 @@ export function affixValue(it: Item, k: number): number {
  *  졸개는 일반·마법만 · 정예부터 희귀·전설 · 신화는 우두머리·보스(와 도박)에서만.
  *  예전: 졸개도 희귀 11% · 전설 2%, 우두머리·보스는 한 개에 전설 27% 였다.
  */
-export type LootSource = 'normal' | 'elite' | 'boss' | 'chest' | 'goldchest' | 'gamble' | 'shop'
+export type LootSource = 'normal' | 'elite' | 'boss' | 'chest' | 'goldchest' | 'gamble' | 'shop' | 'forge'
 export const DROP_TABLE: Record<LootSource, number[]> = {
   normal: [0.7, 0.3, 0, 0, 0],
   elite: [0.25, 0.52, 0.19, 0.04, 0],
@@ -225,6 +225,8 @@ export const DROP_TABLE: Record<LootSource, number[]> = {
   goldchest: [0.1, 0.55, 0.3, 0.05, 0],
   gamble: [0, 0.55, 0.35, 0.095, 0.005],
   shop: [0.25, 0.6, 0.15, 0, 0],
+  // 전설 벼리기 (희귀 다섯 → 하나). 실패해도 희귀는 나온다 — 재료가 통째로 사라지지 않게
+  forge: [0, 0, 0.68, 0.3, 0.02],
 }
 /** 등급을 고른다. up = 난이도 전리품 보너스(악몽 0.08 · 지옥 0.16) — 희귀 이상의 몫을 (1 + up × 6) 배 */
 export function pickRarity(rng: Rng, src: LootSource, up = 0): number {
@@ -299,6 +301,33 @@ export const STASH_SIZE = 60
  */
 export const upgradeNeed = (it: Item) => (it.up ?? 0) + 1
 export const upgradePrice = (it: Item) => Math.round(itemValue(it) * 0.5 * ((it.up ?? 0) + 1))
+/**
+ * **전설 벼리기** (2026-09-20 사용자: "희귀템을 몇 개 이상 모아 NPC 에게 가져가면 확률적으로 전설템을 만들어 주는 식").
+ * 대장장이에게 **희귀 다섯**과 골드를 주면 고른 부위의 물건 하나가 나온다 — `forge` 표대로 전설 30% · 신화 2% · 나머지는 희귀.
+ *
+ * 배율 근거: 정예가 전설을 떨구는 확률이 4% · 보스 12% · 도박 9.5% 다. 희귀 다섯이면 전설 하나에 희귀 약 17개가 든다.
+ * 희귀 다섯의 판매값(아이템 레벨 20 기준 약 2,000골드)에 벼리는 값을 더하면 도박으로 전설 하나를 노리는 값과 비슷한데,
+ * 벼리기는 **부위를 고를 수 있고 아이템 레벨이 재료를 따라간다**. 그만큼만 낫게 두려고 30% 로 맞췄다.
+ */
+export const FORGE_NEED = 5
+export const FORGE_RARITY = 2
+/** 벼리는 값 — 희귀 하나 값쯤 (재료를 모으는 수고가 주된 비용이다) */
+export const forgePrice = (ilvl: number) => Math.round((6 + ilvl * 3) * 6 * 0.6)
+/** 재료가 될 가방 칸 (희귀만, 싼 것부터 — 결정론) */
+export function forgeMaterials(bag: Item[]): number[] {
+  return bag
+    .map((it, i) => ({ it, i }))
+    .filter(({ it }) => it.rarity === FORGE_RARITY)
+    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.i - b.i)
+    .map((o) => o.i)
+}
+/** 벼려 나올 아이템 레벨 — 재료 평균 + 1 (좋은 재료를 넣을 값어치가 있게) */
+export function forgeIlvl(bag: Item[], mats: number[]): number {
+  if (mats.length === 0) return 1
+  const avg = mats.reduce((a, i) => a + (bag[i]?.ilvl ?? 1), 0) / mats.length
+  return Math.max(1, Math.min(60, Math.round(avg) + 1))
+}
+
 /** 재료가 될 가방 칸 (대상은 빼고, 싼 것부터 — 결정론) */
 export function upgradeMaterials(bag: Item[], target: Item): number[] {
   return bag
@@ -334,6 +363,23 @@ export const ATTR_PER_LEVEL = 3
 export const attrPoints = (level: number) => Math.max(0, level - 1) * ATTR_PER_LEVEL
 /** 남은 능력치 포인트 */
 export const attrFree = (level: number, attr: number[]) => attrPoints(level) - attr.reduce((a, b) => a + b, 0)
+
+/**
+ * **템 수준** — 낀 장비를 숫자 하나로 (2026-09-20 사용자: "방 목록에 레벨과 템 수준을 숫자로 — 강화 등을 포함해서").
+ * 칸마다 `아이템 레벨 + 강화 × 2 + 등급값`(일반 0 · 마법 1 · 희귀 3 · 전설 6 · 신화 9)을 더해 **다섯 칸 평균**.
+ * 빈 칸은 0 으로 세므로 맨몸이면 0 이다. 방을 고를 때 "나와 비슷한가" 만 보면 되니 정확한 전투력이 아니라 **견줄 수 있는 수**면 된다.
+ */
+const RARITY_GS = [0, 1, 3, 6, 9]
+export function gearScore(equip: (Item | null)[] | undefined): number {
+  if (!equip || equip.length === 0) return 0
+  let sum = 0
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    const it = equip[i]
+    if (!it) continue
+    sum += it.ilvl + (it.up ?? 0) * 2 + (RARITY_GS[it.rarity] ?? 0)
+  }
+  return Math.round(sum / SLOT_COUNT)
+}
 /** 능력치가 능력치 칸(st)에 더하는 값 */
 function addAttr(st: number[], attr: number[]): void {
   st[ST_DMG] += (attr[0] ?? 0) * 0.8

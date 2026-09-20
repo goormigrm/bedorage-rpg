@@ -869,6 +869,11 @@ export class MonsterView {
     this.real = on
   }
 
+  /** 구울 차례를 기다리는 종류 · 지금 굽는 중인가 (한 번에 하나씩 — 굽기가 몰리면 화면이 끊긴다) */
+  private queue: number[] = []
+  private baking = false
+  /** 구운 모델을 미리 데우는 함수 (renderer3d 가 넣어 준다) */
+  private warm: ((obj: THREE.Object3D) => void) | null = null
   /** 실사 모델 상태 (확인용 — __bd.models()) */
   modelStatus(): { ready: number[]; loading: number[]; failed: number[] } {
     const r: { ready: number[]; loading: number[]; failed: number[] } = { ready: [], loading: [], failed: [] }
@@ -880,9 +885,43 @@ export class MonsterView {
     return r
   }
 
-  /** 미리 받기 (2026-09-19): 막에 들어서면(마을에 있을 때) 그 막 괴물의 모델을 미리 받아 굽는다 — 싸우다가 모습이 바뀌지 않게 */
+  /**
+   * 미리 받기 (2026-09-19): 막에 들어서면(마을에 있을 때) 그 막 괴물의 모델을 미리 받아 굽는다 — 싸우다가 모습이 바뀌지 않게.
+   * 2026-09-20: **한 번에 하나씩** 굽는다. 넷을 동시에 받으면 다 받은 뒤 굽기(메인 스레드)가 몰려 화면이 끊겼다.
+   */
   prefetch(kinds: number[]): void {
-    for (const k of kinds) this.want(k)
+    for (const k of kinds) {
+      if (!this.real || this.models[k] || !MODEL_SPECS[k] || this.queue.includes(k)) continue
+      this.queue.push(k)
+    }
+    this.pump()
+  }
+
+  /** 줄 세운 것을 하나씩 굽는다 */
+  private pump(): void {
+    if (this.baking || this.queue.length === 0) return
+    const k = this.queue.shift()!
+    if (this.models[k]) {
+      this.pump()
+      return
+    }
+    this.baking = true
+    this.want(k, () => {
+      this.baking = false
+      // 한 프레임 쉬었다 다음 것을 굽는다 — 굽기(동기)가 연달아 붙으면 그만큼 화면이 멈춘다
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.pump())
+      else this.pump()
+    })
+  }
+
+  /**
+   * 구운 모델을 **미리 데운다** (2026-09-20 사용자: "방 만들고 처음 던전에 들어간 순간 2~3초 버벅인다").
+   * 모델은 마을에 있는 동안 다 구워지지만, 셰이더 컴파일과 모양 키 텍스처의 GPU 올리기는
+   * 그 괴물이 **처음 화면에 그려지는 프레임**에 몰린다 — 그게 첫 던전이었다.
+   * 그래서 구운 자리에서 바로 컴파일·올리기를 끝내 둔다 (마을에서 미리).
+   */
+  setWarm(fn: (obj: THREE.Object3D) => void): void {
+    this.warm = fn
   }
 
   /**
@@ -913,9 +952,12 @@ export class MonsterView {
     return out
   }
 
-  /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물) */
-  private want(kind: number): void {
-    if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) return
+  /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물). done = 다음 것을 구우라는 신호 */
+  private want(kind: number, done?: () => void): void {
+    if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) {
+      done?.()
+      return
+    }
     this.models[kind] = 'loading'
     loadMonsterModel(kind)
       .then((baked) => {
@@ -953,11 +995,22 @@ export class MonsterView {
           return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
         })
         this.models[kind] = { baked, meshes, frame, depth, extras }
+        // 셰이더 컴파일 · 텍스처 올리기를 지금 끝낸다 (처음 만나는 프레임에 몰리지 않게)
+        if (this.warm) {
+          for (const mesh of meshes) this.warm(mesh)
+          // 그림자(customDepthMaterial)는 그림자 맵을 그릴 때 따로 컴파일된다 — 그것도 지금 해 둔다
+          for (const part of baked.parts) {
+            const probe = new THREE.InstancedMesh(part.geo, depth, 1)
+            probe.morphTargetInfluences = new Array(baked.frames).fill(0)
+            this.warm(probe)
+          }
+        }
       })
       .catch((err) => {
         console.warn('실사 괴물 모델을 받지 못했다 — 도형 괴물로 그린다', kind, err)
         this.models[kind] = 'failed'
       })
+      .finally(() => done?.())
   }
 
   /** 맞음: 번쩍 + 움찔 */

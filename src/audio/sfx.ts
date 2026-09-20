@@ -206,12 +206,17 @@ export class Sfx {
     }
   }
 
-  /** 한 걸음: 낮은 툭 + 짧은 스침. 좌우 발을 조금 다르게 해서 기계적이지 않게 */
+  /**
+   * 한 걸음: 낮은 "툭" 하나. 좌우 발을 조금 다르게 해서 기계적이지 않게.
+   *
+   * 2026-09-20 사용자: "걸을 때 약간 지지직거리는 소리가 들려 — 이런 소리는 안 나오게".
+   * 그 지지직은 발소리에 얹었던 **고음 노이즈 스침**(bandpass 2100→700Hz)이었다. 걸음마다 나니 치찰음처럼 들린다.
+   * 노이즈를 빼고 낮은 소리만 남긴다. 어택도 2ms → 6ms 로 늘려 시작의 딸깍(클릭)을 없앤다.
+   */
   private foot(s: Spatial, right: boolean, mine: boolean): void {
-    const { node, t0 } = this.bus(s, mine ? 0.3 : 0.62)
-    const f = right ? 132 : 118
-    this.tone(node, t0, 0.055, 'sine', f, f * 0.55, 0.5, 0.002)
-    this.noiseBurst(node, t0, 0.045, 'bandpass', right ? 2100 : 1750, 700, 0.16, 1.4)
+    const { node, t0 } = this.bus(s, mine ? 0.26 : 0.55)
+    const f = right ? 126 : 112
+    this.tone(node, t0, 0.07, 'sine', f, f * 0.5, 0.42, 0.006)
   }
 
   // ---------- 이벤트 ----------

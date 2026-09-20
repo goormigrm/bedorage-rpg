@@ -573,7 +573,9 @@ body { background: var(--bg); }
 .room { background: rgba(14,12,10,.8); border: 1px solid var(--line-2); border-radius: 3px; }
 
 /* ---- 첫 화면: 모닥불 앞 캐릭터 선택 + 오른쪽 돌 패널 ---- */
-.lobby.d2 { max-width: none; margin: 0; padding: 0; min-height: 100vh; overflow: hidden; }
+/* 오른쪽 칸 폭: 화면을 따라 는다 (2026-09-20 사용자 — "보통 해상도에서는 여백이 꽤 많다").
+   전에는 430px 고정이라 넓은 화면에서도 좁고, 좁은 화면에서는 캐릭터 칸을 밀어냈다 */
+.lobby.d2 { --side-w: clamp(430px, 31vw, 620px); max-width: none; margin: 0; padding: 0; min-height: 100vh; overflow: hidden; }
 .lobby.d2 .bonfire { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; cursor: pointer; }
 .lobby.d2 > *:not(.bonfire) { position: relative; z-index: 1; }
 .d2-title { position: fixed !important; left: 34px; top: 26px; pointer-events: none; }
@@ -582,7 +584,7 @@ body { background: var(--bg); }
 .d2-title h1 .t1, .d2-title h1 .t2 { background: none !important; -webkit-text-fill-color: transparent; }
 .d2-title h1 .t2 { font-size: 30px; margin-left: 10px; letter-spacing: .3em; }
 .d2-title .tag { color: #9a8a70 !important; font: 500 13px "Nanum Myeongjo", serif !important; margin: 4px 0 0 !important; }
-.d2-char { position: fixed !important; left: calc((100vw - 450px) / 2); bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; width: min(940px, calc(100vw - 490px)); }
+.d2-char { position: fixed !important; left: calc((100vw - var(--side-w) - 20px) / 2); bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; width: min(940px, calc(100vw - var(--side-w) - 60px)); }
 .d2-char .ci { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(210px, 0.75fr) 1.5fr; gap: 4px 18px; align-items: start; }
 .d2-char .ci .ch-r { border-left: 1px solid rgba(201,162,74,.18); padding-left: 16px; }
 .d2-char .ci .ch-r .skd { margin-top: 2px; }
@@ -619,7 +621,7 @@ body { background: var(--bg); }
 .d2-char .sk span { font-size: 11px; color: #d8cfbf; border: 1px solid #4a3c28; border-radius: 3px; padding: 2px 7px; background: rgba(0,0,0,.35); }
 .d2-char .sk span.ult { border-color: #c9a24a; color: #ffe6a8; }
 .d2-char .sk i { font-style: normal; color: #c9a24a; margin-right: 4px; font-weight: 800; }
-.d2-side { position: fixed !important; right: 20px; top: 20px; bottom: 20px; width: 430px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
+.d2-side { position: fixed !important; right: 20px; top: 20px; bottom: 20px; width: var(--side-w); display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
 .d2-side .panel { background: linear-gradient(180deg, rgba(24,20,16,.94), rgba(10,9,8,.95)); border: 1.5px solid rgba(201,162,74,.5); border-radius: 5px;
   padding: 14px 16px; box-shadow: 0 10px 40px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.35); }
 .d2-side .panel.small { font-size: 12px; color: #9a8a70; }
@@ -657,7 +659,7 @@ body { background: var(--bg); }
   background: linear-gradient(180deg, rgba(28,24,21,0.97), rgba(10,9,8,0.97)); border: 1.5px solid rgba(201,162,74,0.6); border-radius: 6px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 0 4px rgba(0,0,0,0.3); padding: 12px 14px; color: #d8cfbf; font: 500 12px "IBM Plex Sans KR", sans-serif; }
 .tp[hidden] { display: none; }
-.tp.wide { width: 760px; }
+.tp.wide { width: min(880px, calc(100vw - 40px)); }
 .tp-head { display: flex; align-items: baseline; gap: 10px; }
 .tp-head b { font: 800 20px "Nanum Myeongjo", serif; color: #f1d58a; margin-right: auto; }
 .tp-gold { color: #e8c46a; font-weight: 700; }
@@ -677,8 +679,26 @@ body { background: var(--bg); }
 .tp-note, .tp-empty { color: #8d8170; margin: 6px 0; }
 .tp-pot { width: 100%; margin-top: 10px; }
 .tp-slots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.tp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.tp-h { font: 700 12px "Nanum Myeongjo", serif; color: #b8a67e; margin-bottom: 6px; }
+/* 보관함: 두 칸을 확실히 갈라 놓는다 — 상자 · 머리줄 · 칸마다 따로 구르기 (2026-09-20 제보) */
+.tp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.tp-col { border: 1px solid #3a3024; border-radius: 4px; background: rgba(0,0,0,.28); padding: 8px 9px 9px; min-width: 0; }
+.tp-col + .tp-col { background: rgba(20,14,6,.34); }
+.tp-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 700 13px "Nanum Myeongjo", serif; color: #f1d58a;
+  margin: -8px -9px 6px; padding: 6px 9px; border-bottom: 1px solid #3a3024; background: rgba(90,68,32,.22); border-radius: 4px 4px 0 0; }
+.tp-h span { font: 600 11px "IBM Plex Mono", monospace; color: #b8a67e; }
+.tp-h span.bad { color: #ff9a6a; }
+.tp-colhint { margin: 0 0 6px; font-size: 11px; color: #8d8170; }
+.tp-col .tp-list { max-height: 46vh; overflow-y: auto; padding-right: 2px; }
+/* 보관함 줄: 두 칸이라 좁다 — 이름 위 · 옵션 아래 한 줄로 접고, 화살표를 오른쪽에 크게 */
+.tp-row.short { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; }
+.tp-row.short .tp-n { grid-column: 1; grid-row: 1; min-width: 0; }
+.tp-row.short .tp-a { grid-column: 1; grid-row: 2; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-row.short .tp-g { grid-column: 2; grid-row: 1 / span 2; font-size: 15px; color: #c9a24a; }
+/* 보관함(오른쪽 칸)은 꺼내는 쪽이라 화살표를 왼쪽에 둔다 — 눈이 가는 방향과 맞게 */
+.tp-col + .tp-col .tp-row.short { grid-template-columns: auto minmax(0, 1fr); }
+.tp-col + .tp-col .tp-row.short .tp-g { grid-column: 1; }
+.tp-col + .tp-col .tp-row.short .tp-n, .tp-col + .tp-col .tp-row.short .tp-a { grid-column: 2; }
+.tp-up { color: #8aff9a; margin-left: 4px; }
 .tp-hint { margin: 10px 0 0; font-size: 11px; color: #6a6050; }
 
 /* 전설 고유 효과 줄 (툴팁) */
@@ -801,3 +821,27 @@ body { background: var(--bg); }
 .settings .srow .seg { flex: 0 0 auto; }
 .settings > .apn { margin: 2px 2px 6px; font-size: 11.5px; line-height: 1.5; color: #8a7a60; }
 .dlg .settings { max-width: none; }
+
+/* 오른쪽 아래 창 단추 — 가방 · 스킬 · 능력치 · 퀘스트 (2026-09-20 사용자: "단축키 안 써도 클릭으로 열 수 있게") */
+.winbtns { position: absolute; right: 12px; bottom: 96px; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; z-index: 14; }
+.wbtn { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 78px; padding: 6px 8px; cursor: pointer;
+  font: 700 12.5px "Nanum Myeongjo", serif; color: #d8c79a; background: rgba(14,12,10,.72); border: 1px solid #4a3c28; border-radius: 3px; }
+.wbtn small { font: 600 10px "IBM Plex Mono", monospace; color: #8a7a60; }
+.wbtn:hover { border-color: #c9a24a; color: #f1d58a; background: rgba(48,36,20,.8); }
+.wbtn.on { border-color: #c9a24a; color: #f1d58a; box-shadow: inset 0 0 0 1px rgba(201,162,74,.45); }
+.wbtn[hidden] { display: none; }
+/* 터치 기기는 제 조작 UI(≡ 메뉴)가 오른쪽 아래를 쓴다 */
+.touching .winbtns { display: none; }
+
+/* 대기실 자리: 레벨 · 템 수준 (2026-09-20) */
+.slot .cname .pw { display: block; font: 600 11.5px "IBM Plex Mono", monospace; color: #b8a67e; letter-spacing: 0; }
+.slot.empty .cname .pw { display: none; }
+
+/* 대장장이 전설 벼리기 (2026-09-20) */
+.forge-st { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 10px; padding: 8px 10px; border: 1px solid #3a3024; border-radius: 4px; background: rgba(0,0,0,.3); }
+.forge-st span { font-size: 12px; color: #9a8a70; }
+.forge-st b { color: #e8dcc4; }
+.forge-st b.ok { color: #8aff9a; }
+.forge-st b.bad { color: #ff9a6a; }
+.forge-st small { color: #6a6050; }
+.tp-note .leg-p { color: #ff9a3a; }

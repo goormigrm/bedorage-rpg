@@ -6,6 +6,7 @@
 
 import { DIFFICULTY_HINT, DIFFICULTY_LABEL, Difficulty } from '../core/bot'
 import { bindSettings, settingsHtml } from './settings'
+import { gearScore } from '../core/items'
 import { CHARACTERS, CharacterId, PLAYABLE, isPlayable, ROLE_INFO } from '../core/characters'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
@@ -619,7 +620,9 @@ export class Lobby {
         const rule = arenaRoom
           ? [ROOM_MODE_LABEL[r.mode] ?? r.mode, `${r.targetKills}킬`]
           : [TIER_LABEL[r.tier ?? 0] ?? '보통', `죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`]
-        const meta = [arenaRoom ? '투기장' : '던전', ...rule, m, `${r.count}/${r.max}명`]
+        // 레벨 · 템 수준 (2026-09-20 요청 — 난입할 때 내게 맞는 방인지 보라고)
+        const power = r.lv ? [`Lv ${r.lv}`, `템 ${r.gs ?? 0}`] : []
+        const meta = [arenaRoom ? '투기장' : '던전', ...rule, ...power, m, `${r.count}/${r.max}명`]
         return `<div class="room">
           <div class="rmain">
             <div class="rtop"><span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(r.hostName.trim()) : c ? c.name : r.hostChar}</b>의 방</span>${st}</div>
@@ -707,8 +710,19 @@ export class Lobby {
       kind: this.kind,
       count: this.members.length,
       max: this.roomSize,
+      // 목록에서 "나와 비슷한 방인가" 를 보라고 (2026-09-20 요청). 봇 자리는 빼고 사람만 센다
+      ...this.partyPower(),
       state: state ?? (this.members.length >= this.roomSize ? 'full' : 'open'),
     })
+  }
+
+  /** 방 사람들의 평균 레벨 · 평균 템 수준 (방송용) */
+  private partyPower(): { lv: number; gs: number } {
+    const humans = this.members.filter((m) => !m.bot && m.sheet)
+    if (humans.length === 0) return { lv: 1, gs: 0 }
+    const lv = humans.reduce((a, m) => a + (m.sheet!.level ?? 1), 0) / humans.length
+    const gs = humans.reduce((a, m) => a + gearScore(m.sheet!.equip), 0) / humans.length
+    return { lv: Math.round(lv), gs: Math.round(gs) }
   }
 
   // ---------- 방 만들기 / 참가 ----------
@@ -1203,9 +1217,11 @@ export class Lobby {
       const who = (i === 0 ? '방장' : `${i + 1}번`) + (mine ? ' · 나' : '')
       const badge = teams ? `<span class="team ${m.team === 0 ? 'team-a' : 'team-b'}">${m.team === 0 ? 'A팀' : 'B팀'}</span>` : ''
       const nick = (m.name ?? '').trim()
+      // 레벨 · 템 수준 (2026-09-20 요청): 누가 얼마나 키웠는지 보고 자리를 고르라고
+      const power = m.sheet ? `<span class="pw">Lv ${m.sheet.level ?? 1} · 템 ${gearScore(m.sheet.equip)}</span>` : ''
       slots.push(`<div class="slot ${m.ready ? 'ready' : ''} ${mine ? 'mine' : ''}">
         <div class="who">${who}${badge}</div>
-        <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}</div>
+        <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}${power}</div>
         <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}${roleChip}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
       </div>`)
     }
