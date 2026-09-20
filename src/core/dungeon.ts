@@ -3,7 +3,7 @@
 // 모든 추첨은 시드로 만든 전용 Rng 로 한다(같은 시드 = 모든 브라우저에서 같은 배치).
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
-import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor, levelHp, levelPow, EA_STOUT, tierOf } from './monsters'
+import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor, levelHp, levelPow, EA_SPLIT, EA_STOUT, tierOf } from './monsters'
 import { PackDef } from './world'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
@@ -104,7 +104,12 @@ export function rollAffixes(rng: Rng, elite: number, n: number, skip = 0): numbe
 
 /** 원형마다 붙이지 않는 접두 능력 */
 export function affixSkip(kind: number): number {
-  return MONSTER_LIST[kind].guard ? EA_STOUT : 0
+  const def = MONSTER_LIST[kind]
+  // 방패병은 이미 정면을 막는다 — 거기에 단단함까지 붙으면 앞에서 손을 쓸 수가 없다
+  if (def.guard) return EA_STOUT
+  // 고치는 놈(주술사)에게 단단함·분열은 겹쳐서 나쁘다: 먼저 잡으라고 둔 것인데 먼저 잡을 수가 없어진다 (2026-09-20)
+  if (def.attack === 'heal') return EA_STOUT | EA_SPLIT
+  return 0
 }
 
 /**
@@ -212,7 +217,7 @@ export function populate(
         // 다섯 무리에 하나는 첫 놈이 정예 (무리 번호로 정하므로 결정론)
         if (placed.length === 0 && pack % 5 === 2) {
           m.elite = 1
-          m.maxHp = m.hp = Math.round(m.hp * ELITE.hp)
+          m.maxHp = m.hp = Math.round(m.hp * (def.eliteHp ?? ELITE.hp))
           m.pow = Math.round(m.pow * ELITE.pow)
           // 접두 능력: 지역 레벨이 오를수록 많아진다 (겹치지 않게)
           m.elite = rollAffixes(rng, m.elite, Math.min(4, affixCount(level) + tier.affix), affixSkip(m.kind))

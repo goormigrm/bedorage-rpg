@@ -3379,10 +3379,15 @@ function summonKind(state: GameState, m: Monster, kind: number, n: number, max: 
 
 function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
   if (def.attack === 'heal') {
-    // 주위의 다친 동료를 고친다 (보스·우두머리는 빼고 — 보스 싸움이 끝나지 않게)
+    // 주위의 다친 **동료**를 고친다 (보스·우두머리는 빼고 — 보스 싸움이 끝나지 않게).
+    // 2026-09-20 사용자: "포자 늪 정예 버섯 주술사가 체력 차고 복제 늘어나 4명이 때려도 한 마리가 안 죽는다".
+    // 원인은 주술사가 **자기 자신까지** 고치고 있던 것 — 정예는 체력 4배라 2.5초마다 제 최대 체력의 25%,
+    // 4인 포자 늪이면 초당 235 씩 차올랐다(단단함이 붙으면 실효 391). 파티 화력이 그 선을 못 넘으면 **영원히 안 죽는다**.
+    // ① 자기 자신 ② 다른 주술사(힐러끼리 서로 살리는 고리)를 대상에서 뺀다.
     const r = def.range
     for (const o of state.monsters) {
-      if (o.hp <= 0 || o.st === MS_SLEEP || isBossLike(o)) continue
+      if (o.id === m.id || o.hp <= 0 || o.st === MS_SLEEP || isBossLike(o)) continue
+      if (MONSTER_LIST[o.kind].attack === 'heal') continue
       if (len(o.x - m.x, o.y - m.y) > r) continue
       o.hp = Math.min(o.maxHp, o.hp + Math.round(o.maxHp * (def.heal ?? 0.25)))
     }

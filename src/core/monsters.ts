@@ -64,6 +64,8 @@ export interface MonsterDef {
   heal?: number
   /** 방패: 정면 ±guard(1024 단위)에서 온 탄은 막는다 (GUARD.mult 만 들어간다) */
   guard?: number
+  /** 정예가 됐을 때의 체력 배율 (없으면 ELITE.hp). 주술사처럼 **먼저 잡아야 하는** 것은 낮게 둔다 */
+  eliteHp?: number
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -130,7 +132,9 @@ export const MONSTER_LIST: MonsterDef[] = [
     // 버섯 주술사: 싸우지 않고 무리 뒤에서 다친 동료를 고친다(주위 동료 체력 25%, 초록 고리). 먼저 잡아라
     id: 'shaman', idx: 7, name: '버섯 주술사',
     hp: 85, speed: 1.8, r: 14,
-    attack: 'heal', dmg: 0, range: 230, windup: 40, recover: 30, cooldown: 150, keepDist: 260, heal: 0.25,
+    // 2026-09-20: 자기 자신·다른 주술사는 못 고친다(sim.resolveAttack). 회복도 25% → 14% · 2.5초 → 3.2초로 내렸다.
+    // 정예가 되어도 체력은 2.5배만 (힐러가 단단하기까지 하면 먼저 잡으라는 뜻이 사라진다)
+    attack: 'heal', dmg: 0, range: 230, windup: 40, recover: 30, cooldown: 190, keepDist: 260, heal: 0.14, eliteHp: 2.5,
     knockRes: 0.2, globe: 0.1, xp: 12, loot: 0.18,
   },
   {
