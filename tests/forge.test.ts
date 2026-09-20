@@ -59,7 +59,7 @@ describe('전설 벼리기', () => {
     fillRares(s, 6)
     atSmith(s)
     p.gold = 9999
-    const ilvl = forgeIlvl(p.bag, forgeMaterials(p.bag).slice(0, FORGE_NEED))
+    const ilvl = forgeIlvl(p.bag, p.stash, forgeMaterials(p.bag, p.stash).slice(0, FORGE_NEED))
     const price = forgePrice(ilvl)
     const gold0 = p.gold
     step(s, (id) => buildAreaMap(61, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 }])
@@ -104,6 +104,25 @@ describe('전설 벼리기', () => {
     expect(leg / N).toBeLessThan(0.38)
   })
 
+  it('보관함에 있는 희귀도 재료가 된다 (2026-09-20)', () => {
+    const { s, run } = game(63)
+    const p = s.players[0]
+    run(2)
+    // 가방에 둘 · 보관함에 셋
+    fillRares(s, 2)
+    const rng = makeRng(41)
+    p.stash.length = 0
+    for (let i = 0; i < 3; i++) p.stash.push(rollItem(rng, 91000 + i, 14, p.weapon, 'goldchest', 0, 2))
+    atSmith(s)
+    p.gold = 9999
+    expect(forgeMaterials(p.bag, p.stash).length).toBe(5)
+    step(s, (id) => buildAreaMap(63, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 1 }])
+    // 가방 둘이 사라지고 만든 것 하나가 들어왔다 · 보관함 셋도 사라졌다
+    expect(p.bag.length).toBe(1)
+    expect(p.stash.length).toBe(0)
+    expect(p.bag[0].slot).toBe(1)
+  })
+
   it('재료는 싼 것부터 쓰고, 아이템 레벨은 재료 평균 + 1 이다', () => {
     const rng = makeRng(3)
     const bag: Item[] = []
@@ -112,7 +131,7 @@ describe('전설 벼리기', () => {
     expect(mats.length).toBe(5)
     // 가장 비싼 것(레벨 30)은 남는다
     expect(mats.some((i) => bag[i].ilvl === 30)).toBe(false)
-    expect(forgeIlvl(bag, mats)).toBe(Math.round((20 + 10 + 12 + 14 + 16) / 5) + 1)
+    expect(forgeIlvl(bag, [], mats)).toBe(Math.round((20 + 10 + 12 + 14 + 16) / 5) + 1)
   })
 })
 

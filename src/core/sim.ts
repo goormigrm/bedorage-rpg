@@ -12,7 +12,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_NEED, forgeIlvl, forgeMaterials, forgePrice, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, rollItem, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -599,14 +599,18 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
   } else if (cmd === CMD_FORGE && npc === 'smith') {
     // 전설 벼리기: 가방의 희귀 다섯 + 골드 → 고른 부위 하나 (전설 30% · 신화 2% · 나머지 희귀)
     if (arg < 0 || arg >= SLOT_COUNT || p.bag.length >= BAG_SIZE) return
-    const mats = forgeMaterials(p.bag).slice(0, FORGE_NEED)
+    // 재료는 가방과 **보관함**에서 함께 고른다 (싼 것부터 — 2026-09-20)
+    const mats = forgeMaterials(p.bag, p.stash).slice(0, FORGE_NEED)
     if (mats.length < FORGE_NEED) return
-    const ilvl = forgeIlvl(p.bag, mats)
+    const ilvl = forgeIlvl(p.bag, p.stash, mats)
     const g = forgePrice(ilvl)
     if (p.gold < g) return
     p.gold -= g
-    // 뒤에서부터 지워야 앞 칸 번호가 밀리지 않는다
-    for (const i of [...mats].sort((a, b) => b - a)) p.bag.splice(i, 1)
+    // 뒤에서부터 지워야 앞 칸 번호가 밀리지 않는다 (보관함 칸이 1000 대라 보관함부터 지워진다)
+    for (const k of [...mats].sort((a, b) => b - a)) {
+      if (k >= FORGE_STASH) p.stash.splice(k - FORGE_STASH, 1)
+      else p.bag.splice(k, 1)
+    }
     const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', tierOf(state.tier).loot, 0, arg)
     p.bag.push(it)
     trade('forge', -g, it.uid)

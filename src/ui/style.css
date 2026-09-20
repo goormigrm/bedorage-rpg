@@ -655,11 +655,12 @@ body { background: var(--bg); }
 #btn-voice.live { border-color: #6aff8a; color: #b8ffc8; box-shadow: 0 0 10px rgba(106,255,138,.35); }
 
 /* 마을 NPC 창 (F) */
-.tp { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); width: 520px; max-height: calc(100% - 180px); overflow-y: auto; pointer-events: auto; cursor: default; z-index: 20;
+.tp { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 40px)); max-height: calc(100% - 180px); overflow-y: auto; overflow-x: hidden; pointer-events: auto; cursor: default; z-index: 20;
   background: linear-gradient(180deg, rgba(28,24,21,0.97), rgba(10,9,8,0.97)); border: 1.5px solid rgba(201,162,74,0.6); border-radius: 6px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 0 4px rgba(0,0,0,0.3); padding: 12px 14px; color: #d8cfbf; font: 500 12px "IBM Plex Sans KR", sans-serif; }
 .tp[hidden] { display: none; }
 .tp.wide { width: min(880px, calc(100vw - 40px)); }
+.tp.smith { width: min(640px, calc(100vw - 40px)); }
 .tp-head { display: flex; align-items: baseline; gap: 10px; }
 .tp-head b { font: 800 20px "Nanum Myeongjo", serif; color: #f1d58a; margin-right: auto; }
 .tp-gold { color: #e8c46a; font-weight: 700; }
@@ -668,14 +669,19 @@ body { background: var(--bg); }
 .tp-tabs button { background: transparent; border: 1px solid #4a3c28; color: #b8aa90; border-radius: 3px; padding: 4px 14px; cursor: pointer; font: 700 12px "Nanum Myeongjo", serif; }
 .tp-tabs button.on { border-color: #c9a24a; color: #ffe6a8; background: rgba(90,68,32,.4); }
 .tp-list { display: flex; flex-direction: column; gap: 3px; }
-.tp-row { display: grid; grid-template-columns: 1.1fr 1.6fr auto; gap: 8px; align-items: center; text-align: left; width: 100%; padding: 6px 8px; cursor: pointer;
+/* 칸은 minmax(0,…) — 그러지 않으면 옵션이 긴 줄이 칸을 밀어내 창 밖으로 넘친다 (2026-09-20 제보) */
+.tp-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) minmax(0, auto); gap: 8px; align-items: center; text-align: left; width: 100%; padding: 6px 8px; cursor: pointer;
   background: rgba(0,0,0,.3); border: 1px solid #2e261c; border-radius: 3px; color: #d8cfbf; font: 500 11px "IBM Plex Sans KR", sans-serif; }
+/* 줄은 <button> 이라 전역 `button { white-space: nowrap }` 을 물려받아 옵션이 한 줄로 뻗어 칸을 넘쳤다 — 여기서 끊는다 */
+.tp-row { white-space: normal; }
+.tp-row > span { min-width: 0; overflow-wrap: anywhere; }
 .tp-row:hover:not([disabled]) { border-color: #c9a24a; background: rgba(90,68,32,.25); }
 .tp-row[disabled] { opacity: .45; cursor: default; }
 .tp-n { font-weight: 700; font-size: 12px; }
 .tp-n small { display: block; font-weight: 500; font-size: 10px; color: #8d8170; }
-.tp-a { color: #a89878; }
-.tp-g { color: #e8c46a; font-weight: 700; white-space: nowrap; }
+.tp-a { color: #a89878; line-height: 1.45; }
+/* 오른쪽 칸(값 · 재료)은 <br> 로만 나눈다 — 한 줄씩은 붙여 두되 칸 폭은 그만큼만 차지한다 */
+.tp-g { color: #e8c46a; font-weight: 700; white-space: nowrap; text-align: right; }
 .tp-note, .tp-empty { color: #8d8170; margin: 6px 0; }
 .tp-pot { width: 100%; margin-top: 10px; }
 .tp-slots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

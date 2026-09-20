@@ -6,7 +6,7 @@ import { CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_STASH_PUT, CMD_
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_SIZE, FORGE_NEED, forgeIlvl, forgeMaterials, forgePrice, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_SIZE, FORGE_NEED, FORGE_STASH, forgeIlvl, forgeMaterials, forgePrice, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -158,21 +158,25 @@ export class TownPanel {
       // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **전설 벼리기**(희귀 다섯 → 고른 부위 하나)
       const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">전설 벼리기</button></div>`
       if (this.smithTab === 'forge') {
-        const mats = forgeMaterials(me.bag)
+        // 재료는 가방 + 보관함 (2026-09-20 요청 — 모아 둔 희귀는 보통 보관함에 있다)
+        const mats = forgeMaterials(me.bag, me.stash)
         const have = mats.length
         const use = mats.slice(0, FORGE_NEED)
-        const ilvl = forgeIlvl(me.bag, use)
+        const ilvl = forgeIlvl(me.bag, me.stash, use)
         const price = forgePrice(ilvl)
         const ok = have >= FORGE_NEED && me.gold >= price && me.bag.length < BAG_SIZE
+        const fromStash = use.filter((k) => k >= FORGE_STASH).length
         body =
           tabs +
-          `<p class="tp-note">가방의 <b>희귀 ${FORGE_NEED}개</b>를 녹여 고른 부위의 물건 하나를 벼린다 —
+          `<p class="tp-note">가방과 <b>보관함</b>의 <b>희귀 ${FORGE_NEED}개</b>를 녹여 고른 부위의 물건 하나를 벼린다 —
             <b class="leg-p">전설 30%</b> · 신화 2% · 나머지는 희귀. 재료는 <b>싼 것부터</b> 쓴다.</p>
-          <div class="forge-st"><span>희귀 재료 <b class="${have >= FORGE_NEED ? 'ok' : 'bad'}">${Math.min(have, FORGE_NEED)}/${FORGE_NEED}</b></span>
+          <div class="forge-st"><span>희귀 재료 <b class="${have >= FORGE_NEED ? 'ok' : 'bad'}">${Math.min(have, FORGE_NEED)}/${FORGE_NEED}</b>${
+            have > 0 ? ` <small>(가방 ${use.length - fromStash} · 보관함 ${fromStash})</small>` : ''
+          }</span>
             <span>아이템 레벨 <b>${have >= FORGE_NEED ? ilvl : '—'}</b> <small>(재료 평균 + 1)</small></span>
             <span>값 <b class="${me.gold >= price ? 'ok' : 'bad'}">${have >= FORGE_NEED ? price : '—'} 골드</b></span></div>
           <div class="tp-slots">${Array.from({ length: SLOT_COUNT }, (_, k) => `<button class="btn" data-cmd="${CMD_FORGE}" data-arg="${k}" ${ok ? '' : 'disabled'}>${SLOT_NAMES[k]}</button>`).join('')}</div>
-          ${have < FORGE_NEED ? '<p class="tp-empty">희귀 아이템을 더 모아 오라. (파란 것 말고 노란 것)</p>' : me.bag.length >= BAG_SIZE ? '<p class="tp-empty">가방이 가득 찼다.</p>' : ''}`
+          ${have < FORGE_NEED ? '<p class="tp-empty">희귀 아이템을 더 모아 오라 — 가방과 보관함을 함께 센다. (파란 것 말고 노란 것)</p>' : me.bag.length >= BAG_SIZE ? '<p class="tp-empty">가방이 가득 찼다.</p>' : ''}`
         return this.paint(npc, me, body)
       }
       // 강화 (2026-09-19 — 옵션 다시 굴리기를 없앴다): 낀 장비 · 가방. 같은 부위 · 같은 등급 (단계 + 1)개를 녹인다
@@ -239,6 +243,8 @@ export class TownPanel {
     this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${me.gold} 골드</span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">F · Esc 로 닫기</p>`
     this.el.classList.toggle('wide', npc === 'stash')
+    // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
+    this.el.classList.toggle('smith', npc === 'smith')
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
     this.el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
       b.onclick = () => {

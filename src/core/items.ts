@@ -313,18 +313,26 @@ export const FORGE_NEED = 5
 export const FORGE_RARITY = 2
 /** 벼리는 값 — 희귀 하나 값쯤 (재료를 모으는 수고가 주된 비용이다) */
 export const forgePrice = (ilvl: number) => Math.round((6 + ilvl * 3) * 6 * 0.6)
-/** 재료가 될 가방 칸 (희귀만, 싼 것부터 — 결정론) */
-export function forgeMaterials(bag: Item[]): number[] {
-  return bag
-    .map((it, i) => ({ it, i }))
+/**
+ * 재료 칸 번호: 가방은 `i`, **보관함은 `FORGE_STASH + i`**
+ * (2026-09-20 사용자: "전설 벼리기는 내 아이템 창칸뿐 아니라 창고에 들어 있는 것으로도 되게" — 모아 둔 희귀가 거기 있다).
+ */
+export const FORGE_STASH = 1000
+/** 재료가 될 칸 (가방 + 보관함의 희귀만, 싼 것부터 — 결정론) */
+export function forgeMaterials(bag: Item[], stash: Item[] = []): number[] {
+  return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: FORGE_STASH + i }))]
     .filter(({ it }) => it.rarity === FORGE_RARITY)
-    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.i - b.i)
-    .map((o) => o.i)
+    .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
+    .map((o) => o.k)
+}
+/** 재료 칸 하나 (가방 · 보관함) */
+export function forgeItem(bag: Item[], stash: Item[], k: number): Item | undefined {
+  return k >= FORGE_STASH ? stash[k - FORGE_STASH] : bag[k]
 }
 /** 벼려 나올 아이템 레벨 — 재료 평균 + 1 (좋은 재료를 넣을 값어치가 있게) */
-export function forgeIlvl(bag: Item[], mats: number[]): number {
+export function forgeIlvl(bag: Item[], stash: Item[], mats: number[]): number {
   if (mats.length === 0) return 1
-  const avg = mats.reduce((a, i) => a + (bag[i]?.ilvl ?? 1), 0) / mats.length
+  const avg = mats.reduce((a, k) => a + (forgeItem(bag, stash, k)?.ilvl ?? 1), 0) / mats.length
   return Math.max(1, Math.min(60, Math.round(avg) + 1))
 }
 
