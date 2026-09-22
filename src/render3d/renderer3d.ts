@@ -342,6 +342,12 @@ export class Renderer3D {
     this.emotes.set(i, { text, until: performance.now() + 2200 })
   }
 
+  /** 채팅 말풍선: 머리 위에 받은 글 (길면 줄여서) · 글 길이에 따라 3~6초 */
+  showSay(i: number, text: string): void {
+    const t = text.length > 26 ? `${text.slice(0, 25)}…` : text
+    this.emotes.set(i, { text: t, until: performance.now() + Math.min(6000, 3000 + text.length * 60) })
+  }
+
   /** 화면 위쪽 큰 배너 (지역 이름) */
   banner(title: string, sub: string, color?: string): void {
     this.hud.banner(title, sub, color)

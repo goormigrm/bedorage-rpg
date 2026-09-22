@@ -18,6 +18,7 @@ import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
+import { ChatBox, cleanChat } from '../ui/chat'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -104,6 +105,8 @@ export class Session {
   private quests!: QuestLog
   /** 음성 대화 (방이 있을 때만) */
   private voice: Voice | null = null
+  /** 텍스트 채팅 (방 통로가 있을 때만 — 방장이 나가 혼자 이어 가는 판에는 없다) */
+  private chat: ChatBox | null = null
   private state: GameState
   private prev: GameState
   private renderer: Renderer3D
@@ -230,7 +233,7 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>M</b> 지도 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>M</b> 지도 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>Enter</b> 채팅 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
             <div class="winbtns" id="winbtns">
               <button class="wbtn" data-win="bag" title="가방 (I)">가방<small>I</small></button>
               <button class="wbtn" data-win="skill" title="스킬 (K)">스킬<small>K</small></button>
@@ -355,6 +358,7 @@ export class Session {
       }
       this.syncVoiceUi()
       window.addEventListener('keyup', this.onKeyUp)
+      this.chat = new ChatBox(this.stage.querySelector('.game-ui') as HTMLElement, (text) => this.sendChat(text))
     }
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
@@ -714,6 +718,11 @@ export class Session {
   }
 
   private onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter' && this.chat && !e.isComposing) {
+      this.chat.show()
+      e.preventDefault()
+      return
+    }
     if (e.key === 'n' || e.key === 'N') {
       this.sfx.toggle()
       this.syncMute()
@@ -1251,6 +1260,15 @@ export class Session {
         if (m.p !== this.cfg.localPlayer && this.peerIndex.get(from) === m.p) this.renderer.showEmote(m.p, m.id)
         break
       }
+      case 'chat': {
+        // 보낸 사람 자리가 맞는 것만 (남의 이름을 빌려 쓰지 못하게) · 글은 다시 다듬는다
+        const text = cleanChat(m.text)
+        if (!text || m.p === this.cfg.localPlayer || this.peerIndex.get(from) !== m.p) break
+        this.chat?.add(this.names[m.p] ?? `${m.p + 1}번`, text, 'ally')
+        this.renderer.showSay(m.p, text)
+        this.sfx.blip()
+        break
+      }
       case 'mark': {
         // 같은 편이 찍은 것만 본다 (던전은 모두 같은 편)
         const from = this.state.players[m.p]
@@ -1577,6 +1595,17 @@ export class Session {
     this.paused = true
   }
 
+  /** 채팅 보내기. 내 화면에는 바로 쓰고 모두에게 보낸다 (투기장에서도 모두에게 — 덕처럼 말로 도발하는 재미) */
+  private sendChat(text: string): boolean {
+    const lp = this.cfg.localPlayer
+    const me = this.state.players[lp]
+    if (!me || me.left || !this.cfg.link) return false
+    this.chat?.add(this.names[lp] ?? '나', text, 'me')
+    this.renderer.showSay(lp, text)
+    this.cfg.link.sendCtl({ t: 'chat', p: lp, text })
+    return true
+  }
+
   /** 빠른 감정 표현. 1.2초에 한 번. sim 밖(컨트롤 메시지) */
   private sendEmote(id: number): void {
     const lp = this.cfg.localPlayer
@@ -1847,6 +1876,8 @@ export class Session {
     this.disposed = true
     this.voice?.dispose()
     this.voice = null
+    this.chat?.dispose()
+    this.chat = null
     window.removeEventListener('keyup', this.onKeyUp)
     clearInterval(this.lobbyBeacon)
     if (this.cfg.lobby) {

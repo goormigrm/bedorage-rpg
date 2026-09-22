@@ -168,6 +168,8 @@ export type CtlMessage =
   | { t: 'mark'; p: number; x: number; y: number }
   /** 빠른 감정 표현 (ㅋㅋ · 굿 · 미안). sim 밖 */
   | { t: 'emote'; p: number; id: number }
+  /** 텍스트 채팅 (Enter). sim 밖 — 받는 쪽이 보낸 사람 자리 · 길이를 다시 본다 */
+  | { t: 'chat'; p: number; text: string }
   /**
    * 난입 (진행 중인 방에 새로 들어가기). 순서:
    *   1. 게스트 → 호스트 joinAsk. 호스트는 자리를 잡아 두고 곧바로 resume(판 전체)을 보낸다.
