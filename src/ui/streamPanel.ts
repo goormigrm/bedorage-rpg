@@ -1,6 +1,6 @@
 // 치지직 방송 연동 UI (2026-09-23 사용자: "설정창이 너무 눈에 안 띄고, 치지직 방송 연동 상태는 설정에 들어가야 보이는 게 아니고
 // 항상 떠 있어야 돼 — 대기실이든 게임 중이든. 눈에 띄게 배치하고 UI 도 수정").
-// - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태 · 받은 채팅 · 후원 수.
+// - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태만 — 받은 채팅 · 후원의 개수 · 합계는 보이지 않는다(2026-09-23).
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
 import { DONATE_EVENTS } from '../core/donate'
@@ -40,7 +40,7 @@ export class StreamBadge {
     const on = st === 'on'
     this.el.dataset.st = st
     const sub = on
-      ? `채팅 ${stream.counts.chat} · 후원 ${stream.counts.don}${stream.counts.sum > 0 ? ` (${won(stream.counts.sum)})` : ''}`
+      ? '받는 중'
       : st === 'connecting'
         ? '잠시만요'
         : st === 'error'
@@ -88,10 +88,13 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
     if (!busy()) draw()
   })
   const offAct = stream.onActivity(() => {
-    const feed = box.querySelector('.czfeed')
-    if (feed) feed.innerHTML = feedHtml()
-    const cnt = box.querySelector('.czcnt')
-    if (cnt) cnt.innerHTML = countHtml()
+    // 받은 것은 보여 주지 않는다 — 불만 한 번 깜빡인다
+    const dot = box.querySelector('.czdot') as HTMLElement | null
+    if (dot) {
+      dot.classList.remove('ping')
+      void dot.offsetWidth
+      dot.classList.add('ping')
+    }
   })
   // 잡는 단계에서 먼저 받는다 — 게임의 Esc(메뉴) · 이동 키보다 앞서
   const onKey = (e: KeyboardEvent) => {
@@ -108,24 +111,6 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
   }
   draw()
   return close
-}
-
-function countHtml(): string {
-  const c = stream.counts
-  return `받은 채팅 <b>${c.chat}</b> · 후원 <b>${c.don}</b>${c.sum > 0 ? ` · 합계 <b>${won(c.sum)}</b>` : ''}`
-}
-
-function feedHtml(): string {
-  if (stream.recent.length === 0) return `<div class="czfe empty">아직 받은 것이 없습니다 — 아래 "시험" 단추로 미리 볼 수 있습니다</div>`
-  return stream.recent
-    .slice(-6)
-    .reverse()
-    .map((r) =>
-      r.amount !== undefined
-        ? `<div class="czfe don"><b>${esc(r.nick)}</b> <em>${won(r.amount)}</em> ${esc(r.text)}</div>`
-        : `<div class="czfe"><b>${esc(r.nick)}</b> ${esc(r.text)}</div>`,
-    )
-    .join('')
 }
 
 const toggle = (key: string, name: string, on: boolean, yes = '켜기', no = '끄기') =>
@@ -155,8 +140,7 @@ function panelHtml(): string {
     `<div class="czrow">${main}${login ? `<button type="button" class="lnk" data-cz="logout">로그아웃</button>` : ''}<span class="czd">${esc(stream.detail)}</span></div>` +
     `<div class="czcols">` +
     `<div class="czcol">` +
-    `<div class="czcnt">${countHtml()}</div>` +
-    `<div class="czsub">최근 받은 것</div><div class="czfeed">${feedHtml()}</div>` +
+    `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +

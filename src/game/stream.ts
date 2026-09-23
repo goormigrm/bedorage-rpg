@@ -90,10 +90,8 @@ class StreamHub {
   detail = ''
   /** 시험 단추를 눌렀나 (그러면 치지직이 없어도 표를 보여 준다) */
   tried = false
-  /** 이 페이지에서 받은 채팅 · 후원 수 · 후원 합계 (상태 단추 · 창에 보인다) */
-  counts = { chat: 0, don: 0, sum: 0 }
-  /** 최근 받은 것 (창의 "최근 받은 것") — amount 가 있으면 후원 */
-  recent: { nick: string; text: string; amount?: number }[] = []
+  // 받은 채팅 · 후원의 **개수 · 합계 · 목록은 모으지 않는다** (2026-09-23 사용자: "후원 합계는 수입의 전체 수준을 알 수 있으니
+  // 절대 표시되지 않게 — 받은 채팅 · 후원 숫자 · 합계 내역은 나타내지 않도록"). 모으지 않으면 어디에도 샐 수 없다.
   private actFns = new Set<() => void>()
   private statusFns = new Set<Fn<StreamStatus>>()
   private chatFns = new Set<Fn<StreamChat>>()
@@ -117,15 +115,13 @@ class StreamHub {
     return () => this.statusFns.delete(f)
   }
 
-  /** 채팅 · 후원이 올 때마다 (상태 단추 · 창이 숫자를 고친다) */
+  /** 채팅 · 후원이 올 때마다 (상태 단추의 불이 한 번 깜빡인다 — 숫자는 없다) */
   onActivity(f: () => void): () => void {
     this.actFns.add(f)
     return () => this.actFns.delete(f)
   }
 
-  private note(r: { nick: string; text: string; amount?: number }): void {
-    this.recent.push(r)
-    if (this.recent.length > 20) this.recent.shift()
+  private note(): void {
     for (const f of [...this.actFns]) f()
   }
 
@@ -142,15 +138,12 @@ class StreamHub {
   }
 
   chat(c: StreamChat): void {
-    this.counts.chat++
-    this.note({ nick: c.nick, text: c.text })
+    this.note()
     for (const f of [...this.chatFns]) f(c)
   }
 
   donation(d: StreamDonation): void {
-    this.counts.don++
-    this.counts.sum += d.amount
-    this.note({ nick: d.nick, text: d.text, amount: d.amount })
+    this.note()
     if (this.donFns.size === 0) {
       this.held.push(d)
       if (this.held.length > 30) this.held.shift()

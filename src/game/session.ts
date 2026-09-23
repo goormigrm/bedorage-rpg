@@ -1373,7 +1373,8 @@ export class Session {
       case 'donate': {
         // 방송하는 사람이 보낸 이름표 — 보낸 사람 자리가 맞는 것만
         if (this.peerIndex.get(from) !== m.p || m.p === this.cfg.localPlayer) break
-        this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: cleanChat(m.nick).slice(0, 20) || '후원자', amount: Math.max(0, Number(m.amount) || 0), text: cleanChat(m.text), ev: m.ev })
+        // 금액은 받아도 버린다 (옛 판이 보냈더라도 — 2026-09-23)
+        this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: cleanChat(m.nick).slice(0, 20) || '후원자', amount: 0, text: cleanChat(m.text), ev: m.ev })
         break
       }
       case 'mchat': {
@@ -1744,9 +1745,10 @@ export class Session {
     const nick = cleanChat(d.nick).slice(0, 20) || '익명의 후원자'
     const text = cleanChat(d.text)
     const e = eventForAmount(d.amount)
-    this.sfx.donate(!!e && d.amount >= 10000)
+    this.sfx.donate(!!e && e.id >= 6)
+    // 금액은 어디에도 적지 않는다 (2026-09-23 — 채팅 칸에 쌓이면 그대로 후원 내역이 된다)
     if (!e) {
-      const line = text ? `${won(d.amount)} · ${text}` : `${won(d.amount)} 후원!`
+      const line = text ? `후원 · ${text}` : '후원 감사!'
       const id = this.renderer.pickSpeaker(this.view())
       if (id >= 0) {
         this.renderer.monsterSay(id, nick, line, true)
@@ -1757,11 +1759,12 @@ export class Session {
       return
     }
     const seq = this.donSeq++ & 15
-    this.donNames.set(`${lp}:${seq}`, { nick, amount: d.amount, text, ev: e.id })
-    this.cfg.link?.sendCtl({ t: 'donate', p: lp, seq, nick, amount: d.amount, text, ev: e.id })
+    // 방 사람들에게도 금액은 보내지 않는다 (이벤트 번호로 충분하다)
+    this.donNames.set(`${lp}:${seq}`, { nick, amount: 0, text, ev: e.id })
+    this.cfg.link?.sendCtl({ t: 'donate', p: lp, seq, nick, amount: 0, text, ev: e.id })
     this.donPending.push({ ev: e.id, seq })
     if (!this.canDonateNow()) {
-      this.chat?.add(nick, `${won(d.amount)} — ${e.name} (던전에 나가면 일어납니다)`, 'don')
+      this.chat?.add(nick, `${e.name} (던전에 나가면 일어납니다)`, 'don')
       this.message = `후원 이벤트 ${this.donPending.length}개가 기다리는 중 — 던전에 나가면 일어납니다`
       setTimeout(() => (this.message = ''), 4000)
     }
@@ -1813,15 +1816,15 @@ export class Session {
     if (!ev) return
     const info = this.donNames.get(`${e.p}:${e.seq}`)
     const nick = info?.nick ?? '후원자'
-    const amount = info?.amount ?? 0
     const here = this.state.players[e.p]?.area === this.viewArea
     if (here) {
-      const color = amount >= 30000 || ev.key === 'boss' || ev.key === 'hell' ? '#ff6a4a' : amount >= 10000 ? '#ffae4a' : '#f1d58a'
-      this.renderer.banner(`${nick}님 ${amount > 0 ? won(amount) : ''} · ${ev.name}!`, ev.desc, color)
-      if (e.p !== this.cfg.localPlayer) this.sfx.donate(amount >= 10000)
+      // 색 · 소리의 세기는 **이벤트**로 정한다 (금액은 적지도 들고 있지도 않는다)
+      const color = ev.id >= 7 ? '#ff6a4a' : ev.id >= 6 ? '#ffae4a' : '#f1d58a'
+      this.renderer.banner(`${nick}님 · ${ev.name}!`, ev.desc, color)
+      if (e.p !== this.cfg.localPlayer) this.sfx.donate(ev.id >= 6)
       if (e.m >= 0) this.renderer.monsterSay(e.m, nick, info?.text || `${nick}님이 보냈다!`, true)
     }
-    this.chat?.add(nick, `${amount > 0 ? `${won(amount)} — ` : ''}${ev.name}: ${ev.desc}`, 'don')
+    this.chat?.add(nick, `${ev.name}: ${ev.desc}`, 'don')
   }
 
   /**
