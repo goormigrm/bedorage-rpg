@@ -339,6 +339,8 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
   - 프레임 dt 는 음수 금지(session.frame · tick). `Math.pow(x, dt)` 꼴 스무딩은 음수 dt 에서 폭발한다.
   - 브라우저에서 게임 모듈을 import 할 때: 개발 서버는 고친 파일을 `?t=` 주소로 준다 — 상태를 가진 모듈(stream.ts 등)은 `performance.getEntriesByType('resource')` 에서 게임이 쓰는 주소를 찾아 불러야 같은 사본이다.
   - 영상 다시 뜨기: `tools/trailer.js` 머리 주석. `t.start({ diag: { sec, shots } })` 는 영상 없이 장면별 상태(카메라 · 빛 · 밝기)를 모은다.
+  - ⚠ 2026-09-24: 이 세션의 미리보기 도구(preview_start)는 **이름과 상관없이 철FPS 의 dev(덕, 5173)만** 띄웠다. RPG 는 `npx vite --port 5174 --strictPort` 를 백그라운드로 띄우고 `preview_start({url: 'http://localhost:5174/bedorage-rpg/?shot=1'})` 로 붙었다(`?shot=1` 이 있어야 `window.__session` 이 생긴다 · 새 출처라 세이브가 비어 인트로 "시작하기" 를 먼저 누른다 · 대기실 "빈 자리는 봇으로 채우기"). 끝나면 그 백그라운드 작업을 멈출 것.
+  - 영상 장면 확인: ffmpeg 가 없다 — 같은 개발 서버에서 `<video src=/bedorage-rpg/docs/img/trailer.webm>` 을 열어 시각마다 캔버스에 그려 `/__shot` 으로 `.frames/shots/` 에 모아 본다.
   - 게임 설명 · UI · 공지 · 영상에 **'디아블로' 라는 말을 쓰지 않는다** (2026-09-23 사용자).
 - ✅ **최적화 규칙** (v0.49.0 — 계측은 `npx vite-node tools/perf.ts`(sim) · 브라우저 GPU 는 EXT_disjoint_timer_query_webgl2 로 `__session.frame` 을 감싸 잰다(readPixels 동기화는 잡음이 커서 못 쓴다)):
   - **이펙트를 새로 만들 때 도형 · 재질을 매번 만들지 말 것** — 모아 두었다가 다시 쓰거나(ringPool · lightPool · impactPool), 같이 쓰고(dropRes · zoneDisc), 물체마다 만든 재질은 지울 때 dispose. 예전 새는 곳이 총구 섬광 · 고리 · 떨어진 것 · 장판이었다(`gl.info.memory.geometries` 가 싸움 중 계속 늘면 새는 것).
@@ -375,7 +377,7 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
 - ⚠ 패턴은 거리로 거르지 않는다("일정한 패턴"). 거르면 근접 앞에서 한 패턴만 되풀이했다. 못 쓰는 것은 부를 자리가 없거나 보이는 사람이 없을 때뿐.
 - 보스 결투장: `MapGen.arena`(보스 방 넷) → `map.ts` carveArena 가 맵 오른쪽에 둥근 빈 방 · 입구 하나 · 곧은 복도를 판다. `map.arena` 가 있으면 보스 = 가운데, 입구 = 가장 먼 스폰, 무리 · 상자는 결투장 밖.
 - 계측: `npx vite-node tools/bossfight.ts -- party=4 seeds=3` (dodge=0 이면 봇이 안 피한다 · char= · area=). 넷이 피하면 51~109초 쓰러짐 0, 안 피하면 3 · 4막에서 4~6번 쓰러진다. 혼자는 어렵다(침착 봇 군주 0/3) — 베타 의견으로 조정.
-- 다음: 소개 영상 `trailer.webm` 을 다시 뜬다(투표 장면이 남아 있다 · 보스 패턴 장면을 넣는다). 이번에는 미리보기 서버 띄우기가 권한 판정에 막혀 **브라우저에서 화면은 배포본으로만 확인**했다.
+- ✅ 소개 영상 `trailer.webm` 을 다시 떴다(2026-09-24 — 투표 빼고 !응원 · 도살자 · 군주 패턴). 화면 확인은 배포본 + 영상 장면 뽑기로 했다.
 - 폰은 이 게임을 막아 두었으니 방송 연동도 PC 만 본다.
 
 **4인 파티 계측 (2026-09-23, v0.45.2 — 사용자 "탱 · 딜 · 딜 · 힐 4명으로 하면 예상 플레이 타임")**: `tools/campaign.ts -- party=4 seeds=2 char=cheolmyeon,chim,oknyang,magic`(철면 탱 · 침착 · 옥냥 딜 · 매직 힐, 보통 봇).
