@@ -134,15 +134,38 @@ export function moveLabel(): string {
   return s.join('') === 'WASD' ? 'WASD' : s.join(' · ')
 }
 
-/** 조작 안내 띠 (게임 화면 아래) */
+/**
+ * 조작 안내 띠 (게임 화면 아래). **항목 단위로만 줄이 바뀐다** — 전에는 한 덩어리 글이라 "M" 과 "지도" 사이에서 끊겼다
+ * (2026-09-23 사용자: "조작 안내 줄바꿈 제대로"). 첫 줄 전투 · 둘째 줄 창 · 기타. 좁으면 항목째 다음 줄로 간다.
+ */
 export function keysHintHtml(): string {
   const k = keyLabel
-  return (
-    `<b>${moveLabel()}</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>${k('skill1')}·${k('skill2')}</b> 스킬 · <b>${k('ult')}</b> 궁극기 · ` +
-    `<b>${k('dash')}</b> 구르기 · <b>${k('sprint')}</b> 달리기 · <b>${k('use')}</b> 이동·열기·일으키기 · <b>${k('portal')}</b> 타운 포털 · ` +
-    `<b>${k('bag')}</b> 가방 · <b>${k('skills')}</b> 스킬 · <b>${k('attr')}</b> 능력치 · <b>${k('quest')}</b> 퀘스트 · <b>${k('map')}</b> 지도 · ` +
-    `<b>${k('skill3')}·${k('skill4')}</b> 배운 스킬 · <b>${k('voice')}</b> 음성 · <b>${k('mark')}</b> 신호 · <b>Enter</b> 채팅 · <b>Esc</b> 메뉴`
-  )
+  const it = (key: string, what: string) => `<span class="kh"><b>${key}</b> ${what}</span>`
+  const fight = [
+    it(moveLabel(), '이동'),
+    it('마우스', '조준'),
+    it('좌클릭', '사격'),
+    it('우클릭', '정조준'),
+    it(`${k('skill1')} · ${k('skill2')}`, '스킬'),
+    it(k('ult'), '궁극기'),
+    it(`${k('skill3')} · ${k('skill4')}`, '배운 스킬'),
+    it(k('dash'), '구르기'),
+    it(k('sprint'), '달리기'),
+    it(k('use'), '이동 · 열기 · 일으키기'),
+    it(k('portal'), '타운 포털'),
+  ]
+  const wins = [
+    it(k('bag'), '가방'),
+    it(k('skills'), '스킬 창'),
+    it(k('attr'), '능력치'),
+    it(k('quest'), '퀘스트'),
+    it(k('map'), '지도'),
+    it(k('voice'), '음성'),
+    it(k('mark'), '신호'),
+    it('Enter', '채팅'),
+    it('Esc', '메뉴'),
+  ]
+  return `<div class="kr">${fight.join(' ')}</div><div class="kr">${wins.join(' ')}</div>`
 }
 
 /** 시험용: 저장 없이 처음 상태로 */

@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
 import { ACID, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, WARDEN, affixNames, isBossLike } from '../core/monsters'
 
@@ -27,7 +27,7 @@ import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, isTo
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
-import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
+import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './character3d'
@@ -671,7 +671,8 @@ export class Renderer3D {
   }
 
   resize(): void {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1)
+    // 화면 해상도대로 그린다(전에는 dpr 만 봐서 큰 창에서 720p 를 늘려 흐릿했다) — 픽셀 수 상한 GL_PIXELS
+    this.dpr = canvasRatio(STAGE_SCALE, GL_PIXELS)
     this.gl.setPixelRatio(this.dpr)
     this.gl.setSize(VIEW_W, VIEW_H, false)
     // 폭이 넓어진 만큼 좌우로 더 보이면 넓은 화면이 유리해진다.
@@ -854,8 +855,19 @@ export class Renderer3D {
           this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
           break
         case 'mheal':
-          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.8, 0x7aff9a)
+          // 괴물이 스스로 고친다 — 초록은 우리 편 좋은 효과라 **보라**(적이 세지는 것)로 (2026-09-23)
+          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.8, ENEMY_BUFF)
           break
+        case 'allyfx': {
+          // 동료를 고치거나 지켜 주는 스킬이 닿는 범위: **초록** (적의 범위 공격은 빨강). 투기장에서 상대 편이 쓴 것은 보라
+          const me = localPlayer >= 0 ? state.players[localPlayer] : undefined
+          const caster = state.players[e.p]
+          const foe = !!me && !!caster && me !== caster && isEnemy(me, caster)
+          const col = foe ? ENEMY_BUFF : ALLY_GOOD
+          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.75, col)
+          this.spawnRing(e.x * U, e.y * U, e.r * U * 0.97, e.r * U, 1.1, col)
+          break
+        }
         case 'summon':
           this.spawnRing(e.x * U, e.y * U, 0.3, 2.4, 0.7, 0xd8c8ff)
           break
@@ -1041,19 +1053,19 @@ export class Renderer3D {
           this.monsterView.swiped(e.m)
           break
         case 'boom': {
-          // 폭발: 초록빛 섬광 + 고름 파편 + 링 + 흔들림
-          const light = new THREE.PointLight(0xb8ff5a, 18, e.r * U * 3, 1.5)
+          // 폭발: 붉은 섬광 + 파편 + 링 + 흔들림. 적의 범위 공격은 빨강(초록은 우리 편 좋은 효과 — 2026-09-23)
+          const light = new THREE.PointLight(0xff5a2a, 18, e.r * U * 3, 1.5)
           light.position.set(e.x * U, 1, e.y * U)
           this.scene.add(light)
           this.flashes.push({ light, mesh: new THREE.Mesh(), life: 0.18 })
           for (let k = 0; k < 14; k++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.05 + Math.random() * 0.1
-            const col = k % 3 === 0 ? 0xd8ff6a : k % 3 === 1 ? 0x8a9a4a : 0x4a3a1a
+            const col = k % 3 === 0 ? 0xff8a5a : k % 3 === 1 ? 0x8a4a3a : 0x4a2a1a
             this.spawnParticle(e.x * U, 0.6, e.y * U, Math.cos(a) * sp, 0.1 + Math.random() * 0.12, Math.sin(a) * sp, 0.55, col, 0.9)
           }
-          this.spawnImpact(e.x * U, 0.8, e.y * U, 0xd8ff6a, e.r * U * 2.4)
-          this.spawnRing(e.x * U, e.y * U, 0.4, e.r * U, 0.45, 0xb8e05a)
+          this.spawnImpact(e.x * U, 0.8, e.y * U, 0xff7a4a, e.r * U * 2.4)
+          this.spawnRing(e.x * U, e.y * U, 0.4, e.r * U, 0.45, ENEMY_AOE)
           const me = localPlayer >= 0 ? state.players[localPlayer] : null
           if (me && Math.hypot(me.x - e.x, me.y - e.y) < 500) this.shake = Math.max(this.shake, 0.3)
           break
@@ -1354,7 +1366,7 @@ export class Renderer3D {
     this.updateMarkers(curr, opts.localPlayer)
     this.updatePortals(curr)
     this.updateObjects(curr)
-    this.updateZones(curr)
+    this.updateZones(curr, opts.localPlayer)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
     this.updateLanterns(curr, pos)
@@ -1509,9 +1521,10 @@ export class Renderer3D {
   /** 저격 조준경: 커서 둘레만 남기고 어둡게 + 십자선 */
   private drawScope(cur: { x: number; y: number }, self: { x: number; y: number }): void {
     const ctx = this.hud.ctx
-    const r = 210
+    // 구멍은 월드 넓이에 묶인다 — 논리 높이가 커져도 보이는 땅이 같게 VIEW_K 를 곱한다
+    const r = 210 * VIEW_K
     // 내 주변에도 구멍을 낸다 — 조준경을 켠 채로도 붙는 적을 볼 수 있게
-    const rs = 132
+    const rs = 132 * VIEW_K
     const DARK = 'rgba(4,6,4,0.85)'
     ctx.save()
     ctx.beginPath()
@@ -2645,7 +2658,7 @@ export class Renderer3D {
   }
 
   /** 스포트라이트 무대: 땅에 밝은 원 + 테두리, 끝나 갈수록 흐려진다 */
-  private updateZones(curr: GameState): void {
+  private updateZones(curr: GameState, localPlayer: number): void {
     const live = new Set<number>()
     for (const zn of curr.zones) {
       live.add(zn.id)
@@ -2656,14 +2669,20 @@ export class Renderer3D {
       const trap = zn.kind === ZONE_TRAP
       if (!g) {
         g = new THREE.Group()
-        const cDisc = acid ? 0x6aff2a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : 0xfff0b0
-        const cRim = acid ? 0x9aff3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : 0xffe07a
+        // 색의 뜻 (2026-09-23 사용자: "적의 범위 공격은 빨강, 우리 편 힐 · 좋은 효과는 초록 — 초록 독을 좋은 범위로 착각하지 않게"):
+        // 산성 웅덩이(토사꾼)는 초록이었다 → 빨강. 스포트라이트 무대(동료 연사 +30%)는 초록 — 투기장에서 상대가 깐 무대는 빨강
+        const me = localPlayer >= 0 ? curr.players[localPlayer] : undefined
+        const owner = curr.players[zn.owner]
+        const hostileStage = !!me && !!owner && me !== owner && isEnemy(me, owner)
+        const stage = hostileStage ? 0xff4a3a : ALLY_GOOD
+        const cDisc = acid ? 0xff3a1a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : hostileStage ? 0xff3a1a : 0x7affa0
+        const cRim = acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
         const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
         const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        const beam = new THREE.PointLight(acid ? 0x8aff4a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
+        const beam = new THREE.PointLight(acid ? 0xff4a2a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
         beam.position.y = 3
         g.add(beam)
         this.scene.add(g)
@@ -2692,7 +2711,7 @@ export class Renderer3D {
         if (Math.random() < 0.15) {
           const a = Math.random() * Math.PI * 2
           const d = Math.random() * zn.r * U * 0.8
-          this.spawnParticle(zn.x * U + Math.cos(a) * d, 0.05, zn.y * U + Math.sin(a) * d, 0, 0.03 + Math.random() * 0.03, 0, 0.5, 0x9aff3a, 0.5)
+          this.spawnParticle(zn.x * U + Math.cos(a) * d, 0.05, zn.y * U + Math.sin(a) * d, 0, 0.03 + Math.random() * 0.03, 0, 0.5, 0xff7a4a, 0.5)
         }
         continue
       }
@@ -2872,11 +2891,11 @@ export class Renderer3D {
       const def = MONSTER_LIST[m.kind]
       if (m.st === MS_WINDUP && def.special === 'warden' && m.mode === 2) {
         // 관리인 내려찍기 예고: 둘레 원이 차오른다
-        this.groundCircle(ctx, at.x, at.z, WARDEN.slamR * U, '#ff8a4a', 0.35 + 0.5 * (1 - m.t / WARDEN.slamWindup))
+        this.groundCircle(ctx, at.x, at.z, WARDEN.slamR * U, ENEMY_AOE_CSS, 0.35 + 0.5 * (1 - m.t / WARDEN.slamWindup))
       }
       if (m.st === MS_WINDUP && def.attack === 'lob' && m.mode === 0) {
         // 산성·불덩이 예고: 떨어질 자리
-        this.groundCircle(ctx, m.ax * U, m.ay * U, (def.blast ?? ACID.r) * U, def.blast ? '#ff8a4a' : '#9aff3a', 0.3 + 0.5 * (1 - m.t / def.windup))
+        this.groundCircle(ctx, m.ax * U, m.ay * U, (def.blast ?? ACID.r) * U, ENEMY_AOE_CSS, 0.3 + 0.5 * (1 - m.t / def.windup))
       }
       if (m.st === MS_WINDUP && def.special === 'blink' && m.mode === 2) {
         // 그림자 순간이동 예고: 나타날 자리
@@ -2888,7 +2907,7 @@ export class Renderer3D {
         const a0 = (m.aim / 1024) * Math.PI * 2
         const k = 1 - m.t / LORD.novaWindup
         ctx.save()
-        ctx.strokeStyle = '#ff7a3a'
+        ctx.strokeStyle = ENEMY_AOE_CSS
         ctx.globalAlpha = 0.3 + 0.5 * k
         ctx.setLineDash([5, 5])
         for (let i = 0; i < n; i++) {
@@ -2936,9 +2955,13 @@ export class Renderer3D {
         ctx.restore()
       }
       this.drawSay(ctx, m, at, def)
-      // 정예는 늘, 나머지는 맞은 뒤 3초만 (보스는 화면 위 큰 막대가 따로 있다)
+      // 정예는 늘, 나머지는 맞은 뒤 3초만. 보스 · 우두머리는 화면 위 큰 막대와 따로 머리 위에 큰 이름표
       const goblin = def.attack === 'flee'
-      if (isBossLike(m) || (!m.elite && !goblin && curr.tick - m.hitTick > 180)) continue
+      if (isBossLike(m)) {
+        this.drawBossPlate(ctx, curr, m, at, def)
+        continue
+      }
+      if (!m.elite && !goblin && curr.tick - m.hitTick > 180) continue
       const s0 = this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.15, at.z)
       const w = 30
       const k = Math.max(0, m.hp / m.maxHp)
@@ -2969,10 +2992,88 @@ export class Renderer3D {
     }
   }
 
+  /**
+   * 보스 · 우두머리 머리 위 큰 이름표 (2026-09-23 사용자: "중간보스 · 막 보스는 화면 위 가운데에만 이름과 체력이 떠서
+   * 누가 보스인지 안 보인다 — 보스 위에 이름표를 크게"). 표 · 이름 · 체력 막대 — 높이 BOSS_PLATE_H 만큼(말풍선은 그 위로).
+   */
+  private drawBossPlate(ctx: CanvasRenderingContext2D, curr: GameState, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
+    const unique = !def.boss
+    const p = this.bossPlateAt(m, at, def)
+    const name = (unique && curr.curArea >= 0 ? areaDef(curr.curArea).unique?.name : undefined) ?? def.name
+    const col = unique ? '#ffb46a' : '#ff6a4a'
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    ctx.font = '800 22px "Nanum Myeongjo", serif'
+    const w = Math.max(104, ctx.measureText(name).width + 30)
+    const by = p.y - 10
+    // 체력 막대 (금 테)
+    const k = Math.max(0, Math.min(1, m.hp / m.maxHp))
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'
+    ctx.fillRect(p.x - w / 2, by, w, 7)
+    const g = ctx.createLinearGradient(p.x - w / 2, 0, p.x + w / 2, 0)
+    g.addColorStop(0, '#6a0a0a')
+    g.addColorStop(1, '#e0402a')
+    ctx.fillStyle = g
+    ctx.fillRect(p.x - w / 2 + 1, by + 1, (w - 2) * k, 5)
+    ctx.strokeStyle = 'rgba(201,162,74,0.85)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(p.x - w / 2 - 0.5, by - 0.5, w + 1, 8)
+    // 이름
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = 5
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+    ctx.strokeText(name, p.x, by - 6)
+    ctx.shadowColor = unique ? 'rgba(255,160,80,0.55)' : 'rgba(255,70,40,0.6)'
+    ctx.shadowBlur = 10
+    ctx.fillStyle = col
+    ctx.fillText(name, p.x, by - 6)
+    ctx.shadowBlur = 0
+    // 표: ── 보스 ── / ── 우두머리 ──
+    const tag = unique ? '우두머리' : '보스'
+    const ty = by - 32
+    ctx.font = '800 11px "IBM Plex Sans KR", sans-serif'
+    const tw = ctx.measureText(tag).width
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+    ctx.strokeText(tag, p.x, ty)
+    ctx.fillStyle = '#f1d58a'
+    ctx.fillText(tag, p.x, ty)
+    ctx.strokeStyle = 'rgba(241,213,138,0.7)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(p.x - tw / 2 - 30, ty - 4)
+    ctx.lineTo(p.x - tw / 2 - 6, ty - 4)
+    ctx.moveTo(p.x + tw / 2 + 6, ty - 4)
+    ctx.lineTo(p.x + tw / 2 + 30, ty - 4)
+    ctx.stroke()
+    // 우두머리의 정예 능력 (막대 아래 작게)
+    const af = affixNames(m.elite)
+    if (af) {
+      ctx.font = '600 10px system-ui, sans-serif'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+      ctx.strokeText(af, p.x, by + 19)
+      ctx.fillStyle = '#e8b0ff'
+      ctx.fillText(af, p.x, by + 19)
+    }
+    ctx.restore()
+  }
+
+  /** 보스 이름표 자리: 모델 키 바로 위 (실사 모델은 키 = MONSTER_TOP × 크기 — 예전 1.4 배는 머리 위로 한참 떴다) */
+  private bossPlateAt(m: Monster, at: { x: number; z: number }, def: MonsterDef): { x: number; y: number } {
+    return this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.3, at.z)
+  }
+
   /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글). 말풍선 자리를 기억해 둔다 */
   private drawSay(ctx: CanvasRenderingContext2D, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
     const top = MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
     let head = this.worldToScreen(at.x, top + 0.35, at.z)
+    // 보스 · 우두머리는 큰 이름표(drawBossPlate) 위로
+    if (isBossLike(m)) {
+      const p = this.bossPlateAt(m, at, def)
+      head = { x: p.x, y: p.y - BOSS_PLATE_H }
+    }
     if (m.sum !== undefined) {
       const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)
       if (who) {
@@ -3410,6 +3511,18 @@ function newVis(): DuckVis {
 }
 
 export { hex, PLAYER_RADIUS }
+
+/**
+ * 범위의 색이 뜻을 가진다 (2026-09-23 사용자: "적의 범위 공격은 빨강, 우리 편 힐 · 좋은 효과는 초록").
+ * 빨강 = 적의 범위 공격(장판 · 예고 원 · 폭발) · 초록 = 동료를 고치거나 지켜 주는 범위 · 보라 = 적이 세지는 것(괴물 치유 등).
+ * 초록을 다른 뜻에 쓰지 말 것 — 예전 산성 웅덩이가 초록이라 좋은 범위로 착각했다.
+ */
+/** 보스 이름표 높이 (말풍선 · 소환 이름표를 그 위로 올린다) */
+const BOSS_PLATE_H = 50
+const ENEMY_AOE = 0xff4a3a
+const ENEMY_AOE_CSS = '#ff4a3a'
+const ALLY_GOOD = 0x5aff8a
+const ENEMY_BUFF = 0xc070ff
 
 /** 스킬 색 (고리·입자). skillIcons 의 색과 맞춘다 */
 const SKILL_COLOR: Record<string, number> = {

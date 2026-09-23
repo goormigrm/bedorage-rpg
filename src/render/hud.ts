@@ -12,26 +12,56 @@ export const BASE_W = 1280
 export const BASE_H = 720
 
 /**
- * 실제로 그리는 논리 해상도. **높이는 720 고정, 폭만 화면 비율에 맞춰 늘린다.**
- * 폰 가로(20:9 등)에서 1280×720 을 그대로 쓰면 좌우에 검은 여백이 크게 남기 때문이다.
- * 폭이 늘어난 만큼 좌우로 더 보이면 넓은 화면이 유리해지므로,
+ * 실제로 그리는 논리 해상도. **폭은 화면 비율에 맞춰 늘린다** — 폰 가로(20:9 등)에서 1280×720 을 그대로 쓰면
+ * 좌우에 검은 여백이 크게 남기 때문이다. 폭이 늘어난 만큼 좌우로 더 보이면 넓은 화면이 유리해지므로,
  * 렌더러가 세로 시야(fov)를 줄여 **보이는 월드 면적을 일정하게** 유지한다(renderer3d.resize).
+ *
+ * **높이는 창 높이를 따라 720 ~ 1440** (2026-09-23 사용자: "인게임 해상도를 더 높이고 HUD 를 전체적으로 작게").
+ * 전에는 720 고정이라 큰 모니터에서 화면 전체를 1.3 ~ 1.8 배로 늘려 HUD 가 커 보였고 3D 도 흐릿했다.
+ * 이제 논리 1px ≈ 화면 1px(HUD 크기 "보통") — HUD 는 창에 비해 작아지고, 3D 는 화면 해상도로 그린다.
+ * 보이는 월드는 비율에만 달려 있어 **높이가 달라도 그대로**다. 폰(터치)은 단추 크기 때문에 720 그대로.
  * `let` 이라 import 한 쪽에서도 갱신된 값을 본다(ES 모듈 live binding).
  */
 export let VIEW_W = BASE_W
 export let VIEW_H = BASE_H
+/** VIEW_H / 720 — 월드에 묶인 2D 크기(저격 조준경 구멍 등)를 논리 높이와 함께 늘릴 때 곱한다 */
+export let VIEW_K = 1
+
+export const MIN_VIEW_H = BASE_H
+export const MAX_VIEW_H = 1440
 
 /**
- * 화면 비율(가로/세로)에 맞춰 논리 폭을 정한다. 바뀌었으면 true (캔버스·카메라 갱신 필요).
- * 하한은 기준 비율(16:9) — 더 좁히면 가운데 점수판과 오른쪽 위 버튼이 겹친다.
+ * 창 크기(CSS px)에 맞춰 논리 크기를 정한다. 바뀌었으면 true (캔버스·카메라 갱신 필요).
+ * `hudScale` 은 논리 1px 이 화면 몇 px 인지의 목표(설정의 HUD 크기 — 작게 0.85 · 보통 1 · 크게 1.2). 0 이면 720 고정(폰).
+ * 비율 하한은 기준 비율(16:9) — 더 좁히면 가운데 점수판과 오른쪽 위 버튼이 겹친다.
  */
-export function setViewAspect(aspect: number): boolean {
-  const a = Math.min(2.4, Math.max(BASE_W / BASE_H, aspect || BASE_W / BASE_H))
-  const w = Math.round((BASE_H * a) / 2) * 2 // 짝수로 맞춰 흐릿함 방지
-  if (w === VIEW_W) return false
+export function setViewSize(winW: number, winH: number, hudScale = 1): boolean {
+  const a = Math.min(2.4, Math.max(BASE_W / BASE_H, winW / winH || BASE_W / BASE_H))
+  const want = hudScale > 0 ? winH / hudScale : BASE_H
+  const h = Math.round(Math.min(MAX_VIEW_H, Math.max(MIN_VIEW_H, want || BASE_H)) / 2) * 2 // 짝수로 맞춰 흐릿함 방지
+  const w = Math.round((h * a) / 2) * 2
+  if (w === VIEW_W && h === VIEW_H) return false
   VIEW_W = w
-  VIEW_H = BASE_H
+  VIEW_H = h
+  VIEW_K = h / BASE_H
   return true
+}
+
+/**
+ * 캔버스 픽셀 배율: 화면 해상도대로(dpr × 무대 배율) 그리되 **픽셀 수 상한**을 둔다(느린 그래픽 카드 보호).
+ * 상한은 3D 약 2.6M(1920×1080 의 1.25 배) · HUD 3.7M(2560×1440).
+ */
+export function canvasRatio(stageScale: number, budget: number): number {
+  const dpr = window.devicePixelRatio || 1
+  const want = Math.min(2, dpr * (stageScale || 1))
+  return Math.max(0.5, Math.min(want, Math.sqrt(budget / (VIEW_W * VIEW_H))))
+}
+export const GL_PIXELS = 2_600_000
+export const HUD_PIXELS = 3_700_000
+/** 무대가 화면에서 몇 배로 보이는가 (session.fit 이 알려 준다) */
+export let STAGE_SCALE = 1
+export const setStageScale = (s: number): void => {
+  STAGE_SCALE = s
 }
 
 export const TEAM_NAMES = ['A팀', 'B팀']
@@ -124,7 +154,7 @@ export class Hud {
   }
 
   resize(): void {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1)
+    this.dpr = canvasRatio(STAGE_SCALE, HUD_PIXELS)
     this.canvas.width = Math.round(VIEW_W * this.dpr)
     this.canvas.height = Math.round(VIEW_H * this.dpr)
   }

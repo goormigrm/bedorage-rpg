@@ -27,7 +27,7 @@ import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, attrFree, sanitizeSheet } from '../core/items'
-import { bindSettings, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
+import { bindSettings, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
@@ -35,7 +35,7 @@ import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
 import { CtlMessage, LobbyLink, RoomLink } from '../net/room'
-import { VIEW_H, VIEW_W, setViewAspect } from '../render/hud'
+import { VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
 import { worldDirToScreen } from '../render3d/camera'
 import { U } from '../render3d/world3d'
 import { Renderer3D } from '../render3d/renderer3d'
@@ -802,14 +802,17 @@ export class Session {
   private fit = (): void => {
     const w = window.innerWidth
     const h = window.innerHeight
-    // 화면 비율에 맞춰 논리 폭을 바꾼다 → 폰 가로에서 좌우 검은 여백이 거의 사라진다
-    if (setViewAspect(w / h)) this.renderer.resize()
+    // 화면 비율에 맞춰 논리 폭을 바꾼다 → 폰 가로에서 좌우 검은 여백이 거의 사라진다.
+    // 논리 높이는 창 높이를 따른다(HUD 크기 설정 — hud.ts setViewSize). 폰은 터치 단추 크기 때문에 720 고정
+    setViewSize(w, h, isTouchDevice() ? 0 : hudScale())
     this.stage.style.width = `${VIEW_W}px`
     this.stage.style.height = `${VIEW_H}px`
     // flex 로 가운데 두면 화면보다 큰 요소가 한쪽으로 쏠린다(폰에서 오른쪽으로 붙던 원인).
     // 절반씩 되돌리는 translate 로 정확히 가운데에 놓는다.
     const s = Math.min(w / VIEW_W, h / VIEW_H)
     this.stage.style.transform = `translate(-50%, -50%) scale(${s})`
+    // 캔버스는 화면에 보이는 크기(배율 s)대로 또렷하게 그린다
+    setStageScale(s)
     this.renderer.resize()
   }
 
@@ -1023,9 +1026,10 @@ export class Session {
         { label: '계속', primary: true, onClick: () => this.hideOverlay() },
         { label: '로비로', primary: false, onClick: () => this.exit() },
       ],
-      settingsHtml({ keys: !this.touch }),
+      // 감싸는 칸에 잇는다 — .settings 자체에 이으면 다시 그릴 때 그 안에 .settings 가 또 들어갔다(키 설정 넓게 펴기가 안 먹던 원인)
+      `<div class="sethost">${settingsHtml({ keys: !this.touch })}</div>`,
     )
-    const box = this.overlay.querySelector('.settings') as HTMLElement | null
+    const box = this.overlay.querySelector('.sethost') as HTMLElement | null
     if (box)
       bindSettings(box, {
         keys: !this.touch,
@@ -1034,6 +1038,7 @@ export class Session {
           this.syncMute()
         },
         onReal: (on) => this.renderer.setRealMonsters(on),
+        onHud: () => this.fit(),
         onKeys: (on) => {
           this.keysShown = on
           this.applyKeys()

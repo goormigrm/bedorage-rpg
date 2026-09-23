@@ -148,8 +148,17 @@ export class TownPanel {
     if (!this.open) return
     const me = this.me()
     const s = this.state()
-    const sig = `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    const sig = this.sigOf(me, s)
     if (sig !== this.lastSig) this.render()
+  }
+
+  /**
+   * 창을 다시 그릴지 가르는 값. **보관함도 순서까지 본다** — 개수만 보던 때는 보관함을 정렬해도(개수 그대로)
+   * 창이 다시 그려지지 않아 정렬이 안 되는 것처럼 보였다(2026-09-23 사용자). 그리는 쪽과 보는 쪽이 같은 값을 쓴다.
+   */
+  private sigOf(me: PlayerState, s: GameState): string {
+    const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
+    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${items(me.bag)}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${items(me.stash)}|${s.shop.length}`
   }
 
   private render(): void {
@@ -157,7 +166,7 @@ export class TownPanel {
     if (!npc) return
     const me = this.me()
     const s = this.state()
-    this.lastSig = `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bag.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${me.stash.length}|${s.shop.length}`
+    this.lastSig = this.sigOf(me, s)
     let body = ''
     if (npc === 'merchant') {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`

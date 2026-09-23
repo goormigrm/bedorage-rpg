@@ -11,6 +11,7 @@ const AUTOPICK_KEY = 'brpg.autopick'
 const REAL_KEY = 'brpg.real'
 const KEYS_KEY = 'brpg.keys'
 const MUTE_KEY = 'brpg.muted'
+const HUD_KEY = 'brpg.hud'
 
 const get = (k: string): string | null => {
   try {
@@ -47,6 +48,22 @@ export const setRealMonsters = (on: boolean): void => set(REAL_KEY, on ? '1' : '
 export const keysShown = (): boolean => get(KEYS_KEY) !== '0'
 export const setKeysShown = (on: boolean): void => set(KEYS_KEY, on ? '1' : '0')
 
+/**
+ * HUD 크기 (2026-09-23 사용자: "HUD 를 전체적으로 작게"). 논리 1px 을 화면 몇 px 로 보일지의 목표 — hud.ts setViewSize.
+ * 전에는 논리 높이 720 고정이라 1080p 창에서 약 1.3 배 · 1440p 에서 1.8 배로 커 보였다. 보통 = 1 배.
+ */
+export const HUD_SIZES = [
+  { id: 'small', name: '작게', k: 0.85 },
+  { id: 'normal', name: '보통', k: 1 },
+  { id: 'large', name: '크게', k: 1.2 },
+] as const
+export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
+  const v = get(HUD_KEY)
+  return HUD_SIZES.some((h) => h.id === v) ? (v as (typeof HUD_SIZES)[number]['id']) : 'normal'
+}
+export const hudScale = (): number => HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1
+export const setHudSize = (id: string): void => set(HUD_KEY, id)
+
 /** 소리 (audio/sfx.ts 와 같은 열쇠) */
 export const soundMuted = (): boolean => get(MUTE_KEY) === '1'
 export const setSoundMuted = (m: boolean): void => set(MUTE_KEY, m ? '1' : '0')
@@ -57,6 +74,8 @@ export type SettingsOpts = {
   /** 바뀐 값을 지금 판에도 알린다 (대기실에서는 없다 — 다음 판부터 반영) */
   onSound?: (muted: boolean) => void
   onReal?: (on: boolean) => void
+  /** HUD 크기가 바뀌었다 (게임 안이면 화면 크기를 다시 맞춘다) */
+  onHud?: () => void
   onKeys?: (on: boolean) => void
   onAutoPick?: (v: number) => void
 }
@@ -74,18 +93,28 @@ export function settingsHtml(o: SettingsOpts = {}): string {
       `<button type="button" data-r="${r}" class="${ap & (1 << r) ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}" title="${n} 아이템을 밟으면 ${ap & (1 << r) ? '줍습니다 (누르면 끔)' : '줍지 않습니다 (누르면 켬)'}">${n}</button>`,
   ).join('')
   const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? '꺼짐 — F 로만' : '켠 등급만'
+  // 키 설정을 펴면 게임 안(Esc 메뉴)에서는 오른쪽 칸으로 편다 — 아래로 늘어나 화면을 넘던 것(2026-09-23 사용자) 고침
+  const kb = !isTouchDevice()
   return (
-    `<div class="settings">` +
+    `<div class="settings${kb && kbOpen ? ' kbwide' : ''}"><div class="sg-main">` +
     onoff('소리', !soundMuted()) +
     onoff('실사 괴물', realMonstersOn()) +
     `<p class="apn">실사 괴물은 처음 만날 때 모델을 받습니다. 느린 기기·데이터가 아까우면 끄세요.</p>` +
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
+    (isTouchDevice() ? '' : hudRowHtml()) +
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
     `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
-    (isTouchDevice() ? '' : keybindHtml()) +
+    `</div>` +
+    (kb ? keybindHtml() : '') +
     `</div>`
   )
+}
+
+function hudRowHtml(): string {
+  const cur = hudSize()
+  const btns = HUD_SIZES.map((h) => `<button type="button" data-hud="${h.id}" class="${h.id === cur ? 'on' : ''}">${h.name}</button>`).join('')
+  return `<div class="srow"><b>HUD 크기</b><div class="seg small hudseg">${btns}</div></div>`
 }
 
 /**
@@ -150,7 +179,7 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
     box.innerHTML = settingsHtml(o)
     bindSettings(box, o)
   }
-  box.querySelectorAll<HTMLButtonElement>('.srow .seg button').forEach((b) => {
+  box.querySelectorAll<HTMLButtonElement>('.srow .seg[data-set] button').forEach((b) => {
     b.onclick = () => {
       const on = b.dataset.on === '1'
       const name = (b.parentElement as HTMLElement).dataset.set
@@ -164,6 +193,13 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         setKeysShown(on)
         o.onKeys?.(on)
       }
+      redraw()
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-hud]').forEach((b) => {
+    b.onclick = () => {
+      setHudSize(b.dataset.hud as string)
+      o.onHud?.()
       redraw()
     }
   })

@@ -824,7 +824,8 @@ const BUILDERS = [
 ]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 1.05, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 1.3, 1.4]
+// 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 1.3, 1.4]
 
 export class MonsterView {
   readonly group = new THREE.Group()

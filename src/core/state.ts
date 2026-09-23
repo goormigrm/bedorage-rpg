@@ -596,6 +596,8 @@ export type SimEvent =
   | { type: 'boom'; x: number; y: number; r: number }
   /** 주술사가 주위 동료를 고쳤다 (초록 고리) · 보스가 새끼를 불렀다 */
   | { type: 'mheal'; m: number; x: number; y: number; r: number }
+  /** 동료를 고치거나 지켜 주는 스킬이 닿은 범위 (초록 고리 — 적의 범위 공격 빨강과 헷갈리지 않게, 2026-09-23) */
+  | { type: 'allyfx'; p: number; x: number; y: number; r: number }
   | { type: 'summon'; m: number; x: number; y: number }
   /** 방패병이 탄을 막았다 */
   | { type: 'mblock'; m: number; x: number; y: number }

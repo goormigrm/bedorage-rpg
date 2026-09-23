@@ -2017,6 +2017,12 @@ function alliesNear(state: GameState, p: PlayerState, r: number, includeDowned =
   return state.players.filter((q) => q.alive && !q.left && q.team === p.team && (includeDowned || !q.downed) && len(q.x - p.x, q.y - p.y) <= r)
 }
 
+/** alliesNear + 화면에 **초록 고리**(동료를 고치거나 지켜 주는 범위)를 알린다. 스킬을 쓸 때만 부른다 (틱마다 부르는 곳은 alliesNear) */
+function alliesFx(state: GameState, p: PlayerState, r: number, includeDowned = false): PlayerState[] {
+  state.events.push({ type: 'allyfx', p: p.id, x: p.x, y: p.y, r })
+  return alliesNear(state, p, r, includeDowned)
+}
+
 function buffRate(p: PlayerState, ticks: number, mul: number): void {
   p.rateMul = p.fx[FX_RATE] > 0 ? Math.max(p.rateMul, mul) : mul
   p.fx[FX_RATE] = Math.max(p.fx[FX_RATE], ticks)
@@ -2066,7 +2072,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'roar': {
       aoe(state, map, p, p.x, p.y, (dun ? 6 : 5) * T, dun ? 220 : 120, { stun: dun ? 180 : 120, knock: dun ? 10 : 8, id })
-      for (const q of alliesNear(state, p, 8 * T)) q.fx[FX_PARTYDR] = 360
+      for (const q of alliesFx(state, p, 8 * T)) q.fx[FX_PARTYDR] = 360
       if (dun) p.fx[FX_GUARD] = Math.max(p.fx[FX_GUARD], 360)
       break
     }
@@ -2090,7 +2096,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
         m.vulnPct = Math.max(m.vulnPct, 25)
       }
       // 카메라 앞이라 괴물이 몸을 사린다: 던전에서 8초간 나와 곁의 동료가 받는 피해 -30% (포효의 가호와 같은 효과)
-      if (state.mode === 'dungeon') for (const q of alliesNear(state, p, 8 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 480)
+      if (state.mode === 'dungeon') for (const q of alliesFx(state, p, 8 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 480)
       break
     }
     case 'fanfire': {
@@ -2116,7 +2122,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     // ---- 매직덕
     case 'firstaid': {
-      for (const q of alliesNear(state, p, 6 * T)) {
+      for (const q of alliesFx(state, p, 6 * T)) {
         // 던전: 4초간 받는 피해 -30% (붙은 떼 속에서 회복만으로는 다시 쓰러졌다)
         if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
         healPlayer(state, q, q.maxHp * 0.25 * healMul(p))
@@ -2132,7 +2138,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     case 'surgery': {
       // 던전: 12칸 · 그 뒤 8초간 받는 피해 -50%
       if (dun) for (const q of alliesNear(state, p, 12 * T)) q.fx[FX_GUARD] = Math.max(q.fx[FX_GUARD], 480)
-      for (const q of alliesNear(state, p, (dun ? 12 : 8) * T, true)) {
+      for (const q of alliesFx(state, p, (dun ? 12 : 8) * T, true)) {
         if (q.downed) {
           raise(state, q, q.maxHp, 180)
           p.revives++
@@ -2198,7 +2204,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_REFLECT] = 180
       // 후광 (던전 — 주펄덕 힐러): 7칸 안 동료(나 포함) 체력 15% · 5초간 받는 피해 -30%
       if (dun) {
-        for (const q of alliesNear(state, p, 7 * T)) {
+        for (const q of alliesFx(state, p, 7 * T)) {
           healPlayer(state, q, q.maxHp * 0.15 * healMul(p))
           q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 300)
         }
@@ -2206,7 +2212,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     case 'supernova':
       aoe(state, map, p, p.x, p.y, (dun ? 7 : 6) * T, dun ? 380 : 200, { stun: dun ? 180 : 150, knock: 10, id })
-      if (dun) for (const q of alliesNear(state, p, 9 * T)) healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
+      if (dun) for (const q of alliesFx(state, p, 9 * T)) healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
       break
     // ---- 우원덕
     case 'stunt': {
@@ -2284,12 +2290,12 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       // 켠왕: 깰 때까지 안 끈다 — 버티고 끌어모은다
       p.fx[FX_KENWANG] = dun ? 720 : 600
       tauntNear(state, p, 8 * T, 120)
-      for (const q of alliesNear(state, p, 6 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], dun ? 720 : 600)
+      for (const q of alliesFx(state, p, 6 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], dun ? 720 : 600)
       break
     // ---- 통천덕
     case 'snack': {
       // 치킨 나눔 (2026-09-19 통천덕 = 힐러): 나와 7칸 안 동료 체력 25%
-      for (const q of alliesNear(state, p, 7 * T)) {
+      for (const q of alliesFx(state, p, 7 * T)) {
         healPlayer(state, q, q.maxHp * 0.25 * healMul(p))
         if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
       }
@@ -2310,7 +2316,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       if (dun) {
         lineAoe(state, p, 18 * T, 1.2 * T, 900, 120)
         // 천사의 가호: 12칸 안 동료(나 포함) 체력 40% · 6초간 받는 피해 -30%
-        for (const q of alliesNear(state, p, 12 * T)) {
+        for (const q of alliesFx(state, p, 12 * T)) {
           healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
           q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 360)
         }
@@ -2345,7 +2351,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       buffRate(p, 360, dun ? 2 : 1.5)
       // 던전: 8칸 안 동료도 6초간 연사 +50%, 나는 받는 피해 -30%
       if (dun) {
-        for (const q of alliesNear(state, p, 8 * T)) if (q !== p) buffRate(q, 360, 1.5)
+        for (const q of alliesFx(state, p, 8 * T)) if (q !== p) buffRate(q, 360, 1.5)
         p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 360)
       }
       break
