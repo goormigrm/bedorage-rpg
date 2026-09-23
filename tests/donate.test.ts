@@ -9,6 +9,7 @@ import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS } from '../src/core/donate'
+import { eventForAmount } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -48,6 +49,20 @@ describe('후원 이벤트 — 소환', () => {
   it('이벤트는 열 가지이고 금액이 오를수록 세다(번호 · 금액 순서가 같다)', () => {
     expect(DONATE_EVENTS.length).toBe(10)
     for (let i = 1; i < DONATE_EVENTS.length; i++) expect(DONATE_EVENTS[i].amount).toBeGreaterThan(DONATE_EVENTS[i - 1].amount)
+  })
+
+  it('금액표: 1만 5천 칸이 없고 2만 · 3만 · 5만 · 10만 (2026-09-23 요청) · 넘는 것 중 가장 비싼 이벤트', () => {
+    expect(DONATE_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000])
+    const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount) }
+    expect(eventForAmount(999, cfg)).toBeUndefined()
+    expect(eventForAmount(1000, cfg)?.key).toBe('horde')
+    expect(eventForAmount(15000, cfg)?.key).toBe('unique')
+    expect(eventForAmount(20000, cfg)?.key).toBe('seal')
+    expect(eventForAmount(49999, cfg)?.key).toBe('rage')
+    expect(eventForAmount(100000, cfg)?.key).toBe('hell')
+    expect(eventForAmount(500000, cfg)?.key).toBe('hell')
+    // 끈 칸(0 원)은 건너뛴다
+    expect(eventForAmount(100000, { ...cfg, amounts: cfg.amounts.map((a, i) => (i === 9 ? 0 : a)) })?.key).toBe('boss')
   })
 
   it('마을에서는 아무 일도 없다', () => {
