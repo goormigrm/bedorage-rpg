@@ -129,6 +129,9 @@ interface Slash {
 }
 
 /** 빠른 감정 표현 (키 1·2·3, 폰은 버튼). 글은 여기 한 곳에서 정한다 */
+/** 말풍선 · 후원 이름표 글꼴 */
+const SAY_FONT = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+
 /** 점광원 수를 이 단위로 맞춘다 (빈 빛은 최대 LIGHT_STEP-1 개 — 셰이더 비용이 그만큼 는다) */
 const LIGHT_STEP = 4
 /** 미리 컴파일하는 가장 큰 빛 수. 이보다 많으면 맞추지 않는다 (드물다 — 그때만 처음 컴파일) */
@@ -228,8 +231,11 @@ export class Renderer3D {
   private marks: { x: number; z: number; life: number; max: number; mesh: THREE.Mesh }[] = []
   /** 빠른 감정 표현 말풍선 (플레이어 번호 → 글·끝나는 시각) */
   private emotes = new Map<number, { text: string; until: number }>()
-  /** 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 */
-  private says = new Map<number, { nick: string; text: string; until: number; gold: boolean }>()
+  /**
+   * 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 · 마지막으로 그린 자리.
+   * 괴물이 죽어도 말풍선은 제 시간까지 그 자리(시체 위)에 남는다 — 사용자: "죽어도 일정 시간은 떠 있도록"
+   */
+  private says = new Map<number, { nick: string; text: string; until: number; gold: boolean; x?: number; z?: number; top?: number }>()
   /** 후원 소환 괴물의 이름표: (부른 사람, 후원 번호) → "○○님의" (세션이 넣는다 — 이름은 sim 밖) */
   private summonLabel: ((by: number, seq: number) => string | undefined) | null = null
 
@@ -420,7 +426,7 @@ export class Renderer3D {
    */
   monsterSay(id: number, nick: string, text: string, gold = false): void {
     const t = text.length > 30 ? `${text.slice(0, 29)}…` : text
-    this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(7000, 3500 + text.length * 80), gold })
+    this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(8000, 4500 + text.length * 90), gold })
   }
 
   /**
@@ -1362,6 +1368,7 @@ export class Renderer3D {
       return { x: p.x, y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
     this.drawMonsterBars(curr)
+    this.drawOrphanSays(curr)
     this.drawDropLabels(curr, opts.localPlayer)
     this.drawPlaceLabels(curr, opts.localPlayer)
     this.hud.drawTexts(st)
@@ -2955,16 +2962,15 @@ export class Renderer3D {
     }
   }
 
-  /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글) */
+  /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글). 말풍선 자리를 기억해 둔다 */
   private drawSay(ctx: CanvasRenderingContext2D, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
     const top = MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
     let head = this.worldToScreen(at.x, top + 0.35, at.z)
-    const font = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
     if (m.sum !== undefined) {
       const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)
       if (who) {
         ctx.save()
-        ctx.font = `800 12px ${font}`
+        ctx.font = `800 12px ${SAY_FONT}`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'alphabetic'
         ctx.lineWidth = 3
@@ -2979,16 +2985,36 @@ export class Renderer3D {
     }
     const say = this.says.get(m.id)
     if (!say) return
-    const left = say.until - performance.now()
-    if (left <= 0) {
-      this.says.delete(m.id)
-      return
+    say.x = at.x
+    say.z = at.z
+    say.top = top
+    this.drawBubble(ctx, head, say)
+  }
+
+  /** 괴물이 쓰러졌거나 사라진 말풍선: 마지막으로 그린 자리(시체 위, 조금 낮게)에 제 시간까지 */
+  private drawOrphanSays(curr: GameState): void {
+    if (this.says.size === 0) return
+    const alive = new Set<number>()
+    for (const m of curr.monsters) if (m.hp > 0) alive.add(m.id)
+    const ctx = this.hud.ctx
+    for (const [id, say] of this.says) {
+      if (alive.has(id)) continue
+      if (say.x === undefined || say.z === undefined || say.until <= performance.now()) {
+        if (say.until <= performance.now()) this.says.delete(id)
+        continue
+      }
+      this.drawBubble(ctx, this.worldToScreen(say.x, (say.top ?? 1) * 0.5 + 0.35, say.z), say)
     }
+  }
+
+  private drawBubble(ctx: CanvasRenderingContext2D, head: { x: number; y: number }, say: { nick: string; text: string; until: number; gold: boolean }): void {
+    const left = say.until - performance.now()
+    if (left <= 0) return
     ctx.save()
     ctx.globalAlpha = Math.min(1, left / 350)
-    ctx.font = `700 14px ${font}`
+    ctx.font = `700 14px ${SAY_FONT}`
     const tw = ctx.measureText(say.text).width
-    ctx.font = `800 11px ${font}`
+    ctx.font = `800 11px ${SAY_FONT}`
     const nw = ctx.measureText(say.nick).width
     const w = Math.max(tw, nw) + 22
     const h = 40
@@ -3010,10 +3036,10 @@ export class Renderer3D {
     ctx.fill()
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = `800 11px ${font}`
+    ctx.font = `800 11px ${SAY_FONT}`
     ctx.fillStyle = say.gold ? '#9a6a10' : '#12a86a'
     ctx.fillText(say.nick, head.x, by + 12)
-    ctx.font = `700 14px ${font}`
+    ctx.font = `700 14px ${SAY_FONT}`
     ctx.fillStyle = '#1a1f26'
     ctx.fillText(say.text, head.x, by + 28)
     ctx.restore()

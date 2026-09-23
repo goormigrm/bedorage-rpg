@@ -699,7 +699,8 @@ export class D4Hud {
     if (mates.length === 0) return
     const c = h.ctx
     const x = 16
-    let y = 64
+    // 왼쪽 위 단추 줄(치지직 · 음성 · 소리 · 로비로 — 위 16 · 높이 약 32) 아래로 띄운다 (2026-09-23 겹침)
+    let y = 70
     for (const p of mates) {
       const def = CHARACTERS[p.char]
       const W = 210

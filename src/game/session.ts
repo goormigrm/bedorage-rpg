@@ -147,8 +147,8 @@ export class Session {
   private donNextAt = 0
   /** 후원 이름표: "자리:후원 번호" → 누가 · 얼마 · 무슨 글 */
   private donNames = new Map<string, { nick: string; amount: number; text: string; ev: number }>()
-  /** 괴물 말풍선으로 보낼 채팅 (몰리면 0.3초에 하나씩 · 오래된 것은 버린다) */
-  private chatQueue: StreamChat[] = []
+  /** 괴물 말풍선으로 보낼 채팅 (몰리면 0.3초에 하나씩 · 몰리거나 8초 넘게 말할 괴물이 없으면 버린다) */
+  private chatQueue: (StreamChat & { at: number })[] = []
   private chatNextAt = 0
   /** 왼쪽 아래 후원 이벤트 표 */
   private donTable: HTMLElement | null = null
@@ -1363,8 +1363,8 @@ export class Session {
         const nick = cleanChat(m.nick).slice(0, 20)
         const text = cleanChat(m.text)
         if (!nick || !text) break
+        // 괴물 말풍선으로만 (다른 지역에 있으면 보이지 않는다 — 게임 채팅 칸에는 올리지 않는다)
         if (m.m >= 0 && m.a === this.viewArea) this.renderer.monsterSay(m.m, nick, text)
-        else this.chat?.add(nick, text, 'stream')
         break
       }
       case 'chat': {
@@ -1707,10 +1707,13 @@ export class Session {
 
   // ---------------------------------------------------------------- 방송 연동 (치지직)
 
-  /** 방송 채팅 한 줄: 말풍선 줄에 세운다 (몰리면 오래된 것부터 버린다 — 채팅이 빠른 방송에서 화면이 덮이지 않게) */
+  /**
+   * 방송 채팅 한 줄: 말풍선 줄에 세운다 (몰리면 오래된 것부터 버린다 — 채팅이 빠른 방송에서 화면이 덮이지 않게).
+   * 방송 채팅은 **괴물 말풍선으로만** 보인다 — 게임 채팅 칸에는 올리지 않는다(2026-09-23 사용자: "방송 채팅이 엄청 많을 텐데 게임 채팅창에도 올리면 게임 정보가 다 안 보인다")
+   */
   private onStreamChat(c: StreamChat): void {
     if (!loadStreamCfg().bubbles || this.arena) return
-    this.chatQueue.push(c)
+    this.chatQueue.push({ ...c, at: performance.now() })
     if (this.chatQueue.length > 12) this.chatQueue.shift()
   }
 
@@ -1727,9 +1730,12 @@ export class Session {
     if (!e) {
       const line = text ? `${won(d.amount)} · ${text}` : `${won(d.amount)} 후원!`
       const id = this.renderer.pickSpeaker(this.view())
-      if (id >= 0) this.renderer.monsterSay(id, nick, line, true)
+      if (id >= 0) {
+        this.renderer.monsterSay(id, nick, line, true)
+        this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text: line })
+      }
+      // 후원 정보는 게임 채팅 칸에도 남긴다 (모두에게 — 방 사람들은 donate 이름표 대신 이 줄로 본다)
       this.chat?.add(nick, line, 'don')
-      this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text: line })
       return
     }
     const seq = this.donSeq++ & 15
@@ -1766,13 +1772,16 @@ export class Session {
       this.input.queueCmd(CMD_DONATE, (d.ev & 15) | ((d.seq & 15) << 4))
       this.donNextAt = now + 1500
     }
+    // 말할 괴물이 없으면(마을 · 빈 방) 기다린다. 8초 넘게 못 한 말은 버린다 — 채팅 칸으로 돌리지 않는다
+    while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > 8000) this.chatQueue.shift()
     if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
-      const c = this.chatQueue.shift()!
-      this.chatNextAt = now + 300
       const id = this.renderer.pickSpeaker(this.view())
-      if (id >= 0) this.renderer.monsterSay(id, c.nick, c.text)
-      else this.chat?.add(c.nick, c.text, 'stream')
-      this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick: c.nick, text: c.text })
+      if (id >= 0) {
+        const c = this.chatQueue.shift()!
+        this.chatNextAt = now + 300
+        this.renderer.monsterSay(id, c.nick, c.text)
+        this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick: c.nick, text: c.text })
+      } else this.chatNextAt = now + 250
     }
     if (now >= this.donTableAt) {
       this.donTableAt = now + 250

@@ -947,7 +947,6 @@ body { background: var(--bg); }
 .chat.docked .chat-line { text-shadow: none; }
 
 /* 방송 연동 (2026-09-23 — 치지직): 채팅 줄 · 후원 이벤트 표 · 설정 칸 */
-.chat-line.stream b { color: #7dffc4; }
 .chat-line.don { color: #ffe4a0; }
 .chat-line.don b { color: #ffc94a; }
 /* 왼쪽 아래 후원 이벤트 표 — 체력 오브(왼쪽 끝 약 268px) 왼쪽 · 채팅(아래 222px) 아래. 방송 화면에 그대로 나가 후원을 부른다 */
@@ -989,8 +988,11 @@ body { background: var(--bg); }
 .czbadge[data-st="error"] .czst { color: #ff9d95; }
 @keyframes czlive { 50% { opacity: .35; } }
 @keyframes czwarn { to { box-shadow: 0 0 16px rgba(255,90,70,.45), 0 4px 16px rgba(0,0,0,.5); } }
-/* 게임 안: 왼쪽 위 단추 줄 맨 앞 — 다른 단추보다 크게 */
-.game-ui .top-right .czbadge { margin-right: 4px; }
+/* 게임 안: 왼쪽 위 단추 줄 맨 앞 — 한 줄로(다른 단추와 같은 높이 · 아래 파티 초상과 겹치지 않게) */
+.game-ui .top-right .czbadge { grid-template-columns: auto auto auto auto; grid-template-rows: auto; padding: 5px 12px 5px 10px; margin-right: 4px; }
+.game-ui .top-right .czbadge .czdot { grid-row: auto; width: 9px; height: 9px; }
+.game-ui .top-right .czbadge b { font-size: 13.5px; }
+.game-ui .top-right .czbadge small { grid-column: auto; padding-left: 6px; border-left: 1px solid rgba(0,255,163,.25); }
 
 .czpanel-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(2,6,5,.55); cursor: default; pointer-events: auto; }
 .game-ui .czpanel-wrap { position: absolute; }
