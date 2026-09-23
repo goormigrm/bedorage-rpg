@@ -1112,7 +1112,10 @@ export class Lobby {
     const seed = (Math.random() * 0xffffffff) >>> 0
     // 입력 지연(틱). RTT 가 낮아도 **지터**(왔다 갔다 하는 값)가 있으면 한 틱만 늦어도 전원이 멈춘다.
     // 무선·모바일이 섞이면 특히 그렇다. 그래서 하한을 3틱(50ms)으로 두고 RTT 절반을 더한다.
-    const delay = Math.max(3, Math.min(8, Math.ceil(link.rtt / 2 / 16.7) + 2))
+    // 사람이 둘 이상이면 여유를 한 틱 더 (2026-09-23 최적화): 호스트는 게스트끼리의 RTT 를 재지 못한다(4인 메시) —
+    // 그 길이 가장 느릴 때가 많아 "상대 입력 대기" 멈춤이 났다. 혼자(봇만)는 멈출 일이 없으니 그대로 3.
+    const people = this.members.length
+    const delay = people > 1 ? Math.max(4, Math.min(9, Math.ceil(link.rtt / 2 / 16.7) + 3)) : Math.max(3, Math.min(8, Math.ceil(link.rtt / 2 / 16.7) + 2))
     // 자리는 **정원만큼** 잡아 둔다. 빈 자리는 판에 나오지 않다가 난입으로 채워진다 — 또는 (호스트가 켰으면) 봇이 앉는다
     const teamsOn = this.kind === 'arena' && this.roomMode === 'teams'
     if (teamsOn && (!this.members.some((m) => m.team === 0) || !this.members.some((m) => m.team === 1))) {

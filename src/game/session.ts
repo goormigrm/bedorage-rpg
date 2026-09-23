@@ -27,7 +27,7 @@ import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, attrFree, sanitizeSheet } from '../core/items'
-import { bindSettings, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
+import { GfxMode, bindSettings, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
@@ -451,6 +451,7 @@ export class Session {
     window.addEventListener('keydown', this.onKey)
     window.addEventListener('resize', this.fit)
     this.fit()
+    this.applyGfx(gfxMode())
     this.startLobbyBeacon()
     this.ticker = new Ticker(() => this.tick())
     this.ticker.start()
@@ -481,6 +482,8 @@ export class Session {
       },
       resyncs: () => this.resyncs,
       audio: () => this.sfx.stats(),
+      // 자동 화질 상태 (단계 · 프레임 간격 평균 · 3D 해상도 배율)
+      gfx: () => ({ ...this.gfx, scale: this.renderer.renderScaleValue }),
       /** GPU: 컴파일된 셰이더 · 지오메트리 · 텍스처 수 (첫 던전 버벅임 확인 — 2026-09-20) */
       gpu: () => this.renderer.gpuInfo(),
       /** 실사 괴물 모델: 받은 종류 · 받는 중 · 실패 */
@@ -799,6 +802,56 @@ export class Session {
     return this.cfg.mode === 'p2p' && this.cfg.link?.role === 'host'
   }
 
+  /**
+   * 자동 화질 (2026-09-23 최적화). 프레임 간격의 평균이 24ms(약 42fps)를 2초 넘게 넘으면 3D 해상도를 한 단계 낮춘다.
+   * 60fps 에 붙어(18ms 아래) 8초 가면 한 단계 올려 본다 — 올렸다가 다시 느려지면 1분 동안은 올리지 않는다.
+   * 가장 낮은 단계에서는 그림자도 끈다(셰이더를 한 번 다시 고르므로 오르내림을 줄인다). 탭이 가려져 있거나 멈춘 간격(120ms 넘게)은 세지 않는다.
+   */
+  private static readonly GFX_STEPS = [1, 0.85, 0.72, 0.6, 0.5]
+  private gfx = { mode: 'auto' as GfxMode, level: 0, ema: 16.7, slow: 0, fast: 0, holdUntil: 0 }
+
+  private applyGfx(mode: GfxMode): void {
+    this.gfx.mode = mode
+    this.gfx.slow = 0
+    this.gfx.fast = 0
+    if (mode === 'high') this.gfx.level = 0
+    else if (mode === 'low') this.gfx.level = 3
+    this.applyGfxLevel()
+  }
+
+  private applyGfxLevel(): void {
+    const steps = Session.GFX_STEPS
+    const lv = Math.max(0, Math.min(steps.length - 1, this.gfx.level))
+    this.renderer.setRenderScale(steps[lv])
+    // 그림자: 낮게 고정이거나 자동의 가장 낮은 단계에서만 끈다
+    this.renderer.setShadows(!(this.gfx.mode === 'low' || lv >= steps.length - 1))
+  }
+
+  private autoQuality(ms: number): void {
+    const g = this.gfx
+    if (g.mode !== 'auto' || document.hidden || !(ms > 0) || ms > 120) return
+    g.ema = g.ema * 0.92 + ms * 0.08
+    const now = performance.now()
+    g.slow = g.ema > 24 ? g.slow + ms : 0
+    g.fast = g.ema < 18 ? g.fast + ms : 0
+    const last = Session.GFX_STEPS.length - 1
+    if (g.slow > 2000 && g.level < last) {
+      // 방금 올렸다가 느려졌으면 한동안 올리지 않는다
+      if (now - g.holdUntil < 0) g.holdUntil = now + 60000
+      g.level++
+      g.slow = 0
+      g.fast = 0
+      g.ema = 20
+      this.applyGfxLevel()
+    } else if (g.fast > 8000 && g.level > 0 && now > g.holdUntil) {
+      g.level--
+      g.fast = 0
+      g.slow = 0
+      g.holdUntil = now + 8000
+      this.applyGfxLevel()
+    }
+  }
+
   private fit = (): void => {
     const w = window.innerWidth
     const h = window.innerHeight
@@ -1039,6 +1092,7 @@ export class Session {
         },
         onReal: (on) => this.renderer.setRealMonsters(on),
         onHud: () => this.fit(),
+        onGfx: (m) => this.applyGfx(m),
         onKeys: (on) => {
           this.keysShown = on
           this.applyKeys()
@@ -1577,6 +1631,7 @@ export class Session {
 
   private frame = (now: number): void => {
     if (this.disposed) return
+    this.autoQuality(now - this.last)
     const dt = Math.min(0.1, (now - this.last) / 1000)
     this.last = now
     const lp = this.cfg.localPlayer

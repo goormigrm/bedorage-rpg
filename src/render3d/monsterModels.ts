@@ -106,8 +106,13 @@ MODEL_SPECS[13] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skelet
 // 검은 갑옷 거인 · 휘날리는 천. 받은 동작(50초 한 줄)은 쓰지 않고 모두 UAL 에서 옮겨 붙였다. 정면이 이미 +z
 // 검은 갑옷이 던전 어둠에 그대로 묻혀 보이지 않았다(2026-09-23 게임 안 확인) → 두 배 넘게 밝힌다
 MODEL_SPECS[12] = { file: 'warden', size: 1.3, clips: skeletonClips(SWORD), windup: 0.5, tint: [2.6, 2.4, 2.4] }
-// 포격 악마 — 검붉은 살찐 좀비 + 뿔 · 포신
-MODEL_SPECS[14] = { file: 'ghoul', size: 1.15, clips: { ...GHOUL_CLIPS, attack: AIM }, windup: 0.4, fat: 1.2, tint: [1.2, 0.5, 0.42], glow: { 'Sphere.001': 0xffa02a, 'Sphere_1.001': 0xffa02a } }
+// 포격 악마 — 군주와 같은 balrog demon rig 를 작게 · 검붉게 (2026-09-23 — 살찐 좀비 + 포신의 임시 모습을 바꿨다).
+// 같은 4막에 나와 **받을 파일이 늘지 않는다**(파일은 한 번만 받는다). 몸 크기는 r 로 저절로 군주의 절반 남짓(17 대 30)
+MODEL_SPECS[14] = {
+  file: 'lord', size: 1.6, fit: 'length', yaw: -Math.PI / 2, tint: [1.7, 0.55, 0.45],
+  clips: { walk: { clip: 'Armature|ArmatureAction', frames: 14 }, attack: { clip: 'Armature|ArmatureAction', frames: 8 } },
+  windup: 0.4,
+}
 // 심연의 군주(최종 보스) — balrog demon rig · KrazyKaijus · CC BY 4.0 (2026-09-23 — 좀비에 살을 찌운 임시 모습을 바꿨다).
 // 가시 돋친 네 발 악마 · 긴 꼬리. 사람형이 아니라 UAL 동작은 못 옮긴다 → 늑대처럼 받은 동작 하나로 걷고 덤빈다
 // (쓰러질 때는 네 발 짐승처럼 옆으로 눕는다 — monsters3d). 머리가 +x 를 본다 → -90° 돌려 +z 로

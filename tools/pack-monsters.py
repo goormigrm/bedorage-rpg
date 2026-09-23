@@ -14,6 +14,7 @@
 # - 정점: 탄젠트 · 여분 UV 는 뺀다. 인덱스 16비트 · 뼈 번호 8비트 · 뼈 가중치 8비트 · UV 16비트(glTF 기본 규격 안).
 #   모양 키는 위치만.
 # - 어디서도 쓰지 않게 된 데이터는 버퍼에서 지운다.
+# - 면: tris 개로 줄인다(tools/simplify.py — 원래 정점만 남기는 모서리 접기라 뼈 · UV · 모양 키가 그대로 간다).
 # 필요한 것: Python 3 + Pillow.
 
 import io
@@ -24,25 +25,28 @@ import sys
 
 from PIL import Image
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from simplify import simplify  # noqa: E402
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 SRC = os.path.join(ROOT, 'art-src', 'monsters')
 OUT = os.path.join(ROOT, 'public', 'assets3d', 'monsters')
 
-# 종류마다: 텍스처 한 변 · 노멀 맵을 둘지 · 남길 동작 · 남길 모양 키(메시 번호 → 모양 키 번호들)
+# 종류마다: 텍스처 한 변 · 남길 면 수(tris — tools/simplify.py, 2026-09-23 최적화) · 노멀 맵을 둘지 · 남길 동작 · 남길 모양 키(메시 번호 → 모양 키 번호들)
 SPECS = {
     # 구울 · 부푼 시체(같은 파일에 "살찐 몸" 모양 키를 켜서 굽는다)
-    'ghoul': dict(tex=512, normal=False, anims=['Attack1.001', 'Idle', 'Walk1'], morph={0: [0, 2], 2: [9, 10]}),
+    'ghoul': dict(tex=512, tris=3200, normal=False, anims=['Attack1.001', 'Idle', 'Walk1'], morph={0: [0, 2], 2: [9, 10]}),
     # 해골: 받은 동작(Take 001)은 쓰지 않는다 — 대기 · 걷기 · 공격 · 맞음 · 죽음 모두 옮겨 붙인 UAL_ 동작 (2026-09-19)
-    'archer': dict(tex=512, normal=False, anims=[], morph={}),
-    'wolf': dict(tex=512, normal=False, anims=None, morph={}),
-    'spider': dict(tex=512, normal=False, anims=['Wolf Spider Armature|Spider walking', 'Wolf Spider Armature|Spider running'], morph={}),
-    'queen': dict(tex=512, normal=True, normal_tex=256, anims=['Basic Idle', 'Walk Cycle', 'Leap', 'Take Damage'], morph={}),
+    'archer': dict(tex=512, tris=3000, normal=False, anims=[], morph={}),
+    'wolf': dict(tex=512, tris=3000, normal=False, anims=None, morph={}),
+    'spider': dict(tex=512, tris=2600, normal=False, anims=['Wolf Spider Armature|Spider walking', 'Wolf Spider Armature|Spider running'], morph={}),
+    'queen': dict(tex=512, tris=5000, normal=True, normal_tex=256, anims=['Basic Idle', 'Walk Cycle', 'Leap', 'Take Damage'], morph={}),
     # 도살자 — Pig Demon (2026-09-23). 받은 동작(Take 001)은 쓰지 않는다 — 모두 옮겨 붙인 UAL_ 동작
-    'butcher': dict(tex=512, normal=True, normal_tex=256, anims=[], morph={}),
+    'butcher': dict(tex=512, tris=5000, normal=True, normal_tex=256, anims=[], morph={}),
     # 관리인 — Overlord (2026-09-23). 받은 동작(allanimations 50초 한 줄)은 쓰지 않는다 — 모두 UAL_
-    'warden': dict(tex=512, normal=True, normal_tex=256, anims=[], morph={}),
+    'warden': dict(tex=512, tris=4500, normal=True, normal_tex=256, anims=[], morph={}),
     # 심연의 군주 — balrog demon rig (2026-09-23). 네 발 짐승이라 사람형 UAL 은 못 옮긴다 — 받은 동작 하나로
-    'lord': dict(tex=512, normal=False, anims=['Armature|ArmatureAction'], morph={}),
+    'lord': dict(tex=512, tris=6000, normal=False, anims=['Armature|ArmatureAction'], morph={}),
 }
 FPS = 15
 
@@ -202,6 +206,80 @@ def pack(kind: str) -> None:
                 p['indices'] = small('indices', p['indices'])
             if 'targets' in p:
                 p['targets'] = [{'POSITION': t['POSITION']} for t in p['targets'] if 'POSITION' in t]
+
+    # 2.7) 면 줄이기 (2026-09-23 — 최적화). 원래 정점의 부분집합만 남으므로 모든 정점 속성을 같은 번호로 골라 담는다
+    def rows_of(ai):
+        a = acc[ai]
+        n = NCOMP[a['type']]
+        c = COMP[a['componentType']]
+        size = struct.calcsize('<' + c)
+        if 'bufferView' in a:
+            if a['bufferView'] < 0:
+                data = new_views[-a['bufferView'] - 1]
+                rows = [struct.unpack_from('<%d%s' % (n, c), data, i * n * size) for i in range(a['count'])]
+            else:
+                v = bvs[a['bufferView']]
+                off = v.get('byteOffset', 0) + a.get('byteOffset', 0)
+                st = v.get('byteStride', n * size)
+                rows = [struct.unpack_from('<%d%s' % (n, c), bin_, off + i * st) for i in range(a['count'])]
+        else:
+            rows = [tuple([0] * n) for _ in range(a['count'])]
+        sp = a.get('sparse')
+        if sp:
+            rows = list(rows)
+            iv = sp['indices']
+            ic = COMP[iv['componentType']]
+            iview = bvs[iv['bufferView']]
+            ioff = iview.get('byteOffset', 0) + iv.get('byteOffset', 0)
+            idx = struct.unpack_from('<%d%s' % (sp['count'], ic), bin_, ioff)
+            vv = sp['values']
+            vview = bvs[vv['bufferView']]
+            voff = vview.get('byteOffset', 0) + vv.get('byteOffset', 0)
+            for k, i in enumerate(idx):
+                rows[i] = struct.unpack_from('<%d%s' % (n, c), bin_, voff + k * n * size)
+        return rows
+
+    def subset(ai, keep):
+        a = acc[ai]
+        n = NCOMP[a['type']]
+        c = COMP[a['componentType']]
+        rows = rows_of(ai)
+        sel = [rows[i] for i in keep]
+        data = b''.join(struct.pack('<%d%s' % (n, c), *r) for r in sel)
+        mins = maxs = None
+        if a['componentType'] == 5126:
+            mins = [min(r[k] for r in sel) for k in range(n)]
+            maxs = [max(r[k] for r in sel) for k in range(n)]
+        return add_raw(data, len(sel), a['type'], a['componentType'], a.get('normalized', False), mins, maxs)
+
+    if spec.get('tris'):
+        prims = [p for me in j['meshes'] for p in me['primitives'] if p.get('mode', 4) == 4 and 'indices' in p]
+        count = {id(p): acc[p['indices']]['count'] // 3 for p in prims}
+        total = sum(count.values())
+        before = total
+        after = 0
+        for p in prims:
+            t_i = count[id(p)]
+            if t_i < 300 or total <= spec['tris']:
+                after += t_i
+                continue
+            want = max(150, round(spec['tris'] * t_i / total))
+            pos = [r for r in rows_of(p['attributes']['POSITION'])]
+            flat = [r[0] for r in rows_of(p['indices'])]
+            tris = [flat[i:i + 3] for i in range(0, len(flat), 3)]
+            out = simplify(pos, tris, want)
+            keep = sorted({w for f in out for w in f})
+            newi = {w: k for k, w in enumerate(keep)}
+            p['attributes'] = {k: subset(ai, keep) for k, ai in p['attributes'].items()}
+            if 'targets' in p:
+                p['targets'] = [{k: subset(ai, keep) for k, ai in t.items()} for t in p['targets']]
+            idx = [newi[w] for f in out for w in f]
+            if len(keep) < 65536:
+                p['indices'] = add_raw(struct.pack('<%dH' % len(idx), *idx), len(idx), 'SCALAR', 5123)
+            else:
+                p['indices'] = add_raw(struct.pack('<%dI' % len(idx), *idx), len(idx), 'SCALAR', 5125)
+            after += len(out)
+        print(f'{kind:8s} 면 {before} → {after}')
 
     # 3) 재질: 색 텍스처(+보스는 노멀)만
     for m in j.get('materials', []):

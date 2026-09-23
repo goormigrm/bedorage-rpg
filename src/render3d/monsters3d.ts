@@ -59,7 +59,6 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
   4: [{ part: 4, s: 0.85, dy: 0, at: 'chest' }, { part: 5, s: 0.85, dy: 0, at: 'chest' }], // 고블린: 금 자루 · 반짝임
   7: [{ part: 2, s: 0.95, dy: -0.12, at: 'head' }, { part: 3, s: 0.95, dy: 0, at: 'chest' }], // 버섯 주술사: 버섯 갓 · 지팡이
   11: [{ part: 2, s: 0.95, dy: 0, at: 'chest' }], // 산성 토사꾼: 산 주머니
-  14: [{ part: 2, s: 0.6, dy: 0.46, dz: 0.03, at: 'head' }, { part: 4, s: 0.75, dy: 0.2, at: 'chest' }, { part: 5, s: 0.75, dy: 0.2, at: 'chest' }], // 포격 악마: 뿔 · 포신 · 포구 불빛
 }
 
 /**
@@ -150,11 +149,11 @@ interface MVis extends Anim {
 }
 
 const CAP = 220
-/** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 — MONSTER_LIST 번호 */
-const QUADRUPEDS = new Set([5, 6, 8])
+/** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 · 포격 악마 · 심연의 군주(balrog — 2026-09-23) — MONSTER_LIST 번호 */
+const QUADRUPEDS = new Set([5, 6, 8, 14, 15])
 const SPIDER_KIND = 6
 /** 옆으로 눕거나 뒤집힐 때 들어 올리는 높이 (크기 1 기준 타일) */
-const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45 }
+const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45, 14: 0.3, 15: 0.3 }
 /** 시체가 바닥에 남는 시간 (초) — 디아블로 2 처럼 싸운 자리에 시체가 쌓인다. 끝 1초 동안 가라앉는다 */
 const CORPSE_LIFE = 24
 const CORPSE_MAX = 90
@@ -824,8 +823,8 @@ const BUILDERS = [
 ]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
-// 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 1.3, 1.4]
+// 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 · 포격 악마(14)는 네 발 짐승(balrog)이 되어 1.3 → 0.9 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 0.9, 1.4]
 
 export class MonsterView {
   readonly group = new THREE.Group()

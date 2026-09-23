@@ -66,11 +66,30 @@ const NPC_DOT: Record<string, string> = {
 const MINIMAP_SIZE = 190
 /** 바닥 핏자국 수 · 남는 시간(초) — 손맛 (2026-09-19) */
 const DECAL_MAX = 160
+/**
+ * 이펙트 상한 · 재사용 (2026-09-23 최적화 — "4명이 해도 렉이 없게"). 전에는 고리 · 총구 섬광 구를 만들 때마다 도형 · 재질을 새로 만들고
+ * **지울 때 해제하지 않아** GPU 메모리가 계속 샜다(SMG 한 사람이 초당 10개 — 세 시간이면 10만 개). 파편은 한 알이 그리기 한 번이라
+ * 큰 싸움에서 그리기 호출이 수백 개로 튀었다. 이제 모두 모아 두었다가 다시 쓰고, 파편은 인스턴스 하나로 그린다. 넘치면 오래된 것부터 끝낸다.
+ */
+const PART_MAX = 1200
+const RING_MAX = 80
+const IMPACT_MAX = 80
+/** 동시에 켜 둘 점광원 (넘치면 카메라에서 먼 것부터 잠깐 끈다 — 빛 수가 늘면 셰이더를 다시 컴파일해 화면이 멈춘다) */
+const LIGHT_BUDGET = 16
 const DECAL_LIFE = 30
 const MINIMAP_PX_PER_TILE = 7
 
+/** 파편 한 알 (그리기는 인스턴스 하나로 모아서 — partMesh) */
 interface Particle {
-  mesh: THREE.Mesh
+  x: number
+  y: number
+  z: number
+  rx: number
+  rz: number
+  size: number
+  r: number
+  g: number
+  b: number
   vx: number
   vy: number
   vz: number
@@ -114,7 +133,8 @@ interface DuckVis {
 
 interface Flash {
   light: THREE.PointLight
-  mesh: THREE.Mesh
+  /** 총구 섬광 구 (없으면 빛만) */
+  mesh: THREE.Mesh | null
   life: number
 }
 
@@ -139,10 +159,10 @@ const SAY_FONT = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
 
 /** 점광원 수를 이 단위로 맞춘다 (빈 빛은 최대 LIGHT_STEP-1 개 — 셰이더 비용이 그만큼 는다) */
 const LIGHT_STEP = 4
-/** 미리 컴파일하는 가장 큰 빛 수. 이보다 많으면 맞추지 않는다 (드물다 — 그때만 처음 컴파일) */
-const LIGHT_MAX = 24
+/** 미리 컴파일하는 가장 큰 빛 수 = 빛 상한(LIGHT_BUDGET). 24 → 16 (2026-09-23 — 넘치면 먼 빛을 끄므로 새 컴파일이 없다) */
+const LIGHT_MAX = 16
 /** 미리 컴파일하는 빛 수 차례 — 던전에서 흔한 것부터 (등불만 4 · 드랍 빛 8 …, 0 은 모두 쓰러졌을 때뿐) */
-const WARM_ORDER = [4, 8, 12, 16, 20, 24, 0]
+const WARM_ORDER = [4, 8, 12, 16, 0]
 
 export const EMOTES: Record<number, string> = { 1: 'ㅋㅋㅋ', 2: '굿 👍', 3: '미안 🙏' }
 
@@ -224,7 +244,39 @@ export class Renderer3D {
   /** 명중·벽 섬광 (카메라를 보는 스프라이트, 커지며 사라진다) */
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
   private particles: Particle[] = []
-  private particlePool: THREE.Mesh[] = []
+  private partMesh!: THREE.InstancedMesh
+  private readonly partDummy = new THREE.Object3D()
+  private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
+  /**
+   * 떨어진 것 · 장판의 도형 · 재질은 같이 쓴다 (2026-09-23 최적화): 전에는 금화 한 더미에 원기둥 6 개 · 아이템 하나에 원기둥 + 상자를
+   * 새로 만들고 주울 때 해제하지 않아 GPU 메모리가 샜다(몇 시간이면 수천 개).
+   */
+  private dropRes = {
+    coin: new THREE.CylinderGeometry(0.07, 0.07, 0.025, 10),
+    coinMat: new THREE.MeshLambertMaterial({ color: 0xffc84a, emissive: 0x6a4a0a, emissiveIntensity: 0.6 }),
+    flask: new THREE.SphereGeometry(0.11, 10, 8),
+    flaskMat: new THREE.MeshLambertMaterial({ color: 0xc81e28, emissive: 0x5a0a0a, emissiveIntensity: 0.8 }),
+    neck: new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6),
+    neckMat: new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }),
+    box: new THREE.BoxGeometry(0.22, 0.12, 0.3),
+    beams: [] as THREE.CylinderGeometry[],
+    beamMats: [] as THREE.MeshBasicMaterial[],
+    boxMats: [] as THREE.MeshLambertMaterial[],
+  }
+  private zoneDisc = new THREE.CircleGeometry(1, 40)
+  private zoneRim = new THREE.RingGeometry(0.94, 1, 48)
+  private ringPool: THREE.Mesh[] = []
+  private impactPool: THREE.Sprite[] = []
+  private flashGeo = new THREE.SphereGeometry(0.12, 6, 4)
+  private flashMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0 })
+  private flashMeshPool: THREE.Mesh[] = []
+  private lightPool: THREE.PointLight[] = []
+  /** 빛 상한으로 잠깐 끈 빛 (다음 프레임 처음에 되살리고 다시 잰다) */
+  private capped: THREE.PointLight[] = []
+  /** 3D 해상도 배율 (setRenderScale) */
+  private renderScale = 1
+  private readonly tmpColor = new THREE.Color()
+  private readonly tmpV3 = new THREE.Vector3()
   private texts: WorldText[] = []
   private flashes: Flash[] = []
   private rings: Ring[] = []
@@ -366,6 +418,11 @@ export class Renderer3D {
       for (const o of objs) this.queueWarm(o)
       this.prepJobs.push({ t: 'run', run: show })
     })
+    this.partMesh = new THREE.InstancedMesh(this.particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), PART_MAX)
+    this.partMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PART_MAX * 3), 3)
+    this.partMesh.count = 0
+    this.partMesh.frustumCulled = false
+    this.scene.add(this.partMesh)
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -642,12 +699,54 @@ export class Renderer3D {
 
   /** 켜진 점광원 수를 LIGHT_STEP 의 배수로 맞춘다 — 빛 수가 몇 가지로만 나와 미리 컴파일한 셰이더를 다시 쓴다 */
   private padLights(): void {
-    const real = this.realLights().length
+    // 빛 상한: 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
+    let lights = this.realLights()
+    if (lights.length > LIGHT_BUDGET) {
+      const cx = this.camTarget.x
+      const cz = this.camTarget.z
+      const wp = this.tmpV3
+      const dist = new Map<THREE.PointLight, number>()
+      for (const l of lights) {
+        l.getWorldPosition(wp)
+        dist.set(l, (wp.x - cx) ** 2 + (wp.z - cz) ** 2)
+      }
+      lights = [...lights].sort((a, b) => (dist.get(a) ?? 0) - (dist.get(b) ?? 0))
+      for (let i = LIGHT_BUDGET; i < lights.length; i++) {
+        lights[i].visible = false
+        this.capped.push(lights[i])
+      }
+    }
+    const real = Math.min(lights.length, LIGHT_BUDGET)
     const need = real >= LIGHT_MAX ? 0 : Math.ceil(real / LIGHT_STEP) * LIGHT_STEP - real
     for (let i = 0; i < this.lightPads.length; i++) {
       const on = i < need
       if (this.lightPads[i].visible !== on) this.lightPads[i].visible = on
     }
+  }
+
+  /**
+   * 3D 해상도 배율 (2026-09-23 최적화 — 느린 PC 에서 자동으로 낮춘다 · 설정의 화질). HUD 글씨는 그대로 또렷하다.
+   * 1 = 화면 해상도대로. 바뀌면 캔버스 크기를 다시 잡는다.
+   */
+  setRenderScale(k: number): void {
+    const v = Math.max(0.35, Math.min(1, k))
+    if (Math.abs(v - this.renderScale) < 0.01) return
+    this.renderScale = v
+    this.resize()
+  }
+
+  get renderScaleValue(): number {
+    return this.renderScale
+  }
+
+  /** 그림자 켜고 끄기 (화질 낮음 · 가장 낮은 자동 단계). 바꾸면 재질 셰이더를 한 번 다시 고른다 */
+  setShadows(on: boolean): void {
+    if (this.gl.shadowMap.enabled === on) return
+    this.gl.shadowMap.enabled = on
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+      for (const mm of Array.isArray(m) ? m : m ? [m] : []) mm.needsUpdate = true
+    })
   }
 
   /** 실사 괴물 켜기/끄기 (Esc 메뉴 — 2026-09-19) */
@@ -672,7 +771,7 @@ export class Renderer3D {
 
   resize(): void {
     // 화면 해상도대로 그린다(전에는 dpr 만 봐서 큰 창에서 720p 를 늘려 흐릿했다) — 픽셀 수 상한 GL_PIXELS
-    this.dpr = canvasRatio(STAGE_SCALE, GL_PIXELS)
+    this.dpr = canvasRatio(STAGE_SCALE, GL_PIXELS) * this.renderScale
     this.gl.setPixelRatio(this.dpr)
     this.gl.setSize(VIEW_W, VIEW_H, false)
     // 폭이 넓어진 만큼 좌우로 더 보이면 넓은 화면이 유리해진다.
@@ -1028,10 +1127,9 @@ export class Renderer3D {
           }
           if (rank >= 1) {
             const big = rank >= 2
-            const light = new THREE.PointLight(big ? 0xffe0a0 : 0xffc870, big ? 40 : 22, big ? 14 : 8, 1.4)
+            const light = this.takeLight(big ? 0xffe0a0 : 0xffc870, big ? 40 : 22, big ? 14 : 8, 1.4)
             light.position.set(e.x * U, 1.4, e.y * U)
-            this.scene.add(light)
-            this.flashes.push({ light, mesh: new THREE.Mesh(), life: big ? 0.35 : 0.2 })
+            this.flashes.push({ light, mesh: null, life: big ? 0.35 : 0.2 })
             this.spawnRing(e.x * U, e.y * U, 0.3, big ? 5 : 2.8, big ? 0.7 : 0.45, big ? 0xffe0a0 : 0xffc870)
             this.shake = Math.max(this.shake, big ? 0.55 : 0.3)
             if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
@@ -1054,10 +1152,9 @@ export class Renderer3D {
           break
         case 'boom': {
           // 폭발: 붉은 섬광 + 파편 + 링 + 흔들림. 적의 범위 공격은 빨강(초록은 우리 편 좋은 효과 — 2026-09-23)
-          const light = new THREE.PointLight(0xff5a2a, 18, e.r * U * 3, 1.5)
+          const light = this.takeLight(0xff5a2a, 18, e.r * U * 3, 1.5)
           light.position.set(e.x * U, 1, e.y * U)
-          this.scene.add(light)
-          this.flashes.push({ light, mesh: new THREE.Mesh(), life: 0.18 })
+          this.flashes.push({ light, mesh: null, life: 0.18 })
           for (let k = 0; k < 14; k++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.05 + Math.random() * 0.1
@@ -1226,8 +1323,12 @@ export class Renderer3D {
 
   /** 명중·벽·막음 섬광: 카메라를 보는 빛무리가 커지면서 사라진다 */
   private spawnImpact(x: number, y: number, z: number, color: number, size: number): void {
-    const mat = new THREE.SpriteMaterial({ map: this.glowTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
-    const sprite = new THREE.Sprite(mat)
+    if (this.impacts.length >= IMPACT_MAX) this.endImpact(0)
+    let sprite = this.impactPool.pop()
+    if (!sprite) sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
+    const mat = sprite.material
+    mat.color.setHex(color)
+    mat.opacity = 1
     sprite.position.set(x, y, z)
     sprite.scale.setScalar(size * 0.5)
     this.scene.add(sprite)
@@ -1235,27 +1336,71 @@ export class Renderer3D {
   }
 
   private spawnFlash(pos: THREE.Vector3, size: number): void {
-    const light = new THREE.PointLight(0xffc860, 6 * size, 5, 2)
+    const light = this.takeLight(0xffc860, 6 * size, 5, 2)
     light.position.copy(pos)
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12 * size, 6, 4), new THREE.MeshBasicMaterial({ color: 0xfff0b0 }))
+    // 구 도형 · 재질은 하나를 같이 쓴다 (예전에는 한 발마다 새로 만들고 해제하지 않았다)
+    const mesh = this.flashMeshPool.pop() ?? new THREE.Mesh(this.flashGeo, this.flashMat)
     mesh.position.copy(pos)
-    this.scene.add(light, mesh)
+    mesh.scale.setScalar(size)
+    this.scene.add(mesh)
     this.flashes.push({ light, mesh, life: 0.06 })
   }
 
+  /** 순간 빛 하나 (모아 둔 것을 다시 쓴다) */
+  private takeLight(color: number, intensity: number, distance: number, decay: number): THREE.PointLight {
+    const l = this.lightPool.pop() ?? new THREE.PointLight()
+    l.color.setHex(color)
+    l.intensity = intensity
+    l.distance = distance
+    l.decay = decay
+    l.visible = true
+    this.scene.add(l)
+    return l
+  }
+
+  private endFlash(i: number): void {
+    const f = this.flashes[i]
+    this.scene.remove(f.light)
+    this.lightPool.push(f.light)
+    if (f.mesh) {
+      this.scene.remove(f.mesh)
+      this.flashMeshPool.push(f.mesh)
+    }
+    this.flashes.splice(i, 1)
+  }
+
+  private endImpact(i: number): void {
+    const im = this.impacts[i]
+    this.scene.remove(im.sprite)
+    this.impactPool.push(im.sprite)
+    this.impacts.splice(i, 1)
+  }
+
+  private endRing(i: number): void {
+    const r = this.rings[i]
+    this.scene.remove(r.mesh)
+    this.ringPool.push(r.mesh)
+    this.rings.splice(i, 1)
+  }
+
   private spawnParticle(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number): void {
-    let mesh = this.particlePool.pop()
-    if (!mesh) mesh = new THREE.Mesh(this.particleGeo, new THREE.MeshBasicMaterial({ color }))
-    else (mesh.material as THREE.MeshBasicMaterial).color.setHex(color)
-    mesh.position.set(x, y, z)
-    mesh.scale.setScalar(size)
-    mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0)
-    this.scene.add(mesh)
-    this.particles.push({ mesh, vx, vy, vz, life, max: life, gravity: 0.35, spin: (Math.random() - 0.5) * 8 })
+    // 넘치면 가장 오래된 것 자리에 (배열 앞쪽이 대체로 오래됐다)
+    if (this.particles.length >= PART_MAX) this.particles.shift()
+    const c = this.tmpColor.setHex(color)
+    this.particles.push({
+      x, y, z, rx: Math.random() * 3, rz: Math.random() * 3, size, r: c.r, g: c.g, b: c.b,
+      vx, vy, vz, life, max: life, gravity: 0.35, spin: (Math.random() - 0.5) * 8,
+    })
   }
 
   private spawnRing(x: number, z: number, r0: number, r1: number, life: number, color: number): void {
-    const mesh = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }))
+    if (this.rings.length >= RING_MAX) this.endRing(0)
+    // 도형은 하나를 같이 쓰고, 재질(색 · 투명도가 고리마다 다르다)은 고리와 같이 모아 둔다
+    const mesh = this.ringPool.pop() ?? new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+    const rm = mesh.material as THREE.MeshBasicMaterial
+    rm.color.setHex(color)
+    rm.opacity = 0.9
+    mesh.scale.setScalar(r0)
     mesh.rotation.x = -Math.PI / 2
     mesh.position.set(x, 0.02, z)
     this.scene.add(mesh)
@@ -1298,6 +1443,9 @@ export class Renderer3D {
 
   // ---------- 프레임 ----------
   draw(prev: GameState, curr: GameState, alpha: number, dt: number, opts: RenderOptions): void {
+    // 빛 상한으로 지난 프레임에 끈 빛을 먼저 되살린다 — 그 뒤 각자(등불 · 장판 …)가 제 켜짐을 정하고, padLights 가 다시 잰다
+    for (const l of this.capped) l.visible = true
+    this.capped.length = 0
     this.ensureRigs(curr)
     // 던전: 새 막에 들어서면 그 막 괴물의 실사 모델을 미리 받아 둔다 (마을에 있는 동안 받는다)
     if (curr.mode === 'dungeon') {
@@ -1476,6 +1624,7 @@ export class Renderer3D {
     const dark = (me.don?.[DON_DARK] ?? 0) > 0
     const radius = dark ? DARK_VIEW_TILES : VIEW_RADIUS_TILES * (this.scoped ? 1.8 : 1)
     this.vision.update(viewers, radius)
+    this.vision.draw(this.gl)
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
     const rpx = radius * 32
@@ -2529,18 +2678,19 @@ export class Renderer3D {
       if (!g && !d.item) {
         // 골드 더미(금화 몇 닢) · 물약(붉은 병)
         g = new THREE.Group()
+        const R = this.dropRes
         if (d.gold > 0) {
           const n = Math.min(6, 2 + Math.floor(d.gold / 15))
           for (let k = 0; k < n; k++) {
-            const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.025, 10), new THREE.MeshLambertMaterial({ color: 0xffc84a, emissive: 0x6a4a0a, emissiveIntensity: 0.6 }))
+            const coin = new THREE.Mesh(R.coin, R.coinMat)
             coin.position.set(((k * 37) % 7) / 25 - 0.12, 0.02 + (k % 3) * 0.028, ((k * 53) % 5) / 20 - 0.1)
             coin.rotation.z = (k % 2) * 0.3
             g.add(coin)
           }
         } else {
-          const flask = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), new THREE.MeshLambertMaterial({ color: 0xc81e28, emissive: 0x5a0a0a, emissiveIntensity: 0.8 }))
+          const flask = new THREE.Mesh(R.flask, R.flaskMat)
           flask.position.y = 0.12
-          const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6), new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }))
+          const neck = new THREE.Mesh(R.neck, R.neckMat)
           neck.position.y = 0.26
           g.add(flask, neck)
         }
@@ -2553,11 +2703,17 @@ export class Renderer3D {
       }
       if (!g) {
         g = new THREE.Group()
-        const col = new THREE.Color(RARITY_COLORS[d.item.rarity])
-        const h = 0.8 + d.item.rarity * 0.7
-        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04 + d.item.rarity * 0.02, 0.1 + d.item.rarity * 0.03, h, 8, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+        const r = d.item.rarity
+        const R = this.dropRes
+        const col = new THREE.Color(RARITY_COLORS[r])
+        const h = 0.8 + r * 0.7
+        // 등급마다 하나씩 만들어 같이 쓴다 (빛기둥의 깜빡임도 등급마다 같이)
+        R.beams[r] ??= new THREE.CylinderGeometry(0.04 + r * 0.02, 0.1 + r * 0.03, h, 8, 1, true)
+        R.beamMats[r] ??= new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+        R.boxMats[r] ??= new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 })
+        const beam = new THREE.Mesh(R.beams[r], R.beamMats[r])
         beam.position.y = h / 2
-        const box = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.3), new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 }))
+        const box = new THREE.Mesh(R.box, R.boxMats[r])
         box.position.y = 0.08
         box.castShadow = true
         g.add(beam, box)
@@ -2566,7 +2722,10 @@ export class Renderer3D {
       }
       g.position.set(d.x * U, 0, d.y * U)
       ;(g.children[1] as THREE.Mesh).rotation.y = this.t * 1.5 + d.id
-      ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.15 * Math.sin(this.t * 3 + d.id)
+    }
+    for (let r = 0; r < this.dropRes.beamMats.length; r++) {
+      const m = this.dropRes.beamMats[r]
+      if (m) m.opacity = 0.35 + 0.15 * Math.sin(this.t * 3 + r * 1.7)
     }
     for (const [id, g] of this.dropMeshes) {
       if (live.has(id)) continue
@@ -2614,10 +2773,9 @@ export class Renderer3D {
     this.spawnRing(x, z, ult ? 2.2 : 1.4, 0.3, ult ? 0.5 : 0.35, color)
     if (ult) {
       this.spawnImpact(x, 1.2, z, color, 4)
-      const light = new THREE.PointLight(color, 14, 9, 1.5)
+      const light = this.takeLight(color, 14, 9, 1.5)
       light.position.set(x, 1.5, z)
-      this.scene.add(light)
-      this.flashes.push({ light, mesh: new THREE.Mesh(), life: 0.25 })
+      this.flashes.push({ light, mesh: null, life: 0.25 })
       if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.25)
       const v = this.vis[e.p]
       if (v) {
@@ -2677,9 +2835,9 @@ export class Renderer3D {
         const stage = hostileStage ? 0xff4a3a : ALLY_GOOD
         const cDisc = acid ? 0xff3a1a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : hostileStage ? 0xff3a1a : 0x7affa0
         const cRim = acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
-        const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const disc = new THREE.Mesh(this.zoneDisc, new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
         const beam = new THREE.PointLight(acid ? 0xff4a2a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
@@ -2730,6 +2888,12 @@ export class Renderer3D {
     for (const [id, g] of this.zoneMeshes) {
       if (live.has(id)) continue
       this.scene.remove(g)
+      // 재질은 장판마다 만든 것이라 해제한다 (도형은 같이 쓰는 것)
+      for (const c of g.children) {
+        const mm = (c as THREE.Mesh).material as THREE.Material | undefined
+        mm?.dispose()
+        if ((c as THREE.PointLight).isPointLight) (c as THREE.PointLight).dispose()
+      }
       this.zoneMeshes.delete(id)
     }
   }
@@ -3232,30 +3396,40 @@ export class Renderer3D {
   }
 
   private updateEffects(dt: number): void {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
+    // 파편: 산 것만 앞으로 모으며(순서 유지 — 넘칠 때 앞의 오래된 것을 버린다) 인스턴스 하나에 적는다
+    let live = 0
+    const pm = this.partMesh
+    const pc = pm.instanceColor!
+    const d = this.partDummy
+    const k = dt * 60
+    for (let i = 0; i < this.particles.length; i++) {
       const q = this.particles[i]
       q.life -= dt
-      if (q.life <= 0) {
-        this.scene.remove(q.mesh)
-        this.particlePool.push(q.mesh)
-        this.particles[i] = this.particles[this.particles.length - 1]
-        this.particles.pop()
-        continue
-      }
-      const k = dt * 60
-      q.mesh.position.x += q.vx * k
-      q.mesh.position.y += q.vy * k
-      q.mesh.position.z += q.vz * k
+      if (q.life <= 0) continue
+      q.x += q.vx * k
+      q.y += q.vy * k
+      q.z += q.vz * k
       q.vy -= q.gravity * dt
-      if (q.mesh.position.y < 0.05) {
-        q.mesh.position.y = 0.05
+      if (q.y < 0.05) {
+        q.y = 0.05
         q.vy = -q.vy * 0.3
         q.vx *= 0.7
         q.vz *= 0.7
       }
-      q.mesh.rotation.x += q.spin * dt
-      q.mesh.rotation.z += q.spin * dt
+      q.rx += q.spin * dt
+      q.rz += q.spin * dt
+      d.position.set(q.x, q.y, q.z)
+      d.rotation.set(q.rx, 0, q.rz)
+      d.scale.setScalar(q.size)
+      d.updateMatrix()
+      pm.setMatrixAt(live, d.matrix)
+      pc.setXYZ(live, q.r, q.g, q.b)
+      this.particles[live++] = q
     }
+    this.particles.length = live
+    pm.count = live
+    pm.instanceMatrix.needsUpdate = true
+    pc.needsUpdate = true
     for (let i = this.texts.length - 1; i >= 0; i--) {
       this.texts[i].life -= dt
       if (this.texts[i].life <= 0) this.texts.splice(i, 1)
@@ -3264,9 +3438,7 @@ export class Renderer3D {
       const im = this.impacts[i]
       im.life -= dt
       if (im.life <= 0) {
-        this.scene.remove(im.sprite)
-        ;(im.sprite.material as THREE.SpriteMaterial).dispose()
-        this.impacts.splice(i, 1)
+        this.endImpact(i)
         continue
       }
       const k = 1 - im.life / im.max
@@ -3276,11 +3448,7 @@ export class Renderer3D {
     for (let i = this.flashes.length - 1; i >= 0; i--) {
       const f = this.flashes[i]
       f.life -= dt
-      if (f.life <= 0) {
-        this.scene.remove(f.light, f.mesh)
-        f.light.dispose()
-        this.flashes.splice(i, 1)
-      }
+      if (f.life <= 0) this.endFlash(i)
     }
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       const sl = this.slashes[i]
@@ -3299,8 +3467,7 @@ export class Renderer3D {
       const r = this.rings[i]
       r.life -= dt
       if (r.life <= 0) {
-        this.scene.remove(r.mesh)
-        this.rings.splice(i, 1)
+        this.endRing(i)
         continue
       }
       const k = 1 - r.life / r.max

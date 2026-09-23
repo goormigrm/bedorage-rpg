@@ -142,7 +142,13 @@ export class Sfx {
   private ensure(): boolean {
     if (this.ctx) return true
     if (typeof AudioContext === 'undefined') return false
-    const ctx = new AudioContext()
+    // 버퍼를 한 단계 넉넉하게 (2026-09-23 — 괴물이 몰려 CPU 가 바쁠 때 소리가 끊기던 것). 효과음이 20ms 안팎 늦는 대신 덜 끊긴다
+    let ctx: AudioContext
+    try {
+      ctx = new AudioContext({ latencyHint: 'balanced' })
+    } catch {
+      ctx = new AudioContext()
+    }
     const master = ctx.createGain()
     master.gain.value = this.mutedFlag ? 0 : MASTER
     const comp = ctx.createDynamicsCompressor()
@@ -534,6 +540,26 @@ export class Sfx {
   }
 
   // ---------- 기본 부품 ----------
+  /** 소리 한 묶음(bus)의 노드와, 그 묶음에 붙어 아직 울리는 음원 수 */
+  private busRef = new WeakMap<AudioNode, { n: number; parts: AudioNode[] }>()
+
+  /**
+   * 음원이 끝나면 그 줄을 끊는다 (2026-09-23 — 소리 끊김). 전에는 소리 하나마다 만든 음량 · 좌우 · 필터 노드와
+   * 배경음 음표 노드를 끝난 뒤에도 연결해 둔 채였다 — 오디오 스레드가 매 순간 훑는 그래프가 계속 커져,
+   * 괴물이 몰리거나 오래 할수록 끊기기 쉬웠다. 묶음(bus)은 거기 붙은 음원이 모두 끝나면 끊는다.
+   */
+  private finish(src: AudioScheduledSourceNode, chain: AudioNode[], bus: AudioNode | null, counted: boolean): void {
+    const ref = bus ? this.busRef.get(bus) : undefined
+    if (ref) ref.n++
+    if (counted) this.live++
+    src.onended = () => {
+      if (counted) this.live--
+      src.disconnect()
+      for (const n of chain) n.disconnect()
+      if (ref && --ref.n <= 0) for (const n of ref.parts) n.disconnect()
+    }
+  }
+
   private bus(s: Spatial, vol: number): { node: GainNode; t0: number } {
     const ctx = this.ctx!
     const g = ctx.createGain()
@@ -548,8 +574,10 @@ export class Sfx {
       lp.frequency.value = 16000 - 13000 * s.far
       pan.connect(lp)
       lp.connect(this.master!)
+      this.busRef.set(g, { n: 0, parts: [g, pan, lp] })
     } else {
       pan.connect(this.master!)
+      this.busRef.set(g, { n: 0, parts: [g, pan] })
     }
     return { node: g, t0: ctx.currentTime }
   }
@@ -575,8 +603,7 @@ export class Sfx {
     src.connect(flt)
     flt.connect(g)
     g.connect(bus)
-    this.live++
-    src.onended = () => this.live--
+    this.finish(src, [flt, g], bus, true)
     src.start(t0)
     src.stop(t0 + dur + 0.05)
   }
@@ -591,8 +618,7 @@ export class Sfx {
     this.env(g, t0, peak, attack, dur)
     osc.connect(g)
     g.connect(bus)
-    this.live++
-    osc.onended = () => this.live--
+    this.finish(osc, [g], bus, true)
     osc.start(t0)
     osc.stop(t0 + attack + dur + 0.05)
   }
@@ -962,6 +988,7 @@ export class Sfx {
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42)
     osc.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(osc, [g], null, false)
     osc.start(t0)
     osc.stop(t0 + 0.46)
     const src = ctx.createBufferSource()
@@ -975,6 +1002,7 @@ export class Sfx {
     src.connect(flt)
     flt.connect(gn)
     gn.connect(this.bgmGain!)
+    this.finish(src, [flt, gn], null, false)
     src.start(t0)
     src.stop(t0 + 0.14)
   }
@@ -1053,6 +1081,7 @@ export class Sfx {
     osc.connect(flt)
     flt.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(osc, [flt, g], null, false)
     osc.start(t0)
     osc.stop(t0 + dur + 0.05)
   }
@@ -1068,6 +1097,7 @@ export class Sfx {
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22)
     osc.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(osc, [g], null, false)
     osc.start(t0)
     osc.stop(t0 + 0.26)
   }
@@ -1086,6 +1116,7 @@ export class Sfx {
     src.connect(flt)
     flt.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(src, [flt, g], null, false)
     src.start(t0)
     src.stop(t0 + 0.18)
   }
@@ -1103,6 +1134,7 @@ export class Sfx {
     src.connect(flt)
     flt.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(src, [flt, g], null, false)
     src.start(t0)
     src.stop(t0 + 0.06)
   }
@@ -1125,6 +1157,7 @@ export class Sfx {
     src.connect(flt)
     flt.connect(g)
     g.connect(this.bgmGain!)
+    this.finish(src, [flt, g], null, false)
     src.start(t0)
     src.stop(t0 + dur + 0.1)
   }

@@ -10,10 +10,10 @@ import { CRATE_H, SANDBAG_H, WALL_H } from './world3d'
 export const VIEW_RADIUS_TILES = 15
 export const VIEW_RADIUS_PX = VIEW_RADIUS_TILES * TILE
 const RAYS = 360
-/** 마스크 캔버스 해상도 (타일당 px). 넓은 맵은 낮춰서 비용을 맞춘다 */
+/** 마스크 해상도 (타일당 px). GPU 로 그리니 비용은 작다 — 넓은 맵은 조금 낮춘다 */
 function pxFor(map: GameMap): number {
   const tiles = map.w * map.h
-  return tiles > 4000 ? 8 : tiles > 1600 ? 12 : 16
+  return tiles > 4000 ? 8 : 12
 }
 
 export interface Viewer {
@@ -64,33 +64,52 @@ export function canSee(map: GameMap, viewers: Viewer[], x: number, y: number, ra
   return false
 }
 
+/** 벽 끝을 부드럽게: 광선 끝에서 바깥으로 이만큼(타일) 흐려지는 띠 — 예전 캔버스 흐림(0.35 타일)을 대신한다 */
+const FEATHER = 0.45
+/** 한 번에 보는 사람 (파티 넷) */
+const MAX_VIEWERS = 4
+
+/**
+ * 시야 마스크. **GPU 에서 그린다** (2026-09-23 최적화): 예전에는 맵 크기 캔버스(864×648 등)에 흐림 필터로 매 프레임 다시 그려
+ * 통째로 WebGL 텍스처로 올렸는데, 그 복사가 한 프레임 GPU 약 10ms 로 괴물 100마리 그리기보다 비쌌다.
+ * 이제 보는 사람마다 광선 부채꼴(가장자리 흐림 띠 포함)을 작은 렌더 타깃에 MAX 섞기로 그린다 — 삼각형 천여 개.
+ * 마스크의 R = 보임(0~1). 덮개 재질이 어둠색 · (1 - 보임) × 진하기로 칠한다. 보는 자리 · 반경이 그대로면 다시 그리지 않는다.
+ */
 export class Vision {
   readonly group = new THREE.Group()
-  private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
-  private tex: THREE.CanvasTexture
-  private mat: THREE.MeshBasicMaterial
-  private sideMat: THREE.MeshBasicMaterial
+  private rt: THREE.WebGLRenderTarget | null = null
+  private mat: THREE.ShaderMaterial
+  private sideMat: THREE.ShaderMaterial
   private geos: THREE.BufferGeometry[] = []
-  private darkness = 'rgba(6,8,5,0.78)'
-
+  private fogScene = new THREE.Scene()
+  private fogCam: THREE.OrthographicCamera
+  private fans: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; pos: Float32Array; alpha: Float32Array; mat: THREE.ShaderMaterial }[] = []
+  private key = ''
+  private dirty = true
   private px: number
+  private readonly clear = new THREE.Color()
 
   constructor(readonly map: GameMap) {
     this.px = pxFor(map)
     // 던전은 시야 밖이 더 캄캄하다 (디아블로의 빛 반경 느낌)
-    if (map.theme.dark) this.darkness = `rgba(3,3,5,${map.theme.dark.fogAlpha})`
-    this.canvas = document.createElement('canvas')
-    this.canvas.width = map.w * this.px
-    this.canvas.height = map.h * this.px
-    this.ctx = this.canvas.getContext('2d')!
-    this.tex = new THREE.CanvasTexture(this.canvas)
-    this.tex.colorSpace = THREE.SRGBColorSpace
-    this.tex.minFilter = THREE.LinearFilter
-    this.tex.magFilter = THREE.LinearFilter
-    this.tex.generateMipmaps = false
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false })
-    this.sideMat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+    const fogAlpha = map.theme.dark ? map.theme.dark.fogAlpha : 0.78
+    const fogColor = map.theme.dark ? new THREE.Vector3(3 / 255, 3 / 255, 5 / 255) : new THREE.Vector3(6 / 255, 8 / 255, 5 / 255)
+    const cover = (side: boolean) =>
+      new THREE.ShaderMaterial({
+        uniforms: { mask: { value: null }, color: { value: fogColor }, alpha: { value: fogAlpha } },
+        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader:
+          'uniform sampler2D mask; uniform vec3 color; uniform float alpha; varying vec2 vUv;' +
+          'void main() { float v = texture2D(mask, vUv).r; gl_FragColor = vec4(color, alpha * (1.0 - v)); }',
+        transparent: true,
+        depthWrite: false,
+        side: side ? THREE.DoubleSide : THREE.FrontSide,
+      })
+    this.mat = cover(false)
+    this.sideMat = cover(true)
+    // 마스크 좌표 = 타일 (x 오른쪽, y 아래). 덮개 uv 는 (x / w, 1 - y / h)
+    this.fogCam = new THREE.OrthographicCamera(0, map.w, 0, map.h, -10, 10)
+    for (let i = 0; i < MAX_VIEWERS; i++) this.fans.push(this.makeFan())
 
     // 바닥 덮개
     const floorGeo = new THREE.PlaneGeometry(map.w, map.h)
@@ -108,7 +127,47 @@ export class Vision {
     this.group.add(this.sideQuads(TILE_WALL, WALL_H))
     this.group.add(this.sideQuads(TILE_CRATE, CRATE_H))
     this.group.add(this.sideQuads(TILE_SANDBAG, SANDBAG_H))
-    this.fill([])
+  }
+
+  /** 보는 사람 하나의 부채꼴: 가운데 1 + 광선 끝 RAYS + 흐림 띠 끝 RAYS */
+  private makeFan(): Vision['fans'][number] {
+    const n = 1 + RAYS * 2
+    const pos = new Float32Array(n * 3)
+    const alpha = new Float32Array(n)
+    const idx: number[] = []
+    for (let i = 0; i < RAYS; i++) {
+      const c0 = 1 + i
+      const c1 = 1 + ((i + 1) % RAYS)
+      const f0 = 1 + RAYS + i
+      const f1 = 1 + RAYS + ((i + 1) % RAYS)
+      idx.push(0, c0, c1, c0, f0, c1, c1, f0, f1)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    geo.setAttribute('edge', new THREE.BufferAttribute(alpha, 1))
+    geo.setIndex(idx)
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { center: { value: new THREE.Vector2() }, radius: { value: VIEW_RADIUS_TILES } },
+      vertexShader:
+        'attribute float edge; varying float vEdge; varying vec2 vP;' +
+        'void main() { vEdge = edge; vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      // 반경의 74% 부터 가장자리까지 옅어진다 (예전 캔버스 방사 그라데이션과 같다)
+      fragmentShader:
+        'uniform vec2 center; uniform float radius; varying float vEdge; varying vec2 vP;' +
+        'void main() { float d = distance(vP, center); float v = vEdge * (1.0 - smoothstep(radius * 0.74, radius, d)); gl_FragColor = vec4(v, v, v, 1.0); }',
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.MaxEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneFactor,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.frustumCulled = false
+    mesh.visible = false
+    this.fogScene.add(mesh)
+    return { mesh, geo, pos, alpha, mat }
   }
 
   private sideQuads(tile: number, h: number): THREE.Mesh {
@@ -186,45 +245,67 @@ export class Vision {
     return mesh
   }
 
-  /** 시청자(들) 기준으로 마스크를 다시 그린다. radius 는 타일 단위 (스코프 조준 시 넓어진다) */
+  /** 시청자(들) 기준으로 마스크 모양을 다시 잰다. radius 는 타일 단위 (스코프 조준 시 넓어진다). 그리기는 draw() */
   update(viewers: Viewer[], radiusTiles = VIEW_RADIUS_TILES): void {
-    this.fill(viewers, radiusTiles)
-  }
-
-  private fill(viewers: Viewer[], radiusTiles = VIEW_RADIUS_TILES): void {
-    const ctx = this.ctx
+    // 보는 자리(2px 단위) · 반경이 그대로면 그대로 둔다 — 서 있을 때는 광선도 그리기도 없다
+    let key = radiusTiles.toFixed(2)
+    for (let i = 0; i < viewers.length && i < MAX_VIEWERS; i++) key += '|' + Math.round(viewers[i].x / 2) + ',' + Math.round(viewers[i].y / 2)
+    if (key === this.key) return
+    this.key = key
+    this.dirty = true
     const map = this.map
-    const PX = this.px
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.filter = 'none'
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-    ctx.fillStyle = this.darkness
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
-    // 가장자리를 부드럽게: 다각형을 지울 때만 블러를 건다 (계단 현상 제거)
-    ctx.globalCompositeOperation = 'destination-out'
-    ctx.filter = `blur(${(PX * 0.35).toFixed(1)}px)`
-    for (const v of viewers) {
+    for (let k = 0; k < MAX_VIEWERS; k++) {
+      const f = this.fans[k]
+      const v = viewers[k]
+      f.mesh.visible = !!v
+      if (!v) continue
       const cx = v.x / TILE
       const cy = v.y / TILE
-      ctx.beginPath()
+      f.pos[0] = cx
+      f.pos[1] = cy
+      f.alpha[0] = 1
       for (let i = 0; i < RAYS; i++) {
         const a = (i / RAYS) * Math.PI * 2
-        const p = castRay(map, cx, cy, Math.cos(a), Math.sin(a), radiusTiles)
-        if (i === 0) ctx.moveTo(p.x * PX, p.y * PX)
-        else ctx.lineTo(p.x * PX, p.y * PX)
+        const dx = Math.cos(a)
+        const dy = Math.sin(a)
+        const p = castRay(map, cx, cy, dx, dy, radiusTiles)
+        const o = (1 + i) * 3
+        f.pos[o] = p.x
+        f.pos[o + 1] = p.y
+        f.alpha[1 + i] = 1
+        const q = (1 + RAYS + i) * 3
+        f.pos[q] = p.x + dx * FEATHER
+        f.pos[q + 1] = p.y + dy * FEATHER
+        f.alpha[1 + RAYS + i] = 0
       }
-      ctx.closePath()
-      const g = ctx.createRadialGradient(cx * PX, cy * PX, 0, cx * PX, cy * PX, radiusTiles * PX)
-      g.addColorStop(0, 'rgba(0,0,0,1)')
-      g.addColorStop(0.74, 'rgba(0,0,0,1)')
-      g.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = g
-      ctx.fill()
+      ;(f.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true
+      ;(f.geo.attributes.edge as THREE.BufferAttribute).needsUpdate = true
+      f.mat.uniforms.center.value.set(cx, cy)
+      f.mat.uniforms.radius.value = radiusTiles
     }
-    ctx.filter = 'none'
-    ctx.globalCompositeOperation = 'source-over'
-    this.tex.needsUpdate = true
+  }
+
+  /** 바뀌었으면 마스크를 렌더 타깃에 그린다 (본 장면을 그리기 전에) */
+  draw(gl: THREE.WebGLRenderer): void {
+    if (!this.rt) {
+      const w = Math.min(2048, this.map.w * this.px)
+      const h = Math.min(2048, this.map.h * this.px)
+      this.rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter })
+      this.mat.uniforms.mask.value = this.rt.texture
+      this.sideMat.uniforms.mask.value = this.rt.texture
+      this.dirty = true
+    }
+    if (!this.dirty) return
+    this.dirty = false
+    const prevRt = gl.getRenderTarget()
+    gl.getClearColor(this.clear)
+    const prevA = gl.getClearAlpha()
+    gl.setRenderTarget(this.rt)
+    gl.setClearColor(0x000000, 1)
+    gl.clear(true, false, false)
+    gl.render(this.fogScene, this.fogCam)
+    gl.setRenderTarget(prevRt)
+    gl.setClearColor(this.clear, prevA)
   }
 
   setVisible(v: boolean): void {
@@ -232,9 +313,13 @@ export class Vision {
   }
 
   dispose(): void {
-    this.tex.dispose()
+    this.rt?.dispose()
     this.mat.dispose()
     this.sideMat.dispose()
     for (const g of this.geos) g.dispose()
+    for (const f of this.fans) {
+      f.geo.dispose()
+      f.mat.dispose()
+    }
   }
 }

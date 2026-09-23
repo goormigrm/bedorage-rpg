@@ -13,3 +13,5 @@ tools/rooms.log
 art-src/
 # Cloudflare 워커 배포 임시 파일
 proxy/.wrangler/
+# 파이썬 캐시 (tools/simplify.py)
+__pycache__/

@@ -12,6 +12,7 @@ const REAL_KEY = 'brpg.real'
 const KEYS_KEY = 'brpg.keys'
 const MUTE_KEY = 'brpg.muted'
 const HUD_KEY = 'brpg.hud'
+const GFX_KEY = 'brpg.gfx'
 
 const get = (k: string): string | null => {
   try {
@@ -64,6 +65,22 @@ export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
 export const hudScale = (): number => HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1
 export const setHudSize = (id: string): void => set(HUD_KEY, id)
 
+/**
+ * 화질 (2026-09-23 최적화 — "서버 없는 게임이니 4명이 해도 렉이 없게"). 락스텝이라 한 사람이 느리면 모두가 기다린다.
+ * 자동: 프레임이 느리면 3D 해상도를 한 단계씩 낮추고(가장 낮으면 그림자도 끈다), 넉넉해지면 다시 올린다 (session.autoQuality).
+ */
+export const GFX_MODES = [
+  { id: 'auto', name: '자동' },
+  { id: 'high', name: '높게' },
+  { id: 'low', name: '낮게' },
+] as const
+export type GfxMode = (typeof GFX_MODES)[number]['id']
+export function gfxMode(): GfxMode {
+  const v = get(GFX_KEY)
+  return GFX_MODES.some((g) => g.id === v) ? (v as GfxMode) : 'auto'
+}
+export const setGfxMode = (id: string): void => set(GFX_KEY, id)
+
 /** 소리 (audio/sfx.ts 와 같은 열쇠) */
 export const soundMuted = (): boolean => get(MUTE_KEY) === '1'
 export const setSoundMuted = (m: boolean): void => set(MUTE_KEY, m ? '1' : '0')
@@ -76,6 +93,8 @@ export type SettingsOpts = {
   onReal?: (on: boolean) => void
   /** HUD 크기가 바뀌었다 (게임 안이면 화면 크기를 다시 맞춘다) */
   onHud?: () => void
+  /** 화질이 바뀌었다 */
+  onGfx?: (mode: GfxMode) => void
   onKeys?: (on: boolean) => void
   onAutoPick?: (v: number) => void
 }
@@ -102,6 +121,7 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     `<p class="apn">실사 괴물은 처음 만날 때 모델을 받습니다. 느린 기기·데이터가 아까우면 끄세요.</p>` +
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
+    gfxRowHtml() +
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
     `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
@@ -109,6 +129,12 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     (kb ? keybindHtml() : '') +
     `</div>`
   )
+}
+
+function gfxRowHtml(): string {
+  const cur = gfxMode()
+  const btns = GFX_MODES.map((g) => `<button type="button" data-gfx="${g.id}" class="${g.id === cur ? 'on' : ''}">${g.name}</button>`).join('')
+  return `<div class="srow"><b>화질</b><div class="seg small hudseg">${btns}</div></div><p class="apn">자동은 느리면 3D 해상도를 낮추고 넉넉하면 다시 올립니다. 낮게 = 해상도 60% · 그림자 끔.</p>`
 }
 
 function hudRowHtml(): string {
@@ -193,6 +219,13 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         setKeysShown(on)
         o.onKeys?.(on)
       }
+      redraw()
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {
+    b.onclick = () => {
+      setGfxMode(b.dataset.gfx as string)
+      o.onGfx?.(gfxMode())
       redraw()
     }
   })
