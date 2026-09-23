@@ -24,7 +24,7 @@ import {
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, donateEvent } from './donate'
+import { CHEER_HEAL, CHEER_RATE, CHEER_TICKS, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, donateEvent } from './donate'
 import { botInput, makeBot } from './bot'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
@@ -2814,6 +2814,15 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
       break
     case 'seal':
       addDon(DON_SEAL, DON_TICKS[DON_SEAL])
+      break
+    case 'cheer':
+      // 응원 (2026-09-23): 같은 지역 우리 편 모두 — 체력 50% · 20초 공격 속도 +25% · 초록 고리
+      state.events.push({ type: 'allyfx', p: p.id, x: p.x, y: p.y, r: 12 * TILE })
+      for (const q of state.players) {
+        if (!q.alive || q.left || q.out || q.team !== p.team || q.area !== p.area) continue
+        healPlayer(state, q, q.maxHp * CHEER_HEAL)
+        buffRate(q, CHEER_TICKS, CHEER_RATE)
+      }
       break
     case 'rage':
       // 이 지역의 살아 있는 괴물 모두 (잠든 무리까지 — 깨우면 이미 세다)

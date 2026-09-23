@@ -31,7 +31,8 @@ export class StreamBadge {
     if (first) parent.prepend(this.el)
     else parent.appendChild(this.el)
     this.offStatus = stream.onStatus(() => this.update())
-    this.offAct = stream.onActivity(() => this.update())
+    // 채팅 · 후원이 올 때는 불만 깜빡인다 — 전에는 채팅 한 줄마다 단추를 통째로 다시 그렸다(빠른 방송이면 초당 수십 번)
+    this.offAct = stream.onActivity(() => this.ping())
     this.update()
   }
 
@@ -50,6 +51,18 @@ export class StreamBadge {
             : '눌러서 로그인'
     this.el.innerHTML = `<i class="czdot"></i><b>치지직</b><span class="czst">${STATUS_LABEL[st]}</span><small>${sub}</small>`
     this.el.title = stream.detail || '치지직 방송 연동 — 채팅 말풍선 · 후원 이벤트'
+  }
+
+  private pingAt = 0
+  private ping(): void {
+    const now = performance.now()
+    if (now - this.pingAt < 400) return
+    this.pingAt = now
+    const dot = this.el.querySelector('.czdot') as HTMLElement | null
+    if (!dot) return
+    dot.classList.remove('ping')
+    void dot.offsetWidth
+    dot.classList.add('ping')
   }
 
   dispose(): void {
@@ -143,7 +156,11 @@ function panelHtml(): string {
     `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
-    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
+    toggle('vote', '시청자 투표 (4분마다 · 채팅 1 축복 / 2 저주)', c.vote) +
+    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button>` +
+    `<button type="button" class="btn secondary sm" data-cz="vote">지금 투표</button>` +
+    `<button type="button" class="btn secondary sm" data-cz="sub">구독 시험</button></div>` +
+    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>우리 편 체력 50% 회복 · 20초 공격 속도 +25%</b>. 치지직 구독도 응원이 됩니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
@@ -172,6 +189,8 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         chzzkDisconnect()
       } else if (a === 'logout') chzzkLogout()
       else if (a === 'chat') stream.fakeChat()
+      else if (a === 'vote') stream.requestVote()
+      else if (a === 'sub') stream.fakeSubscription()
       else if (a === 'reset') {
         const c = loadStreamCfg()
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
@@ -184,7 +203,9 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
     b.onclick = () => {
       const c = loadStreamCfg()
       const on = b.dataset.on === '1'
-      if ((b.parentElement as HTMLElement).dataset.tg === 'bubbles') c.bubbles = on
+      const tg = (b.parentElement as HTMLElement).dataset.tg
+      if (tg === 'bubbles') c.bubbles = on
+      else if (tg === 'vote') c.vote = on
       else c.table = on
       saveStreamCfg(c)
       redraw()

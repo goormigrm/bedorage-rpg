@@ -17,6 +17,13 @@ export interface StreamDonation {
   text: string
 }
 
+/** 치지직 구독 (2026-09-23 — 응원 효과) */
+export interface StreamSub {
+  nick: string
+  /** 몇 개월째 */
+  month: number
+}
+
 export interface StreamCfg {
   /** 채팅을 괴물 말풍선으로 */
   bubbles: boolean
@@ -26,6 +33,8 @@ export interface StreamCfg {
   amounts: number[]
   /** 페이지를 열면 저절로 다시 연결 (한 번 연결에 성공하면 켜진다) */
   auto: boolean
+  /** 시청자 투표 (몇 분마다 채팅으로 1 축복 · 2 저주) — 2026-09-23 */
+  vote: boolean
 }
 
 const CFG_KEY = 'brpg.chzzk.cfg'
@@ -33,7 +42,7 @@ const CFG_KEY = 'brpg.chzzk.cfg'
 const OLD_DEFAULTS = [1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000]
 
 function defaults(): StreamCfg {
-  return { bubbles: true, table: true, amounts: DONATE_EVENTS.map((e) => e.amount), auto: false }
+  return { bubbles: true, table: true, amounts: DONATE_EVENTS.map((e) => e.amount), auto: false, vote: true }
 }
 
 export function loadStreamCfg(): StreamCfg {
@@ -46,7 +55,7 @@ export function loadStreamCfg(): StreamCfg {
       const a = Number(v.amounts?.[i])
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
     })
-    return { bubbles: v.bubbles ?? d.bubbles, table: v.table ?? d.table, amounts, auto: v.auto ?? d.auto }
+    return { bubbles: v.bubbles ?? d.bubbles, table: v.table ?? d.table, amounts, auto: v.auto ?? d.auto, vote: v.vote ?? d.vote }
   } catch {
     return d
   }
@@ -96,6 +105,10 @@ class StreamHub {
   private statusFns = new Set<Fn<StreamStatus>>()
   private chatFns = new Set<Fn<StreamChat>>()
   private donFns = new Set<Fn<StreamDonation>>()
+  private subFns = new Set<Fn<StreamSub>>()
+  private voteFns = new Set<() => void>()
+  /** 시청자 투표가 열려 있나 (세션이 켠다 — 시험 채팅이 1 · 2 로 투표하게) */
+  voteOpen = false
   /** 받을 세션이 없을 때 온 후원 (다음 판이 가져간다) */
   private held: StreamDonation[] = []
 
@@ -137,6 +150,27 @@ class StreamHub {
     }
   }
 
+  /** 구독 (받을 세션이 없으면 버린다 — 돈이 아니라 들고 있을 까닭이 없다) */
+  onSubscription(f: Fn<StreamSub>): () => void {
+    this.subFns.add(f)
+    return () => this.subFns.delete(f)
+  }
+
+  subscription(sub: StreamSub): void {
+    this.note()
+    for (const f of [...this.subFns]) f(sub)
+  }
+
+  /** 치지직 창의 "투표 열기" (세션이 받아 투표를 연다) */
+  onVoteRequest(f: () => void): () => void {
+    this.voteFns.add(f)
+    return () => this.voteFns.delete(f)
+  }
+
+  requestVote(): void {
+    for (const f of [...this.voteFns]) f()
+  }
+
   chat(c: StreamChat): void {
     this.note()
     for (const f of [...this.chatFns]) f(c)
@@ -159,7 +193,15 @@ class StreamHub {
   fakeChat(): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    this.chat({ nick: r(this.nicks), text: r(this.samples) })
+    // 투표 중이면 시험 채팅도 1 · 2 로 표를 던진다 (시청자마다 한 표 — 닉네임에 번호를 붙인다)
+    if (this.voteOpen) this.chat({ nick: `${r(this.nicks)}${Math.floor(Math.random() * 90)}`, text: r(['1', '2', '!1', '1', '2']) })
+    else this.chat({ nick: r(this.nicks), text: r(this.samples) })
+  }
+
+  fakeSubscription(): void {
+    this.tried = true
+    const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
+    this.subscription({ nick: r(this.nicks), month: 1 + Math.floor(Math.random() * 12) })
   }
 
   fakeDonation(amount: number): void {

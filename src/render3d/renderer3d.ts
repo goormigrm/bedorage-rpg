@@ -34,7 +34,7 @@ import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './chara
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
-import { DARK_VIEW_TILES, DON_DARK } from '../core/donate'
+import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
@@ -144,6 +144,10 @@ interface Ring {
   max: number
   r0: number
   r1: number
+  /** 가장 진할 때의 투명도 */
+  peak: number
+  /** 가는 고리 (넓은 범위 표시 — 두꺼운 고리는 반경의 15% 라 12칸이면 2칸 가까운 띠가 화면을 덮었다) */
+  thin: boolean
 }
 
 /** 근접 베기 궤적 (2026-09-19 손맛 — 무기의 사거리 · 각도 그대로의 부채꼴이 번쩍 지나간다) */
@@ -247,6 +251,9 @@ export class Renderer3D {
   private partMesh!: THREE.InstancedMesh
   private readonly partDummy = new THREE.Object3D()
   private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
+  private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
+  private thinPool: THREE.Mesh[] = []
+  private slashPool: THREE.Mesh[] = []
   /**
    * 떨어진 것 · 장판의 도형 · 재질은 같이 쓴다 (2026-09-23 최적화): 전에는 금화 한 더미에 원기둥 6 개 · 아이템 하나에 원기둥 + 상자를
    * 새로 만들고 주울 때 해제하지 않아 GPU 메모리가 샜다(몇 시간이면 수천 개).
@@ -963,8 +970,9 @@ export class Renderer3D {
           const caster = state.players[e.p]
           const foe = !!me && !!caster && me !== caster && isEnemy(me, caster)
           const col = foe ? ENEMY_BUFF : ALLY_GOOD
-          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.75, col)
-          this.spawnRing(e.x * U, e.y * U, e.r * U * 0.97, e.r * U, 1.1, col)
+          // 가는 고리 둘 — 퍼져 나가는 것 · 닿는 끝에 잠깐 남는 것 (두꺼운 띠가 화면을 덮었다 — 2026-09-23 영상에서 확인)
+          this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.6, col, true, 0.7)
+          this.spawnRing(e.x * U, e.y * U, e.r * U * 0.985, e.r * U, 0.9, col, true, 0.55)
           break
         }
         case 'summon':
@@ -1379,7 +1387,7 @@ export class Renderer3D {
   private endRing(i: number): void {
     const r = this.rings[i]
     this.scene.remove(r.mesh)
-    this.ringPool.push(r.mesh)
+    ;(r.thin ? this.thinPool : this.ringPool).push(r.mesh)
     this.rings.splice(i, 1)
   }
 
@@ -1393,18 +1401,19 @@ export class Renderer3D {
     })
   }
 
-  private spawnRing(x: number, z: number, r0: number, r1: number, life: number, color: number): void {
+  private spawnRing(x: number, z: number, r0: number, r1: number, life: number, color: number, thin = false, peak = 0.9): void {
     if (this.rings.length >= RING_MAX) this.endRing(0)
     // 도형은 하나를 같이 쓰고, 재질(색 · 투명도가 고리마다 다르다)은 고리와 같이 모아 둔다
-    const mesh = this.ringPool.pop() ?? new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+    const pool = thin ? this.thinPool : this.ringPool
+    const mesh = pool.pop() ?? new THREE.Mesh(thin ? this.thinRingGeo : this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
     const rm = mesh.material as THREE.MeshBasicMaterial
     rm.color.setHex(color)
-    rm.opacity = 0.9
+    rm.opacity = peak
     mesh.scale.setScalar(r0)
     mesh.rotation.x = -Math.PI / 2
     mesh.position.set(x, 0.02, z)
     this.scene.add(mesh)
-    this.rings.push({ mesh, life, max: life, r0, r1 })
+    this.rings.push({ mesh, life, max: life, r0, r1, peak, thin })
   }
 
   private spawnSlash(x: number, z: number, aim: number, w: WeaponDef): void {
@@ -1419,8 +1428,14 @@ export class Renderer3D {
       this.slashGeo.set(w.id, geo)
     }
     const color = w.family === 'violin' ? 0xff7a5a : w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
-    const mesh = new THREE.Mesh(geo, mat)
+    // 재질은 모아 두었다가 다시 쓴다 (2026-09-23): 휘두를 때마다 만들고 0.14초 뒤 해제했더니, 그 셰이더를 쓰는 재질이
+    // 하나도 안 남는 순간 three 가 셰이더 프로그램까지 지워 다음 휘두르기에서 다시 컴파일했다(한 번에 100~150ms 멈춤)
+    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+    mesh.geometry = geo
+    const mat = mesh.material as THREE.MeshBasicMaterial
+    mat.color.setHex(color)
+    mat.opacity = 0.6
+    mesh.scale.setScalar(1)
     mesh.position.set(x, 0.45, z)
     // 링 조각은 +x 가 가운데, 바닥에 눕히면 각이 -z 쪽으로 돈다 → y 축으로 -aim 만큼 돌리면 조준 방향
     mesh.rotation.y = -aim
@@ -2888,12 +2903,8 @@ export class Renderer3D {
     for (const [id, g] of this.zoneMeshes) {
       if (live.has(id)) continue
       this.scene.remove(g)
-      // 재질은 장판마다 만든 것이라 해제한다 (도형은 같이 쓰는 것)
-      for (const c of g.children) {
-        const mm = (c as THREE.Mesh).material as THREE.Material | undefined
-        mm?.dispose()
-        if ((c as THREE.PointLight).isPointLight) (c as THREE.PointLight).dispose()
-      }
+      // 재질은 해제하지 않는다 (GPU 자원이 없는 작은 재질이라 버리면 저절로 치워진다). 해제하면 그 셰이더를 쓰는 재질이
+      // 하나도 안 남는 순간 셰이더 프로그램까지 지워져, 다음 장판에서 다시 컴파일하느라 화면이 멈췄다 (2026-09-23 과부하 시험)
       this.zoneMeshes.delete(id)
     }
   }
@@ -3455,7 +3466,7 @@ export class Renderer3D {
       sl.life -= dt
       if (sl.life <= 0) {
         this.scene.remove(sl.mesh)
-        ;(sl.mesh.material as THREE.Material).dispose()
+        this.slashPool.push(sl.mesh)
         this.slashes.splice(i, 1)
         continue
       }
@@ -3473,7 +3484,7 @@ export class Renderer3D {
       const k = 1 - r.life / r.max
       const rad = r.r0 + (r.r1 - r.r0) * k
       r.mesh.scale.setScalar(rad)
-      ;(r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.9
+      ;(r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - k) * r.peak
     }
     for (let i = this.pings.length - 1; i >= 0; i--) {
       this.pings[i].life -= dt
@@ -3547,7 +3558,9 @@ export class Renderer3D {
       const me = curr.players[lp]
       tx = pos[lp].x
       tz = pos[lp].z
-      if (me.alive && me.ads) {
+      // 정조준이면 조준 쪽을 더 보여 준다. 단 후원 "손 떨림" 중에는 하지 않는다 — 조준이 매 틱 ±20° 흔들려
+      // 카메라가 따라 흔들리면 화면 전체가 정신없이 떨렸다 (2026-09-23 사용자: "화면 흔들림은 없도록"). 조준만 흔들린다
+      if (me.alive && me.ads && !((me.don?.[DON_SHAKE] ?? 0) > 0)) {
         const r = angleToRad(me.aim)
         // 조준경은 앞을 더 보여 주되, 너무 멀리 밀면 조준선이 화면에서 빨리 움직여 맞히기 어렵다
         const reach = this.scoped ? 5 : 3
@@ -3571,7 +3584,7 @@ export class Renderer3D {
       this.camInit = true
     } else {
       // 조준경일 때는 더 천천히 따라가서 손떨림이 화면을 흔들지 않게 한다
-      const s = 1 - Math.pow(this.scoped ? 0.06 : 0.002, dt)
+      const s = 1 - Math.pow(this.scoped ? 0.06 : 0.002, Math.max(0, dt))
       this.camTarget.x += (tx - this.camTarget.x) * s
       this.camTarget.z += (tz - this.camTarget.z) * s
       this.camDist += (dist - this.camDist) * s * 0.7

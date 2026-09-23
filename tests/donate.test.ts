@@ -8,7 +8,7 @@ import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS } from '../src/core/donate'
+import { CHEER_EVENT, CHEER_RE, CHEER_TICKS, DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
 import { eventForAmount } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -53,7 +53,7 @@ describe('후원 이벤트 — 소환', () => {
 
   it('금액표: 1만 5천 칸이 없고 2만 · 3만 · 5만 · 10만 (2026-09-23 요청) · 넘는 것 중 가장 비싼 이벤트', () => {
     expect(DONATE_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000])
-    const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount) }
+    const cfg = { bubbles: true, table: true, auto: false, vote: true, amounts: DONATE_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
     expect(eventForAmount(1000, cfg)?.key).toBe('horde')
     expect(eventForAmount(15000, cfg)?.key).toBe('unique')
@@ -206,3 +206,32 @@ describe('후원 이벤트 — 효과', () => {
     expect(RAGE_TICKS).toBeGreaterThan(0)
   })
 })
+
+// 응원 (2026-09-23 — 치지직 "!응원" 후원 · 구독 · 시청자 투표 축복): 괴롭히는 대신 돕는다
+describe('후원 이벤트 — 응원', () => {
+  it('응원은 금액표 밖의 이벤트(번호 11) · 후원 글 "!응원" 을 알아본다', () => {
+    expect(DONATE_EVENTS.some((e) => e.key === 'cheer')).toBe(false)
+    expect(donateEvent(CHEER_EVENT.id)?.key).toBe('cheer')
+    expect(CHEER_RE.test('힘내세요 !응원')).toBe(true)
+    expect(CHEER_RE.test('! 힐 부탁')).toBe(true)
+    expect(CHEER_RE.test('응원합니다')).toBe(false)
+  })
+
+  it('같은 지역 우리 편 모두 체력 50% · 공격 속도 버프 · 초록 고리', () => {
+    const g = game(81)
+    toField(g)
+    const [a, b] = g.s.players
+    b.area = a.area
+    b.x = a.x + 40
+    b.y = a.y
+    a.hp = Math.round(a.maxHp * 0.2)
+    b.hp = Math.round(b.maxHp * 0.3)
+    g.donate(CHEER_EVENT.id)
+    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.69))
+    expect(b.hp).toBeGreaterThanOrEqual(Math.round(b.maxHp * 0.79))
+    expect(a.rateMul).toBeCloseTo(1.25)
+    expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
+    expect(CHEER_TICKS).toBeGreaterThan(0)
+  })
+})
+
