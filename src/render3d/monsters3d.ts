@@ -1095,7 +1095,9 @@ export class MonsterView {
       const def = MONSTER_LIST[m.kind]
       v.move += ((m.moving ? 1 : 0) - v.move) * Math.min(1, dt * 10)
       v.walk += dt * (6 + def.speed * 3) * v.move
-      v.wind = m.st === MS_WINDUP ? 1 - m.t / def.windup : Math.max(0, v.wind - dt * 6)
+      // 보스 패턴은 예고가 보통 공격보다 길다 (wmax) — 비율이 음수가 되지 않게
+      const wlen = (m.pat ?? -1) >= 0 && m.wmax ? m.wmax : def.windup
+      v.wind = m.st === MS_WINDUP ? Math.max(0, Math.min(1, 1 - m.t / Math.max(1, wlen))) : Math.max(0, v.wind - dt * 6)
       v.swing = Math.max(0, v.swing - dt * 5)
       v.flash = Math.max(0, v.flash - dt * 7)
       v.squashV += (-120 * v.squash - 10 * v.squashV) * dt

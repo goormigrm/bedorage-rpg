@@ -98,9 +98,10 @@ export const MONSTER_LIST: MonsterDef[] = [
     knockRes: 0.6, globe: 0.12, xp: 10, loot: 0.14,
   },
   {
-    // 보스 — 도살자: 마지막 층 깊은 곳. 붙으면 큰 칼질(±90°), 멀면 **예고선을 긋고 돌진**한다(옆으로 비키거나 구르면 산다)
+    // 보스 — 도살자: 붙으면 큰 칼질(±90°). 패턴 돌진 · 회전 베기 · 갈고리 (절반 아래 고기 비) — BOSS_PLANS
     id: 'butcher', idx: 3, name: '도살자',
-    hp: 1400, speed: 2.1, r: 24,
+    // 체력: 패턴을 여러 바퀴 보도록 (2026-09-23 — 전에는 넷이 6초 만에 잡아 패턴을 한 번도 못 봤다 · tools/bossfight.ts)
+    hp: 9000, speed: 2.1, r: 24,
     attack: 'melee', dmg: 42, range: 20, windup: 26, recover: 34, cooldown: 55, arc: deg(90),
     knockRes: 0.92, globe: 1, xp: 240, loot: 1, boss: true, special: 'charge',
   },
@@ -138,9 +139,9 @@ export const MONSTER_LIST: MonsterDef[] = [
     knockRes: 0.2, globe: 0.1, xp: 12, loot: 0.18,
   },
   {
-    // 보스 — 거미 여왕: 가까우면 물기, 번갈아 **거미줄 부채**(7갈래 · 맞으면 느려짐 · 예고선)와 **새끼 거미 부르기**
+    // 보스 — 거미 여왕: 가까우면 물기. 패턴 거미줄 부채 · 도약 · 새끼 부르기 · 독 안개 — BOSS_PLANS
     id: 'queen', idx: 8, name: '거미 여왕',
-    hp: 2200, speed: 1.9, r: 26,
+    hp: 13000, speed: 1.9, r: 26,
     attack: 'melee', dmg: 38, range: 18, windup: 22, recover: 30, cooldown: 50, arc: deg(60),
     shotSpeed: 5, shotLife: 84, shotR: 9, shotSlow: 150, shotColor: 0xd8f0c8,
     knockRes: 0.95, globe: 1, xp: 300, loot: 1, boss: true, special: 'queen',
@@ -172,9 +173,9 @@ export const MONSTER_LIST: MonsterDef[] = [
     knockRes: 0.4, globe: 0.1, xp: 13, loot: 0.16,
   },
   {
-    // 보스 — 관리인: 지하도의 문지기. 쇠곤봉 휘두르기 + 번갈아 **내려찍기**(주위 원 · 예고) · **방패병 부르기**
+    // 보스 — 관리인: 지하도의 문지기. 쇠곤봉 휘두르기. 패턴 앞뒤 휘두르기 · 내려찍기 · 충격파 십자 · 방패병 (절반 아래 여진) — BOSS_PLANS
     id: 'warden', idx: 12, name: '관리인',
-    hp: 2800, speed: 2.0, r: 26,
+    hp: 15000, speed: 2.0, r: 26,
     attack: 'melee', dmg: 46, range: 20, windup: 26, recover: 32, cooldown: 55, arc: deg(90),
     knockRes: 0.95, globe: 1, xp: 380, loot: 1, boss: true, special: 'warden',
   },
@@ -196,10 +197,10 @@ export const MONSTER_LIST: MonsterDef[] = [
     knockRes: 0.6, globe: 0.12, xp: 18, loot: 0.2,
   },
   {
-    // 최종 보스 — 심연의 군주: 휘두르기 + 번갈아 **불꽃 고리**(사방 탄) · **불비**(사람마다 폭발 예고 둘) · (분노 뒤) **그림자 부르기**.
+    // 최종 보스 — 심연의 군주: 휘두르기. 패턴 불꽃 고리 · 불비 · 심연 광선 → 그림자 · 지옥불 — BOSS_PLANS.
     // 체력 2/3 · 1/3 에서 분노 — 그림자를 부르고, 마지막 단계는 빨라지고 더 자주 쓴다
     id: 'lord', idx: 15, name: '심연의 군주',
-    hp: 4800, speed: 2.1, r: 30,
+    hp: 24000, speed: 2.1, r: 30,
     attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
     shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
     knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
@@ -215,11 +216,8 @@ export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MO
 /** 쓰러뜨려서 터질 때는 이만큼만 (다가와 터질 때보다 약하게) */
 export const DEATH_BLAST_MULT = 0.6
 
-/** 보스 돌진: 예고 틱 · 속도 · 길이 · 피해 */
-export const CHARGE = { windup: 48, speed: 10, ticks: 30, dmg: 55, every: 60 * 7 }
-
-/** 거미 여왕: 부채(갈래 · 벌어짐 · 예고 · 피해 배율)와 새끼(한 번에 · 상한 · 체력 배율), 특수 간격. 둘을 번갈아 (Monster.phase) */
-export const QUEEN = { fan: 7, spread: 36, fanWindup: 40, fanDmg: 0.45, brood: 4, broodMax: 8, broodHp: 0.4, broodWindup: 34, every: 60 * 4 }
+/** 거미 여왕: 부채(갈래 · 분노 갈래 · 벌어짐)와 새끼(한 번에 · 상한 · 체력 배율) */
+export const QUEEN = { fan: 7, fanRage: 9, spread: 36, brood: 4, broodMax: 8, broodHp: 0.4 }
 export const SPIDER_KIND = 6
 export const GHOUL_KIND = 0
 export const SHIELD_KIND = 9
@@ -229,21 +227,136 @@ export const GUARD = { mult: 0.4, turn: 0.25 }
 export const RAISE = { n: 2, max: 6, hp: 0.5, windup: 40, every: 60 * 6 }
 /** 산성 웅덩이: 반경 · 지속 틱 · 피해 간격(틱) */
 export const ACID = { r: 58, ticks: 180, every: 30 }
-/** 관리인: 내려찍기(예고 · 반경 · 피해 배율) · 방패병 부르기(수 · 상한 · 체력 배율 · 예고) · 특수 간격 */
 /** 그림자 순간이동: 표적과의 거리(최소·최대) · 등 뒤 거리 · 예고 · 간격 */
 export const BLINK = { min: 110, max: 420, behind: 50, windup: 22, every: 60 * 6 }
 export const SHADE_KIND = 13
 export const LORD_KIND = 15
 /** 포격 악마: 떨어질 자리의 폭발 예고 틱 */
 export const DEMON_FUSE = 56
-/** 심연의 군주: 불꽃 고리(갈래 · 분노 갈래 · 피해 배율 · 예고) · 불비(예고 · 반경 · 폭발 예고 · 피해 배율) · 그림자(수 · 상한 · 체력) · 간격 · 분노 간격 · 분노 속도 */
-export const LORD = {
-  nova: 16, novaRage: 24, novaDmg: 0.5, novaWindup: 40,
-  meteorWindup: 30, meteorR: 70, meteorT: 50, meteorDmg: 0.9,
-  shades: 2, shadeMax: 4, shadeHp: 0.5, callWindup: 34,
-  every: 60 * 3.5, rageEvery: 60 * 2.5, rageSpeed: 1.3,
+/** 심연의 군주: 불꽃 고리(갈래 · 마지막 단계 갈래) · 그림자(수 · 상한 · 체력) */
+export const LORD = { nova: 16, novaRage: 24, shades: 2, shadeMax: 4, shadeHp: 0.5 }
+/** 관리인: 방패병 부르기(수 · 상한 · 체력 배율) */
+export const WARDEN = { guards: 2, guardMax: 4, guardHp: 0.5 }
+
+// ================================================================ 보스 패턴 (2026-09-23)
+// 사용자: "보스는 각자 가진 특별한 패턴의 공격 · 퍼센트 데미지로 탱커든 딜러든 힐러든 동일하게 · 넉백을 포함한 모든 상태 이상이 먹히지 않게 ·
+// 각 막의 보스들은 적어도 3가지 정도의 일정한 패턴 스킬 — 피하지 않으면 클리어가 어렵게".
+// - 패턴은 **정해진 차례**로 돈다(BOSS_PLANS.order — 몇 번 보면 외운다). 쓸 수 없는 것(부를 자리가 없다 · 돌진할 사람이 없다)은 건너뛴다.
+// - 모든 피해는 **맞은 사람 최대 체력의 ‰**(pm) — 방어력 · 탱커 역할 · 막기 · 피해 감소 스킬을 무시한다. 구르기 · 무적은 피한다.
+// - 범위는 예고(빨간 모양이 차오른다) 뒤에 터진다. 모양: 원 · 고리(안쪽이 안전) · 줄 · 부채 (core/bosszone.ts).
+// - 체력이 줄면 분노(stage): 차례가 길어지고 간격이 짧아지고 조금 빨라진다.
+
+/** 보스 보통 휘두르기: 최대 체력의 6% (근접 캐릭터는 늘 곁에 있다 — 무거운 것은 패턴이 맡는다) */
+export const BOSS_SWIPE_PM = 60
+/** 난이도(보통 · 악몽 · 지옥)마다 보스 ‰ 배율 — 레벨로 세지지 않으니 난이도로 올린다 */
+export const BOSS_TIER_PM = [1, 1.25, 1.5]
+/** 후원 광폭화 중 보스 ‰ 배율 */
+export const BOSS_RAGE_PM = 1.3
+
+export type BossPatId =
+  | 'charge' | 'spin' | 'hook' | 'meat'
+  | 'fan' | 'leap' | 'brood' | 'venom'
+  | 'sweep' | 'slam' | 'cross' | 'guards' | 'quake'
+  | 'nova' | 'meteor' | 'spokes' | 'hellfire' | 'shades'
+
+export interface BossPatDef {
+  id: BossPatId
+  /** 예고 동안 보스 머리 위에 뜨는 이름 */
+  name: string
+  /** 예고 틱 */
+  windup: number
 }
-export const WARDEN = { slamWindup: 44, slamR: 150, slamDmg: 1.1, guards: 2, guardMax: 4, guardHp: 0.5, callWindup: 36, every: 60 * 4 }
+
+/** 패턴 목록 — 배열 순서 = Monster.pat 번호 (스냅샷에 번호로 들어간다 — 끝에만 더할 것) */
+export const BOSS_PATS: BossPatDef[] = [
+  { id: 'charge', name: '돌진', windup: 48 },
+  { id: 'spin', name: '회전 베기', windup: 54 },
+  { id: 'hook', name: '갈고리', windup: 40 },
+  { id: 'meat', name: '고기 비', windup: 64 },
+  { id: 'fan', name: '거미줄 부채', windup: 40 },
+  { id: 'leap', name: '도약', windup: 46 },
+  { id: 'brood', name: '새끼 부르기', windup: 34 },
+  { id: 'venom', name: '독 안개', windup: 64 },
+  { id: 'sweep', name: '앞뒤 휘두르기', windup: 44 },
+  { id: 'slam', name: '내려찍기', windup: 44 },
+  { id: 'cross', name: '충격파 십자', windup: 50 },
+  { id: 'guards', name: '방패병 부르기', windup: 36 },
+  { id: 'quake', name: '여진', windup: 40 },
+  { id: 'nova', name: '불꽃 고리', windup: 40 },
+  { id: 'meteor', name: '불비', windup: 80 },
+  { id: 'spokes', name: '심연 광선', windup: 56 },
+  { id: 'hellfire', name: '지옥불', windup: 50 },
+  { id: 'shades', name: '그림자 부르기', windup: 34 },
+]
+export const PAT: Record<BossPatId, number> = Object.fromEntries(BOSS_PATS.map((p, i) => [p.id, i])) as Record<BossPatId, number>
+
+/**
+ * 패턴 수치 (px · 틱 · ‰). w = 줄의 반폭, r2 = 고리 안쪽(안전) 반지름, second = 이어지는 둘째 범위의 예고, gap = 여진 고리 사이 틱.
+ * 피해는 보통 난이도 기준 — 큰 패턴 한 방이 40~50%, 두 번 안 피하면 쓰러질 만큼 (tools/bossfight.ts 의 dodge=0 으로 잰다).
+ */
+export const BP = {
+  // 1막 도살자
+  charge: { speed: 10, ticks: 32, pm: 400, min: 120, max: 560 },
+  spin: { r: 150, pm: 450 },
+  hook: { len: 440, w: 24, pm: 200 },
+  meat: { r: 84, pm: 300, extra: 3 },
+  // 2막 거미 여왕
+  fan: { pm: 200, slow: 150 },
+  leap: { fly: 16, r: 120, pm: 450, max: 520 },
+  venom: { r2: 110, r: 360, pm: 400 },
+  // 3막 관리인
+  sweep: { r: 250, arc: 176, back: 36, pm: 400 },
+  slam: { r: 150, pm: 450 },
+  cross: { len: 560, w: 30, second: 44, pm: 400 },
+  quake: { ring: 130, n: 3, gap: 30, pm: 350 },
+  // 4막 심연의 군주
+  nova: { pm: 200 },
+  meteor: { r: 70, pm: 400 },
+  spokes: { n: 6, len: 600, w: 28, second: 50, pm: 450 },
+  hellfire: { r: 190, outer: 520, second: 50, pm: 500 },
+}
+
+export interface BossPlan {
+  /** 단계마다 패턴 차례 (stage 0 · 1 · 2) */
+  order: BossPatId[][]
+  /** 단계마다 패턴 사이 틱 (그동안은 쫓아와 휘두른다) */
+  every: number[]
+  /** 단계가 오르는 체력 비율 (위에서부터) */
+  stages: number[]
+  /** 단계마다 이동 배율 */
+  speed: number[]
+}
+
+export const BOSS_PLANS: Partial<Record<MonsterKindId, BossPlan>> = {
+  // 도살자: 멀면 돌진 · 붙으면 회전 베기 · 갈고리로 끌어와 칼질. 절반 아래면 고기 비까지
+  butcher: {
+    order: [['charge', 'spin', 'hook'], ['charge', 'meat', 'spin', 'hook']],
+    every: [120, 95],
+    stages: [0.5],
+    speed: [1, 1.2],
+  },
+  // 거미 여왕: 부채 · 도약 · 새끼 · 독 안개(곁으로 파고들어야 산다). 절반 아래면 부채가 아홉 갈래 · 도약을 두 번
+  queen: {
+    order: [['fan', 'leap', 'brood', 'venom'], ['fan', 'leap', 'venom', 'brood', 'leap']],
+    every: [150, 115],
+    stages: [0.5],
+    speed: [1, 1.15],
+  },
+  // 관리인: 앞뒤 휘두르기 · 내려찍기 · 충격파 십자(두 번 — 두 번째는 비스듬히) · 방패병. 절반 아래면 여진(퍼지는 고리)
+  warden: {
+    order: [['sweep', 'slam', 'cross', 'guards'], ['sweep', 'quake', 'cross', 'slam', 'guards']],
+    every: [170, 120],
+    stages: [0.5],
+    speed: [1, 1.15],
+  },
+  // 심연의 군주: 불꽃 고리 · 불비 · 심연 광선 → (2/3) 그림자 · 지옥불(안 → 밖) → (1/3) 광선 두 번 · 더 자주 · 더 빨리
+  lord: {
+    order: [['nova', 'meteor', 'spokes'], ['nova', 'meteor', 'shades', 'hellfire', 'spokes'], ['spokes', 'meteor', 'hellfire', 'nova', 'shades']],
+    every: [200, 150, 110],
+    stages: [2 / 3, 1 / 3],
+    speed: [1, 1.1, 1.3],
+  },
+}
 /** 정예: 무리 다섯에 하나, 우두머리가 된다 — 체력 4배 · 공격 1.4배 · 전리품 확정(등급 올림) · 경험치·골드 4배 */
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 

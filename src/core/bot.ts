@@ -9,7 +9,8 @@ import { BTN_DASH, BTN_FIRE, BTN_USE, Input, SKILL_BTNS } from './input'
 import { GameMap, TILE, isWallAt, rayBlocked } from './map'
 import { ACID, MONSTER_LIST } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
-import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, ZONE_ACID, ZONE_FUSE, isActive } from './state'
+import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, ZONE_ACID, ZONE_FUSE, ZONE_WARN, isActive } from './state'
+import { inZone, zoneEscape } from './bosszone'
 import { WEAPONS, WeaponId } from './weapons'
 import { SKILLS, baseSkill, focusCost, nodeSkill, slotNode } from './skills'
 import { flowField, flowStep } from './flow'
@@ -297,12 +298,13 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
   // 5-2) 땅 위험: 산성 웅덩이 · 폭발 예고 원 · 떨어질 자리(토사꾼·포격 악마 예고) 안이면 밖으로 (터지기 직전이면 구른다)
   if (rand(mem.rng) < 0.3 + diff.dodge) {
     for (const z of state.zones) {
-      if (z.owner !== -1 || (z.kind !== ZONE_ACID && z.kind !== ZONE_FUSE)) continue
-      const d = len(me.x - z.x, me.y - z.y)
-      if (d > z.r + 18) continue
-      fx = me.x - z.x || 1
-      fy = me.y - z.y
-      if (z.kind === ZONE_FUSE && z.t < 14 && rand(mem.rng) < diff.dodge) out.buttons |= BTN_DASH
+      if (z.owner !== -1 || (z.kind !== ZONE_ACID && z.kind !== ZONE_FUSE && z.kind !== ZONE_WARN) || z.wait) continue
+      // 보스 범위는 모양이 여럿이다 (원 · 고리 · 줄 · 부채 — core/bosszone.ts): 모양에 맞게 빠져나간다
+      if (!inZone(z, me.x, me.y, 18)) continue
+      const e = zoneEscape(z, me.x, me.y)
+      fx = e.x
+      fy = e.y
+      if (z.kind !== ZONE_ACID && z.t < 14 && rand(mem.rng) < diff.dodge) out.buttons |= BTN_DASH
       break
     }
     for (const m of state.monsters) {

@@ -1,12 +1,12 @@
-// 3막 잠긴 지하도 (D6): 방패병 정면 막기 · 산성 웅덩이 · 강령술사 일으키기 · 관리인 내려찍기·방패병 부르기 · 3막 이동.
+// 3막 잠긴 지하도 (D6): 방패병 정면 막기 · 산성 웅덩이 · 강령술사 일으키기 · 3막 이동 (관리인 패턴은 boss.test.ts).
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_SKILL2, CMD_QUEST, Input } from '../src/core/input'
-import { GameMap, TILE, TILE_FLOOR, buildMap, rayBlocked } from '../src/core/map'
-import { GUARD, MONSTER_LIST, RAISE, TIERS, WARDEN } from '../src/core/monsters'
+import { GameMap, TILE, TILE_FLOOR, buildMap } from '../src/core/map'
+import { GUARD, MONSTER_LIST, RAISE, TIERS } from '../src/core/monsters'
 import { makeMonster } from '../src/core/dungeon'
 import { CharacterId } from '../src/core/characters'
 import { createState, step } from '../src/core/sim'
-import { GameState, MS_CHASE, MS_RECOVER, MS_WINDUP, Monster, ZONE_ACID } from '../src/core/state'
+import { GameState, MS_CHASE, MS_RECOVER, Monster, ZONE_ACID } from '../src/core/state'
 import { ACTS, QUESTS, areaDef, buildAreaMap, townNpcs } from '../src/core/world'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -129,55 +129,7 @@ describe('3막 잠긴 지하도 (D6)', () => {
     expect(ghouls.length).toBeLessThanOrEqual(RAISE.max)
   })
 
-  it('관리인: 멀면 방패병을 부르고, 가까우면 둘레를 내려찍는다(예고 뒤 원 안의 사람이 다친다)', () => {
-    const seed = 72
-    const map = buildAreaMap(seed, 27)
-    const s = createState({ area: 27, seed, chars: ['chim'] }, map)
-    const w = s.monsters.find((m) => MONSTER_LIST[m.kind].special === 'warden')!
-    expect(w).toBeTruthy()
-    const p = s.players[0]
-    p.maxHp = p.hp = 99999
-    // 곁의 무리는 치운다 (관리인만 본다)
-    for (const m of s.monsters) if (m !== w) m.hp = 0
-    const spot = (d: number) => {
-      // 관리인에게서 d 떨어진, 막히지 않은 바닥
-      for (let k = 0; k < 64; k++) {
-        const a = (k / 64) * Math.PI * 2
-        const x = w.x + Math.cos(a) * d
-        const y = w.y + Math.sin(a) * d
-        if (map.tiles[Math.floor(y / TILE) * map.w + Math.floor(x / TILE)] === TILE_FLOOR && !rayBlocked(map, w.x, w.y, x, y)) return { x, y }
-      }
-      return { x: w.x - d, y: w.y }
-    }
-    // 멀리: 부르기
-    let called = 0
-    const far = spot(WARDEN.slamR + 120)
-    for (let t = 0; t < 60 * 8 && called === 0; t++) {
-      p.x = far.x
-      p.y = far.y
-      p.invuln = 99
-      step(s, map, [idle()])
-      if (s.events.some((e) => e.type === 'summon')) called = s.monsters.filter((m) => m.kind === kind('shield') && m.hp > 0).length
-    }
-    expect(called).toBeGreaterThanOrEqual(WARDEN.guards)
-    // 가까이: 내려찍기
-    for (const m of s.monsters) if (m !== w) m.hp = 0
-    const near = spot(70)
-    let slammed = false
-    let before = p.hp
-    for (let t = 0; t < 60 * 12 && !slammed; t++) {
-      p.x = near.x
-      p.y = near.y
-      p.invuln = 0
-      const wasSlam = w.st === MS_WINDUP && w.mode === 2
-      before = p.hp
-      step(s, map, [idle()])
-      if (wasSlam && w.st !== MS_WINDUP) slammed = s.events.some((e) => e.type === 'boom' && e.r === WARDEN.slamR)
-      for (const m of s.monsters) if (m !== w) m.hp = 0
-    }
-    expect(slammed).toBe(true)
-    expect(p.hp).toBeLessThan(before)
-  })
+  // 관리인 패턴(앞뒤 휘두르기 · 내려찍기 · 충격파 십자 · 방패병 · 여진)은 tests/boss.test.ts
 
   it('거미 여왕을 쓰러뜨리면 촌장이 3막 수문 야영지로 보낸다', () => {
     const seed = 73

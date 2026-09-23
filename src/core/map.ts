@@ -46,6 +46,8 @@ export interface GameMap {
    * 상태 밖이지만 타일 자체가 상태에서 복원되므로 결정론과 무관하다
    */
   version: number
+  /** 보스 결투장 (보스 방만 — 둥근 빈 방의 가운데 · 반지름, px) */
+  arena?: { x: number; y: number; r: number }
 }
 
 export function buildMap(idOrDef: MapId | MapDef = DEFAULT_MAP, scaleArg: MapScale = 1, seed = 1): GameMap {
@@ -115,6 +117,45 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
   openShortcuts(map)
   // 7) 그래도 멀리 돌아가는 구간이 남으면 곧게 이어 준다
   straightenPaths(map)
+  // 8) 보스 방: 둥근 결투장 (지름길 · 곧게 잇기가 둘레 벽을 뚫지 않게 맨 끝에)
+  if (g.arena) carveArena(map)
+}
+
+/**
+ * 보스 결투장 (2026-09-23 사용자: "보스가 존재하는 방은 구조물이 보스 주변에 없어서 충분히 싸우기에 넓은 장소를"):
+ * 맵 오른쪽에 둥근 방을 판다 — 안은 비어 있고(벽 · 상자 없음) 둘레는 벽, 입구는 왼쪽 가운데 한 곳(세 칸).
+ * 입구에서 맵 왼쪽 끝까지 곧은 복도를 내고, 복도에서 걸어서 닿지 않게 된 바닥(둘레 바깥 귀퉁이)은 벽으로 메운다.
+ * 거리는 정수 제곱으로 잰다 (브라우저마다 Math.hypot 끝자리가 달라도 모두 같은 맵)
+ */
+function carveArena(map: GameMap): void {
+  const r = Math.min(14, Math.floor((map.h - 8) / 2))
+  const cy = Math.floor(map.h / 2)
+  const cx = map.w - 3 - r
+  const ring = (r + 1.5) * (r + 1.5)
+  for (let ty = 1; ty < map.h - 1; ty++) {
+    for (let tx = 1; tx < map.w - 1; tx++) {
+      const d2 = (tx - cx) * (tx - cx) + (ty - cy) * (ty - cy)
+      const i = ty * map.w + tx
+      if (d2 <= r * r) map.tiles[i] = TILE_FLOOR
+      else if (d2 <= ring) map.tiles[i] = tx < cx && Math.abs(ty - cy) <= 1 ? TILE_FLOOR : TILE_WALL
+    }
+  }
+  for (let tx = 2; tx <= cx - r; tx++) for (let dy = -1; dy <= 1; dy++) map.tiles[(cy + dy) * map.w + tx] = TILE_FLOOR
+  const total = map.w * map.h
+  const seen = new Uint8Array(total)
+  const start = cy * map.w + 2
+  const queue = [start]
+  seen[start] = 1
+  for (let head = 0; head < queue.length; head++) {
+    const cur = queue[head]
+    for (const n of [cur - 1, cur + 1, cur - map.w, cur + map.w]) {
+      if (n < 0 || n >= total || seen[n] || map.tiles[n] !== TILE_FLOOR) continue
+      seen[n] = 1
+      queue.push(n)
+    }
+  }
+  for (let i = 0; i < total; i++) if (map.tiles[i] === TILE_FLOOR && !seen[i]) map.tiles[i] = TILE_WALL
+  map.arena = { x: cx * TILE + TILE / 2, y: cy * TILE + TILE / 2, r: r * TILE }
 }
 
 /** 8방향 걸음 수 거리 (실제 이동이 8방향이라 4방향으로 재면 대각선을 과대평가한다). 몬스터 흐름장(flow.ts)도 이것을 쓴다 */

@@ -1,8 +1,8 @@
 // 4막 심연 (D6): 그림자 순간이동 · 포격 악마 불덩이 · 심연의 군주(분노 단계 · 불꽃 고리 · 불비 · 그림자) · 4막 이동 · 웨이포인트 16비트.
 import { describe, expect, it } from 'vitest'
 import { CMD_QUEST, Input } from '../src/core/input'
-import { GameMap, TILE, TILE_FLOOR, buildMap, rayBlocked } from '../src/core/map'
-import { BLINK, DEMON_FUSE, LORD, MONSTER_LIST } from '../src/core/monsters'
+import { GameMap, TILE, TILE_FLOOR, buildMap } from '../src/core/map'
+import { BLINK, DEMON_FUSE, MONSTER_LIST } from '../src/core/monsters'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
 import { GameState, MS_CHASE, ZONE_FUSE } from '../src/core/state'
@@ -73,45 +73,7 @@ describe('4막 심연 (D6)', () => {
     expect(hurt).toBe(true)
   })
 
-  it('심연의 군주: 체력 2/3 · 1/3 에서 분노(그림자 부름) · 불꽃 고리 · 불비', () => {
-    const seed = 82
-    const map = buildAreaMap(seed, 34)
-    const s = createState({ area: 34, seed, chars: ['chim'] }, map)
-    const lord = s.monsters.find((m) => MONSTER_LIST[m.kind].special === 'lord')!
-    expect(lord).toBeTruthy()
-    for (const m of s.monsters) if (m !== lord) m.hp = 0
-    const p = s.players[0]
-    p.maxHp = p.hp = 99999
-    let spot = { x: lord.x - 200, y: lord.y }
-    for (let k = 0; k < 64; k++) {
-      const a = (k / 64) * Math.PI * 2
-      const x = lord.x + Math.cos(a) * 200
-      const y = lord.y + Math.sin(a) * 200
-      if (map.tiles[Math.floor(y / TILE) * map.w + Math.floor(x / TILE)] === TILE_FLOOR && !rayBlocked(map, lord.x, lord.y, x, y)) {
-        spot = { x, y }
-        break
-      }
-    }
-    let nova = 0
-    let meteors = 0
-    const rages: number[] = []
-    for (let t = 0; t < 60 * 20; t++) {
-      p.x = spot.x
-      p.y = spot.y
-      p.hp = p.maxHp
-      if (t === 300) lord.hp = Math.round(lord.maxHp * 0.6)
-      if (t === 700) lord.hp = Math.round(lord.maxHp * 0.3)
-      step(s, map, [idle()])
-      nova = Math.max(nova, s.mshots.filter((q) => q.by === lord.id).length)
-      meteors = Math.max(meteors, s.zones.filter((z) => z.kind === ZONE_FUSE && z.max === LORD.meteorT).length)
-      for (const e of s.events) if (e.type === 'lordRage') rages.push(e.stage)
-    }
-    expect(nova).toBeGreaterThanOrEqual(LORD.nova)
-    expect(meteors).toBeGreaterThanOrEqual(2)
-    expect(rages).toEqual([1, 2])
-    expect(lord.stage).toBe(2)
-    expect(s.monsters.some((m) => m.kind === kind('shade') && m.hp > 0)).toBe(true)
-  })
+  // 심연의 군주 패턴(불꽃 고리 · 불비 · 심연 광선 · 그림자 · 지옥불 · 분노 단계)은 tests/boss.test.ts
 
   it('관리인을 쓰러뜨리면 촌장이 4막 심연의 문으로 · 웨이포인트는 16비트 안', () => {
     const seed = 83

@@ -31,20 +31,34 @@ export const DONATE_EVENTS: DonateEvent[] = [
 ]
 
 /**
- * 응원 (2026-09-23 사용자: "치지직과 연동해서 재미있는 기능을 더"). 금액표에 없는 이벤트 — 방송인을 괴롭히는 대신 **돕는다**.
- * 후원 글에 "!응원" 을 쓰면(금액은 가장 싼 이벤트 이상) · 시청자 투표에서 "축복" 이 이기면 일어난다 (치지직 구독 알림은 2026-09-23 사용자 요청으로 뺐다).
+ * 응원 (2026-09-23 사용자: "치지직과 연동해서 재미있는 기능을 더" → "응원도 가격에 따라서 효과를 다르게"). 금액표와 따로 —
+ * 방송인을 괴롭히는 대신 **돕는다**. 후원 글에 "!응원" 을 쓰면 금액이 넘는 것 중 가장 비싼 단계가 일어난다(금액은 방송인이 정한다).
+ * 번호 11~14 (명령 arg 아래 네 비트 안).
  */
-export const CHEER_EVENT: DonateEvent = { id: 11, key: 'cheer', name: '응원', desc: '우리 편 체력 50% 회복 · 20초 공격 속도 +25%', amount: 0 }
-/** 응원: 회복 비율 · 공격 속도 버프 (길이 · 배율) */
-export const CHEER_HEAL = 0.5
-export const CHEER_TICKS = 20 * TICK_RATE
-export const CHEER_RATE = 1.25
+export interface CheerDef extends DonateEvent {
+  /** 우리 편 체력 회복 (최대 체력 비율) */
+  heal: number
+  /** 공격 속도 배율 · 길이(틱) — 0 이면 없음 */
+  rate: number
+  ticks: number
+  /** 쓰러진 동료를 일으킨다 */
+  revive: boolean
+  /** 무적 틱 */
+  invuln: number
+}
+export const CHEER_EVENTS: CheerDef[] = [
+  { id: 11, key: 'cheer', name: '응원', desc: '우리 편 체력 30% 회복', amount: 1000, heal: 0.3, rate: 1, ticks: 0, revive: false, invuln: 0 },
+  { id: 12, key: 'cheer', name: '힘내라', desc: '체력 50% 회복 · 20초 공격 속도 +25%', amount: 5000, heal: 0.5, rate: 1.25, ticks: 20 * TICK_RATE, revive: false, invuln: 0 },
+  { id: 13, key: 'cheer', name: '함성', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 30초 공격 속도 +35%', amount: 10000, heal: 1, rate: 1.35, ticks: 30 * TICK_RATE, revive: true, invuln: 0 },
+  { id: 14, key: 'cheer', name: '기적', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 5초 무적 · 40초 공격 속도 +50%', amount: 30000, heal: 1, rate: 1.5, ticks: 40 * TICK_RATE, revive: true, invuln: 5 * TICK_RATE },
+]
+export const cheerEvent = (id: number): CheerDef | undefined => CHEER_EVENTS.find((e) => e.id === id)
 /** 후원 글에 이것이 있으면 응원 */
 export const CHEER_RE = /!\s*(응원|힐|cheer)/i
 /** 소환하는 이벤트 (소환 상한에 걸리면 자리가 날 때까지 기다린다) */
 export const SUMMON_KEYS = new Set<DonateEvent['key']>(['horde', 'elite', 'unique', 'boss', 'hell'])
 
-export const donateEvent = (id: number): DonateEvent | undefined => (id === CHEER_EVENT.id ? CHEER_EVENT : DONATE_EVENTS.find((e) => e.id === id))
+export const donateEvent = (id: number): DonateEvent | undefined => cheerEvent(id) ?? DONATE_EVENTS.find((e) => e.id === id)
 
 /** 사람에게 거는 효과의 칸 (PlayerState.don) */
 export const DON_SHAKE = 0

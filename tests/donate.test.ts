@@ -8,8 +8,8 @@ import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENT, CHEER_RE, CHEER_TICKS, DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
-import { eventForAmount } from '../src/game/stream'
+import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
+import { cheerForAmount, eventForAmount } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -53,7 +53,7 @@ describe('후원 이벤트 — 소환', () => {
 
   it('금액표: 1만 5천 칸이 없고 2만 · 3만 · 5만 · 10만 (2026-09-23 요청) · 넘는 것 중 가장 비싼 이벤트', () => {
     expect(DONATE_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000])
-    const cfg = { bubbles: true, table: true, auto: false, vote: true, amounts: DONATE_EVENTS.map((e) => e.amount) }
+    const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
     expect(eventForAmount(1000, cfg)?.key).toBe('horde')
     expect(eventForAmount(15000, cfg)?.key).toBe('unique')
@@ -207,17 +207,30 @@ describe('후원 이벤트 — 효과', () => {
   })
 })
 
-// 응원 (2026-09-23 — 치지직 "!응원" 후원 · 구독 · 시청자 투표 축복): 괴롭히는 대신 돕는다
+// 응원 (2026-09-23 — 치지직 "!응원" 후원, 금액마다 단계가 다르다): 괴롭히는 대신 돕는다
 describe('후원 이벤트 — 응원', () => {
-  it('응원은 금액표 밖의 이벤트(번호 11) · 후원 글 "!응원" 을 알아본다', () => {
+  const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
+
+  it('응원은 금액표 밖의 네 단계(번호 11~14 — 명령 네 비트 안) · 후원 글 "!응원" 을 알아본다', () => {
     expect(DONATE_EVENTS.some((e) => e.key === 'cheer')).toBe(false)
-    expect(donateEvent(CHEER_EVENT.id)?.key).toBe('cheer')
+    expect(CHEER_EVENTS.map((e) => e.id)).toEqual([11, 12, 13, 14])
+    for (const e of CHEER_EVENTS) expect(donateEvent(e.id)?.key).toBe('cheer')
+    for (let i = 1; i < CHEER_EVENTS.length; i++) expect(CHEER_EVENTS[i].amount).toBeGreaterThan(CHEER_EVENTS[i - 1].amount)
     expect(CHEER_RE.test('힘내세요 !응원')).toBe(true)
     expect(CHEER_RE.test('! 힐 부탁')).toBe(true)
     expect(CHEER_RE.test('응원합니다')).toBe(false)
   })
 
-  it('같은 지역 우리 편 모두 체력 50% · 공격 속도 버프 · 초록 고리', () => {
+  it('금액이 넘는 단계 중 가장 비싼 것 · 끈 단계는 건너뛴다', () => {
+    expect(cheerForAmount(999, cfg)).toBeUndefined()
+    expect(cheerForAmount(1000, cfg)?.name).toBe('응원')
+    expect(cheerForAmount(7000, cfg)?.name).toBe('힘내라')
+    expect(cheerForAmount(10000, cfg)?.name).toBe('함성')
+    expect(cheerForAmount(500000, cfg)?.name).toBe('기적')
+    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('함성')
+  })
+
+  it('가장 싼 응원: 우리 편 체력 30% · 공격 속도는 그대로 · 초록 고리', () => {
     const g = game(81)
     toField(g)
     const [a, b] = g.s.players
@@ -226,12 +239,42 @@ describe('후원 이벤트 — 응원', () => {
     b.y = a.y
     a.hp = Math.round(a.maxHp * 0.2)
     b.hp = Math.round(b.maxHp * 0.3)
-    g.donate(CHEER_EVENT.id)
-    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.69))
-    expect(b.hp).toBeGreaterThanOrEqual(Math.round(b.maxHp * 0.79))
-    expect(a.rateMul).toBeCloseTo(1.25)
+    g.donate(CHEER_EVENTS[0].id)
+    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.49))
+    expect(b.hp).toBeGreaterThanOrEqual(Math.round(b.maxHp * 0.59))
+    expect(a.rateMul).toBeCloseTo(1)
     expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
-    expect(CHEER_TICKS).toBeGreaterThan(0)
+  })
+
+  it('힘내라: 체력 50% · 공격 속도 1.25 배', () => {
+    const g = game(82)
+    toField(g)
+    const a = g.s.players[0]
+    a.hp = Math.round(a.maxHp * 0.2)
+    g.donate(CHEER_EVENTS[1].id)
+    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.69))
+    expect(a.rateMul).toBeCloseTo(1.25)
+  })
+
+  it('함성 · 기적: 쓰러진 동료를 일으키고 체력을 모두 채운다 · 기적은 무적', () => {
+    for (const [i, rate] of [[2, 1.35], [3, 1.5]] as const) {
+      const g = game(83 + i)
+      toField(g)
+      const [a, b] = g.s.players
+      b.area = a.area
+      b.x = a.x + 40
+      b.y = a.y
+      b.hp = 0
+      b.downed = true
+      b.downTimer = 999
+      a.hp = 10
+      g.donate(CHEER_EVENTS[i].id)
+      expect(b.downed).toBe(false)
+      expect(b.hp).toBe(b.maxHp)
+      expect(a.hp).toBe(a.maxHp)
+      expect(a.rateMul).toBeCloseTo(rate)
+      expect(g.s.events.some((e) => e.type === 'revive')).toBe(true)
+      if (i === 3) expect(a.invuln).toBeGreaterThan(60)
+    }
   })
 })
-

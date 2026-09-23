@@ -7,6 +7,7 @@
 //
 //   npx vite-node tools/campaign.ts                          (혼자 · 시드 2)
 //   npx vite-node tools/campaign.ts -- party=2 seeds=5 act=2  (둘 · 시드 5 · 2막만 — 레벨은 그 막 시작 레벨로 맞춘다)
+//   npx vite-node tools/campaign.ts -- party=4 boss=1          (막 보스 방만 — 들어갈 때 레벨 = 그 방 레벨)
 import { botInput, makeBot } from '../src/core/bot'
 import { CHARACTERS, CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
@@ -72,13 +73,16 @@ function build(level: number, bonus: number) {
   return b
 }
 
-const path = AREAS.filter((a) => a.kind !== 'town' && (ONLY_ACT < 0 || a.act === ONLY_ACT)).sort((x, y) => x.act - y.act || x.id - y.id)
+// boss=1: 막 보스 방만 (2026-09-23 보스 패턴 계측 — 들어갈 때 레벨 = 그 방 레벨)
+const BOSS_ONLY = arg('boss', 0) === 1
+const path = AREAS.filter((a) => a.kind !== 'town' && (ONLY_ACT < 0 || a.act === ONLY_ACT) && (!BOSS_ONLY || a.kind === 'boss')).sort((x, y) => x.act - y.act || x.id - y.id)
 let carry = ONLY_ACT >= 0 ? totalXp(ACT_START[ONLY_ACT], 0) : 0
 const rows: { act: number; name: string; lv: number; lvIn: number; lvOut: number; sec: number; deaths: number; kill: number; capped: number }[] = []
 
 console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 끝 = 보스·우두머리 + ${CLEAR * 100}% · 상한 ${CAP_MIN}분`)
 console.log('지역                    지역Lv  Lv(들어감→나옴)   봇 분   죽음  잡은%  상한')
 for (const a of path) {
+  if (BOSS_ONLY) carry = totalXp(a.level, 0)
   const lv0 = fromXp(carry)
   const quests = QUESTS.map((q) => (q.act < a.act ? 3 : 0))
   let secs = 0

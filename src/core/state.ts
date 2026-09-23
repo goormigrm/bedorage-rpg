@@ -155,6 +155,8 @@ export interface PlayerState {
   deaths: number
   legInjury: number
   invuln: number
+  /** 보스 공격에 맞은 뒤 다시 맞지 않는 틱 (부채 여러 갈래 · 겹친 광선이 한꺼번에 들어오지 않게 — 2026-09-23) */
+  bossCd?: number
   /** 이번 틱 이동 여부 (렌더 걷기 애니메이션용) */
   moving: boolean
   sprinting: boolean
@@ -399,6 +401,12 @@ export interface Monster {
   sumBy?: number
   /** 광폭화 남은 틱 (후원 이벤트 — pow 를 RAGE_POW 배로 올려 두고, 끝나면 되돌린다) */
   rage?: number
+  /** 지금 예고(MS_WINDUP)의 길이 — 렌더 동작이 예고 비율을 잰다 (보스 패턴은 보통 공격보다 길다) */
+  wmax?: number
+  /** 보스 패턴 번호 (monsters.ts BOSS_PATS — 예고 · 돌진 · 도약 중에만, 아니면 -1) */
+  pat?: number
+  /** 돌진 중에 이미 친 사람 (자리 번호 비트) — 한 번 돌진에 한 번만 */
+  hitMask?: number
 }
 
 /** 몬스터 상태 */
@@ -425,6 +433,8 @@ export interface MShot {
   life: number
   dmg: number
   r: number
+  /** 보스 탄: dmg 대신 맞은 사람 최대 체력의 ‰ (방어 무시 — Zone.pm 과 같다) */
+  pm?: number
 }
 
 /** 회복 구슬 (던전) · 힐팩 (투기장) */
@@ -489,6 +499,25 @@ export interface Zone {
   max: number
   /** 폭발 예고(ZONE_FUSE)가 터질 때의 피해 */
   dmg: number
+  /**
+   * 보스 패턴 (2026-09-23 사용자: "보스는 퍼센트 데미지 — 탱커든 딜러든 힐러든 동일하게"): 있으면 dmg 대신 **맞은 사람 최대 체력의 ‰**.
+   * 방어력 · 역할 · 막기 · 피해 감소를 모두 무시한다 (구르기 · 무적은 피한다)
+   */
+  pm?: number
+  /** 모양 (ZS_*, 없으면 원). 원 = r · 고리 = r2 ~ r · 줄 = (x, y) 에서 a 방향으로 len, 폭 ±r · 부채 = a 방향 ±arc, 반지름 r */
+  shape?: number
+  a?: number
+  len?: number
+  r2?: number
+  arc?: number
+  /** 이만큼(틱) 기다렸다가 나타난다 (연속 패턴 — 첫 줄이 터진 뒤 둘째 줄) */
+  wait?: number
+  /** 맞은 사람을 이 몬스터 앞으로 끌어온다 (도살자 갈고리) */
+  pull?: number
+  /** 깐 보스 (몬스터 id — 누가 때렸나 · 반사광) */
+  from?: number
+  /** 맞으면 느려진다(틱) */
+  slow?: number
 }
 export const ZONE_SPOTLIGHT = 0
 /** 폭발 정예가 죽은 자리: t 가 0 이 되면 터진다 (몬스터 편 — 플레이어만 다친다) */
@@ -499,6 +528,13 @@ export const ZONE_ACID = 2
 export const ZONE_VORTEX = 3
 /** 덫 (통천덕): 처음 밟은 괴물 둘레를 치고 사라진다 (플레이어 편) */
 export const ZONE_TRAP = 4
+/** 보스 예고만 (피해 없음 — 도살자 돌진 길처럼 몸으로 치는 패턴의 길을 보여 준다) */
+export const ZONE_WARN = 5
+/** 예고 범위 모양 */
+export const ZS_CIRCLE = 0
+export const ZS_RING = 1
+export const ZS_LINE = 2
+export const ZS_CONE = 3
 
 /** 던진 것 (수류탄) — t 가 0 이 되면 터진다 */
 export interface Throw {
@@ -603,8 +639,12 @@ export type SimEvent =
   | { type: 'mblock'; m: number; x: number; y: number }
   /** 그림자가 순간이동했다 (x0,y0 → x,y) */
   | { type: 'blink'; m: number; x0: number; y0: number; x: number; y: number }
-  /** 심연의 군주가 분노했다 (단계가 올랐다) */
-  | { type: 'lordRage'; m: number; stage: number; x: number; y: number }
+  /** 보스가 분노했다 (단계가 올랐다 — 도살자 · 여왕 · 관리인 체력 절반, 심연의 군주 2/3 · 1/3) */
+  | { type: 'bossRage'; m: number; kind: number; stage: number; x: number; y: number }
+  /** 보스 범위 패턴이 터졌다 (모양 그대로 번쩍 — Zone 의 모양 칸과 같다) */
+  | { type: 'bzone'; x: number; y: number; shape: number; r: number; r2: number; a: number; len: number; arc: number }
+  /** 도살자 갈고리가 사람을 끌어왔다 (x, y → x2, y2) */
+  | { type: 'hook'; x: number; y: number; x2: number; y2: number }
   | { type: 'drop'; x: number; y: number }
   | { type: 'heal'; p: number; x: number; y: number; amount: number }
   | { type: 'start' }

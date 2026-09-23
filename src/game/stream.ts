@@ -3,7 +3,7 @@
 // 세션이 없을 때(로비) 온 후원은 버리지 않고 들고 있다가 다음 판이 가져간다 — 돈을 낸 후원이 사라지면 안 된다.
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
-import { DONATE_EVENTS, DonateEvent } from '../core/donate'
+import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DonateEvent } from '../core/donate'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 
@@ -26,8 +26,8 @@ export interface StreamCfg {
   amounts: number[]
   /** 페이지를 열면 저절로 다시 연결 (한 번 연결에 성공하면 켜진다) */
   auto: boolean
-  /** 시청자 투표 (몇 분마다 채팅으로 1 축복 · 2 저주) — 2026-09-23 */
-  vote: boolean
+  /** 응원 단계마다 금액(원) — CHEER_EVENTS 순서. 0 = 끔 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") */
+  cheers: number[]
 }
 
 const CFG_KEY = 'brpg.chzzk.cfg'
@@ -35,7 +35,7 @@ const CFG_KEY = 'brpg.chzzk.cfg'
 const OLD_DEFAULTS = [1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000]
 
 function defaults(): StreamCfg {
-  return { bubbles: true, table: true, amounts: DONATE_EVENTS.map((e) => e.amount), auto: false, vote: true }
+  return { bubbles: true, table: true, amounts: DONATE_EVENTS.map((e) => e.amount), auto: false, cheers: CHEER_EVENTS.map((e) => e.amount) }
 }
 
 export function loadStreamCfg(): StreamCfg {
@@ -48,7 +48,11 @@ export function loadStreamCfg(): StreamCfg {
       const a = Number(v.amounts?.[i])
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
     })
-    return { bubbles: v.bubbles ?? d.bubbles, table: v.table ?? d.table, amounts, auto: v.auto ?? d.auto, vote: v.vote ?? d.vote }
+    const cheers = CHEER_EVENTS.map((e, i) => {
+      const a = Number(v.cheers?.[i])
+      return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
+    })
+    return { bubbles: v.bubbles ?? d.bubbles, table: v.table ?? d.table, amounts, auto: v.auto ?? d.auto, cheers }
   } catch {
     return d
   }
@@ -76,6 +80,27 @@ export function eventForAmount(amount: number, cfg = loadStreamCfg()): DonateEve
   return best
 }
 
+/** "!응원" 후원이면 어떤 응원인가: 금액이 넘는 단계 중 가장 비싼 것 (끈 것은 빼고). 없으면 undefined */
+export function cheerForAmount(amount: number, cfg = loadStreamCfg()): CheerDef | undefined {
+  let best: CheerDef | undefined
+  let bestAmt = -1
+  CHEER_EVENTS.forEach((e, i) => {
+    const a = cfg.cheers[i]
+    if (a > 0 && amount >= a && a >= bestAmt) {
+      best = e
+      bestAmt = a
+    }
+  })
+  return best
+}
+
+/** 표에 보일 응원 줄: 켠 단계를 금액 순으로 */
+export function cheerRows(cfg = loadStreamCfg()): { e: CheerDef; amount: number }[] {
+  return CHEER_EVENTS.map((e, i) => ({ e, amount: cfg.cheers[i] }))
+    .filter((r) => r.amount > 0)
+    .sort((a, b) => a.amount - b.amount)
+}
+
 /** 표에 보일 줄: 켠 이벤트를 금액 순으로 */
 export function eventRows(cfg = loadStreamCfg()): { e: DonateEvent; amount: number }[] {
   return DONATE_EVENTS.map((e, i) => ({ e, amount: cfg.amounts[i] }))
@@ -98,9 +123,6 @@ class StreamHub {
   private statusFns = new Set<Fn<StreamStatus>>()
   private chatFns = new Set<Fn<StreamChat>>()
   private donFns = new Set<Fn<StreamDonation>>()
-  private voteFns = new Set<(test: boolean) => void>()
-  /** 시청자 투표가 열려 있나 (세션이 켠다 — 시험 채팅이 1 · 2 로 투표하게) */
-  voteOpen = false
   /** 받을 세션이 없을 때 온 후원 (다음 판이 가져간다) */
   private held: StreamDonation[] = []
 
@@ -142,18 +164,6 @@ class StreamHub {
     }
   }
 
-  /** 치지직 창의 "투표 시험 · 투표 열기" (세션이 받아 투표를 연다). test = 가짜 시청자 표가 저절로 들어온다 */
-  onVoteRequest(f: (test: boolean) => void): () => void {
-    this.voteFns.add(f)
-    return () => this.voteFns.delete(f)
-  }
-
-  requestVote(test = false): boolean {
-    if (test) this.tried = true
-    for (const f of [...this.voteFns]) f(test)
-    return this.voteFns.size > 0
-  }
-
   /** 게임(세션)이 받고 있나 — 치지직 창의 시험 단추가 "게임 안에서 보입니다" 를 알릴 때 */
   get inGame(): boolean {
     return this.chatFns.size > 0
@@ -181,12 +191,10 @@ class StreamHub {
   fakeChat(): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    // 투표 중이면 시험 채팅도 1 · 2 로 표를 던진다 (시청자마다 한 표 — 닉네임에 번호를 붙인다)
-    if (this.voteOpen) this.chat({ nick: `${r(this.nicks)}${Math.floor(Math.random() * 90)}`, text: r(['1', '2', '!1', '1', '2']) })
-    else this.chat({ nick: r(this.nicks), text: r(this.samples) })
+    this.chat({ nick: r(this.nicks), text: r(this.samples) })
   }
 
-  /** 응원 시험: 가장 싼 이벤트 금액 + "!응원" */
+  /** 응원 시험: 그 단계 금액 + "!응원" */
   fakeCheer(amount: number): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]

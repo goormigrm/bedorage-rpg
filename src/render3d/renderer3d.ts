@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isEnemy, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { ACID, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, WARDEN, affixNames, isBossLike } from '../core/monsters'
+import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, isBossLike } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -272,6 +272,9 @@ export class Renderer3D {
   }
   private zoneDisc = new THREE.CircleGeometry(1, 40)
   private zoneRim = new THREE.RingGeometry(0.94, 1, 48)
+  /** 보스 줄 범위: (0, 0) 에서 +x 로 길이 1 · 폭 1 (그룹 크기로 늘린다) */
+  private zoneLine = new THREE.PlaneGeometry(1, 1).translate(0.5, 0, 0)
+  private zoneLineEdge = new THREE.EdgesGeometry(this.zoneLine)
   private ringPool: THREE.Mesh[] = []
   private impactPool: THREE.Sprite[] = []
   private flashGeo = new THREE.SphereGeometry(0.12, 6, 4)
@@ -1300,11 +1303,31 @@ export class Renderer3D {
           this.spawnRing(e.x * U, e.y * U, 0.2, 1.4, 0.4, 0xd89aff)
           break
         }
-        case 'lordRage': {
+        case 'bossRage': {
+          // 보스 분노 (체력 절반 · 군주는 2/3 · 1/3): 새로 쓰는 패턴을 알려 준다
           this.spawnRing(e.x * U, e.y * U, 0.5, 6, 1.0, 0xff5a2a)
           this.spawnImpact(e.x * U, 1.4, e.y * U, 0xff6a3a, 6)
           this.shake = Math.max(this.shake, 0.5)
-          this.hud.banner('심연의 군주가 분노한다', e.stage >= 2 ? '마지막 힘을 끌어올린다 — 더 빠르고 더 자주' : '그림자가 옥좌에서 흘러나온다', '#ff7a4a')
+          const id = MONSTER_LIST[e.kind]?.id
+          const [t, sub] =
+            id === 'butcher' ? ['도살자가 광분한다', '고기 비 — 발밑의 붉은 원에서 비켜라 · 더 빨라진다']
+            : id === 'queen' ? ['거미 여왕이 분노한다', '거미줄이 아홉 갈래 · 도약을 두 번 · 새끼가 쏟아진다']
+            : id === 'warden' ? ['관리인이 분노한다', '여진 — 퍼지는 고리는 이미 터진 안쪽으로 피하라']
+            : e.stage >= 2 ? ['심연의 군주가 마지막 힘을 끌어올린다', '광선이 두 번 · 더 빠르고 더 자주']
+            : ['심연의 군주가 분노한다', '그림자가 흘러나온다 · 지옥불 — 가까이가 먼저, 곧 멀리']
+          this.hud.banner(t, sub, '#ff7a4a')
+          break
+        }
+        case 'bzone':
+          this.onBossBlast(e, state, localPlayer)
+          break
+        case 'hook': {
+          // 도살자 갈고리: 끌려온 길을 따라 핏빛 사슬
+          for (let k = 0; k <= 10; k++) {
+            const t = k / 10
+            this.spawnParticle((e.x + (e.x2 - e.x) * t) * U, 0.9, (e.y + (e.y2 - e.y) * t) * U, 0, 0.01, 0, 0.35, k % 2 ? 0x8a3a2a : 0xc8b8a8, 0.55)
+          }
+          this.spawnRing(e.x2 * U, e.y2 * U, 0.1, 1, 0.3, ENEMY_AOE)
           break
         }
         case 'mblock': {
@@ -2864,6 +2887,11 @@ export class Renderer3D {
     const live = new Set<number>()
     for (const zn of curr.zones) {
       live.add(zn.id)
+      // 보스 패턴 범위 (‰ 피해 · 모양 · 예고만) — 따로 그린다
+      if (zn.pm || zn.kind === ZONE_WARN) {
+        this.updateBossZone(zn)
+        continue
+      }
       let g = this.zoneMeshes.get(zn.id)
       const fuse = zn.kind === ZONE_FUSE
       const acid = zn.kind === ZONE_ACID
@@ -2932,10 +2960,117 @@ export class Renderer3D {
     for (const [id, g] of this.zoneMeshes) {
       if (live.has(id)) continue
       this.scene.remove(g)
+      // 보스 고리 · 부채는 범위마다 도형을 만들었다 → 도형만 버린다 (같이 쓰는 도형 · 재질은 그대로 — 재질을 버리면 셰이더까지 지워진다)
+      g.traverse((o) => {
+        const geo = (o as THREE.Mesh).geometry as THREE.BufferGeometry | undefined
+        if (geo && geo !== this.zoneDisc && geo !== this.zoneRim && geo !== this.zoneLine && geo !== this.zoneLineEdge) geo.dispose()
+      })
       // 재질은 해제하지 않는다 (GPU 자원이 없는 작은 재질이라 버리면 저절로 치워진다). 해제하면 그 셰이더를 쓰는 재질이
       // 하나도 안 남는 순간 셰이더 프로그램까지 지워져, 다음 장판에서 다시 컴파일하느라 화면이 멈췄다 (2026-09-23 과부하 시험)
       this.zoneMeshes.delete(id)
     }
+  }
+
+  /**
+   * 보스 패턴 범위 (2026-09-23): 원 · 고리 · 줄 · 부채. 빨간 모양 안이 차오르면 터진다(줄은 길이 쪽으로, 원 · 부채는 가운데서 밖으로).
+   * 이어지는 둘째 범위(wait)는 기다리는 동안 숨긴다. 빛은 달지 않는다 — 광선 여럿에 점광원을 달면 빛 수가 바뀌어 셰이더를 다시 짠다
+   */
+  private updateBossZone(zn: Zone): void {
+    let g = this.zoneMeshes.get(zn.id)
+    const shape = zn.shape ?? ZS_CIRCLE
+    const warn = zn.kind === ZONE_WARN
+    if (!g) {
+      g = new THREE.Group()
+      const fillMat = new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      const rimMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
+      let fill: THREE.Object3D
+      let rim: THREE.Object3D
+      if (shape === ZS_LINE) {
+        fill = new THREE.Mesh(this.zoneLine, fillMat)
+        rim = new THREE.LineSegments(this.zoneLineEdge, new THREE.LineBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.9, depthWrite: false }))
+      } else if (shape === ZS_RING) {
+        const k = Math.max(0.02, Math.min(0.98, (zn.r2 ?? 0) / zn.r))
+        fill = new THREE.Mesh(new THREE.RingGeometry(k, 1, 64), fillMat)
+        const rims = new THREE.Group()
+        rims.add(new THREE.Mesh(this.zoneRim, rimMat), new THREE.Mesh(new THREE.RingGeometry(k, k + 0.025, 64), rimMat))
+        rim = rims
+      } else if (shape === ZS_CONE) {
+        const arc = ((zn.arc ?? 0) / 1024) * Math.PI * 2
+        fill = new THREE.Mesh(new THREE.CircleGeometry(1, 28, -arc, arc * 2), fillMat)
+        rim = new THREE.Mesh(new THREE.RingGeometry(0.95, 1, 28, 1, -arc, arc * 2), rimMat)
+      } else {
+        fill = new THREE.Mesh(this.zoneDisc, fillMat)
+        rim = new THREE.Mesh(this.zoneRim, rimMat)
+      }
+      fill.rotation.x = -Math.PI / 2
+      rim.rotation.x = -Math.PI / 2
+      fill.userData.fill = true
+      g.add(fill, rim)
+      this.scene.add(g)
+      this.zoneMeshes.set(zn.id, g)
+    }
+    g.visible = !zn.wait
+    if (zn.wait) return
+    g.position.set(zn.x * U, 0.05, zn.y * U)
+    g.rotation.y = -((zn.a ?? 0) / 1024) * Math.PI * 2
+    if (shape === ZS_LINE) g.scale.set((zn.len ?? 0) * U, 1, zn.r * 2 * U)
+    else g.scale.set(zn.r * U, 1, zn.r * U)
+    const k = 1 - zn.t / Math.max(1, zn.max)
+    const fill = g.children[0] as THREE.Mesh
+    const mat = fill.material as THREE.MeshBasicMaterial
+    // 차오르기: 줄은 길이 쪽으로, 원 · 부채는 가운데서 밖으로, 고리는 진해지기만 (예고만인 것은 옅게)
+    if (shape === ZS_LINE) fill.scale.set(Math.max(0.02, k), 1, 1)
+    else if (shape !== ZS_RING) fill.scale.setScalar(Math.max(0.05, k))
+    mat.opacity = warn ? 0.12 + 0.18 * k : 0.18 + 0.32 * k
+    const blink = zn.t < 14 ? 0.55 + 0.45 * Math.sin(this.t * 40) : 0.75 + 0.25 * Math.sin(this.t * 12)
+    g.children[1].traverse((o) => {
+      const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined
+      if (mm) mm.opacity = blink
+    })
+  }
+
+  /** 보스 범위가 터졌다: 모양대로 번쩍 + 파편 + 흔들림 */
+  private onBossBlast(e: Extract<SimEvent, { type: 'bzone' }>, state: GameState, localPlayer: number): void {
+    const x = e.x * U
+    const z = e.y * U
+    const light = this.takeLight(0xff5a2a, 14, Math.max(4, e.r * U * 2.4), 1.5)
+    light.position.set(x, 1, z)
+    this.flashes.push({ light, mesh: null, life: 0.16 })
+    const burst = (px: number, pz: number, size: number, n: number) => {
+      this.spawnImpact(px, 0.7, pz, 0xff7a4a, size)
+      for (let k = 0; k < n; k++) {
+        const a = Math.random() * Math.PI * 2
+        const sp = 0.04 + Math.random() * 0.08
+        this.spawnParticle(px, 0.5, pz, Math.cos(a) * sp, 0.08 + Math.random() * 0.1, Math.sin(a) * sp, 0.5, k % 2 === 0 ? 0xff8a5a : 0x6a2a1a, 0.8)
+      }
+    }
+    if (e.shape === ZS_LINE) {
+      const a = (e.a / 1024) * Math.PI * 2
+      const n = Math.max(2, Math.round(e.len / 70))
+      for (let i = 0; i <= n; i++) {
+        const d = (e.len * i) / n
+        burst(x + Math.cos(a) * d * U, z + Math.sin(a) * d * U, e.r * U * 3, 3)
+      }
+    } else if (e.shape === ZS_CONE) {
+      const a0 = (e.a / 1024) * Math.PI * 2
+      const arc = (e.arc / 1024) * Math.PI * 2
+      for (let i = 0; i < 7; i++) {
+        const a = a0 - arc + (arc * 2 * i) / 6
+        burst(x + Math.cos(a) * e.r * U * 0.65, z + Math.sin(a) * e.r * U * 0.65, e.r * U * 0.9, 3)
+      }
+    } else if (e.shape === ZS_RING) {
+      this.spawnRing(x, z, e.r2 * U, e.r * U, 0.45, ENEMY_AOE)
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2
+        const d = ((e.r2 + e.r) / 2) * U
+        burst(x + Math.cos(a) * d, z + Math.sin(a) * d, (e.r - e.r2) * U * 0.9, 2)
+      }
+    } else {
+      this.spawnRing(x, z, 0.3, e.r * U, 0.45, ENEMY_AOE)
+      burst(x, z, e.r * U * 2.2, 14)
+    }
+    const me = localPlayer >= 0 ? state.players[localPlayer] : null
+    if (me && Math.hypot(me.x - e.x, me.y - e.y) < 600) this.shake = Math.max(this.shake, 0.3)
   }
 
   /** 수류탄: 던진 곳에서 목표로 포물선 */
@@ -3093,10 +3228,6 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const def = MONSTER_LIST[m.kind]
-      if (m.st === MS_WINDUP && def.special === 'warden' && m.mode === 2) {
-        // 관리인 내려찍기 예고: 둘레 원이 차오른다
-        this.groundCircle(ctx, at.x, at.z, WARDEN.slamR * U, ENEMY_AOE_CSS, 0.35 + 0.5 * (1 - m.t / WARDEN.slamWindup))
-      }
       if (m.st === MS_WINDUP && def.attack === 'lob' && m.mode === 0) {
         // 산성·불덩이 예고: 떨어질 자리
         this.groundCircle(ctx, m.ax * U, m.ay * U, (def.blast ?? ACID.r) * U, ENEMY_AOE_CSS, 0.3 + 0.5 * (1 - m.t / def.windup))
@@ -3105,11 +3236,11 @@ export class Renderer3D {
         // 그림자 순간이동 예고: 나타날 자리
         this.groundCircle(ctx, m.ax * U, m.ay * U, 0.6, '#d89aff', 0.4 + 0.5 * (1 - m.t / 22))
       }
-      if (m.st === MS_WINDUP && def.special === 'lord' && m.mode === 2) {
+      if (m.st === MS_WINDUP && m.pat === PAT.nova) {
         // 불꽃 고리 예고: 사방으로 짧은 선
         const n = m.stage >= 2 ? LORD.novaRage : LORD.nova
         const a0 = (m.aim / 1024) * Math.PI * 2
-        const k = 1 - m.t / LORD.novaWindup
+        const k = 1 - m.t / (m.wmax || 40)
         ctx.save()
         ctx.strokeStyle = ENEMY_AOE_CSS
         ctx.globalAlpha = 0.3 + 0.5 * k
@@ -3125,16 +3256,18 @@ export class Renderer3D {
         }
         ctx.restore()
       }
-      if (m.st === MS_WINDUP && def.special === 'queen' && m.mode === 2) {
-        // 거미줄 부채 예고: 일곱 갈래
+      if (m.st === MS_WINDUP && m.pat === PAT.fan) {
+        // 거미줄 부채 예고: 일곱 갈래 (분노하면 아홉)
         const a0 = Math.atan2(m.ay - m.y, m.ax - m.x)
+        const n = m.stage >= 1 ? QUEEN.fanRage : QUEEN.fan
+        const h = (n - 1) / 2
         ctx.save()
         ctx.strokeStyle = '#e8f0d8'
         ctx.globalAlpha = 0.5
         ctx.setLineDash([6, 6])
         const from = this.worldToScreen(at.x, 0.9, at.z)
-        for (let k = 0; k < 7; k++) {
-          const a = a0 + ((k - 3) / 3) * ((36 * Math.PI) / 180)
+        for (let k = 0; k < n; k++) {
+          const a = a0 + ((k - h) / h) * ((QUEEN.spread * Math.PI) / 180)
           const to = this.worldToScreen(at.x + Math.cos(a) * 9, 0.9, at.z + Math.sin(a) * 9)
           ctx.beginPath()
           ctx.moveTo(from.x, from.y)
@@ -3251,6 +3384,18 @@ export class Renderer3D {
     ctx.moveTo(p.x + tw / 2 + 6, ty - 4)
     ctx.lineTo(p.x + tw / 2 + 30, ty - 4)
     ctx.stroke()
+    // 보스 패턴 이름 (예고 동안 — 몇 번 보면 이름과 모양을 외운다)
+    const pat = (m.pat ?? -1) >= 0 ? BOSS_PATS[m.pat!] : undefined
+    if (pat && m.st === MS_WINDUP) {
+      ctx.font = '800 15px "IBM Plex Sans KR", sans-serif'
+      ctx.lineWidth = 4
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+      ctx.strokeText(`${pat.name}!`, p.x, by + 24)
+      ctx.globalAlpha = 0.75 + 0.25 * Math.sin(this.t * 14)
+      ctx.fillStyle = '#ff6a4a'
+      ctx.fillText(`${pat.name}!`, p.x, by + 24)
+      ctx.globalAlpha = 1
+    }
     // 우두머리의 정예 능력 (막대 아래 작게)
     const af = affixNames(m.elite)
     if (af) {

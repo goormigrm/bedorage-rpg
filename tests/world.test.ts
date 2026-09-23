@@ -391,9 +391,13 @@ describe('2막 안개 숲 (D6)', () => {
     const spiders0 = s.monsters.filter((m) => m.kind === 6).length
     let fan = 0
     let summoned = false
+    // 여왕은 결투장 가운데에서 시작한다 — 사람은 늘 여왕에서 가운데 쪽으로 (여왕이 도약해도 결투장 안에 남게)
+    const cx = queen.x
+    const cy = queen.y
     for (let t = 0; t < 60 * 15 && !(fan >= 7 && summoned); t++) {
-      p.x = queen.x - 240
-      p.y = queen.y
+      const l = Math.hypot(cx - queen.x, cy - queen.y)
+      p.x = l < 40 ? queen.x - 200 : queen.x + ((cx - queen.x) / l) * 200
+      p.y = l < 40 ? queen.y : queen.y + ((cy - queen.y) / l) * 200
       p.invuln = 99
       p.hp = p.maxHp
       run(1)

@@ -52,6 +52,8 @@ export interface MapGen {
   maxLen: number
   /** 중앙 모래주머니 진지 (기본 true). 던전에는 없다 */
   forts?: boolean
+  /** 보스 방: 오른쪽에 둥근 결투장(안은 비어 있다) + 입구 복도 (map.ts carveArena) */
+  arena?: boolean
 }
 
 export interface MapDef {
@@ -224,7 +226,7 @@ export const MAPS: Record<MapId, MapDef> = {
     desc: '피 냄새가 가장 짙은 곳. 갈고리에 걸린 것들 사이로 무언가 칼을 간다.',
     rows: frame(44, 34),
     fixedScale: true,
-    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false, arena: true },
     theme: {
       floor: 0x3a2c28, floorAlt: 0x352824, floorLine: 0x2a1e1b,
       wall: 0x4b3530, wallTop: 0x5e433c, crate: 0x6a4a40, outside: 0x040202,
@@ -301,7 +303,7 @@ export const MAPS: Record<MapId, MapDef> = {
     desc: '숲의 심장은 거미줄로 덮여 있다. 알을 품은 여왕이 실을 당기며 기다린다.',
     rows: frame(48, 38),
     fixedScale: true,
-    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false, arena: true },
     theme: {
       floor: 0x2a2a2a, floorAlt: 0x262626, floorLine: 0x1c1c1c,
       wall: 0x3a3a38, wallTop: 0x4e4e4a, crate: 0xc8c8c0, outside: 0x020202,
@@ -408,7 +410,7 @@ export const MAPS: Record<MapId, MapDef> = {
     desc: '지하도의 모든 문 열쇠가 걸린 방. 열쇠 꾸러미가 짤랑거린다.',
     rows: frame(46, 36),
     fixedScale: true,
-    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false },
+    gen: { style: 'rooms', density: 3, crates: 6, sandbags: 0, maxLen: 4, forts: false, arena: true },
     theme: {
       floor: 0x3a3430, floorAlt: 0x35302b, floorLine: 0x2a2521,
       wall: 0x4e443a, wallTop: 0x62564a, crate: 0x6a5846, outside: 0x040302,
@@ -515,7 +517,7 @@ export const MAPS: Record<MapId, MapDef> = {
     desc: '종이 처음 울린 곳. 옥좌 위에서 군주가 눈을 뜬다.',
     rows: frame(50, 40),
     fixedScale: true,
-    gen: { style: 'pillars', density: 3, crates: 4, sandbags: 0, maxLen: 3, forts: false },
+    gen: { style: 'pillars', density: 3, crates: 4, sandbags: 0, maxLen: 3, forts: false, arena: true },
     theme: {
       floor: 0x3a2828, floorAlt: 0x342424, floorLine: 0x281a1a,
       wall: 0x503030, wallTop: 0x684040, crate: 0x6a3a30, outside: 0x040202,

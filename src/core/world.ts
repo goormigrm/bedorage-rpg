@@ -574,8 +574,12 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
       portal: at(town.portal),
     }
   } else {
-    // 입구 모서리를 지역마다 바꾼다 (늘 왼쪽 위에서 오른쪽 아래로 가면 지역이 다 같아 보인다)
-    const entry = map.spawns[def.id % Math.max(1, Math.min(4, map.spawns.length))] ?? { x: map.pw / 2, y: map.ph / 2 }
+    // 입구 모서리를 지역마다 바꾼다 (늘 왼쪽 위에서 오른쪽 아래로 가면 지역이 다 같아 보인다).
+    // 보스 결투장이 있는 방은 결투장에서 가장 먼 곳 (복도를 지나 결투장으로 — 들어서자마자 보스 앞이 아니게)
+    const arena = map.arena
+    const entry = arena
+      ? map.spawns.reduce((a, b) => ((b.x - arena.x) ** 2 + (b.y - arena.y) ** 2 > (a.x - arena.x) ** 2 + (a.y - arena.y) ** 2 ? b : a))
+      : (map.spawns[def.id % Math.max(1, Math.min(4, map.spawns.length))] ?? { x: map.pw / 2, y: map.ph / 2 })
     const dE = walkField(map, tileOf(map, entry))
     let far = -1
     for (let t = 0; t < dE.length; t++) if (Number.isFinite(dE[t]) && open3(map, t) && (far < 0 || dE[t] > dE[far])) far = t
@@ -603,8 +607,9 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
       wp = nearSteps(map, dE, 6)
       wpArrive = nearSteps(map, walkField(map, tileOf(map, wp)), 2)
     }
-    // 보스는 가장 먼 곳(보스 방은 출구가 하나뿐이라 비어 있다), 우두머리는 옆길 자리
-    out = { spawn: wpArrive ?? exits[0]?.arrive ?? entry, exits, wp, wpArrive, special: def.boss !== undefined ? farS : midS, portal: null }
+    // 보스는 결투장 가운데(없으면 가장 먼 곳 — 보스 방은 출구가 하나뿐이라 비어 있다), 우두머리는 옆길 자리
+    const bossAt = arena ? { x: arena.x, y: arena.y } : farS
+    out = { spawn: wpArrive ?? exits[0]?.arrive ?? entry, exits, wp, wpArrive, special: def.boss !== undefined ? bossAt : midS, portal: null }
   }
   layouts.set(map, out)
   return out

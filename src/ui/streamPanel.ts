@@ -3,8 +3,8 @@
 // - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태만 — 받은 채팅 · 후원의 개수 · 합계는 보이지 않는다(2026-09-23).
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
-import { DONATE_EVENTS } from '../core/donate'
-import { StreamStatus, eventRows, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { CHEER_EVENTS, DONATE_EVENTS } from '../core/donate'
+import { StreamStatus, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -146,6 +146,12 @@ function panelHtml(): string {
       `<div class="czr"><input type="number" min="0" step="500" data-amt="${i}" value="${c.amounts[i]}" title="0 이면 끕니다"><b>${e.name}</b><span>${e.desc}</span>` +
       `<button type="button" class="lnk" data-try="${i}" title="이 금액으로 시험 후원 — 던전에서 일어납니다">시험</button></div>`,
   ).join('')
+  // 응원 금액표 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") — 후원 글에 !응원 이면 이 표로
+  const cheers = CHEER_EVENTS.map(
+    (e, i) =>
+      `<div class="czr cheer"><input type="number" min="0" step="500" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><b>${e.name}</b><span>${e.desc}</span>` +
+      `<button type="button" class="lnk" data-cheertry="${i}" title="이 금액 + !응원 으로 시험 후원 — 던전에서 일어납니다">시험</button></div>`,
+  ).join('')
   return (
     `<div class="czhead"><i class="czdot" data-st="${st}"></i><h3>치지직 방송 연동</h3><span class="czs" data-st="${st}">${STATUS_LABEL[st]}</span>` +
     `<button type="button" class="czx" data-cz="close" title="닫기 (Esc)">✕</button></div>` +
@@ -156,12 +162,11 @@ function panelHtml(): string {
     `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
-    toggle('vote', '시청자 투표 (4분마다 · 채팅 1 축복 / 2 저주)', c.vote) +
-    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button>` +
-    `<button type="button" class="btn secondary sm" data-cz="cheer">응원 시험</button>` +
-    `<button type="button" class="btn secondary sm" data-cz="vote">${st === 'on' ? '투표 열기' : '투표 시험'}</button></div>` +
-    `<p class="czn">시험은 게임 안에서 보입니다 — 채팅은 괴물(없으면 우리 편) 머리 위 · 응원 · 투표 결과는 던전에서 일어납니다. 투표 시험은 가짜 시청자 표가 저절로 들어옵니다.</p>` +
-    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>우리 편 체력 50% 회복 · 20초 공격 속도 +25%</b>.</p>` +
+    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
+    `<p class="czn">채팅 시험은 게임 안에서 보입니다 — 괴물(없으면 우리 편) 머리 위 말풍선.</p>` +
+    `<div class="czh"><b>💚 !응원 금액 → 효과</b></div>` +
+    `<div class="czt">${cheers}</div>` +
+    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
@@ -200,22 +205,21 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         saveStreamCfg(c)
         chzzkDisconnect()
       } else if (a === 'logout') chzzkLogout()
-      else if (a === 'chat' || a === 'cheer' || a === 'vote') {
+      else if (a === 'chat') {
         // 게임 밖(로비)에서는 받을 곳이 없다 — 단추에 알린다
         if (!stream.inGame) {
           flashBtn(b, '게임 안에서 됩니다')
           return
         }
-        if (a === 'chat') stream.fakeChat()
-        else if (a === 'cheer') stream.fakeCheer(eventRows(loadStreamCfg())[0]?.amount ?? 1000)
-        else stream.requestVote(stream.status !== 'on')
-        // 창이 화면 가운데를 덮어 말풍선 · 투표 칸이 가려진다 — 닫고 게임을 보여 준다
+        stream.fakeChat()
+        // 창이 화면 가운데를 덮어 말풍선이 가려진다 — 닫고 게임을 보여 준다
         close()
         return
       }
       else if (a === 'reset') {
         const c = loadStreamCfg()
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
+        c.cheers = CHEER_EVENTS.map((e) => e.amount)
         saveStreamCfg(c)
       }
       redraw()
@@ -227,7 +231,6 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       const on = b.dataset.on === '1'
       const tg = (b.parentElement as HTMLElement).dataset.tg
       if (tg === 'bubbles') c.bubbles = on
-      else if (tg === 'vote') c.vote = on
       else c.table = on
       saveStreamCfg(c)
       redraw()
@@ -240,6 +243,25 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       c.amounts[Number(inp.dataset.amt)] = v
       saveStreamCfg(c)
       inp.value = String(v)
+    }
+  })
+  box.querySelectorAll<HTMLInputElement>('input[data-cheer]').forEach((inp) => {
+    inp.onchange = () => {
+      const c = loadStreamCfg()
+      const v = Math.max(0, Math.round(Number(inp.value) || 0))
+      c.cheers[Number(inp.dataset.cheer)] = v
+      saveStreamCfg(c)
+      inp.value = String(v)
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-cheertry]').forEach((b) => {
+    b.onclick = () => {
+      const c = loadStreamCfg()
+      const i = Number(b.dataset.cheertry)
+      const amt = c.cheers[i] || CHEER_EVENTS[i].amount
+      stream.fakeCheer(amt)
+      b.textContent = `${won(amt)} 보냄`
+      setTimeout(() => (b.textContent = '시험'), 1500)
     }
   })
   box.querySelectorAll<HTMLButtonElement>('[data-try]').forEach((b) => {

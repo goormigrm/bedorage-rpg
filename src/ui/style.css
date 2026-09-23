@@ -1086,17 +1086,7 @@ body { background: var(--bg); }
 .overlay .settings.kbwide .kb-grid { gap: 2px 14px; padding: 4px 2px; }
 .overlay .settings.kbwide .kb-g { margin-top: 3px; }
 
-/* 시청자 투표 (2026-09-23 — 치지직 채팅 1 · 2) — 화면 위 가운데, 보스 막대 아래 */
-.czvote { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: 340px; padding: 8px 12px 10px; pointer-events: none;
-  background: linear-gradient(180deg, rgba(14,18,26,.9), rgba(8,10,14,.9)); border: 1px solid rgba(154,216,255,.5); border-radius: 6px;
-  box-shadow: 0 8px 28px rgba(0,0,0,.55); font: 600 13px "IBM Plex Sans KR", sans-serif; color: #e6e0d4; z-index: 6; }
-.czvote[hidden] { display: none; }
-.czvote .vh { display: flex; justify-content: space-between; margin-bottom: 6px; color: #9ad8ff; font-weight: 800; }
-.czvote .vh b { color: #fff; }
-.czvote .vr { position: relative; display: flex; align-items: center; gap: 8px; height: 22px; margin-top: 4px; padding: 0 8px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden; }
-.czvote .vr i { position: absolute; left: 0; top: 0; bottom: 0; transition: width .25s; }
-.czvote .vr.good i { background: rgba(90,255,138,.28); }
-.czvote .vr.bad i { background: rgba(255,74,58,.28); }
-.czvote .vr span, .czvote .vr b { position: relative; }
-.czvote .vr b { margin-left: auto; }
 .dontable .dr.cheer .da, .dontable .dr.cheer .dn { color: #7aff9a; }
+.dontable .dh.cheer { margin: 5px 0 2px; font-size: 12px; color: #7aff9a; }
+.czpanel .czr.cheer input { color: #7aff9a; }
+.czpanel .czr.cheer b { color: #9affb4; }

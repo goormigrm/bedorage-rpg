@@ -449,8 +449,9 @@ export class Sfx {
           this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 1400, 600, 0.3)
           break
         }
-        case 'boom': {
-          // 부푼 시체 여럿이 한꺼번에 터지면 한 번의 큰 소리로 충분하다
+        case 'boom':
+        case 'bzone': {
+          // 부푼 시체 여럿이 한꺼번에 터지면 한 번의 큰 소리로 충분하다 (보스 광선 여러 갈래도 한 번)
           if (tnow - this.lastBoom < 90) {
             this.intensity = 1
             break

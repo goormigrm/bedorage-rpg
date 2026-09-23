@@ -55,7 +55,8 @@ export function makeMonster(state: GameState, kind: number, x: number, y: number
     tag: 0,
     pow,
     lvl,
-    scd: 0,
+    // 막 보스는 깨자마자 패턴을 쓰지 않는다 (1.5초 — 방에 들어설 틈)
+    scd: def.boss ? 90 : 0,
     phase: 0,
     elite: 0,
     mode: 0,
@@ -119,7 +120,7 @@ export function affixSkip(kind: number): number {
  */
 export function populate(
   state: GameState, map: GameMap, seed: number, players: number, level: number, density: number, packs: PackDef[],
-  entry: { x: number; y: number }, safe: { x: number; y: number }[],
+  entry: { x: number; y: number }, safe: { x: number; y: number }[], avoid?: { x: number; y: number; r: number },
 ): void {
   const rng = makeRng((seed ^ 0x51ed27) >>> 0)
   const et = Math.floor(entry.y / TILE) * map.w + Math.floor(entry.x / TILE)
@@ -143,6 +144,7 @@ export function populate(
       const px = tx * TILE + TILE / 2
       const py = ty * TILE + TILE / 2
       if (safe.some((q) => (q.x - px) ** 2 + (q.y - py) ** 2 < (7 * TILE) ** 2)) continue
+      if (avoid && (avoid.x - px) ** 2 + (avoid.y - py) ** 2 < (avoid.r + 3 * TILE) ** 2) continue
       if (open3(tx, ty)) cand.push(i)
     }
   }
