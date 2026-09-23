@@ -20,6 +20,8 @@ interface ModelKind {
   frame: THREE.InstancedBufferAttribute
   depth: THREE.Material
   extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean }[]
+  /** 보이게 했나 (처음엔 숨겨 두고 데우기가 끝나거나 괴물이 화면에 나오면 — 2026-09-23) */
+  shown: boolean
 }
 
 /**
@@ -872,8 +874,8 @@ export class MonsterView {
   /** 구울 차례를 기다리는 종류 · 지금 굽는 중인가 (한 번에 하나씩 — 굽기가 몰리면 화면이 끊긴다) */
   private queue: number[] = []
   private baking = false
-  /** 구운 모델을 미리 데우는 함수 (renderer3d 가 넣어 준다) */
-  private warm: ((obj: THREE.Object3D) => void) | null = null
+  /** 구운 모델을 미리 데우는 함수 (renderer3d 가 넣어 준다). 다 데우면 show 를 부른다 */
+  private warm: ((objs: THREE.Object3D[], show: () => void) => void) | null = null
   /** 실사 모델 상태 (확인용 — __bd.models()) */
   modelStatus(): { ready: number[]; loading: number[]; failed: number[] } {
     const r: { ready: number[]; loading: number[]; failed: number[] } = { ready: [], loading: [], failed: [] }
@@ -908,8 +910,8 @@ export class MonsterView {
     this.baking = true
     this.want(k, () => {
       this.baking = false
-      // 한 프레임 쉬었다 다음 것을 굽는다 — 굽기(동기)가 연달아 붙으면 그만큼 화면이 멈춘다
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.pump())
+      // 0.4초 쉬었다 다음 것을 굽는다 — 굽기가 연달아 붙으면 그만큼 화면이 무거워진다 (2026-09-23 야영지 버벅임)
+      if (typeof setTimeout === 'function') setTimeout(() => this.pump(), 400)
       else this.pump()
     })
   }
@@ -920,7 +922,7 @@ export class MonsterView {
    * 그 괴물이 **처음 화면에 그려지는 프레임**에 몰린다 — 그게 첫 던전이었다.
    * 그래서 구운 자리에서 바로 컴파일·올리기를 끝내 둔다 (마을에서 미리).
    */
-  setWarm(fn: (obj: THREE.Object3D) => void): void {
+  setWarm(fn: (objs: THREE.Object3D[], show: () => void) => void): void {
     this.warm = fn
   }
 
@@ -994,23 +996,35 @@ export class MonsterView {
           this.group.add(mesh)
           return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
         })
-        this.models[kind] = { baked, meshes, frame, depth, extras }
-        // 셰이더 컴파일 · 텍스처 올리기를 지금 끝낸다 (처음 만나는 프레임에 몰리지 않게)
+        const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false }
+        this.models[kind] = mk
+        // 처음에는 숨겨 둔다: 보이는 순간(괴물 수 0 이어도) 셰이더 컴파일 · 모양 키 텍스처(3~15MB) 만들기가 그 프레임에 몰린다.
+        // 마을에서 데우기가 끝나면 보이게 한다. 그 전에 이 괴물이 화면에 나오면(던전) 그때 보이게 한다 (update)
+        for (const mesh of meshes) mesh.visible = false
+        const show = () => {
+          if (this.models[kind] === mk) this.showModel(mk)
+        }
         if (this.warm) {
-          for (const mesh of meshes) this.warm(mesh)
-          // 그림자(customDepthMaterial)는 그림자 맵을 그릴 때 따로 컴파일된다 — 그것도 지금 해 둔다
-          for (const part of baked.parts) {
+          // 그림자(customDepthMaterial)는 그림자 맵을 그릴 때 따로 컴파일된다 — 그것도 데운다
+          const probes = baked.parts.map((part) => {
             const probe = new THREE.InstancedMesh(part.geo, depth, 1)
             probe.morphTargetInfluences = new Array(baked.frames).fill(0)
-            this.warm(probe)
-          }
-        }
+            return probe
+          })
+          this.warm([...meshes, ...probes], show)
+        } else show()
       })
       .catch((err) => {
         console.warn('실사 괴물 모델을 받지 못했다 — 도형 괴물로 그린다', kind, err)
         this.models[kind] = 'failed'
       })
       .finally(() => done?.())
+  }
+
+  private showModel(mk: ModelKind): void {
+    if (mk.shown) return
+    mk.shown = true
+    for (const mesh of mk.meshes) mesh.visible = true
   }
 
   /** 맞음: 번쩍 + 움찔 */
@@ -1141,6 +1155,7 @@ export class MonsterView {
     this.models.forEach((mk, k) => {
       if (!mk || typeof mk === 'string') return
       const n = this.real ? this.mcounts[k] : 0
+      if (n > 0 && !mk.shown) this.showModel(mk)
       for (const mesh of mk.meshes) {
         mesh.count = n
         if (n === 0) continue

@@ -31,10 +31,17 @@ export async function bakeModel(spec: ModelSpec): Promise<BakedModel> {
   return bake(gltf, spec)
 }
 
+/** 굽기 한 조각의 길이(ms). 넘으면 쉰다 — 모델 하나를 한 번에 구우면 수십~수백 ms 화면이 멈췄다 (2026-09-23 야영지 버벅임) */
+const SLICE_MS = 4
+/** 쉬는 시간(ms) — 그 사이 화면이 두세 장 그려진다 */
+const REST_MS = 40
+const rest = (): Promise<void> => new Promise((r) => setTimeout(r, REST_MS))
+
 const _m = new THREE.Matrix4()
 
 /** 동작을 프레임으로 굽는다: 프레임마다 모든 정점을 뼈대로 움직여 위치 · 노멀을 모은다 */
-function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
+async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
+  let slice = performance.now()
   // 같은 파일을 두 종류가 쓰므로 장면을 복제해서 굽는다 (모양 키 세기가 다르다)
   const root = cloneSkinned(gltf.scene)
   const meshes: THREE.Mesh[] = []
@@ -70,6 +77,10 @@ function bake(gltf: GLTF, spec: ModelSpec): BakedModel {
     const to = Math.min(pick.to ?? clip.duration, clip.duration - 1e-4)
     const loop = seg[s]!.loop
     for (let k = 0; k < pick.frames; k++) {
+      if (performance.now() - slice > SLICE_MS) {
+        await rest()
+        slice = performance.now()
+      }
       const u = loop ? k / pick.frames : pick.frames === 1 ? 0 : k / (pick.frames - 1)
       act.time = from + (to - from) * u
       mixer.update(0)

@@ -31,7 +31,7 @@ import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
-import { U, World3D, buildWorld } from './world3d'
+import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
 import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
 
@@ -132,6 +132,8 @@ interface Slash {
 const LIGHT_STEP = 4
 /** 미리 컴파일하는 가장 큰 빛 수. 이보다 많으면 맞추지 않는다 (드물다 — 그때만 처음 컴파일) */
 const LIGHT_MAX = 24
+/** 미리 컴파일하는 빛 수 차례 — 던전에서 흔한 것부터 (등불만 4 · 드랍 빛 8 …, 0 은 모두 쓰러졌을 때뿐) */
+const WARM_ORDER = [4, 8, 12, 16, 20, 24, 0]
 
 export const EMOTES: Record<number, string> = { 1: 'ㅋㅋㅋ', 2: '굿 👍', 3: '미안 🙏' }
 
@@ -231,18 +233,34 @@ export class Renderer3D {
   /**
    * 첫 던전 버벅임 (2026-09-23 사용자: "최초 던전 입장 시 버벅인다 — 처음엔 야영지니까 그동안 나눠서 받거나 그려 둬").
    * 지역에 들어서는 프레임에 몰리던 일 셋을 마을에서 나눠 끝낸다:
-   *   ① 다음 지역의 3D 세계 · 시야 덮개 만들기(바닥 텍스처 2016×1488 을 캔버스에 그리기) → `prebuild`
-   *   ② 그 텍스처를 GPU 로 올리고 재질 셰이더를 컴파일하기 → `prebuild` 안의 데우기
+   *   ① 다음 지역의 3D 세계 · 시야 덮개 만들기(바닥 텍스처 2016×1488 을 캔버스에 그리기) → `prebuildStep`
+   *   ② 그 텍스처를 GPU 로 올리고 재질 셰이더를 컴파일하기 → `prepStep`
    *   ③ **점광원 수가 바뀌면 모든 재질의 셰이더를 다시 컴파일한다**(three 는 빛 수가 셰이더에 박힌다). 마을은 횃불 빛 6 개,
    *      들판은 0 개라 들어서는 순간 화면의 모든 재질이 다시 컴파일됐고, 첫 싸움에서 드랍 · 구슬 · 투사체 빛이 늘 때마다
-   *      처음 보는 빛 수가 나와 또 컴파일됐다. → 빛 수를 LIGHT_STEP 단위로 맞추고(`padLights`), 그 단위마다 마을에서 미리 컴파일한다(`warmStep`).
+   *      처음 보는 빛 수가 나와 또 컴파일됐다. → 빛 수를 LIGHT_STEP 단위로 맞추고(`padLights`), 그 단위마다 마을에서 미리 컴파일한다.
+   * v0.43.1 (사용자: "야영지에서도 몇 초 후 약간 버벅인다 — 컴파일에 제한을 둬서 천천히 나눠서"): 한 걸음을 더 잘게 —
+   *   바닥은 6 줄씩 · 셰이더는 **새로 만드는 것 하나씩, 다 될 때까지 기다렸다가** 다음 · 텍스처 올리기도 한 걸음에 하나.
+   *   컴파일은 본 장면이 아니라 빛만 둔 컴파일 전용 장면(`warmScene`)에 대고 한다 — 본 장면에 대고 하면 그때마다
+   *   본 장면의 빛 상태가 바뀌어 화면의 모든 재질이 셰이더를 다시 골랐다.
    */
   private prebuilt = new Map<GameMap, { world: World3D; vision: Vision }>()
-  /** 빛 수 맞추기용 빈 점광원 (세기 0 · 멀리) */
+  /** 만드는 중인 지역 (한 걸음씩 — prebuildGen) */
+  private prebuilding = new Map<GameMap, Generator<void, void>>()
+  /** 빛 수 맞추기용 빈 점광원 (세기 0 · 멀리) — 본 장면에는 LIGHT_STEP-1 개면 된다 */
   private lightPads: THREE.PointLight[] = []
-  /** 미리 컴파일할 일: 대상(장면 또는 미리 만든 세계) × 빛 수 */
-  private warmQueue: { obj: THREE.Object3D; n: number }[] = []
-  private sceneWarmed = false
+  /** 컴파일 전용 장면: 반구광 · 해(그림자) · 빈 점광원 LIGHT_MAX 개. 본 장면과 빛 종류 · 수만 같게 맞춘다 */
+  private warmScene = new THREE.Scene()
+  private warmPads: THREE.PointLight[] = []
+  /** 준비 작업 줄 (마을에서 prepStep 이 한 걸음씩): 텍스처 올리기 · 셰이더 컴파일(대상 × 빛 수) · 할 일 */
+  private prepJobs: ({ t: 'tex'; tex: THREE.Texture } | { t: 'warm'; obj: THREE.Object3D; n: number } | { t: 'run'; run: () => void })[] = []
+  /** 이미 줄 세운 것 (재질 · 대상 모양 · 빛 수) — 같은 셰이더를 두 번 부르지 않게 */
+  private warmKeys = new Set<string>()
+  private upTex = new WeakSet<THREE.Texture>()
+  /** 새로 만든 셰이더가 다 될 때까지(이 시각까지) 다음 컴파일을 미룬다 — 다 됐다는 소식이 안 와도 3초면 넘어간다 */
+  private warmUntil = 0
+  /** 버린 지역의 물체 · 텍스처 (줄에 남은 그 일은 건너뛴다 — 버린 텍스처를 올리면 GPU 메모리가 샌다) */
+  private gone = new WeakSet<object>()
+  private sceneQueued = false
   /** 모델을 미리 받아 둔 막 (-1 = 아직) */
   private prefetchedAct = -1
   private punch = 0
@@ -321,16 +339,11 @@ export class Renderer3D {
     this.vision = new Vision(map)
     this.scene.add(this.vision.group)
     this.scene.add(this.monsterView.group)
-    // 구운 실사 모델을 그 자리에서 데운다 — 셰이더 컴파일 · 텍스처 올리기를 마을에서 끝내 둔다 (2026-09-20 첫 던전 버벅임)
-    this.monsterView.setWarm((o) => {
-      void this.gl.compileAsync(o, this.camera, this.scene)
-      // 지금 빛 수 말고 다른 빛 수(던전)에서도 다시 컴파일하지 않게 — 마을에서 warmStep 이 나눠 한다
-      for (let n = 0; n <= LIGHT_MAX; n += LIGHT_STEP) this.warmQueue.push({ obj: o, n })
-      const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined
-      // 모양 키 텍스처(수 MB)는 처음 그릴 때 GPU 로 올라간다 — 미리 올린다
-      for (const t of [mat?.map, mat?.normalMap, (mat as unknown as { morphTexture?: THREE.Texture })?.morphTexture]) if (t) this.gl.initTexture(t)
-      const mt = ((o as THREE.Mesh).geometry as THREE.BufferGeometry & { morphTexture?: THREE.Texture }).morphTexture
-      if (mt) this.gl.initTexture(mt)
+    // 구운 실사 모델: 텍스처 올리기 · 셰이더 컴파일을 줄 세우고, 다 되면 보이게 한다(show — 그때 모양 키 텍스처를 만든다).
+    // 마을이 아니면 줄이 돌지 않지만, 그 괴물이 화면에 나오면 monsters3d 가 바로 보이게 한다 (2026-09-20 · 09-23)
+    this.monsterView.setWarm((objs, show) => {
+      for (const o of objs) this.queueWarm(o)
+      this.prepJobs.push({ t: 'run', run: show })
     })
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
@@ -338,13 +351,26 @@ export class Renderer3D {
       this.lanterns.push(l)
       this.scene.add(l)
     }
-    for (let i = 0; i < LIGHT_MAX; i++) {
+    const pad = (): THREE.PointLight => {
       const l = new THREE.PointLight(0x000000, 0, 0.01, 2)
       l.position.set(0, -60, 0)
       l.visible = false
       l.userData.pad = true
+      return l
+    }
+    for (let i = 0; i < LIGHT_STEP - 1; i++) {
+      const l = pad()
       this.lightPads.push(l)
       this.scene.add(l)
+    }
+    // 컴파일 전용 장면: 세계(buildDark)와 같은 반구광 하나 · 그림자 드리우는 해 하나 + 점광원
+    const wsun = new THREE.DirectionalLight(0xffffff, 1)
+    wsun.castShadow = true
+    this.warmScene.add(new THREE.HemisphereLight(0xffffff, 0x000000, 1), wsun)
+    for (let i = 0; i < LIGHT_MAX; i++) {
+      const l = pad()
+      this.warmPads.push(l)
+      this.warmScene.add(l)
     }
     this.resize()
   }
@@ -396,6 +422,10 @@ export class Renderer3D {
     this.scene.remove(this.vision.group)
     this.vision.dispose()
     this.map = map
+    // 만들다 만 것이면 남은 걸음을 지금 끝낸다 (한 일은 그대로 쓴다)
+    const gen = this.prebuilding.get(map)
+    if (gen) for (let r = gen.next(); !r.done; r = gen.next());
+    this.prebuilding.clear()
     const pre = this.prebuilt.get(map)
     this.prebuilt.delete(map)
     this.world = pre ? pre.world : buildWorld(map)
@@ -405,7 +435,6 @@ export class Renderer3D {
     // 남은 것은 떠나온 지역의 이웃이었다 — 새 지역에서 필요한 것은 다시 만든다 (GPU 메모리)
     for (const p of this.prebuilt.values()) this.dropPrebuilt(p)
     this.prebuilt.clear()
-    this.warmQueue = this.warmQueue.filter((w) => w.obj === this.scene)
     this.scene.background = new THREE.Color(map.theme.outside)
     this.scene.fog = new THREE.Fog(map.theme.fog, 34, 70)
     this.miniCanvas = null
@@ -416,56 +445,133 @@ export class Renderer3D {
   }
 
   /**
-   * 다음 지역을 미리 만든다 (마을에서 한 번에 하나씩 — session.idlePrep). 만들었으면 true.
-   * 바닥 · 시야 텍스처를 GPU 로 올리고, 재질 셰이더는 빛 수 단위마다 warmStep 이 나눠 컴파일한다.
+   * 다음 지역을 미리 만드는 **한 걸음** (마을에서 — session.idlePrep). 한 일이 있으면 true, 다 만들었으면 false.
+   * 걸음: 바닥 그림 6 줄씩 → 세계 → 시야 덮개. 텍스처 올리기 · 셰이더 컴파일은 준비 줄(prepJobs)에 세운다.
    */
-  prebuild(map: GameMap): boolean {
+  prebuildStep(map: GameMap): boolean {
     if (map === this.map || this.prebuilt.has(map)) return false
-    const world = buildWorld(map)
-    const vision = new Vision(map)
-    this.prebuilt.set(map, { world, vision })
-    for (const g of [world.group, vision.group]) {
-      g.traverse((o) => {
-        const mat = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | THREE.MeshBasicMaterial[] | undefined
-        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gl.initTexture(m.map)
-      })
-      for (let n = 0; n <= LIGHT_MAX; n += LIGHT_STEP) this.warmQueue.push({ obj: g, n })
+    let gen = this.prebuilding.get(map)
+    if (!gen) {
+      gen = this.prebuildGen(map)
+      this.prebuilding.set(map, gen)
     }
+    if (gen.next().done) this.prebuilding.delete(map)
     return true
   }
 
+  private *prebuildGen(map: GameMap): Generator<void, void> {
+    const style = map.theme.style
+    let floor: THREE.CanvasTexture | undefined
+    if (style) {
+      const paint = paintFloorSteps(map, style, 6)
+      for (let r = paint.next(); ; r = paint.next()) {
+        if (r.done) {
+          floor = r.value
+          break
+        }
+        yield
+      }
+      yield
+    }
+    const world = buildWorld(map, floor)
+    yield
+    const vision = new Vision(map)
+    this.prebuilt.set(map, { world, vision })
+    this.queueWarm(world.group)
+    this.queueWarm(vision.group)
+  }
+
   private dropPrebuilt(p: { world: World3D; vision: Vision }): void {
+    for (const g of [p.world.group, p.vision.group]) {
+      g.traverse((o) => {
+        this.gone.add(o)
+        const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined
+        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
+      })
+    }
     p.world.dispose()
     p.vision.dispose()
   }
 
   /**
-   * 미리 컴파일 한 걸음 (마을에서 — session.idlePrep). 할 일이 남았으면 true.
-   * 빛 수를 n 으로 잠깐 맞추고(진짜 빛을 끄거나 빈 빛을 켜서) 그 상태로 셰이더를 컴파일해 둔 뒤 되돌린다.
-   * 괴물 · 캐릭터 · 효과 재질은 장면에 있으니 장면을, 다음 지역 재질은 미리 만든 세계를 컴파일한다.
+   * 대상의 텍스처 올리기 · 셰이더 컴파일을 준비 줄에 세운다.
+   * 빛을 쓰는 재질(Lambert 등)은 빛 수 단위마다, 빛을 안 쓰는 재질은 한 번(그 뒤로는 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다).
+   * 빛 수 순서는 던전에서 흔한 것부터 — 등불(사람마다 하나)만 켜진 4 · 드랍 빛이 는 8 …
    */
-  warmStep(): boolean {
-    if (!this.sceneWarmed) {
-      this.sceneWarmed = true
-      for (let n = 0; n <= LIGHT_MAX; n += LIGHT_STEP) this.warmQueue.push({ obj: this.scene, n })
+  private queueWarm(root: THREE.Object3D): void {
+    const warm: { obj: THREE.Object3D; key: string; lit: boolean }[] = []
+    root.traverse((o) => {
+      const r = o as THREE.Mesh & { isSprite?: boolean; isPoints?: boolean; isLine?: boolean; isInstancedMesh?: boolean; instanceColor?: unknown; morphTexture?: unknown }
+      if (!(r.isMesh || r.isSprite || r.isPoints || r.isLine) || !r.material) return
+      for (const m of Array.isArray(r.material) ? r.material : [r.material]) {
+        const tm = m as THREE.MeshLambertMaterial
+        for (const t of [tm.map, tm.normalMap, tm.emissiveMap, tm.alphaMap]) {
+          if (t && !this.upTex.has(t)) {
+            this.upTex.add(t)
+            this.prepJobs.push({ t: 'tex', tex: t })
+          }
+        }
+        const g = r.geometry
+        const shape = `${r.isInstancedMesh ? 1 : 0}${r.instanceColor ? 1 : 0}${r.morphTexture ? 1 : 0}${g?.morphAttributes?.position ? 1 : 0}${g?.attributes?.color ? 1 : 0}${r.receiveShadow ? 1 : 0}${r.isSprite ? 's' : ''}`
+        const lit = !!((m as THREE.MeshLambertMaterial).isMeshLambertMaterial || (m as THREE.MeshStandardMaterial).isMeshStandardMaterial || (m as THREE.MeshPhongMaterial).isMeshPhongMaterial || (m as THREE.MeshToonMaterial).isMeshToonMaterial || (m as THREE.ShaderMaterial & { lights?: boolean }).lights)
+        // 빛을 안 쓰는 재질은 한 번 셰이더를 가지면 끝이다 — 이미 그려진 것은 건너뛴다
+        if (!lit && (this.gl.properties.get(m) as { currentProgram?: unknown }).currentProgram) continue
+        warm.push({ obj: o, key: `${m.uuid}|${shape}`, lit })
+      }
+    })
+    for (const n of WARM_ORDER) {
+      for (const w of warm) {
+        if (!w.lit && n !== WARM_ORDER[0]) continue
+        const k = `${w.key}|${w.lit ? n : '-'}`
+        if (this.warmKeys.has(k)) continue
+        this.warmKeys.add(k)
+        this.prepJobs.push({ t: 'warm', obj: w.obj, n })
+      }
     }
-    const job = this.warmQueue.shift()
-    if (!job) return false
-    const real = this.realLights()
-    const hidden: THREE.Object3D[] = []
-    for (let i = job.n; i < real.length; i++) {
-      real[i].visible = false
-      hidden.push(real[i])
+  }
+
+  /**
+   * 준비 줄 한 걸음 (마을에서 — session.idlePrep). 할 일이 남았으면 true.
+   * - 텍스처는 한 걸음에 하나.
+   * - 셰이더는 이미 있는 것(캐시)이면 budgetMs 안에서 이어 가고, **새로 만든 것이 하나 나오면 멈춘다** —
+   *   그 셰이더가 다 될 때까지(KHR_parallel_shader_compile) 다음 걸음은 쉰다.
+   */
+  prepStep(budgetMs = 3): boolean {
+    if (!this.sceneQueued) {
+      // 캐릭터 · 괴물(도형) · 효과 재질은 장면에 있다 — 던전의 빛 수에서도 쓰게 한 번 줄 세운다
+      this.sceneQueued = true
+      this.queueWarm(this.scene)
     }
-    const need = Math.max(0, job.n - real.length)
-    this.lightPads.forEach((l, i) => (l.visible = i < need))
-    try {
-      void this.gl.compileAsync(job.obj, this.camera, this.scene).catch(() => {})
-    } finally {
-      for (const o of hidden) o.visible = true
-      this.padLights()
+    const t0 = performance.now()
+    if (t0 < this.warmUntil) return true
+    const programs = this.gl.info.programs as unknown[] | null
+    const p0 = programs?.length ?? 0
+    while (this.prepJobs.length > 0) {
+      const job = this.prepJobs.shift()!
+      if (job.t === 'tex') {
+        if (this.gone.has(job.tex)) continue
+        this.gl.initTexture(job.tex)
+        return true
+      }
+      if (job.t === 'run') {
+        job.run()
+        return true
+      }
+      if (this.gone.has(job.obj)) continue
+      this.warmScene.fog = this.scene.fog
+      this.warmPads.forEach((l, i) => (l.visible = i < job.n))
+      // 자식은 빼고 그 물체 하나만 (그룹이면 아래 것들이 한꺼번에 컴파일된다)
+      const one = Object.create(job.obj) as THREE.Object3D
+      one.children = []
+      const done = this.gl.compileAsync(one, this.camera, this.warmScene).catch(() => {})
+      if ((programs?.length ?? 0) > p0) {
+        this.warmUntil = t0 + 3000
+        void done.finally(() => (this.warmUntil = 0))
+        return true
+      }
+      if (performance.now() - t0 > budgetMs) return true
     }
-    return this.warmQueue.length > 0
+    return false
   }
 
   /** 장면에서 지금 켜진 점광원 (빈 빛 제외) */
@@ -3145,6 +3251,8 @@ export class Renderer3D {
     this.world.dispose()
     for (const p of this.prebuilt.values()) this.dropPrebuilt(p)
     this.prebuilt.clear()
+    this.prebuilding.clear()
+    this.prepJobs = []
     this.gl.dispose()
     this.canvas.remove()
     this.hud.canvas.remove()

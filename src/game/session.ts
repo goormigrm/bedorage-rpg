@@ -40,6 +40,13 @@ import { LocalInput } from './localInput'
 import { TouchControls, enterLandscape, isTouchDevice } from './touch'
 import { Ticker } from './ticker'
 
+/** 마을 준비(idlePrep) 속도 제한 — 걸음 사이 최소 쉼(ms) · 걸음 시간의 몇 배를 쉴지 · 들어선 뒤 기다림 · 끊김 기준(초) · 끊기면 쉼 */
+const PREP_GAP = 160
+const PREP_RATIO = 10
+const PREP_START = 2500
+const PREP_SLOW_DT = 0.034
+const PREP_BACKOFF = 600
+
 export interface SessionConfig {
   mode: 'solo' | 'p2p'
   /** 인원 = 길이. 인덱스가 플레이어 번호 */
@@ -531,17 +538,33 @@ export class Session {
 
   /**
    * 마을에서 쉬는 동안 첫 던전 준비를 나눠 한다 (2026-09-23 — renderer3d `prebuilt` 주석).
-   * 0.35초에 한 가지씩: 다음 지역 맵 만들기 → 그 3D 세계 만들기 → 셰이더 미리 컴파일. 마을에 들어선 뒤 1.5초는 쉰다(배너 · 첫 그림).
+   * 차례: 다음 지역 맵 만들기 → 그 3D 세계를 한 걸음씩(바닥 6 줄 · 세계 · 시야 덮개) → 텍스처 올리기 · 셰이더 컴파일(renderer.prepStep).
    * 다음 지역 = 마을 출구로 이어진 곳 + 이 막에서 연 가장 깊은 웨이포인트(이어 하는 사람은 거기로 바로 간다).
    * 맵은 시드만으로 정해지니(buildAreaMap) 미리 만들어도 모두의 판이 같다.
+   *
+   * 속도 제한 (v0.43.1 — 사용자: "야영지에서도 몇 초 후 약간 버벅임 · 컴파일에 제한을 둬서 천천히 나눠서"):
+   * - 한 걸음 뒤에는 PREP_GAP 이상, 그 걸음에 든 시간의 PREP_RATIO 배만큼 쉰다 — 무거운 걸음일수록 오래 쉰다.
+   * - 화면이 이미 끊기고 있으면(지난 프레임이 PREP_SLOW_DT 초를 넘음) 한 걸음을 건너뛰고 더 쉰다.
+   * - 마을에 들어선 뒤 PREP_START 는 아무것도 하지 않는다(첫 그림 · 모델 받기와 겹치지 않게).
    */
-  private idlePrep(now: number): void {
+  private idlePrep(now: number, dt: number): void {
     if (this.arena || !isTown(this.viewArea)) {
-      this.prepAt = now + 1500
+      this.prepAt = now + PREP_START
       return
     }
-    if (now < this.prepAt) return
-    this.prepAt = now + 350
+    if (now < this.prepAt || document.hidden) return
+    if (dt > PREP_SLOW_DT) {
+      this.prepAt = now + PREP_BACKOFF
+      return
+    }
+    const t0 = performance.now()
+    const more = this.prepOne()
+    const spent = performance.now() - t0
+    this.prepAt = now + (more ? Math.max(PREP_GAP, spent * PREP_RATIO) : 1000)
+  }
+
+  /** 준비 한 걸음. 할 일이 남았으면 true */
+  private prepOne(): boolean {
     const me = this.state.players[this.cfg.localPlayer]
     const a = areaDef(this.viewArea)
     const targets = [...a.links.filter((l) => !isTown(l))]
@@ -551,11 +574,11 @@ export class Session {
     for (const t of targets) {
       if (!this.maps.has(t)) {
         this.mapOf(t)
-        return
+        return true
       }
     }
-    for (const t of targets) if (this.renderer.prebuild(this.mapOf(t))) return
-    this.renderer.warmStep()
+    for (const t of targets) if (this.renderer.prebuildStep(this.mapOf(t))) return true
+    return this.renderer.prepStep()
   }
 
   /** 지역이 바뀌었으면 3D 세계를 그 지역 맵으로 바꾼다 */
@@ -1503,7 +1526,7 @@ export class Session {
     const spec = !me.alive && !me.choosing && this.spectate >= 0 && this.state.players[this.spectate]?.alive ? this.spectate : -1
     if (spec < 0 && this.spectate >= 0 && me.alive) this.spectate = -1
     this.syncView()
-    this.idlePrep(now)
+    this.idlePrep(now, dt)
     const view = this.view()
     this.skills.refresh()
     this.chars.refresh()

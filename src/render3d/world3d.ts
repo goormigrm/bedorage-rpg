@@ -38,9 +38,10 @@ function hash(tx: number, ty: number, salt = 0): number {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296
 }
 
-export function buildWorld(map: GameMap): World3D {
+/** floorTex = 미리 그려 둔 바닥 그림 (paintFloorSteps — 마을에서 나눠 그린 것). 없으면 여기서 그린다 */
+export function buildWorld(map: GameMap, floorTex?: THREE.CanvasTexture): World3D {
   const style = map.theme.style
-  return style ? buildDark(map, style) : buildClassic(map)
+  return style ? buildDark(map, style, floorTex) : buildClassic(map)
 }
 
 // ================================================================ 어두운 지역 (디아블로)
@@ -64,7 +65,7 @@ const LOOK: Record<WorldStyle, {
   town: { wall: 'town', wallH: [1.9, 1.9], floor: 'earth', crate: 'barrel', props: ['straw', 'grass'], decal: { crack: 0.01, blood: 0, moss: 0.03 }, torches: 0.12 },
 }
 
-function buildDark(map: GameMap, style: WorldStyle): World3D {
+function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTexture): World3D {
   const t = map.theme
   const look = LOOK[style]
   const group = new THREE.Group()
@@ -73,7 +74,7 @@ function buildDark(map: GameMap, style: WorldStyle): World3D {
   const isWall = (tx: number, ty: number) => tx < 0 || ty < 0 || tx >= map.w || ty >= map.h || map.tiles[ty * map.w + tx] === TILE_WALL
 
   // ---- 바닥 ----
-  const floorTex = paintFloor(map, style)
+  const floorTex = painted ?? paintFloor(map, style)
   disposables.push(floorTex)
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(map.w, map.h), new THREE.MeshLambertMaterial({ map: floorTex }))
   floor.rotation.x = -Math.PI / 2
@@ -438,8 +439,20 @@ function wallClusters(map: GameMap): Map<number, { x0: number; y0: number; x1: n
   return out
 }
 
-/** 바닥 그림: 타일마다 판석·흙·바위를 칠하고 금·핏자국·이끼를 얹는다 */
+/** 바닥 그림을 한 번에 */
 function paintFloor(map: GameMap, style: WorldStyle): THREE.CanvasTexture {
+  const g = paintFloorSteps(map, style, map.h)
+  for (;;) {
+    const r = g.next()
+    if (r.done) return r.value
+  }
+}
+
+/**
+ * 바닥 그림: 타일마다 판석·흙·바위를 칠하고 금·핏자국·이끼를 얹는다.
+ * rows 줄마다 한 번 쉰다(yield) — 2016×1488 캔버스에 칸 5천 개를 그려 한 번에 하면 화면이 멈춘다(마을에서 나눠 그린다, 2026-09-23)
+ */
+export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number): Generator<void, THREE.CanvasTexture> {
   const t = map.theme
   const look = LOOK[style]
   const px = 24
@@ -454,6 +467,7 @@ function paintFloor(map: GameMap, style: WorldStyle): THREE.CanvasTexture {
   g.fillStyle = hex(t.floor)
   g.fillRect(0, 0, fc.width, fc.height)
   for (let ty = 0; ty < map.h; ty++) {
+    if (ty > 0 && ty % rows === 0) yield
     for (let tx = 0; tx < map.w; tx++) {
       const x = tx * px
       const y = ty * px
