@@ -1,0 +1,4 @@
+# 배도라지RPG 치지직 프록시 — proxy 폴더에서 `npx wrangler deploy` 로 배포 (worker.js 머리말 참고)
+name = "bedorage-proxy"
+main = "worker.js"
+compatibility_date = "2026-09-01"

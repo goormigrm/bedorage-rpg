@@ -343,6 +343,10 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
   - 지금은 먹방 룰렛 앱(Client ID `95337781-…`)과 그 워커 프록시를 같이 쓴다(`net/chzzk.ts` 맨 위 두 값). 그 앱에 **스코프 "채팅 메시지 조회"** 를 더하고, **로그인 리디렉션 URL 에 `https://goormigrm.github.io/bedorage-rpg/`** 를 넣어야 한다.
   - 앱 하나에 리디렉션 URL 을 여럿 둘 수 있는지는 치지직 문서에 없다. 하나뿐이면 새 앱 "배도라지RPG" 를 만들고 워커가 앱마다 Secret 을 고르게 고쳐야 한다(먹방 룰렛 `proxy/worker.js` 는 Secret 을 하나만 넣는다).
   - 채팅 권한이 없으면 후원만 받는다(상태 줄에 "채팅 구독 실패" 가 남는다).
+  - **2026-09-23 결정: 새 앱 "배도라지RPG" + 전용 워커 `bedorage-proxy`**(저장소 `proxy/` — 먹방 룰렛 워커는 건드리지 않는다). 남은 순서:
+    1. 사용자가 개발자센터에 앱 등록(스코프 채팅 메시지 조회 · 후원 조회, 리디렉션 `https://goormigrm.github.io/bedorage-rpg/`)
+    2. 사용자가 이 PC 에서 `npx wrangler login` → `proxy` 에서 `npx wrangler deploy` → `secret put CHZZK_CLIENT_ID` · `CHZZK_CLIENT_SECRET`(붙여 넣기 — Secret 은 대화에 적지 않는다)
+    3. Client ID · 워커 주소를 받아 `net/chzzk.ts` 맨 위 두 값을 바꾸고 배포 → curl 로 프록시 확인 → 사용자가 설정에서 로그인 · 연결
 - 치지직 없이 확인: 설정 → 치지직 방송 연동 → "채팅 시험" · 이벤트마다 "시험". 게임 안(Esc)에서 누르면 그 판에 바로 들어간다.
 - 폰은 이 게임을 막아 두었으니 방송 연동도 PC 만 본다.
 

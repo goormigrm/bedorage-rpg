@@ -11,3 +11,5 @@ docs/img/
 tools/rooms.log
 # 괴물 모델 원본(Sketchfab · Quaternius 원본 — 줄인 결과만 public/ 에 넣는다, 2026-09-19)
 art-src/
+# Cloudflare 워커 배포 임시 파일
+proxy/.wrangler/
