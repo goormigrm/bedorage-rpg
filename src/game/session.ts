@@ -275,14 +275,18 @@ export class Session {
       <div class="game-root">
         <div class="game-stage" id="stage">
           <div class="game-ui">
-            <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="top-right"></div>
             <div class="keys">${keysHintHtml()}</div>
+            <!-- 오른쪽 아래 한 기둥: 창 단추 → 음성 · 소리 · 로비로 (2026-09-23 사용자: "왼쪽 위에는 치지직 연결 버튼만 남기고 나머지는 오른쪽 아래로") -->
+            <div class="rbcol">
             <div class="winbtns" id="winbtns">
               <button class="wbtn" data-win="bag" title="가방 (${keyLabel('bag')})">가방<small>${keyLabel('bag')}</small></button>
               <button class="wbtn" data-win="skill" title="스킬 (${keyLabel('skills')})">스킬<small>${keyLabel('skills')}</small></button>
               <button class="wbtn" data-win="attr" title="능력치 (${keyLabel('attr')})">능력치<small>${keyLabel('attr')}</small></button>
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
+            </div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>

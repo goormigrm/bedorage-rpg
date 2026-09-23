@@ -846,6 +846,13 @@ body { background: var(--bg); }
 .wbtn[hidden] { display: none; }
 /* 터치 기기는 제 조작 UI(≡ 메뉴)가 오른쪽 아래를 쓴다 */
 .touching .winbtns { display: none; }
+/* 오른쪽 아래 한 기둥 (2026-09-23 사용자: "왼쪽 위에는 치지직 연결 버튼만 남기고 나머지는 오른쪽 아래로"): 창 단추 아래에 음성 · 소리 · 로비로 */
+.rbcol { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; z-index: 14; }
+.rbcol .winbtns { position: static; }
+.sysbtns { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: auto; padding-top: 8px; border-top: 1px solid rgba(201,162,74,.22); }
+.sysbtns .btn { min-width: 78px; box-sizing: border-box; padding: 4px 9px; font: 600 11.5px "IBM Plex Sans KR", sans-serif; background: rgba(14,12,10,.72); border-radius: 3px; white-space: nowrap; }
+.sysbtns .btn[hidden] { display: none; }
+.touching .sysbtns { display: none; }
 
 /* 대기실 자리: 레벨 · 템 수준 (2026-09-20) */
 .slot .cname .pw { display: block; font: 600 11.5px "IBM Plex Mono", monospace; color: #b8a67e; letter-spacing: 0; }
