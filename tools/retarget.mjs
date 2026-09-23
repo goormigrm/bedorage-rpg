@@ -115,6 +115,65 @@ const TARGETS = {
     // 명세의 yaw 는 종류마다 하나라 옮긴 동작도 +x 를 보게 90° 돌린다(2026-09-19 — 안 돌리면 옆을 보고 걸었다)
     turn: Math.PI / 2,
   },
+  // 도살자 — Pig Demon (Lexington Dath · CC BY 4.0). 3ds Max Biped(Bip001) — 해골 궁수와 같은 계열 (2026-09-23)
+  // 목이 다섯 마디(Neck ~ Neck4)라 첫 마디와 머리만 짝을 짓고 가운데는 기본 자세를 둔다
+  butcher: {
+    map: {
+      pelvis: 'Bip001 Pelvis_058',
+      spine_01: 'Bip001 Spine_0103',
+      spine_02: 'Bip001 Spine1_0104',
+      spine_03: 'Bip001 Spine2_0105',
+      neck_01: 'Bip001 Neck_053',
+      Head: 'Bip001 Head_05',
+      clavicle_l: 'Bip001 L Clavicle_010',
+      upperarm_l: 'Bip001 L UpperArm_046',
+      lowerarm_l: 'Bip001 L Forearm_035',
+      hand_l: 'Bip001 L Hand_036',
+      clavicle_r: 'Bip001 R Clavicle_060',
+      upperarm_r: 'Bip001 R UpperArm_096',
+      lowerarm_r: 'Bip001 R Forearm_085',
+      hand_r: 'Bip001 R Hand_086',
+      thigh_l: 'Bip001 L Thigh_037',
+      calf_l: 'Bip001 L Calf_09',
+      foot_l: 'Bip001 L Foot_031',
+      ball_l: 'Bip001 L Toe0_038',
+      thigh_r: 'Bip001 R Thigh_087',
+      calf_r: 'Bip001 R Calf_059',
+      foot_r: 'Bip001 R Foot_081',
+      ball_r: 'Bip001 R Toe0_088',
+    },
+    clips: ['Idle_Loop', 'Walk_Loop', 'Hit_Chest', 'Sword_Attack', 'Punch_Cross', 'Death01'],
+    skip: /Finger|Nub|Twist|Ear|Jaw|Toe[123]/,
+  },
+  // 관리인 — Overlord (DJMaesen · CC BY 4.0). 척추가 둘(spine · chest)뿐이라 원본 윗 척추(spine_03)를 가슴에 잇는다 —
+  // 월드 회전 변화량을 옮기므로 윗몸 전체의 기울기가 가슴에 들어간다 (2026-09-23)
+  warden: {
+    map: {
+      pelvis: 'hips_2_01',
+      spine_01: 'spine_2_012',
+      spine_03: 'chest_2_013',
+      neck_01: 'neck_2_061',
+      Head: 'head_2_062',
+      clavicle_l: 'L_shoulder_2_014',
+      upperarm_l: 'L_arm_2_015',
+      lowerarm_l: 'L_elbow_2_016',
+      hand_l: 'L_wrist_2_017',
+      clavicle_r: 'R_shoulder_2_038',
+      upperarm_r: 'R_arm_2_039',
+      lowerarm_r: 'R_elbow_2_040',
+      hand_r: 'R_wrist_2_041',
+      thigh_l: 'L_leg_2_02',
+      calf_l: 'L_knee_2_03',
+      foot_l: 'L_ankle_2_04',
+      ball_l: 'L_foot_2_05',
+      thigh_r: 'R_leg_2_07',
+      calf_r: 'R_knee_2_08',
+      foot_r: 'R_ankle_2_09',
+      ball_r: 'R_foot_2_010',
+    },
+    clips: ['Idle_Loop', 'Walk_Loop', 'Hit_Chest', 'Sword_Attack', 'Death01'],
+    skip: /thumb|pink|ring|middle|point|Joint_|toes|tip/,
+  },
 }
 
 // 제자리 동작(대기 · 걷기)은 골반의 앞뒤 · 옆 움직임을 빼고 위아래만 남긴다

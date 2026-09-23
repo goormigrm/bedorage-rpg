@@ -14,6 +14,9 @@
 | 굶주린 늑대 | ["Grey Wolf (Rigged and Animated)"](https://sketchfab.com/3d-models/grey-wolf-rigged-and-animated-56de4df672654ed599777d2980bf0f53) | [rhcreations](https://sketchfab.com/rhcreations) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 | 독거미 | ["Wolf Spider (Rigged) - (Rabidosa rabida)"](https://sketchfab.com/3d-models/wolf-spider-rigged-rabidosa-rabida-6392e4cfb64d407182fdad2cea9e0abe) | [Dreaming In Alternation 27](https://sketchfab.com/DreamingInAlternation27) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 | 거미 여왕 | ["Amethystine Blight Queen"](https://sketchfab.com/3d-models/amethystine-blight-queen-1a9caad333b049c3a94c7648001d2b57) | [HighPolyDensity](https://sketchfab.com/HighPolyDensity) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 도살자 (1막 보스) | ["Pig Demon"](https://sketchfab.com/3d-models/pig-demon-bba636efaee04b3ea988b2ae4487cfc1) | [Lexington Dath](https://sketchfab.com/Lexinator117) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 관리인 (3막 보스) | ["Overlord"](https://sketchfab.com/3d-models/overlord-4e61da8bb7f3440db3df42ee26c4b797) | [DJMaesen](https://sketchfab.com/bumstrum) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 심연의 군주 (4막 보스) | ["balrog demon rig"](https://sketchfab.com/3d-models/balrog-demon-rig-4a7f90a1f2b64d4cb404dbfce6bfcc78) | [KrazyKaijus](https://sketchfab.com/pincers60) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 
 원문 표기 (Sketchfab 이 권하는 형식):
 
@@ -22,12 +25,16 @@
 - This work is based on "Grey Wolf (Rigged and Animated)" (https://sketchfab.com/3d-models/grey-wolf-rigged-and-animated-56de4df672654ed599777d2980bf0f53) by rhcreations (https://sketchfab.com/rhcreations) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "Wolf Spider (Rigged) - (Rabidosa rabida)" (https://sketchfab.com/3d-models/wolf-spider-rigged-rabidosa-rabida-6392e4cfb64d407182fdad2cea9e0abe) by Dreaming In Alternation 27 (https://sketchfab.com/DreamingInAlternation27) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "Amethystine Blight Queen" (https://sketchfab.com/3d-models/amethystine-blight-queen-1a9caad333b049c3a94c7648001d2b57) by HighPolyDensity (https://sketchfab.com/HighPolyDensity) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Pig Demon" (https://sketchfab.com/3d-models/pig-demon-bba636efaee04b3ea988b2ae4487cfc1) by Lexington Dath (https://sketchfab.com/Lexinator117) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Overlord" (https://sketchfab.com/3d-models/overlord-4e61da8bb7f3440db3df42ee26c4b797) by DJMaesen (https://sketchfab.com/bumstrum) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "balrog demon rig" (https://sketchfab.com/3d-models/balrog-demon-rig-4a7f90a1f2b64d4cb404dbfce6bfcc78) by KrazyKaijus (https://sketchfab.com/pincers60) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 
 ## 동작 (CC0 — 표기 의무는 없지만 적어 둔다)
 
 - Quaternius "Universal Animation Library" (Standard) — CC0 1.0. https://quaternius.itch.io/universal-animation-library
   - 좀비 · 해골 모델에 없던 동작을 옮겨 붙였다(`tools/retarget.mjs`, 2026-09-19).
   - 좀비: 죽음 · 맞음 · 공격 셋(검 휘두르기 · 마법 쏘기 · 겨누기). 해골: 대기 · 걷기 · 맞음 · 죽음 · 공격 넷(검 휘두르기 · 마법 쏘기 · 겨누기 · 주먹).
+  - 도살자 · 관리인(2026-09-23): 대기 · 걷기 · 맞음 · 검 휘두르기 · 죽음(도살자는 주먹도). 심연의 군주는 네발이라 옮기지 않고 원본의 동작 하나를 걷기 · 공격으로 나눠 쓴다.
   - 원본은 `art-src/`(저장소 밖)에 있다.
 
 ## 넣는 법 (개발자)

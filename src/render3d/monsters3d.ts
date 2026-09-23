@@ -55,20 +55,11 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
     { part: 1, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.136, at: 'head' }, // 두건
     { part: 2, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.112, at: 'head' }, // 눈
   ],
-  12: [
-    { part: 1, s: 0.5, dx: -0.061, dy: 0.66, dz: -0.115, at: 'head' }, // 관리인: 투구
-    { part: 2, s: 0.5, dx: -0.061, dy: 0.655, dz: -0.11, at: 'head' }, // 눈구멍
-    { part: 3, s: 0.5, dx: -0.043, dy: 0.55, dz: -0.094, at: 'chest' }, // 어깨판
-    { part: 4, s: 0.6, dx: -0.395, dy: 0.187, dz: -0.216, at: 'handR', still: true }, // 쇠곤봉 (오른손 — 검 휘두르기 동작이 휘두른다)
-    { part: 5, s: 0.6, dx: 0.408, dy: 0.348, dz: -0.116, at: 'handL', still: true }, // 등불 (왼손)
-  ],
   // 좀비 모델 (도살자 · 고블린 · 버섯 주술사 · 토사꾼 · 포격 악마 · 군주): 기준 자세는 좀비 대기 첫 장 그대로 — 자리 값은 전에 맞춘 것
-  3: [{ part: -1, s: 1.05, dy: 0.02, at: 'chest' }], // 도살자: 식칼 (도형 식칼이 스스로 휘두른다)
   4: [{ part: 4, s: 0.85, dy: 0, at: 'chest' }, { part: 5, s: 0.85, dy: 0, at: 'chest' }], // 고블린: 금 자루 · 반짝임
   7: [{ part: 2, s: 0.95, dy: -0.12, at: 'head' }, { part: 3, s: 0.95, dy: 0, at: 'chest' }], // 버섯 주술사: 버섯 갓 · 지팡이
   11: [{ part: 2, s: 0.95, dy: 0, at: 'chest' }], // 산성 토사꾼: 산 주머니
   14: [{ part: 2, s: 0.6, dy: 0.46, dz: 0.03, at: 'head' }, { part: 4, s: 0.75, dy: 0.2, at: 'chest' }, { part: 5, s: 0.75, dy: 0.2, at: 'chest' }], // 포격 악마: 뿔 · 포신 · 포구 불빛
-  15: [{ part: 1, s: 0.62, dy: 0.35, at: 'hips' }, { part: 3, s: 0.6, dy: 0.51, dz: 0.1, at: 'head' }, { part: 5, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }, { part: 6, s: 0.5, dy: 0.45, dz: -0.08, at: 'chest' }], // 심연의 군주: 균열 띠 · 뼈 왕관 · 날개 둘
 }
 
 /**

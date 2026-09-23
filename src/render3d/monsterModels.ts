@@ -85,10 +85,10 @@ const skeletonClips = (attack: ClipPick): ModelSpec['clips'] => ({
 MODEL_SPECS[1] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(AIM), windup: 0.4 }
 // 부푼 시체 — 구울 모델 + 살찐 몸 모양 키 + 누런 녹색
 MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fat: 2.2, tint: [0.95, 1.05, 0.7], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
-// 도살자(1막 보스) — 구울 모델 + 살찐 몸 + 붉은 살 + 붉은 눈 (식칼은 도형 부품을 겹쳐 그린다 — monsters3d MODEL_EXTRAS).
-// 2차 묶음의 Pig Demon 을 받기 전까지 쓴다 (받을 파일이 늘지 않는다)
-// 공격은 큰 부채꼴이라 검 휘두르기 동작으로 (식칼은 도형 부품이 같이 휘두른다)
-MODEL_SPECS[3] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: SWORD }, windup: 0.5, fat: 1.4, tint: [1.3, 0.72, 0.64], glow: { 'Sphere.001': 0xff3a1a, 'Sphere_1.001': 0xff3a1a } }
+// 도살자(1막 보스) — Pig Demon · Lexington Dath · CC BY 4.0 (2026-09-23 — 구울 모델에 살을 찌운 임시 모습을 바꿨다)
+// 받은 동작(Take 001)은 쓰지 않고 대기 · 걷기 · 공격 · 맞음 · 죽음 모두 UAL 에서 옮겨 붙였다(Biped 뼈대 — 해골과 같은 계열).
+// 머리가 -x 를 본다 → 90° 돌려 +z 로. 공격은 큰 부채꼴이라 검 휘두르기 동작으로
+MODEL_SPECS[3] = { file: 'butcher', size: 1.05, yaw: Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5 }
 // ---- 임시 실사화 (2026-09-19): 받은 모델 + 도형 부품(monsters3d MODEL_EXTRAS). 2차 묶음을 받으면 제 모델로 바꾼다 ----
 // 보물 고블린 — 작고 푸르죽죽한 좀비 + 금 자루
 MODEL_SPECS[4] = { file: 'ghoul', size: 0.8, clips: GHOUL_CLIPS, windup: 0.5, tint: [0.78, 1.0, 0.7], glow: { 'Sphere.001': 0xffe05c, 'Sphere_1.001': 0xffe05c } }
@@ -102,12 +102,21 @@ MODEL_SPECS[10] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeleto
 MODEL_SPECS[11] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: SPELL }, windup: 0.4, fat: 1.0, tint: [0.72, 1.1, 0.55], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
 // 그림자 — 검보라 해골 + 두건 · 빛나는 눈
 MODEL_SPECS[13] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skeletonClips({ clip: 'UAL_Punch_Cross', frames: 6 }), windup: 0.45, tint: [0.34, 0.28, 0.46] }
-// 관리인(3막 보스) — 검은 쇠빛 해골 거인 + 투구 · 어깨판 · 쇠곤봉 · 등불
-MODEL_SPECS[12] = { file: 'archer', size: 1.25, yaw: -Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5, tint: [0.42, 0.42, 0.48] }
+// 관리인(3막 보스) — Overlord · DJMaesen · CC BY 4.0 (2026-09-23 — 해골에 투구를 씌운 임시 모습을 바꿨다).
+// 검은 갑옷 거인 · 휘날리는 천. 받은 동작(50초 한 줄)은 쓰지 않고 모두 UAL 에서 옮겨 붙였다. 정면이 이미 +z
+// 검은 갑옷이 던전 어둠에 그대로 묻혀 보이지 않았다(2026-09-23 게임 안 확인) → 두 배 넘게 밝힌다
+MODEL_SPECS[12] = { file: 'warden', size: 1.3, clips: skeletonClips(SWORD), windup: 0.5, tint: [2.6, 2.4, 2.4] }
 // 포격 악마 — 검붉은 살찐 좀비 + 뿔 · 포신
 MODEL_SPECS[14] = { file: 'ghoul', size: 1.15, clips: { ...GHOUL_CLIPS, attack: AIM }, windup: 0.4, fat: 1.2, tint: [1.2, 0.5, 0.42], glow: { 'Sphere.001': 0xffa02a, 'Sphere_1.001': 0xffa02a } }
-// 심연의 군주(최종 보스) — 검붉은 거구 + 뼈 왕관 · 불꽃 균열 · 날개
-MODEL_SPECS[15] = { file: 'ghoul', size: 1.3, clips: { ...GHOUL_CLIPS, attack: SWORD }, windup: 0.5, fat: 1.6, tint: [0.85, 0.32, 0.34], glow: { 'Sphere.001': 0xff5a2a, 'Sphere_1.001': 0xff5a2a } }
+// 심연의 군주(최종 보스) — balrog demon rig · KrazyKaijus · CC BY 4.0 (2026-09-23 — 좀비에 살을 찌운 임시 모습을 바꿨다).
+// 가시 돋친 네 발 악마 · 긴 꼬리. 사람형이 아니라 UAL 동작은 못 옮긴다 → 늑대처럼 받은 동작 하나로 걷고 덤빈다
+// (쓰러질 때는 네 발 짐승처럼 옆으로 눕는다 — monsters3d). 머리가 +x 를 본다 → -90° 돌려 +z 로
+MODEL_SPECS[15] = {
+  // 올리브빛 가죽이 어둠에 묻혀 → 밝게 · 붉게 (2026-09-23 게임 안 확인). 꼬리가 길어 몸 길이로 맞추면 몸통이 작아진다 — 1.6
+  file: 'lord', size: 1.6, fit: 'length', yaw: -Math.PI / 2, tint: [2.1, 1.2, 1.0],
+  clips: { walk: { clip: 'Armature|ArmatureAction', frames: 14 }, attack: { clip: 'Armature|ArmatureAction', frames: 8 } },
+  windup: 0.5,
+}
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
 // (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이
@@ -146,6 +155,8 @@ export type AnchorName = 'head' | 'chest' | 'hips' | 'handR' | 'handL'
 export const FILE_ANCHORS: Record<string, Partial<Record<AnchorName, string>>> = {
   ghoul: { head: 'headx_032', chest: 'spine_05x_018', hips: 'rootx_01', handR: 'handr_022', handL: 'handl_027' },
   archer: { head: 'Bip01_Head1_016', chest: 'Bip01_Spine4_014', hips: 'Bip01_Pelvis_01', handR: 'Bip01_R_Hand_045', handL: 'Bip01_L_Hand_021' },
+  butcher: { head: 'Bip001_Head_05', chest: 'Bip001_Spine2_0105', hips: 'Bip001_Pelvis_058', handR: 'Bip001_R_Hand_086', handL: 'Bip001_L_Hand_036' },
+  warden: { head: 'head_2_062', chest: 'chest_2_013', hips: 'hips_2_01', handR: 'R_wrist_2_041', handL: 'L_wrist_2_017' },
 }
 
 export interface BakedModel {

@@ -37,6 +37,12 @@ SPECS = {
     'wolf': dict(tex=512, normal=False, anims=None, morph={}),
     'spider': dict(tex=512, normal=False, anims=['Wolf Spider Armature|Spider walking', 'Wolf Spider Armature|Spider running'], morph={}),
     'queen': dict(tex=512, normal=True, normal_tex=256, anims=['Basic Idle', 'Walk Cycle', 'Leap', 'Take Damage'], morph={}),
+    # 도살자 — Pig Demon (2026-09-23). 받은 동작(Take 001)은 쓰지 않는다 — 모두 옮겨 붙인 UAL_ 동작
+    'butcher': dict(tex=512, normal=True, normal_tex=256, anims=[], morph={}),
+    # 관리인 — Overlord (2026-09-23). 받은 동작(allanimations 50초 한 줄)은 쓰지 않는다 — 모두 UAL_
+    'warden': dict(tex=512, normal=True, normal_tex=256, anims=[], morph={}),
+    # 심연의 군주 — balrog demon rig (2026-09-23). 네 발 짐승이라 사람형 UAL 은 못 옮긴다 — 받은 동작 하나로
+    'lord': dict(tex=512, normal=False, anims=['Armature|ArmatureAction'], morph={}),
 }
 FPS = 15
 
