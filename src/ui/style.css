@@ -1065,3 +1065,6 @@ body { background: var(--bg); }
 /* 치지직 창: 받을 때마다 불만 한 번 깜빡인다 (개수 · 합계는 보이지 않는다 — 2026-09-23) */
 .czdot.ping { animation: czping .5s ease-out; }
 @keyframes czping { 0% { box-shadow: 0 0 0 0 rgba(0,255,163,.8); } 100% { box-shadow: 0 0 0 10px rgba(0,255,163,0); } }
+
+/* 고를 수 없는 난이도는 숨긴다 (2026-09-23) */
+.seg button[hidden], .dlg .row[hidden] { display: none !important; }

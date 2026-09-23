@@ -32,8 +32,17 @@ interface Spatial {
  *  ③ 오디오 장치가 바뀌거나 잠들어 AudioContext 가 멈추면(suspended) 키를 누를 때까지 조용했다 → statechange 에서 바로 되살린다
  * 상태는 `__bd.audio()` 로 본다 (멈춘 적 · 버린 소리 수).
  */
-const MAX_LIVE = 140
-const FRAME_BUDGET = 16
+// 2026-09-23 사용자: "몹이 많이 소환됐을 때 소리가 버벅거린다 — 렉은 없었던 것 같은데".
+// 원인: 괴물 휘두르기 · 투사체 · 맞음 · 폭발 소리에 되풀이 제한이 없어, 후원으로 괴물이 백 마리 가까이 몰리면
+// 한 프레임 16개(초당 수백 개)씩 소리가 새로 생겼다. 소리 하나에 노드가 5~7개(음량 · 좌우 · 필터 · 음원)라
+// 화면(메인 스레드)은 멀쩡한데 **오디오 스레드만 밀려** 끊겼다. → 동시 음원 · 한 프레임 · 초당 개수를 모두 줄이고,
+// 같은 종류 소리는 짧은 간격 안에 하나만 낸다.
+const MAX_LIVE = 56
+const FRAME_BUDGET = 6
+/** 남의 소리 초당 상한 (토큰 통 — 한꺼번에는 FRAME_BUDGET 까지, 오래 두고는 초당 이만큼) */
+const OTHER_PER_SEC = 36
+/** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
+const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
 const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop'])
 
@@ -59,6 +68,14 @@ export class Sfx {
   private noise: AudioBuffer | null = null
   private mutedFlag: boolean
   private lastWall = 0
+  /** 같은 종류 괴물 소리의 마지막 시각 (휘두르기 · 투사체 · 맞음 · 폭발) */
+  private lastSwipe = 0
+  private lastMShot = 0
+  private lastShotEnd = 0
+  private lastBoom = 0
+  /** 남의 소리 토큰 (초당 OTHER_PER_SEC 만큼 찬다) */
+  private tokens = OTHER_PER_SEC
+  private tokenAt = 0
   /** 몬스터 소리 되풀이 제한 (무리 전투에서 같은 소리가 수십 번 겹치면 귀가 아프다) */
   private lastMHit = 0
   private lastMDeath = 0
@@ -272,12 +289,23 @@ export class Sfx {
       const q = state.players[p]
       return sp(q.x, q.y)
     }
+    // 토큰 채우기
+    const tnow = performance.now()
+    if (this.tokenAt > 0) this.tokens = Math.min(OTHER_PER_SEC, this.tokens + ((tnow - this.tokenAt) / 1000) * OTHER_PER_SEC)
+    this.tokenAt = tnow
     for (const e of events) {
-      // 남의 소리는 한 프레임 16개 · 동시에 140개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
+      // 남의 소리는 한 프레임 6개 · 초당 36개 · 동시에 56개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
       const mineEv = 'p' in e && e.p === localPlayer
-      if (!mineEv && !KEEP.has(e.type) && (this.live > MAX_LIVE || budget-- <= 0)) {
-        this.dropped++
-        continue
+      if (!mineEv && !KEEP.has(e.type)) {
+        const ex = (e as { x?: number }).x
+        const ey = (e as { y?: number }).y
+        const far = typeof ex === 'number' && typeof ey === 'number' && Number.isFinite(ex) && Number.isFinite(ey) && Math.hypot(ex - lx, ey - ly) > FAR_CULL
+        if (far || this.live > MAX_LIVE || budget <= 0 || this.tokens < 1) {
+          this.dropped++
+          continue
+        }
+        budget--
+        this.tokens -= 1
       }
       switch (e.type) {
         case 'fire':
@@ -394,22 +422,34 @@ export class Sfx {
           break
         }
         case 'swipe': {
+          if (tnow - this.lastSwipe < 70) break
+          this.lastSwipe = tnow
           const b = this.bus(sp(e.x, e.y), 0.55)
           this.noiseBurst(b.node, b.t0, 0.12, 'bandpass', 900, 2600, 0.5, 1.2)
           break
         }
         case 'mshot': {
+          if (tnow - this.lastMShot < 60) break
+          this.lastMShot = tnow
           const b = this.bus(sp(e.x, e.y), 0.6)
           this.tone(b.node, b.t0, 0.14, 'triangle', 760, 380, 0.35, 0.002)
           this.noiseBurst(b.node, b.t0, 0.06, 'highpass', 3000, 1500, 0.2)
           break
         }
         case 'shotEnd': {
+          if (tnow - this.lastShotEnd < 60) break
+          this.lastShotEnd = tnow
           const b = this.bus(sp(e.x, e.y), 0.4)
           this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 1400, 600, 0.3)
           break
         }
         case 'boom': {
+          // 부푼 시체 여럿이 한꺼번에 터지면 한 번의 큰 소리로 충분하다
+          if (tnow - this.lastBoom < 90) {
+            this.intensity = 1
+            break
+          }
+          this.lastBoom = tnow
           const b = this.bus(sp(e.x, e.y), 1.1)
           this.noiseBurst(b.node, b.t0, 0.7, 'lowpass', 1400, 90, 1.0)
           this.tone(b.node, b.t0, 0.5, 'sine', 90, 32, 0.8, 0.004)

@@ -41,7 +41,11 @@ export { VIEW_W, VIEW_H }
 export type { RenderOptions }
 
 export { YAW }
-const FOLLOW_DIST = 15.5
+/**
+ * 카메라 거리. 15.5 → 18.5 (2026-09-23 사용자: "기본 시점을 조금 더 위에서 — 후원이 추가되면서 몹이 많아져 시야를 넓게").
+ * 피치(55°)는 그대로라 높이도 같은 비율로 오른다(12.7 → 15.2). 보이는 땅이 가로세로 약 1.2 배(넓이 약 1.4 배).
+ */
+const FOLLOW_DIST = 18.5
 /** 기준 세로 시야각. 화면이 넓어지면 resize() 가 이 값을 줄여 보이는 면적을 유지한다 */
 const BASE_FOV = 40
 const GUN_H = 0.95

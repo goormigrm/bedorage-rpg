@@ -6,8 +6,8 @@ import * as THREE from 'three'
 import { GameMap, TILE, TILE_CRATE, TILE_SANDBAG, TILE_WALL, blocksSight, rayBlocked } from '../core/map'
 import { CRATE_H, SANDBAG_H, WALL_H } from './world3d'
 
-/** 시야 반경 (타일) */
-export const VIEW_RADIUS_TILES = 13
+/** 시야 반경 (타일). 13 → 15 (2026-09-23 — 카메라를 높이면서 화면 가장자리가 어둠에 먹히지 않게 같이 늘렸다) */
+export const VIEW_RADIUS_TILES = 15
 export const VIEW_RADIUS_PX = VIEW_RADIUS_TILES * TILE
 const RAYS = 360
 /** 마스크 캔버스 해상도 (타일당 px). 넓은 맵은 낮춰서 비용을 맞춘다 */

@@ -189,7 +189,7 @@ export class Lobby {
                 ${DEATH_RULE_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
               </div></div>
               <p class="hintline" id="death-desc">${DEATH_RULE_DESC[0]}</p>
-              <div class="row"><label>난이도</label><div class="seg" id="seg-tier">
+              <div class="row" id="row-tier"><label>난이도</label><div class="seg" id="seg-tier">
                 ${TIER_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
               </div></div>
               <p class="hintline" id="tier-desc">${TIER_DESC[0]}</p>
@@ -690,18 +690,26 @@ export class Lobby {
     this.drawPreview()
   }
 
-  /** 난이도 단추: 이 캐릭터가 연 것만 누를 수 있다 (앞 난이도의 심연의 군주를 쓰러뜨리면 열린다) */
+  /**
+   * 난이도 단추: 이 캐릭터가 연 것만 누를 수 있다 (앞 난이도의 심연의 군주를 쓰러뜨리면 열린다).
+   * **고를 것이 보통 하나뿐이면 줄을 숨긴다** (2026-09-23 사용자: "난이도가 설정이 안 되는데 — 없는 거면 선택 자체를 없애 줘").
+   * 처음 하는 캐릭터는 늘 이렇다. 악몽이 열리면 그때 줄이 나타난다.
+   */
   private syncTier(): void {
     const sheet = sheetOf(this.char)
     if (!tierOpen(sheet, this.tier)) this.tier = 0
+    const choice = tierOpen(sheet, 1)
+    const row = this.host.querySelector('#row-tier') as HTMLElement | null
+    if (row) row.hidden = !choice
     this.host.querySelectorAll<HTMLButtonElement>('#seg-tier button').forEach((b) => {
       const t = Number(b.dataset.v)
       b.disabled = !tierOpen(sheet, t)
+      // 아직 안 열린 것은 보이지도 않게 (악몽만 열렸으면 지옥 단추는 숨긴다)
+      b.hidden = b.disabled
       b.classList.toggle('on', t === this.tier)
-      b.title = b.disabled ? '앞 난이도의 심연의 군주를 쓰러뜨리면 열린다' : ''
     })
     const d = this.host.querySelector('#tier-desc') as HTMLElement | null
-    if (d) d.textContent = TIER_DESC[this.tier]
+    if (d) d.textContent = choice ? TIER_DESC[this.tier] : '난이도는 보통입니다 — 4막의 심연의 군주를 쓰러뜨리면 악몽 난이도가 열립니다.'
   }
 
   private closeDlg(): void {

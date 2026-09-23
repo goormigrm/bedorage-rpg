@@ -566,10 +566,11 @@ function makeSun(color: number, intensity: number): THREE.DirectionalLight {
   sun.shadow.mapSize.set(2048, 2048)
   sun.shadow.camera.near = 1
   sun.shadow.camera.far = 60
-  sun.shadow.camera.left = -18
-  sun.shadow.camera.right = 18
-  sun.shadow.camera.top = 18
-  sun.shadow.camera.bottom = -18
+  // 그림자 범위: 카메라를 높이며(2026-09-23) 화면 가장자리에서 그림자가 끊기지 않게 18 → 22
+  sun.shadow.camera.left = -22
+  sun.shadow.camera.right = 22
+  sun.shadow.camera.top = 22
+  sun.shadow.camera.bottom = -22
   sun.shadow.bias = -0.0008
   sun.shadow.normalBias = 0.02
   return sun
