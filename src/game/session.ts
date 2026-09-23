@@ -8,7 +8,7 @@ import { CMD_ATTR, CMD_AUTOPICK, Input } from '../core/input'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, questPoints, townNpcs, tierQuests } from '../core/world'
+import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, questPoints, townNpcs, tierQuests, WAYPOINTS, wpBit } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
@@ -18,7 +18,7 @@ import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
-import { ChatBox, cleanChat } from '../ui/chat'
+import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -67,6 +67,8 @@ export interface SessionConfig {
   /** 대전: 플레이어 인덱스 순 피어 id (내 것 포함) */
   peerIds?: string[]
   /** 닉네임 (인덱스 순, 빈 문자열이면 캐릭터 이름) */
+  /** 대기실에서 나눈 대화 (게임 안 채팅이 이어받는다 — 입력칸을 열면 보인다) */
+  chatLog?: ChatLine[]
   names?: string[]
   /** 아직 아무도 없는 자리 (난입으로 채워진다) */
   absent?: boolean[]
@@ -98,6 +100,8 @@ export class Session {
   private maps = new Map<number, GameMap>()
   /** 화면이 보는 지역 (내 캐릭터 — 죽어서 남을 보고 있으면 그 사람의 지역) */
   private viewArea = 0
+  /** 마을 준비(idlePrep)의 다음 걸음 시각 */
+  private prepAt = 0
   private waypoints!: WaypointPanel
   private town!: TownPanel
   private skills!: SkillPanel
@@ -359,6 +363,7 @@ export class Session {
       this.syncVoiceUi()
       window.addEventListener('keyup', this.onKeyUp)
       this.chat = new ChatBox(this.stage.querySelector('.game-ui') as HTMLElement, (text) => this.sendChat(text))
+      if (cfg.chatLog) this.chat.load(cfg.chatLog)
     }
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
@@ -522,6 +527,35 @@ export class Session {
     const spec = this.spectate >= 0 ? this.state.players[this.spectate] : undefined
     if (me && !me.alive && spec && spec.alive) return spec.area
     return me?.area ?? 0
+  }
+
+  /**
+   * 마을에서 쉬는 동안 첫 던전 준비를 나눠 한다 (2026-09-23 — renderer3d `prebuilt` 주석).
+   * 0.35초에 한 가지씩: 다음 지역 맵 만들기 → 그 3D 세계 만들기 → 셰이더 미리 컴파일. 마을에 들어선 뒤 1.5초는 쉰다(배너 · 첫 그림).
+   * 다음 지역 = 마을 출구로 이어진 곳 + 이 막에서 연 가장 깊은 웨이포인트(이어 하는 사람은 거기로 바로 간다).
+   * 맵은 시드만으로 정해지니(buildAreaMap) 미리 만들어도 모두의 판이 같다.
+   */
+  private idlePrep(now: number): void {
+    if (this.arena || !isTown(this.viewArea)) {
+      this.prepAt = now + 1500
+      return
+    }
+    if (now < this.prepAt) return
+    this.prepAt = now + 350
+    const me = this.state.players[this.cfg.localPlayer]
+    const a = areaDef(this.viewArea)
+    const targets = [...a.links.filter((l) => !isTown(l))]
+    let deep = -1
+    for (const id of WAYPOINTS) if (me && (me.wps & wpBit(id)) && !isTown(id) && areaDef(id).act === a.act) deep = id
+    if (deep >= 0 && !targets.includes(deep)) targets.push(deep)
+    for (const t of targets) {
+      if (!this.maps.has(t)) {
+        this.mapOf(t)
+        return
+      }
+    }
+    for (const t of targets) if (this.renderer.prebuild(this.mapOf(t))) return
+    this.renderer.warmStep()
   }
 
   /** 지역이 바뀌었으면 3D 세계를 그 지역 맵으로 바꾼다 */
@@ -1469,6 +1503,7 @@ export class Session {
     const spec = !me.alive && !me.choosing && this.spectate >= 0 && this.state.players[this.spectate]?.alive ? this.spectate : -1
     if (spec < 0 && this.spectate >= 0 && me.alive) this.spectate = -1
     this.syncView()
+    this.idlePrep(now)
     const view = this.view()
     this.skills.refresh()
     this.chars.refresh()

@@ -937,3 +937,11 @@ body { background: var(--bg); }
 .chat-in::placeholder { color: #8a7a60; }
 .chat-in[hidden] { display: none; }
 .touching .chat { bottom: auto; top: 120px; width: 300px; }
+
+/* 대기실 채팅 (2026-09-23) — 대기실 칸(#status) 바로 아래. 입력칸이 늘 있고 줄이 사라지지 않는다 */
+.roomchat[hidden] { display: none; }
+.roomchat { margin-top: 10px; }
+.chat.docked { position: static; width: auto; pointer-events: auto; }
+.chat.docked .chat-log { height: 132px; max-height: none; overflow-y: auto; background: rgba(8,7,6,.5); border: 1px solid rgba(201,162,74,.22); border-radius: 4px; padding: 5px 8px; }
+.chat.docked .chat-log:empty::before { content: "대화가 여기 쌓입니다 — 게임을 시작해도 이어집니다"; color: #6f624c; font: 500 12px "IBM Plex Sans KR", sans-serif; }
+.chat.docked .chat-line { text-shadow: none; }

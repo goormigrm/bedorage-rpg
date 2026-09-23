@@ -32,6 +32,7 @@ import { drawPortrait } from '../render/character'
 import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
+import { ChatBox, cleanChat } from './chat'
 import { SessionConfig } from '../game/session'
 
 export interface LobbyHandlers {
@@ -77,6 +78,8 @@ export class Lobby {
   private roomSize = 4
   /** 닉네임 (선택, 8자, localStorage 기억) */
   private nick = ''
+  /** 대기실 채팅 (방에 들어가 있는 동안만) */
+  private roomChat: ChatBox | null = null
   private lobbyLink: LobbyLink | null = null
   private link: RoomLink | null = null
   private role: 'host' | 'guest' | null = null
@@ -145,6 +148,7 @@ export class Lobby {
             <button class="btn main lg" id="btn-host">게임 만들기</button>
             <p class="hintline">혼자 시작해도 되고, 친구는 아래 <b>게임 목록</b>에서 들어온다 (최대 ${MAX_PLAYERS}명 · 게임 중에도).</p>
             <div class="status" id="status"></div>
+            <div class="roomchat" id="roomchat" hidden></div>
           </div>
           <div class="panel rooms-card">
             <h2>게임 목록 <span class="k" id="rooms-count"></span><span class="k" id="online">접속 확인 중</span><button class="lnk refresh" id="btn-refresh" title="목록을 다시 받아옵니다">새로고침</button></h2>
@@ -950,6 +954,13 @@ export class Lobby {
       case 'hello':
         this.onHello(m, from)
         break
+      case 'chat': {
+        const text = cleanChat(m.text)
+        if (text && this.roomChat) {
+          this.roomChat.add(this.memberName(from), text, 'ally')
+        }
+        break
+      }
       case 'room': {
         if (this.role !== 'guest') return
         clearTimeout(this.waitTimer)
@@ -1176,6 +1187,10 @@ export class Lobby {
 
   private launch(cfg: Omit<SessionConfig, 'onExit'>): void {
     this.link = null // 세션이 링크를 가져간다
+    // 대기실 대화는 게임 안 채팅이 이어받는다
+    const chatLog = this.roomChat?.history()
+    this.hideRoomChat()
+    if (chatLog?.length) cfg = { ...cfg, chatLog }
     // 호스트는 **게임 중에도 방을 알려야** 남들이 난입할 수 있다 → 로비 통로를 세션에 넘긴다
     const iamHost = cfg.localPlayer === 0 && cfg.mode === 'p2p'
     if (this.lobbyLink) {
@@ -1196,6 +1211,7 @@ export class Lobby {
   private renderRoom(): void {
     const link = this.link
     if (!link) return
+    this.showRoomChat()
     const connected = this.role === 'host' || !!this.hostId
     // 방 코드는 안 보여 준다 — 코드로 들어갈 길이 없으니 쓸 일이 없다(방 목록에서 뺀 것과 같은 이유, 2026-09-05)
     const title = this.role === 'host' ? '내 게임' : `${this.hostName()}의 게임`
@@ -1339,7 +1355,46 @@ export class Lobby {
     }
   }
 
+  /**
+   * 대기실 채팅 (2026-09-23). #status 는 renderRoom 이 통째로 다시 그려 입력칸 포커스가 날아가므로 그 바깥 칸에 둔다.
+   * 보낸 사람 이름은 받은 쪽이 피어 id 로 멤버에서 찾는다 (글에 실린 번호는 믿지 않는다).
+   */
+  private showRoomChat(): void {
+    if (this.roomChat || !this.link) return
+    const box = this.host.querySelector('#roomchat') as HTMLElement | null
+    if (!box) return
+    box.hidden = false
+    this.roomChat = new ChatBox(
+      box,
+      (text) => {
+        const link = this.link
+        if (!link) return false
+        const me = this.members.findIndex((x) => x.id === link.selfId)
+        this.roomChat?.add(this.memberName(link.selfId), text, 'me')
+        link.sendCtl({ t: 'chat', p: me, text })
+        return true
+      },
+      { docked: true },
+    )
+  }
+
+  private hideRoomChat(): void {
+    this.roomChat?.dispose()
+    this.roomChat = null
+    const box = this.host.querySelector('#roomchat') as HTMLElement | null
+    if (box) box.hidden = true
+  }
+
+  /** 대기실에서 보이는 이름 (닉네임 → 캐릭터 이름) */
+  private memberName(id: string): string {
+    const m = this.members.find((x) => x.id === id)
+    if (!m) return id === this.link?.selfId ? this.nick || '나' : '손님'
+    const nick = (m.name ?? '').trim()
+    return nick || ((CHARACTERS as Record<string, { name: string } | undefined>)[m.char]?.name ?? m.char)
+  }
+
   private closeLink(): void {
+    this.hideRoomChat()
     clearTimeout(this.waitTimer)
     clearTimeout(this.rejoinTimer)
     this.hideJoining()
