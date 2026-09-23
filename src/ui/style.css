@@ -471,7 +471,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
   flex-wrap: wrap; white-space: normal; gap: 2px 0; justify-content: center; text-align: center; line-height: 1.7; padding: 5px 14px;
   font: 500 11.5px "IBM Plex Sans KR", sans-serif; color: #b8a67e; background: rgba(8,7,6,.62); border: 1px solid rgba(201,162,74,.25); border-radius: 4px; pointer-events: none; }
 .keys b { color: #f1d58a; }
-.game-ui .top-right { right: auto !important; left: 16px; top: 16px; }
+.game-ui .top-right { right: auto !important; left: 16px; top: 16px; align-items: flex-start; }
 
 /* 캐릭터 레벨 · 세이브 버튼 */
 .char .ct .lv { font-style: normal; font-size: 11px; color: #f1d58a; border: 1px solid rgba(201,162,74,0.5); border-radius: 4px; padding: 0 5px; margin-left: 4px; }
@@ -965,26 +965,82 @@ body { background: var(--bg); }
 .dontable .dw { margin-top: 3px; color: #ffae4a; font-size: 10.5px; }
 @keyframes donpulse { from { box-shadow: inset 0 0 0 1px rgba(255,120,80,.2); } to { box-shadow: inset 0 0 0 1px rgba(255,120,80,.8); } }
 
-.settings details.chzzk { margin-top: 10px; border-top: 1px solid rgba(201,162,74,.25); padding-top: 8px; }
-.settings details.chzzk summary { cursor: pointer; display: flex; align-items: center; gap: 10px; list-style: none; }
-.settings details.chzzk summary::-webkit-details-marker { display: none; }
-.settings details.chzzk summary::before { content: "▸"; color: #c9a24a; }
-.settings details.chzzk[open] summary::before { content: "▾"; }
-.settings details.chzzk summary b { font: 800 14px "Nanum Myeongjo", serif; color: #f1d58a; }
-.settings .czs { font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid #4a3c28; color: #9a8a6a; }
-.settings .czs.on { color: #7dffc4; border-color: #2a7a5a; }
-.settings .czs.connecting { color: #ffd86a; border-color: #7a6a2a; }
-.settings .czs.error { color: #ff9d95; border-color: #7a3a2a; }
-.settings .czbox { padding: 6px 2px 2px; }
-.settings .czrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; flex-wrap: wrap; }
-.settings .czrow .btn.sm { padding: 5px 12px; font-size: 12.5px; }
-.settings .czd { font-size: 11.5px; color: #9a8a6a; }
-.settings .czh { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; font-size: 12px; }
-.settings .czh b { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-right: auto; }
-.settings .czt { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
-.settings .czr { display: grid; grid-template-columns: 86px 78px 1fr auto; gap: 8px; align-items: center; font-size: 12px; color: #b8a67e; }
-.settings .czr input { width: 86px; box-sizing: border-box; padding: 3px 6px; font: 600 12px "IBM Plex Mono", monospace; color: #ffc94a;
-  background: rgba(8,7,6,.7); border: 1px solid #4a3c28; border-radius: 3px; text-align: right; }
-.settings .czr b { color: #f4ead2; font-weight: 800; white-space: nowrap; }
-.settings .czr span { color: #8a7a60; font-size: 11px; }
-.settings code { font: 500 11px "IBM Plex Mono", monospace; color: #d8c79a; word-break: break-all; }
+/* ---- 치지직 방송 연동 (2026-09-23 "항상 떠 있게 · 눈에 띄게"): 상태 단추 · 전용 창 ---- */
+:root { --cz: #00ffa3; --cz-d: #00c47d; }
+.czdock { position: fixed !important; left: 34px; top: 136px; z-index: 6 !important; }
+.czbadge { display: inline-grid; grid-template-columns: auto auto auto; grid-template-rows: auto auto; align-items: center; column-gap: 7px; row-gap: 1px;
+  padding: 7px 14px 7px 11px; cursor: pointer; text-align: left; pointer-events: auto;
+  background: linear-gradient(180deg, rgba(10,22,17,.94), rgba(6,12,10,.94)); border: 1.5px solid rgba(0,255,163,.45); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5); color: #d8f5ea; font: 500 12px "IBM Plex Sans KR", sans-serif; transition: border-color .15s, transform .15s; }
+.czbadge:hover { border-color: var(--cz); transform: translateY(-1px); }
+.czbadge .czdot { grid-row: 1 / 3; width: 10px; height: 10px; border-radius: 50%; background: #5a6a64; }
+.czbadge b { font: 900 15px "IBM Plex Sans KR", sans-serif; color: var(--cz); letter-spacing: -.01em; }
+.czbadge .czst { font-weight: 800; font-size: 12px; color: #9ab0a8; }
+.czbadge small { grid-column: 2 / 4; font-size: 11px; color: #8aa89c; white-space: nowrap; }
+.czbadge[data-st="on"] { border-color: var(--cz); box-shadow: 0 0 0 1px rgba(0,255,163,.25), 0 0 18px rgba(0,255,163,.25), 0 4px 16px rgba(0,0,0,.5); }
+.czbadge[data-st="on"] .czdot { background: var(--cz); box-shadow: 0 0 8px var(--cz); animation: czlive 1.2s ease-in-out infinite; }
+.czbadge[data-st="on"] .czst { color: var(--cz); }
+.czbadge[data-st="on"] small { color: #c8f5e2; }
+.czbadge[data-st="connecting"] { border-color: #d8b84a; }
+.czbadge[data-st="connecting"] .czdot { background: #ffd86a; animation: czlive .6s ease-in-out infinite; }
+.czbadge[data-st="connecting"] .czst { color: #ffd86a; }
+.czbadge[data-st="error"] { border-color: #e0584a; animation: czwarn 1s ease-in-out infinite alternate; }
+.czbadge[data-st="error"] .czdot { background: #ff6a5a; }
+.czbadge[data-st="error"] .czst { color: #ff9d95; }
+@keyframes czlive { 50% { opacity: .35; } }
+@keyframes czwarn { to { box-shadow: 0 0 16px rgba(255,90,70,.45), 0 4px 16px rgba(0,0,0,.5); } }
+/* 게임 안: 왼쪽 위 단추 줄 맨 앞 — 다른 단추보다 크게 */
+.game-ui .top-right .czbadge { margin-right: 4px; }
+
+.czpanel-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(2,6,5,.55); cursor: default; pointer-events: auto; }
+.game-ui .czpanel-wrap { position: absolute; }
+.czpanel { width: min(880px, calc(100% - 32px)); max-height: calc(100% - 40px); overflow-y: auto; padding: 18px 22px 16px; box-sizing: border-box;
+  background: linear-gradient(180deg, #0d1814, #080c0b 55%); border: 1.5px solid rgba(0,255,163,.5); border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 30px rgba(0,255,163,.12); color: #d8e8e0; font: 500 13px "IBM Plex Sans KR", sans-serif; animation: pop .2s ease-out; }
+.czhead { display: flex; align-items: center; gap: 10px; }
+.czhead h3 { margin: 0; font: 900 21px "IBM Plex Sans KR", sans-serif; color: var(--cz); }
+.czhead .czdot { width: 12px; height: 12px; border-radius: 50%; background: #5a6a64; }
+.czhead .czdot[data-st="on"] { background: var(--cz); box-shadow: 0 0 8px var(--cz); animation: czlive 1.2s ease-in-out infinite; }
+.czhead .czdot[data-st="connecting"] { background: #ffd86a; }
+.czhead .czdot[data-st="error"] { background: #ff6a5a; }
+.czpanel .czs { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 10px; border: 1px solid #2a3a34; color: #9ab0a8; }
+.czpanel .czs[data-st="on"] { color: #04130d; background: var(--cz); border-color: var(--cz); }
+.czpanel .czs[data-st="connecting"] { color: #ffd86a; border-color: #7a6a2a; }
+.czpanel .czs[data-st="error"] { color: #ff9d95; border-color: #7a3a2a; }
+.czx { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 1px solid #2a3a34; background: transparent; color: #9ab0a8; font-size: 15px; cursor: pointer; }
+.czx:hover { color: #fff; border-color: var(--cz); }
+.czlead { margin: 8px 0 10px; color: #a8c0b6; line-height: 1.55; }
+.czlead b { color: #e8fff4; }
+.czpanel .czrow { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
+.czpanel .btn.czgo { background: var(--cz); color: #04130d; border-color: var(--cz); font-weight: 900; padding: 9px 22px; }
+.czpanel .btn.czgo:hover { background: #5affc6; }
+.czpanel .czd { font-size: 12px; color: #8aa89c; }
+.czcols { display: grid; grid-template-columns: 1fr 1.25fr; gap: 18px; }
+.czcol { min-width: 0; }
+.czcnt { padding: 8px 10px; border-radius: 6px; background: rgba(0,255,163,.07); border: 1px solid rgba(0,255,163,.2); color: #a8c0b6; }
+.czcnt b { color: var(--cz); font-size: 15px; }
+.czsub { margin: 10px 0 4px; font-weight: 800; color: #c8dcd4; }
+.czfeed { display: flex; flex-direction: column; gap: 3px; min-height: 60px; margin-bottom: 10px; }
+.czfe { padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,.04); color: #d8e8e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.czfe b { color: #7dffc4; }
+.czfe.don { background: rgba(255,200,74,.1); }
+.czfe.don b { color: #ffc94a; }
+.czfe.don em { font-style: normal; font-weight: 800; color: #ffd86a; }
+.czfe.empty { color: #6a8a7c; white-space: normal; }
+.cztg { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+.cztg b { font-weight: 800; color: #d8e8e0; }
+.czbtns { margin-top: 10px; }
+.czpanel .czh { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
+.czpanel .czh b { font-weight: 900; font-size: 14px; color: #ffc94a; margin-right: auto; }
+.czpanel .czt { display: flex; flex-direction: column; gap: 3px; }
+.czpanel .czr { display: grid; grid-template-columns: 92px 76px 1fr auto; gap: 8px; align-items: center; font-size: 12px; padding: 2px 4px; border-radius: 4px; }
+.czpanel .czr:hover { background: rgba(255,255,255,.04); }
+.czpanel .czr input { width: 92px; box-sizing: border-box; padding: 4px 7px; font: 700 12.5px "IBM Plex Mono", monospace; color: #ffc94a;
+  background: rgba(0,0,0,.45); border: 1px solid #3a3424; border-radius: 4px; text-align: right; }
+.czpanel .czr input:focus { outline: none; border-color: #ffc94a; }
+.czpanel .czr b { color: #f4ead2; font-weight: 800; white-space: nowrap; }
+.czpanel .czr span { color: #8a9a90; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.czpanel .lnk { color: var(--cz); }
+.czn { margin: 8px 0 0; font-size: 11.5px; color: #7a9a8c; line-height: 1.5; }
+.czpanel code { font: 500 11px "IBM Plex Mono", monospace; color: #c8dcd4; word-break: break-all; }
+@media (max-width: 760px) { .czcols { grid-template-columns: 1fr; } }

@@ -33,6 +33,7 @@ import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { ChatBox, cleanChat } from './chat'
+import { StreamBadge, openStreamPanel } from './streamPanel'
 import { SessionConfig } from '../game/session'
 
 export interface LobbyHandlers {
@@ -80,6 +81,9 @@ export class Lobby {
   private nick = ''
   /** 대기실 채팅 (방에 들어가 있는 동안만) */
   private roomChat: ChatBox | null = null
+  /** 치지직 방송 연동 단추 (로비 · 대기실 내내 떠 있다) · 열린 창을 닫는 함수 */
+  private czBadge: StreamBadge | null = null
+  private czClose: (() => void) | null = null
   private lobbyLink: LobbyLink | null = null
   private link: RoomLink | null = null
   private role: 'host' | 'guest' | null = null
@@ -129,6 +133,7 @@ export class Lobby {
     h.innerHTML = `
       <div class="lobby d2">
         <canvas class="bonfire" id="bonfire"></canvas>
+        <div class="czdock" id="czdock"></div>
         <div class="d2-title">
           <h1><span class="t1">배도라지</span><span class="t2">RPG</span></h1>
           <p class="tag">종소리에 끌려 떨어진 배도라지 크루 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
@@ -234,6 +239,9 @@ export class Lobby {
 
         <div class="foot d2foot">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · <b>문제·제안은 철면수심 다음 카페 게시글로</b> · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></div>
       </div>`
+    this.czBadge?.dispose()
+    const dock = h.querySelector('#czdock') as HTMLElement | null
+    this.czBadge = dock ? new StreamBadge(dock, () => this.openCz()) : null
 
     const chars = h.querySelector('#chars') as HTMLElement
     for (const id of PLAYABLE) {
@@ -1414,8 +1422,17 @@ export class Lobby {
     this.starting = false
   }
 
+  /** 치지직 방송 연동 창 */
+  private openCz(): void {
+    if (this.czClose) return
+    this.czClose = openStreamPanel(this.host, () => (this.czClose = null))
+  }
+
   dispose(): void {
     this.disposed = true
+    this.czClose?.()
+    this.czBadge?.dispose()
+    this.czBadge = null
     this.bonfire?.dispose()
     this.bonfire = null
     clearInterval(this.onlineTimer)

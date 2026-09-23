@@ -90,6 +90,11 @@ class StreamHub {
   detail = ''
   /** 시험 단추를 눌렀나 (그러면 치지직이 없어도 표를 보여 준다) */
   tried = false
+  /** 이 페이지에서 받은 채팅 · 후원 수 · 후원 합계 (상태 단추 · 창에 보인다) */
+  counts = { chat: 0, don: 0, sum: 0 }
+  /** 최근 받은 것 (창의 "최근 받은 것") — amount 가 있으면 후원 */
+  recent: { nick: string; text: string; amount?: number }[] = []
+  private actFns = new Set<() => void>()
   private statusFns = new Set<Fn<StreamStatus>>()
   private chatFns = new Set<Fn<StreamChat>>()
   private donFns = new Set<Fn<StreamDonation>>()
@@ -112,6 +117,18 @@ class StreamHub {
     return () => this.statusFns.delete(f)
   }
 
+  /** 채팅 · 후원이 올 때마다 (상태 단추 · 창이 숫자를 고친다) */
+  onActivity(f: () => void): () => void {
+    this.actFns.add(f)
+    return () => this.actFns.delete(f)
+  }
+
+  private note(r: { nick: string; text: string; amount?: number }): void {
+    this.recent.push(r)
+    if (this.recent.length > 20) this.recent.shift()
+    for (const f of [...this.actFns]) f()
+  }
+
   /** 세션이 채팅 · 후원을 받는다. 들고 있던 후원도 이때 넘긴다. 돌려주는 함수로 그만 받는다 */
   listen(chat: Fn<StreamChat>, don: Fn<StreamDonation>): () => void {
     this.chatFns.add(chat)
@@ -125,10 +142,15 @@ class StreamHub {
   }
 
   chat(c: StreamChat): void {
+    this.counts.chat++
+    this.note({ nick: c.nick, text: c.text })
     for (const f of [...this.chatFns]) f(c)
   }
 
   donation(d: StreamDonation): void {
+    this.counts.don++
+    this.counts.sum += d.amount
+    this.note({ nick: d.nick, text: d.text, amount: d.amount })
     if (this.donFns.size === 0) {
       this.held.push(d)
       if (this.held.length > 30) this.held.shift()

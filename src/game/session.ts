@@ -7,6 +7,7 @@ import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/c
 import { CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, Input } from '../core/input'
 import { DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, donateEvent } from '../core/donate'
 import { StreamChat, StreamDonation, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
@@ -151,6 +152,9 @@ export class Session {
   private chatNextAt = 0
   /** 왼쪽 아래 후원 이벤트 표 */
   private donTable: HTMLElement | null = null
+  /** 치지직 상태 단추 (왼쪽 위 단추 줄 맨 앞) · 열린 창을 닫는 함수 */
+  private czBadge: StreamBadge | null = null
+  private czClose: (() => void) | null = null
   private donTableAt = 0
   /** 0.4초 넘는 멈춤 횟수·누적 시간 (운영 로그용) */
   private stallCount = 0
@@ -402,6 +406,7 @@ export class Session {
       (c) => this.onStreamChat(c),
       (d) => this.onStreamDonation(d),
     )
+    this.czBadge = new StreamBadge(this.stage.querySelector('.game-ui .top-right') as HTMLElement, () => this.openCz(), true)
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
     muteBtn.onclick = () => {
@@ -1738,6 +1743,16 @@ export class Session {
     }
   }
 
+  /** 치지직 방송 연동 창 (열려 있는 동안 사격 · 스킬을 막는다 — 움직임은 그대로) */
+  private openCz(): void {
+    if (this.czClose) return
+    this.input.uiOpen = true
+    this.czClose = openStreamPanel(this.stage.querySelector('.game-ui') as HTMLElement, () => {
+      this.czClose = null
+      this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open)
+    })
+  }
+
   /** 지금 후원 이벤트를 판에 넣어도 되나: 던전 · 살아 있음 · 마을 밖 (sim 도 같은 조건으로 거른다) */
   private canDonateNow(): boolean {
     const me = this.state.players[this.cfg.localPlayer]
@@ -2101,6 +2116,9 @@ export class Session {
     this.chat = null
     this.unlistenStream?.()
     this.unlistenStream = null
+    this.czClose?.()
+    this.czBadge?.dispose()
+    this.czBadge = null
     window.removeEventListener('keyup', this.onKeyUp)
     clearInterval(this.lobbyBeacon)
     if (this.cfg.lobby) {
