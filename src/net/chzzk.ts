@@ -9,11 +9,11 @@ import type { ChzzkSocket } from 'socket.io-client'
 import { stream } from '../game/stream'
 
 /**
- * 치지직 개발자센터 앱 · 프록시 (공개되어도 되는 값).
- * 앱에 필요한 것: 스코프 "채팅 메시지 조회" · "후원 조회", 로그인 리디렉션 URL = 이 게임 주소(아래 redirectUri()).
+ * 치지직 개발자센터 앱 "배도라지RPG"(bedorage-rpg) · 전용 프록시 워커(저장소 proxy/) — 공개되어도 되는 값.
+ * 앱 스코프: 채팅 메시지 조회 · 후원 조회 · 유저 조회. 로그인 리디렉션 URL = https://goormigrm.github.io/bedorage-rpg/ (아래 redirectUri()).
  */
-export const CHZZK_CLIENT_ID = '95337781-0490-4c9b-ac9a-9577a9ef4db0'
-export const CHZZK_PROXY = 'https://mukbang-proxy.1117tkdrms.workers.dev'
+export const CHZZK_CLIENT_ID = 'bfdcb9ed-15d7-4405-ba0b-d93c1b8d0abf'
+export const CHZZK_PROXY = 'https://bedorage-proxy.1117tkdrms.workers.dev'
 
 const LS_TOKEN = 'brpg.chzzk.token'
 const LS_STATE = 'brpg.chzzk.state'
