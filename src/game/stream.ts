@@ -17,13 +17,6 @@ export interface StreamDonation {
   text: string
 }
 
-/** 치지직 구독 (2026-09-23 — 응원 효과) */
-export interface StreamSub {
-  nick: string
-  /** 몇 개월째 */
-  month: number
-}
-
 export interface StreamCfg {
   /** 채팅을 괴물 말풍선으로 */
   bubbles: boolean
@@ -105,8 +98,7 @@ class StreamHub {
   private statusFns = new Set<Fn<StreamStatus>>()
   private chatFns = new Set<Fn<StreamChat>>()
   private donFns = new Set<Fn<StreamDonation>>()
-  private subFns = new Set<Fn<StreamSub>>()
-  private voteFns = new Set<() => void>()
+  private voteFns = new Set<(test: boolean) => void>()
   /** 시청자 투표가 열려 있나 (세션이 켠다 — 시험 채팅이 1 · 2 로 투표하게) */
   voteOpen = false
   /** 받을 세션이 없을 때 온 후원 (다음 판이 가져간다) */
@@ -150,25 +142,21 @@ class StreamHub {
     }
   }
 
-  /** 구독 (받을 세션이 없으면 버린다 — 돈이 아니라 들고 있을 까닭이 없다) */
-  onSubscription(f: Fn<StreamSub>): () => void {
-    this.subFns.add(f)
-    return () => this.subFns.delete(f)
-  }
-
-  subscription(sub: StreamSub): void {
-    this.note()
-    for (const f of [...this.subFns]) f(sub)
-  }
-
-  /** 치지직 창의 "투표 열기" (세션이 받아 투표를 연다) */
-  onVoteRequest(f: () => void): () => void {
+  /** 치지직 창의 "투표 시험 · 투표 열기" (세션이 받아 투표를 연다). test = 가짜 시청자 표가 저절로 들어온다 */
+  onVoteRequest(f: (test: boolean) => void): () => void {
     this.voteFns.add(f)
     return () => this.voteFns.delete(f)
   }
 
-  requestVote(): void {
-    for (const f of [...this.voteFns]) f()
+  requestVote(test = false): boolean {
+    if (test) this.tried = true
+    for (const f of [...this.voteFns]) f(test)
+    return this.voteFns.size > 0
+  }
+
+  /** 게임(세션)이 받고 있나 — 치지직 창의 시험 단추가 "게임 안에서 보입니다" 를 알릴 때 */
+  get inGame(): boolean {
+    return this.chatFns.size > 0
   }
 
   chat(c: StreamChat): void {
@@ -198,10 +186,11 @@ class StreamHub {
     else this.chat({ nick: r(this.nicks), text: r(this.samples) })
   }
 
-  fakeSubscription(): void {
+  /** 응원 시험: 가장 싼 이벤트 금액 + "!응원" */
+  fakeCheer(amount: number): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    this.subscription({ nick: r(this.nicks), month: 1 + Math.floor(Math.random() * 12) })
+    this.donation({ nick: r(this.nicks), amount, text: '힘내세요 !응원' })
   }
 
   fakeDonation(amount: number): void {

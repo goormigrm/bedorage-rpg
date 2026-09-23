@@ -6,7 +6,7 @@ import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, Input } from '../core/input'
 import { CHEER_EVENT, CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, donateEvent } from '../core/donate'
-import { StreamChat, StreamDonation, StreamSub, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { StreamChat, StreamDonation, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
@@ -154,7 +154,7 @@ export class Session {
   private donSending: { ev: number; seq: number; at: number } | null = null
   private lastDonSfx = 0
   /** 시청자 투표 (2026-09-23) — 채팅으로 1 축복 · 2 저주 */
-  private vote: { until: number; a: number; b: number; voters: Set<string> } | null = null
+  private vote: { until: number; a: number; b: number; voters: Set<string>; test: boolean; nextFake: number } | null = null
   private nextVoteAt = 0
   private voteEl: HTMLElement | null = null
   private unlistenCz: (() => void)[] = []
@@ -422,10 +422,7 @@ export class Session {
       (c) => this.onStreamChat(c),
       (d) => this.onStreamDonation(d),
     )
-    this.unlistenCz.push(
-      stream.onSubscription((sub) => this.onStreamSubscription(sub)),
-      stream.onVoteRequest(() => this.startVote(performance.now())),
-    )
+    this.unlistenCz.push(stream.onVoteRequest((test) => this.startVote(performance.now(), test)))
     this.voteEl = document.createElement('div')
     this.voteEl.className = 'czvote'
     this.voteEl.hidden = true
@@ -1456,6 +1453,15 @@ export class Session {
         this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: cleanChat(m.nick).slice(0, 20) || '후원자', amount: 0, text: cleanChat(m.text), ev: m.ev })
         break
       }
+      case 'pchat': {
+        // 시청자 말풍선을 우리 편 머리 위에 (보낸 사람 화면에서 말할 괴물이 없었을 때)
+        if (!this.peerIndex.has(from)) break
+        const nick = cleanChat(m.nick).slice(0, 20)
+        const text = cleanChat(m.text)
+        if (!nick || !text || m.a !== this.viewArea || typeof m.p !== 'number') break
+        this.renderer.playerSay(m.p, nick, text, !!m.gold)
+        break
+      }
       case 'mchat': {
         if (!this.peerIndex.has(from)) break
         const nick = cleanChat(m.nick).slice(0, 20)
@@ -1872,18 +1878,25 @@ export class Session {
   }
 
   private thankBubble(nick: string, line: string): void {
-    const id = this.renderer.pickSpeaker(this.view())
-    if (id >= 0) {
-      this.renderer.monsterSay(id, nick, line, true)
-      this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text: line })
-    }
+    this.viewerSay(nick, line, true)
   }
 
-  /** 치지직 구독: 응원 (우리 편 회복 · 공격 속도) */
-  private onStreamSubscription(sub: StreamSub): void {
-    const nick = cleanChat(sub.nick).slice(0, 20) || '구독자'
-    this.sfx.donate(false)
-    this.queueDonation(CHEER_EVENT.id, nick, `${sub.month}개월 구독 — 응원합니다!`)
+  /**
+   * 시청자 말풍선: 화면의 괴물 머리 위 — 말할 괴물이 없으면(마을 · 빈 방) 우리 편 캐릭터 머리 위로 (2026-09-23 사용자:
+   * "채팅 시험 버튼이 동작하지 않는다" — 마을에서 누르면 말할 괴물이 없어 8초 기다리다 버려졌다). 방 사람들에게도 보낸다. 띄웠으면 true
+   */
+  private viewerSay(nick: string, text: string, gold = false): boolean {
+    const id = this.renderer.pickSpeaker(this.view())
+    if (id >= 0) {
+      this.renderer.monsterSay(id, nick, text, gold)
+      this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text })
+      return true
+    }
+    const p = this.renderer.pickPlayerSpeaker(this.view(), this.cfg.localPlayer)
+    if (p < 0) return false
+    this.renderer.playerSay(p, nick, text, gold)
+    this.cfg.link?.sendCtl({ t: 'pchat', a: this.viewArea, p, nick, text, gold })
+    return true
   }
 
   /** 소환형은 소환 상한에 걸리면 기다린다 · 막 보스는 한 번에 하나 */
@@ -1940,15 +1953,13 @@ export class Session {
       }
     }
     this.pumpVote(now)
-    // 말할 괴물이 없으면(마을 · 빈 방) 기다린다. 8초 넘게 못 한 말은 버린다 — 채팅 칸으로 돌리지 않는다
+    // 괴물 머리 위 — 없으면(마을 · 빈 방) 우리 편 머리 위. 둘 다 자리가 없으면 기다리고, 8초 넘게 못 한 말은 버린다 — 채팅 칸으로 돌리지 않는다
     while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > 8000) this.chatQueue.shift()
     if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
-      const id = this.renderer.pickSpeaker(this.view())
-      if (id >= 0) {
-        const c = this.chatQueue.shift()!
+      const c = this.chatQueue[0]
+      if (this.viewerSay(c.nick, c.text)) {
+        this.chatQueue.shift()
         this.chatNextAt = now + 300
-        this.renderer.monsterSay(id, c.nick, c.text)
-        this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick: c.nick, text: c.text })
       } else this.chatNextAt = now + 250
     }
     if (now >= this.donTableAt) {
@@ -1983,9 +1994,9 @@ export class Session {
   private static readonly VOTE_EVERY = 4 * 60_000
   private static readonly VOTE_LEN = 20_000
 
-  private startVote(now: number): void {
+  private startVote(now: number, test = false): void {
     if (this.vote || this.arena) return
-    this.vote = { until: now + Session.VOTE_LEN, a: 0, b: 0, voters: new Set() }
+    this.vote = { until: now + Session.VOTE_LEN, a: 0, b: 0, voters: new Set(), test, nextFake: now + 400 }
     stream.voteOpen = true
     this.nextVoteAt = now + Session.VOTE_EVERY
     this.renderer.banner('📣 시청자 투표!', '채팅에 1 — 축복 (우리 편 회복 · 공속) · 2 — 저주 (좀비 떼)', '#9ad8ff')
@@ -1999,6 +2010,11 @@ export class Session {
       if (stream.status === 'on' && loadStreamCfg().vote && now >= this.nextVoteAt && this.canDonateNow()) this.startVote(now)
       if (this.voteEl && !this.voteEl.hidden) this.voteEl.hidden = true
       return
+    }
+    // 투표 시험: 가짜 시청자가 0.2~0.8초마다 한 표씩 (시험 채팅이 투표 중에는 1 · 2 를 보낸다)
+    if (v.test && now >= v.nextFake && now < v.until - 500) {
+      v.nextFake = now + 200 + Math.random() * 600
+      stream.fakeChat()
     }
     const left = Math.max(0, Math.ceil((v.until - now) / 1000))
     if (this.voteEl) {
@@ -2034,7 +2050,10 @@ export class Session {
     const cfg = loadStreamCfg()
     const show = stream.live && cfg.table && !this.arena
     if (el.hidden !== !show) el.hidden = !show
-    if (!show) return
+    if (!show) {
+      this.chat?.setBottom(null)
+      return
+    }
     const me = this.state.players[this.cfg.localPlayer]
     const don = me?.don
     let rage = 0
@@ -2063,6 +2082,8 @@ export class Session {
       el.dataset.h = html
       el.innerHTML = html
     }
+    // 채팅 칸은 후원 표 위로 (둘 다 왼쪽 아래 — 표가 커지면 겹쳤다, 2026-09-23). 표를 고친 뒤에 잰다
+    this.chat?.setBottom(Math.max(222, 12 + el.offsetHeight + 14))
   }
 
   /** 채팅 보내기. 내 화면에는 바로 쓰고 모두에게 보낸다 (투기장에서도 모두에게 — 덕처럼 말로 도발하는 재미) */

@@ -295,6 +295,8 @@ export class Renderer3D {
   private marks: { x: number; z: number; life: number; max: number; mesh: THREE.Mesh }[] = []
   /** 빠른 감정 표현 말풍선 (플레이어 번호 → 글·끝나는 시각) */
   private emotes = new Map<number, { text: string; until: number }>()
+  /** 우리 편 머리 위 시청자 말풍선 (말할 괴물이 없을 때 — 마을 · 빈 방, 2026-09-23) */
+  private playerSays = new Map<number, { nick: string; text: string; until: number; gold: boolean }>()
   /**
    * 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 · 마지막으로 그린 자리.
    * 괴물이 죽어도 말풍선은 제 시간까지 그 자리(시체 위)에 남는다 — 사용자: "죽어도 일정 시간은 떠 있도록"
@@ -498,6 +500,26 @@ export class Renderer3D {
     this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(8000, 4500 + text.length * 90), gold })
   }
 
+  /** 시청자 말풍선을 우리 편 캐릭터 머리 위에 (말할 괴물이 없을 때) */
+  playerSay(i: number, nick: string, text: string, gold = false): void {
+    const t = text.length > 30 ? `${text.slice(0, 29)}…` : text
+    this.playerSays.set(i, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(7000, 4000 + text.length * 80), gold })
+  }
+
+  /** 시청자 말풍선을 띄울 우리 편 (보이는 사람 중 지금 말풍선이 없는 사람 — 없으면 -1) */
+  pickPlayerSpeaker(curr: GameState, lp: number): number {
+    const now = performance.now()
+    const me = curr.players[lp]
+    const ok: number[] = []
+    curr.players.forEach((p, i) => {
+      if (!p.alive || p.left || !this.rigs[i]?.root.visible || (me && p.team !== me.team) || this.hidden[i]) return
+      const s = this.playerSays.get(i)
+      if (s && s.until > now) return
+      ok.push(i)
+    })
+    return ok.length ? ok[Math.floor(Math.random() * ok.length)] : -1
+  }
+
   /**
    * 말할 괴물 고르기: 지금 화면에 보이는(시야 안 · 화면 안) 산 괴물 중 말하고 있지 않은 것 하나를 아무렇게나. 없으면 -1.
    * 화면 가운데(내 캐릭터)에 가까울수록 잘 뽑힌다 — 멀리 구석에서 말하면 못 읽는다
@@ -532,6 +554,7 @@ export class Renderer3D {
   /** 새 판(새 맵)으로 교체 */
   setMap(map: GameMap): void {
     this.emotes.clear()
+    this.playerSays.clear()
     this.says.clear()
     this.hud.clearNotices()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
@@ -2216,6 +2239,12 @@ export class Renderer3D {
           ctx.textBaseline = 'alphabetic'
           ctx.restore()
         }
+      }
+      // 시청자 말풍선 (괴물이 없을 때 우리 편 머리 위로 — 닉네임 · 글). 감정 표현보다 위에
+      const ps = this.playerSays.get(i)
+      if (ps) {
+        if (ps.until <= performance.now()) this.playerSays.delete(i)
+        else this.drawBubble(ctx, { x: s.x, y: s.y - (this.emotes.has(i) ? 62 : 22) }, ps)
       }
       if (!showHp) continue
       const w = mine ? 48 : 36

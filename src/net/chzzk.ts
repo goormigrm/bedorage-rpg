@@ -241,15 +241,6 @@ function openSocket(url: string): void {
     if (dupe(`d|${d.donatorChannelId ?? nick}|${amount}|${text}`)) return
     stream.donation({ nick, amount, text })
   })
-  // 구독 (2026-09-23 — 응원). 앱에 구독 조회 권한이 없으면 구독만 안 올 뿐이다
-  s.on('SUBSCRIPTION', (raw) => {
-    const d = parse(raw) as { subscriberNickname?: string; subscriberChannelId?: string; month?: number | string } | null
-    if (!d) return
-    const nick = (d.subscriberNickname ?? '').trim() || '구독자'
-    const month = Math.max(1, Number(d.month) || 1)
-    if (dupe(`s|${d.subscriberChannelId ?? nick}|${month}`)) return
-    stream.subscription({ nick, month })
-  })
   s.on('disconnect', () => {
     if (!manualOff) {
       stream.setStatus('error', '연결이 끊어졌습니다 — 다시 연결하는 중')
@@ -281,12 +272,7 @@ async function subscribeAll(sessionKey: string): Promise<void> {
       fails.push(`${what}(${msg(e)})`)
     }
   }
-  // 구독은 덤 — 권한이 없어 실패해도 알리지 않는다 (채팅 · 후원만으로 충분히 돈다)
-  try {
-    await api(`/open/v1/sessions/events/subscribe/subscription?${q}`, { method: 'POST' })
-  } catch {
-    /* 구독 권한 없음 */
-  }
+
   if (fails.length === 2) handleFailure(new Error(`구독 실패: ${fails.join(' · ')}`))
   else if (fails.length === 1) {
     subFail = `${fails[0]} 구독 실패 — 앱 권한을 확인하세요`

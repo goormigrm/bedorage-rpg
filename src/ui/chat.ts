@@ -68,6 +68,13 @@ export class ChatBox {
     this.fadeTimer = this.docked ? 0 : window.setInterval(() => this.fade(), 500)
   }
 
+  /** 아래 여백 (px) — 왼쪽 아래 후원 표가 보이면 그 위로 올린다 (2026-09-23 — 둘이 겹쳤다) */
+  setBottom(px: number | null): void {
+    // 폰(터치)은 채팅이 위쪽에 붙어 있다 — 건드리지 않는다
+    const v = px === null || this.root.closest('.touching') ? '' : `${Math.round(px)}px`
+    if (this.root.style.bottom !== v) this.root.style.bottom = v
+  }
+
   get open(): boolean {
     return this.docked || !this.input.hidden
   }

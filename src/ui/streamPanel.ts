@@ -4,7 +4,7 @@
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
 import { DONATE_EVENTS } from '../core/donate'
-import { StreamStatus, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { StreamStatus, eventRows, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -158,9 +158,10 @@ function panelHtml(): string {
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
     toggle('vote', '시청자 투표 (4분마다 · 채팅 1 축복 / 2 저주)', c.vote) +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button>` +
-    `<button type="button" class="btn secondary sm" data-cz="vote">지금 투표</button>` +
-    `<button type="button" class="btn secondary sm" data-cz="sub">구독 시험</button></div>` +
-    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>우리 편 체력 50% 회복 · 20초 공격 속도 +25%</b>. 치지직 구독도 응원이 됩니다.</p>` +
+    `<button type="button" class="btn secondary sm" data-cz="cheer">응원 시험</button>` +
+    `<button type="button" class="btn secondary sm" data-cz="vote">${st === 'on' ? '투표 열기' : '투표 시험'}</button></div>` +
+    `<p class="czn">시험은 게임 안에서 보입니다 — 채팅은 괴물(없으면 우리 편) 머리 위 · 응원 · 투표 결과는 던전에서 일어납니다. 투표 시험은 가짜 시청자 표가 저절로 들어옵니다.</p>` +
+    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>우리 편 체력 50% 회복 · 20초 공격 속도 +25%</b>.</p>` +
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
@@ -169,6 +170,17 @@ function panelHtml(): string {
     `</div></div>` +
     (st === 'error' || !login ? `<p class="czn">로그인이 안 되면 치지직 개발자센터 앱의 로그인 리디렉션 URL 이 <code>${esc(redirectUri())}</code> 인지 확인하세요.</p>` : '')
   )
+}
+
+/** 단추 글을 잠깐 바꿔 눌린 것을 알린다 */
+function flashBtn(b: HTMLButtonElement, text: string): void {
+  const was = b.dataset.was ?? b.textContent ?? ''
+  b.dataset.was = was
+  b.textContent = text
+  window.setTimeout(() => {
+    b.textContent = was
+    delete b.dataset.was
+  }, 1400)
 }
 
 function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): void {
@@ -188,9 +200,19 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         saveStreamCfg(c)
         chzzkDisconnect()
       } else if (a === 'logout') chzzkLogout()
-      else if (a === 'chat') stream.fakeChat()
-      else if (a === 'vote') stream.requestVote()
-      else if (a === 'sub') stream.fakeSubscription()
+      else if (a === 'chat' || a === 'cheer' || a === 'vote') {
+        // 게임 밖(로비)에서는 받을 곳이 없다 — 단추에 알린다
+        if (!stream.inGame) {
+          flashBtn(b, '게임 안에서 됩니다')
+          return
+        }
+        if (a === 'chat') stream.fakeChat()
+        else if (a === 'cheer') stream.fakeCheer(eventRows(loadStreamCfg())[0]?.amount ?? 1000)
+        else stream.requestVote(stream.status !== 'on')
+        // 창이 화면 가운데를 덮어 말풍선 · 투표 칸이 가려진다 — 닫고 게임을 보여 준다
+        close()
+        return
+      }
       else if (a === 'reset') {
         const c = loadStreamCfg()
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
