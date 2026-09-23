@@ -1832,7 +1832,8 @@ export class Session {
       .map(({ e, amount }) => {
         const t = left[e.key] ?? 0
         const on = t > 0
-        return `<div class="dr${on ? ' on' : ''}"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dd">${on ? `${Math.ceil(t / 60)}초` : e.desc}</span></div>`
+        // 설명은 넣지 않는다 — 금액 · 이름만 (2026-09-23 사용자). 걸려 있는 효과만 남은 초를 붙인다
+        return `<div class="dr${on ? ' on' : ''}"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt">${on ? `${Math.ceil(t / 60)}초` : ''}</span></div>`
       })
       .join('')
     const wait = this.donPending.length > 0 ? `<div class="dw">대기 ${this.donPending.length} — 던전에서 일어납니다</div>` : ''

@@ -950,18 +950,18 @@ body { background: var(--bg); }
 .chat-line.don { color: #ffe4a0; }
 .chat-line.don b { color: #ffc94a; }
 /* 왼쪽 아래 후원 이벤트 표 — 체력 오브(왼쪽 끝 약 268px) 왼쪽 · 채팅(아래 222px) 아래. 방송 화면에 그대로 나가 후원을 부른다 */
-.dontable { position: absolute; left: 12px; bottom: 12px; width: 250px; padding: 6px 8px 7px; pointer-events: none; z-index: 12;
+.dontable { position: absolute; left: 12px; bottom: 12px; width: max-content; padding: 6px 10px 7px; pointer-events: none; z-index: 12;
   background: linear-gradient(180deg, rgba(20,14,8,.86), rgba(10,8,6,.9)); border: 1px solid rgba(201,162,74,.55); border-radius: 4px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,140,.08); font: 500 11px "IBM Plex Sans KR", sans-serif; color: #d8c79a; }
+  box-shadow: 0 6px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,140,.08); font: 500 12px "IBM Plex Sans KR", sans-serif; color: #d8c79a; }
 .dontable[hidden] { display: none; }
-.dontable .dh { font: 800 12.5px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
-.dontable .dr { display: grid; grid-template-columns: 58px 62px 1fr; gap: 4px; align-items: baseline; line-height: 1.45; padding: 0 3px; border-radius: 2px; }
-.dontable .da { font: 700 11px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; }
+.dontable .dh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
+/* 금액 · 이름 · (걸려 있으면) 남은 초 — 줄바꿈 없이 */
+.dontable .dr { display: grid; grid-template-columns: 82px auto 34px; gap: 8px; align-items: baseline; line-height: 1.5; padding: 0 4px; border-radius: 2px; white-space: nowrap; }
+.dontable .da { font: 700 12px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; white-space: nowrap; }
 .dontable .dn { font-weight: 800; color: #f4ead2; white-space: nowrap; }
-.dontable .dd { color: #9a8a6a; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dontable .dt { font-size: 11px; font-weight: 800; color: #ffb0a0; text-align: right; }
 .dontable .dr.on { background: rgba(255,90,60,.28); animation: donpulse 1s ease-in-out infinite alternate; }
-.dontable .dr.on .dd { color: #ffb0a0; font-weight: 800; }
-.dontable .dw { margin-top: 3px; color: #ffae4a; font-size: 10.5px; }
+.dontable .dw { margin-top: 3px; color: #ffae4a; font-size: 11px; white-space: nowrap; }
 @keyframes donpulse { from { box-shadow: inset 0 0 0 1px rgba(255,120,80,.2); } to { box-shadow: inset 0 0 0 1px rgba(255,120,80,.8); } }
 
 /* ---- 치지직 방송 연동 (2026-09-23 "항상 떠 있게 · 눈에 띄게"): 상태 단추 · 전용 창 ---- */
