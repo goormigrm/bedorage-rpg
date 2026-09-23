@@ -33,7 +33,7 @@ const saves = []
 const now = () => vt
 const vidSec = () => vid / FPS
 /** 덧그리는 것 */
-const ov = { vote: false, title: null, cap: null, fade: { a: 1, from: 1, to: 1, at: 0, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: 0, dur: 1 }, end: null }
+const ov = { title: null, cap: null, fade: { a: 1, from: 1, to: 1, at: 0, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: 0, dur: 1 }, end: null }
 /** 소리 단서 (영상 초) */
 let music = []
 let sfxCues = []
@@ -72,47 +72,6 @@ function drawGame() {
     const s1 = Math.max(W / c.width, H / c.height)
     g.drawImage(c, (W - c.width * s1) / 2, (H - c.height * s1) / 2, c.width * s1, c.height * s1)
   }
-  if (ov.vote) drawVote()
-}
-
-/** 시청자 투표 상자 (게임의 것은 DOM 이라 캔버스에 안 찍힌다 — 세션의 실제 집계를 같은 모양으로 그린다) */
-function drawVote() {
-  const v = S().vote
-  if (!v) return
-  const left = Math.max(0, Math.ceil((v.until - now()) / 1000))
-  const x = W / 2 - 260
-  const y = 170
-  g.save()
-  g.fillStyle = 'rgba(10,13,19,0.9)'
-  g.strokeStyle = 'rgba(154,216,255,0.6)'
-  g.lineWidth = 2
-  g.beginPath()
-  g.roundRect(x, y, 520, 150, 10)
-  g.fill()
-  g.stroke()
-  g.font = '800 30px "IBM Plex Sans KR", sans-serif'
-  g.fillStyle = '#9ad8ff'
-  g.textBaseline = 'middle'
-  g.fillText('📣 시청자 투표 — 채팅에 1 · 2', x + 22, y + 32)
-  g.fillStyle = '#fff'
-  g.textAlign = 'right'
-  g.fillText(`${left}초`, x + 498, y + 32)
-  const all = Math.max(1, v.a + v.b)
-  const bar = (yy, label, n, col) => {
-    g.fillStyle = 'rgba(255,255,255,0.07)'
-    g.fillRect(x + 20, yy, 480, 36)
-    g.fillStyle = col
-    g.fillRect(x + 20, yy, 480 * (n / all), 36)
-    g.textAlign = 'left'
-    g.fillStyle = '#e6e0d4'
-    g.font = '700 24px "IBM Plex Sans KR", sans-serif'
-    g.fillText(label, x + 32, yy + 19)
-    g.textAlign = 'right'
-    g.fillText(String(n), x + 490, yy + 19)
-  }
-  bar(y + 62, '1 축복 — 우리 편 회복 · 공속', v.a, 'rgba(90,255,138,0.35)')
-  bar(y + 104, '2 저주 — 좀비 떼', v.b, 'rgba(255,74,58,0.35)')
-  g.restore()
 }
 
 function drawOverlay() {
@@ -276,6 +235,23 @@ function spawn(kinds, n, r0 = 4, r1 = 11) {
   }
 }
 const alive = () => st().monsters.filter((m) => m.hp > 0).length
+/**
+ * 막 보스에게 지금 곧 이 차례(phase)의 패턴을 쓰게 한다 (영상 길이 안에 패턴 여럿을 보이려고 — 2026-09-24).
+ * 패턴 차례는 monsters.ts BOSS_PLANS.order[단계] 의 번호
+ */
+function bossPat(kind, phase) {
+  const b = st().monsters.find((m) => m.hp > 0 && m.kind === kind)
+  if (!b) return
+  if (b.st !== 1) {
+    b.st = 1
+    b.mode = 0
+    b.pat = -1
+  }
+  b.target = 0
+  b.los = 1
+  b.scd = 0
+  b.phase = phase
+}
 function gatherBots() {
   const s = st()
   const p = s.players[0]
@@ -394,48 +370,48 @@ function scenes() {
   })
   const skills = t
   every(skills + 1.2, skills + 8, 1.2, () => alive() < 22 && spawn([0, 1, 2], 14, 6, 11))
-  // 치지직 — 채팅 말풍선 · 후원으로 막 보스
+  // 치지직 — 채팅 말풍선 · 응원 후원 · 후원으로 막 보스 (시청자 투표는 2026-09-23 뺐다)
   at(8, () => {
-    caption('치지직 방송 연동', '채팅은 괴물 말풍선으로 · 후원은 게임 속 이벤트로 · 채팅 투표로 축복이냐 저주냐')
+    caption('치지직 방송 연동', '채팅은 괴물 말풍선으로 · 후원은 게임 속 이벤트로 · "!응원" 후원은 우리 편을 돕는다')
     for (let i = 0; i < 4; i++) M.stream.fakeChat()
   })
+  every(t + 0.3, t + 6.5, 0.35, () => M.stream.fakeChat())
+  // 1만 원 !응원 = 함성 (쓰러진 동료 일으키기 · 모두 회복 · 공격 속도)
+  at(1.6, () => M.stream.fakeCheer(10000))
+  // 5만 원 = 막 보스 (1막 들판이라 도살자)
+  at(3.2, () => M.stream.fakeDonation(50000))
+  every(t + 0.6, t + 4, 0.9, () => M.stream.fakeChat())
+  at(1.8, () => cue('boss'))
+  // 막 보스 — 정해진 패턴 (2026-09-23 보스 패턴: 예고 범위가 차오르면 터진다 · 최대 체력 % 피해)
   at(1.0, () => {
-    M.stream.requestVote()
-    ov.vote = true
+    caption('막 보스는 정해진 패턴으로', '빨간 예고 범위를 피하라 — 보스 공격은 최대 체력의 %, 탱커도 똑같이 아프다')
+    zoomTo(1.0, 1.06, 6500)
+    bossPat(3, 1) // 회전 베기
   })
-  every(t + 0.2, t + 5.5, 0.18, () => M.stream.fakeChat())
-  at(5.8, () => {
-    // 투표를 일찍 닫는다 (영상 길이) — 결과는 응원으로 들어간다
-    const v = S().vote
-    if (v) v.until = now()
+  at(1.7, () => bossPat(3, 0)) // 돌진
+  at(2.0, () => bossPat(3, 2)) // 갈고리
+  at(2.2, () => {
+    holding = true
+    for (const m of st().monsters) m.hp = 0
+    spawn([15], 1, 4, 5)
+    spawn([14, 14], 2, 6, 9)
+    // 체력 60% — 첫 틱에 분노(그림자 · 지옥불이 차례에 들어온다)
+    const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
+    if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
   })
   at(1.2, () => {
-    ov.vote = false
-    M.stream.fakeDonation(50000)
-  })
-  every(t + 0.6, t + 4, 0.9, () => M.stream.fakeChat())
-  at(1.6, () => cue('boss'))
-  // 막 보스
-  at(2.8, () => {
-    caption('막마다 보스', '도살자 · 거미 여왕 · 관리인 — 막 보스를 쓰러뜨리면 다음 막의 문이 열린다')
-    zoomTo(1.0, 1.08, 5000)
-  })
-  at(4.5, () => {
-    holding = true
-    for (const m of st().monsters) if (m.hp > 0 && m.kind !== 3) m.hp = 0
-    spawn([15], 1, 4, 5)
-    spawn([14, 14, 13], 3, 6, 9)
-  })
-  at(1.5, () => {
     holding = false
     cue('rage')
     flash(0.9)
-    caption('최종 보스 — 심연의 군주', '불꽃 고리 · 불비 · 그림자 부르기 — 종이 처음 울린 곳에서')
-    zoomTo(1.0, 1.1, 5500)
+    caption('최종 보스 — 심연의 군주', '심연 광선 · 지옥불 · 불비 — 체력이 줄면 분노해 패턴이 늘어난다')
+    zoomTo(1.0, 1.1, 6000)
+    bossPat(15, 4) // 심연 광선
   })
-  A.push({ t: t + 2.6, fn: () => (snap = 'shot_boss') })
+  at(1.8, () => bossPat(15, 3)) // 지옥불 (가까이 → 곧 멀리)
+  A.push({ t: t + 0.9, fn: () => (snap = 'shot_boss') })
+  at(2.1, () => bossPat(15, 1)) // 불비
   // 전리품
-  at(5.2, () => {
+  at(2.0, () => {
     holding = true
     for (const m of st().monsters) m.hp = 0
     dropLoot()
@@ -618,7 +594,7 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), donate: big })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { vote: false, title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
   const acts = scenes()
