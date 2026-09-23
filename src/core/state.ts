@@ -259,6 +259,8 @@ export interface PlayerState {
   bot?: BotMemory
   /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
   away?: boolean
+  /** 후원 효과 남은 틱 (core/donate.ts DON_* 칸 — 손 떨림 · 암흑 · 거꾸로 · 봉인). 처음 걸릴 때 만든다 */
+  don?: number[]
 }
 
 /**
@@ -392,6 +394,11 @@ export interface Monster {
   mode: number
   /** 보스 단계 (심연의 군주: 0 → 1 → 2, 체력 2/3 · 1/3 에서 오른다) */
   stage: number
+  /** 후원 소환 (2026-09-23): 후원 번호 + 1 · 부른 사람. 있으면 쓰러뜨려도 막 보스 처치 · 퀘스트로 치지 않는다 */
+  sum?: number
+  sumBy?: number
+  /** 광폭화 남은 틱 (후원 이벤트 — pow 를 RAGE_POW 배로 올려 두고, 끝나면 되돌린다) */
+  rage?: number
 }
 
 /** 몬스터 상태 */
@@ -527,6 +534,8 @@ export type SimEvent =
   | { type: 'portalOpen'; p: number; area: number; x: number; y: number }
   /** 우두머리·보스가 쓰러졌다 */
   | { type: 'bossDown'; area: number; kind: number }
+  /** 후원 이벤트 ev 가 p 에게 일어났다 (seq = 후원 번호 · m = 부른 괴물 중 우두머리, 없으면 -1) */
+  | { type: 'donate'; p: number; ev: number; seq: number; m: number }
   /** 골드 더미를 주웠다 · 물약을 주웠다 · 물약을 마셨다 */
   | { type: 'gold'; p: number; n: number; x: number; y: number }
   | { type: 'potGet'; p: number; x: number; y: number }

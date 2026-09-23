@@ -4,6 +4,8 @@ import { Session, SessionConfig } from './game/session'
 import { setFavicon } from './ui/favicon'
 import { openLobby } from './net/room'
 import { Lobby } from './ui/lobby'
+import { connect, handleOAuthRedirect, hasToken } from './net/chzzk'
+import { loadStreamCfg, saveStreamCfg } from './game/stream'
 
 const app = document.getElementById('app')!
 /**
@@ -43,3 +45,14 @@ function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
 
 setFavicon()
 showLobby()
+
+// 치지직 방송 연동 (2026-09-23): 로그인에서 돌아왔으면(?code=) 토큰으로 바꾸고 연결, 전에 연결해 두었으면 다시 연결
+void (async () => {
+  const back = await handleOAuthRedirect()
+  if (back) {
+    const c = loadStreamCfg()
+    c.auto = true
+    saveStreamCfg(c)
+  }
+  if (hasToken() && loadStreamCfg().auto) await connect()
+})()

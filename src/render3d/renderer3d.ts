@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isTeamMatch } from '../core/state'
+import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
-import { ACID, LORD, MONSTER_LIST, WARDEN, affixNames, isBossLike } from '../core/monsters'
+import { ACID, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, WARDEN, affixNames, isBossLike } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -33,6 +33,7 @@ import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './chara
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
+import { DARK_VIEW_TILES, DON_DARK } from '../core/donate'
 import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
@@ -227,6 +228,15 @@ export class Renderer3D {
   private marks: { x: number; z: number; life: number; max: number; mesh: THREE.Mesh }[] = []
   /** 빠른 감정 표현 말풍선 (플레이어 번호 → 글·끝나는 시각) */
   private emotes = new Map<number, { text: string; until: number }>()
+  /** 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 */
+  private says = new Map<number, { nick: string; text: string; until: number; gold: boolean }>()
+  /** 후원 소환 괴물의 이름표: (부른 사람, 후원 번호) → "○○님의" (세션이 넣는다 — 이름은 sim 밖) */
+  private summonLabel: ((by: number, seq: number) => string | undefined) | null = null
+
+  setSummonLabel(fn: (by: number, seq: number) => string | undefined): void {
+    this.summonLabel = fn
+    this.hud.d4.summonLabel = fn
+  }
   private shake = 0
   /** 손맛 (2026-09-19): 역경직(연출 시간을 잠깐 거의 멈춤) · 카메라 펀치(잠깐 당겨짐) */
   private hitStop = 0
@@ -404,6 +414,41 @@ export class Renderer3D {
     this.emotes.set(i, { text: t, until: performance.now() + Math.min(6000, 3000 + text.length * 60) })
   }
 
+  /**
+   * 괴물이 말한다 (방송 채팅 · 후원 글): 머리 위 말풍선에 닉네임과 글. 길면 줄인다. 글 길이만큼 3.5~7초.
+   * gold = 후원 글 (금빛 테두리)
+   */
+  monsterSay(id: number, nick: string, text: string, gold = false): void {
+    const t = text.length > 30 ? `${text.slice(0, 29)}…` : text
+    this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(7000, 3500 + text.length * 80), gold })
+  }
+
+  /**
+   * 말할 괴물 고르기: 지금 화면에 보이는(시야 안 · 화면 안) 산 괴물 중 말하고 있지 않은 것 하나를 아무렇게나. 없으면 -1.
+   * 화면 가운데(내 캐릭터)에 가까울수록 잘 뽑힌다 — 멀리 구석에서 말하면 못 읽는다
+   */
+  pickSpeaker(curr: GameState): number {
+    const now = performance.now()
+    let best = -1
+    let bestScore = -Infinity
+    for (const m of curr.monsters) {
+      if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
+      const s = this.says.get(m.id)
+      if (s && s.until > now) continue
+      const at = this.monsterView.shown.get(m.id)
+      if (!at) continue
+      const p = this.worldToScreen(at.x, 1.2, at.z)
+      if (p.x < 40 || p.x > VIEW_W - 40 || p.y < 60 || p.y > VIEW_H - 150) continue
+      const d = Math.hypot(p.x - VIEW_W / 2, p.y - VIEW_H / 2)
+      const score = Math.random() * 400 - d
+      if (score > bestScore) {
+        bestScore = score
+        best = m.id
+      }
+    }
+    return best
+  }
+
   /** 화면 위쪽 큰 배너 (지역 이름) */
   banner(title: string, sub: string, color?: string): void {
     this.hud.banner(title, sub, color)
@@ -412,6 +457,7 @@ export class Renderer3D {
   /** 새 판(새 맵)으로 교체 */
   setMap(map: GameMap): void {
     this.emotes.clear()
+    this.says.clear()
     this.hud.clearNotices()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
     this.portalMeshes.clear()
@@ -1375,7 +1421,7 @@ export class Renderer3D {
     if (curr.mode !== 'dungeon') return
     for (const m of curr.monsters) {
       const def = MONSTER_LIST[m.kind]
-      if (!def.boss || m.st === 0 || m.hp <= 0 || this.bossSeen.has(m.id) || this.hiddenM.has(m.id)) continue
+      if (!def.boss || m.sum !== undefined || m.st === 0 || m.hp <= 0 || this.bossSeen.has(m.id) || this.hiddenM.has(m.id)) continue
       this.bossSeen.add(m.id)
       this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
       this.shake = Math.max(this.shake, 0.55)
@@ -1402,7 +1448,9 @@ export class Renderer3D {
     }
     if (viewers.length > 0) this.lastViewer = { x: me.alive ? me.x : viewers[0].x, y: me.alive ? me.y : viewers[0].y }
     else if (this.lastViewer) viewers.push(this.lastViewer) // 죽어 있는 동안은 마지막 자리에서 본다
-    const radius = VIEW_RADIUS_TILES * (this.scoped ? 1.8 : 1)
+    // 후원 "암흑" (core/donate.ts): 보는 사람에게 걸려 있으면 코앞만 보인다 — 동료 시야도 같이 좁힌다(함께 보면 암흑이 풀려 버린다)
+    const dark = (me.don?.[DON_DARK] ?? 0) > 0
+    const radius = dark ? DARK_VIEW_TILES : VIEW_RADIUS_TILES * (this.scoped ? 1.8 : 1)
     this.vision.update(viewers, radius)
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
@@ -2873,6 +2921,7 @@ export class Renderer3D {
         ctx.stroke()
         ctx.restore()
       }
+      this.drawSay(ctx, m, at, def)
       // 정예는 늘, 나머지는 맞은 뒤 3초만 (보스는 화면 위 큰 막대가 따로 있다)
       const goblin = def.attack === 'flee'
       if (isBossLike(m) || (!m.elite && !goblin && curr.tick - m.hitTick > 180)) continue
@@ -2904,6 +2953,70 @@ export class Renderer3D {
       }
       ctx.globalAlpha = 1
     }
+  }
+
+  /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글) */
+  private drawSay(ctx: CanvasRenderingContext2D, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
+    const top = MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
+    let head = this.worldToScreen(at.x, top + 0.35, at.z)
+    const font = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+    if (m.sum !== undefined) {
+      const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)
+      if (who) {
+        ctx.save()
+        ctx.font = `800 12px ${font}`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'alphabetic'
+        ctx.lineWidth = 3
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+        const label = `${who} ${def.name}`
+        ctx.strokeText(label, head.x, head.y - 14)
+        ctx.fillStyle = '#7dffc4'
+        ctx.fillText(label, head.x, head.y - 14)
+        ctx.restore()
+        head = { x: head.x, y: head.y - 16 }
+      }
+    }
+    const say = this.says.get(m.id)
+    if (!say) return
+    const left = say.until - performance.now()
+    if (left <= 0) {
+      this.says.delete(m.id)
+      return
+    }
+    ctx.save()
+    ctx.globalAlpha = Math.min(1, left / 350)
+    ctx.font = `700 14px ${font}`
+    const tw = ctx.measureText(say.text).width
+    ctx.font = `800 11px ${font}`
+    const nw = ctx.measureText(say.nick).width
+    const w = Math.max(tw, nw) + 22
+    const h = 40
+    const bx = head.x - w / 2
+    const by = head.y - 26 - h
+    ctx.fillStyle = say.gold ? '#fff4d0' : '#ffffff'
+    roundRect(ctx, bx, by, w, h, 10)
+    ctx.fill()
+    if (say.gold) {
+      ctx.strokeStyle = '#d8a83a'
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+    ctx.beginPath()
+    ctx.moveTo(head.x - 6, by + h - 1)
+    ctx.lineTo(head.x + 6, by + h - 1)
+    ctx.lineTo(head.x, by + h + 8)
+    ctx.closePath()
+    ctx.fill()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = `800 11px ${font}`
+    ctx.fillStyle = say.gold ? '#9a6a10' : '#12a86a'
+    ctx.fillText(say.nick, head.x, by + 12)
+    ctx.font = `700 14px ${font}`
+    ctx.fillStyle = '#1a1f26'
+    ctx.fillText(say.text, head.x, by + 28)
+    ctx.restore()
   }
 
   /** 쓰러진 동료: 머리 위에 남은 시간 · 일으키는 진행 고리, 가까이 가면 "F 길게" 안내 */

@@ -102,7 +102,7 @@ export class Hud {
   /** 가운데 알림. 최대 3개 */
   private notices: Notice[] = []
   /** 디아블로 4 풍 패널 (오브·스킬 바·추적·파티) */
-  private d4 = new D4Hud()
+  readonly d4 = new D4Hud()
   private t = 0
   private lastDt = 0.016
   private hitDirs: HitDir[] = []

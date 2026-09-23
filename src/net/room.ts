@@ -168,6 +168,13 @@ export type CtlMessage =
   | { t: 'mark'; p: number; x: number; y: number }
   /** 빠른 감정 표현 (ㅋㅋ · 굿 · 미안). sim 밖 */
   | { t: 'emote'; p: number; id: number }
+  /**
+   * 후원 이벤트의 이름표 (2026-09-23 — 치지직): 방송하는 사람 p 가 후원 번호 seq 를 누가 · 얼마 · 무슨 글로 보냈는지 알린다.
+   * 이벤트 자체는 입력 명령(CMD_DONATE)으로 간다 — 이것은 이름 · 글(문자열)만. sim 밖
+   */
+  | { t: 'donate'; p: number; seq: number; nick: string; amount: number; text: string; ev: number }
+  /** 방송 채팅 말풍선: 지역 a 의 괴물 m(없으면 -1 — 채팅 줄로)이 nick 의 글을 말한다. sim 밖 */
+  | { t: 'mchat'; a: number; m: number; nick: string; text: string }
   /** 텍스트 채팅 (Enter). sim 밖 — 받는 쪽이 보낸 사람 자리 · 길이를 다시 본다 */
   | { t: 'chat'; p: number; text: string }
   /**

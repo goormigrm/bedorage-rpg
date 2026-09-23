@@ -754,6 +754,17 @@ export class Sfx {
     this.tone(node, t0 + 0.07, 0.12, 'sine', 1560, 1560, 0.26, 0.003)
   }
 
+  /** 후원 알림 (2026-09-23 — 치지직): 동전 세 번 · 큰 후원(보스급)이면 낮은 징과 울림을 더한다 */
+  donate(big: boolean): void {
+    if (!this.ready()) return
+    const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
+    ;[1568, 2093, 2637].forEach((f, i) => this.tone(node, t0 + i * 0.07, 0.25, 'triangle', f, f, 0.28, 0.003))
+    if (big) {
+      this.tone(node, t0, 1.6, 'sine', 82, 66, 0.6, 0.01)
+      this.noiseBurst(node, t0, 0.7, 'lowpass', 500, 120, 0.3)
+    }
+  }
+
   /** 짧은 알림음 (창 열기·줍기 등 UI) */
   blip(): void {
     if (!this.ready()) return

@@ -945,3 +945,46 @@ body { background: var(--bg); }
 .chat.docked .chat-log { height: 132px; max-height: none; overflow-y: auto; background: rgba(8,7,6,.5); border: 1px solid rgba(201,162,74,.22); border-radius: 4px; padding: 5px 8px; }
 .chat.docked .chat-log:empty::before { content: "대화가 여기 쌓입니다 — 게임을 시작해도 이어집니다"; color: #6f624c; font: 500 12px "IBM Plex Sans KR", sans-serif; }
 .chat.docked .chat-line { text-shadow: none; }
+
+/* 방송 연동 (2026-09-23 — 치지직): 채팅 줄 · 후원 이벤트 표 · 설정 칸 */
+.chat-line.stream b { color: #7dffc4; }
+.chat-line.don { color: #ffe4a0; }
+.chat-line.don b { color: #ffc94a; }
+/* 왼쪽 아래 후원 이벤트 표 — 체력 오브(왼쪽 끝 약 268px) 왼쪽 · 채팅(아래 222px) 아래. 방송 화면에 그대로 나가 후원을 부른다 */
+.dontable { position: absolute; left: 12px; bottom: 12px; width: 250px; padding: 6px 8px 7px; pointer-events: none; z-index: 12;
+  background: linear-gradient(180deg, rgba(20,14,8,.86), rgba(10,8,6,.9)); border: 1px solid rgba(201,162,74,.55); border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,140,.08); font: 500 11px "IBM Plex Sans KR", sans-serif; color: #d8c79a; }
+.dontable[hidden] { display: none; }
+.dontable .dh { font: 800 12.5px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
+.dontable .dr { display: grid; grid-template-columns: 58px 62px 1fr; gap: 4px; align-items: baseline; line-height: 1.45; padding: 0 3px; border-radius: 2px; }
+.dontable .da { font: 700 11px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; }
+.dontable .dn { font-weight: 800; color: #f4ead2; white-space: nowrap; }
+.dontable .dd { color: #9a8a6a; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dontable .dr.on { background: rgba(255,90,60,.28); animation: donpulse 1s ease-in-out infinite alternate; }
+.dontable .dr.on .dd { color: #ffb0a0; font-weight: 800; }
+.dontable .dw { margin-top: 3px; color: #ffae4a; font-size: 10.5px; }
+@keyframes donpulse { from { box-shadow: inset 0 0 0 1px rgba(255,120,80,.2); } to { box-shadow: inset 0 0 0 1px rgba(255,120,80,.8); } }
+
+.settings details.chzzk { margin-top: 10px; border-top: 1px solid rgba(201,162,74,.25); padding-top: 8px; }
+.settings details.chzzk summary { cursor: pointer; display: flex; align-items: center; gap: 10px; list-style: none; }
+.settings details.chzzk summary::-webkit-details-marker { display: none; }
+.settings details.chzzk summary::before { content: "▸"; color: #c9a24a; }
+.settings details.chzzk[open] summary::before { content: "▾"; }
+.settings details.chzzk summary b { font: 800 14px "Nanum Myeongjo", serif; color: #f1d58a; }
+.settings .czs { font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid #4a3c28; color: #9a8a6a; }
+.settings .czs.on { color: #7dffc4; border-color: #2a7a5a; }
+.settings .czs.connecting { color: #ffd86a; border-color: #7a6a2a; }
+.settings .czs.error { color: #ff9d95; border-color: #7a3a2a; }
+.settings .czbox { padding: 6px 2px 2px; }
+.settings .czrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; flex-wrap: wrap; }
+.settings .czrow .btn.sm { padding: 5px 12px; font-size: 12.5px; }
+.settings .czd { font-size: 11.5px; color: #9a8a6a; }
+.settings .czh { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; font-size: 12px; }
+.settings .czh b { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-right: auto; }
+.settings .czt { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.settings .czr { display: grid; grid-template-columns: 86px 78px 1fr auto; gap: 8px; align-items: center; font-size: 12px; color: #b8a67e; }
+.settings .czr input { width: 86px; box-sizing: border-box; padding: 3px 6px; font: 600 12px "IBM Plex Mono", monospace; color: #ffc94a;
+  background: rgba(8,7,6,.7); border: 1px solid #4a3c28; border-radius: 3px; text-align: right; }
+.settings .czr b { color: #f4ead2; font-weight: 800; white-space: nowrap; }
+.settings .czr span { color: #8a7a60; font-size: 11px; }
+.settings code { font: 500 11px "IBM Plex Mono", monospace; color: #d8c79a; word-break: break-all; }

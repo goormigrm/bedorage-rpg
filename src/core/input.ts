@@ -87,6 +87,11 @@ export const CMD_SORT = 22
 export const CMD_SELL_ALL = 23
 /** 잠금 토글: arg = 가방 칸 (잠그면 팔기 · 버리기 · 재료에서 빠진다) */
 export const CMD_LOCK = 24
+/**
+ * 후원 이벤트 (2026-09-23 — 치지직 후원 · core/donate.ts): arg 아래 네 비트 = 이벤트 번호, 위 네 비트 = 후원 번호.
+ * 후원 번호는 후원자 이름표를 찾는 열쇠다 — 이름(문자열)은 입력에 못 실어 방 통로(donate 메시지)로 따로 보낸다
+ */
+export const CMD_DONATE = 25
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

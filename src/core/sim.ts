@@ -8,7 +8,7 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_SELL_ALL, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
@@ -23,9 +23,10 @@ import {
   AFFIX_TUNE, CHARGE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
-import { affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
+import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
+import { DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, donateEvent } from './donate'
 import { botInput, makeBot } from './bot'
-import { ACTS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
+import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import {
   CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_KENWANG, FX_SNIPE, FX_SWIFT, FX_WHIRL,
@@ -1388,12 +1389,17 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (roleOn && c.role === 'heal' && isActive(p) && (state.tick + p.id * 29) % 120 === 0) {
     for (const q of alliesNear(state, p, 7 * TILE)) healPlayer(state, q, Math.max(1, q.maxHp * 0.03))
   }
+  // 후원 효과 (core/donate.ts): 남은 틱을 줄인다
+  const don = p.don
+  if (don) for (let k = 0; k < don.length; k++) if (don[k] > 0) don[k]--
   // 풍월덕 패시브(근성): 잠깐 안 맞으면 쌓인 칸이 식는다
   if (c.id === 'pungwol' && p.grit > 0 && state.tick - p.lastHitTick > PUNGWOL.gritCool) p.grit = 0
   // 풍월덕 궁극기(켠왕): 켜져 있는 동안 8칸 안 괴물이 계속 나만 노린다 (0.5초마다 다시 건다)
   if (p.fx[FX_KENWANG] > 0 && isActive(p) && state.tick % 30 === 0) tauntNear(state, p, 8 * TILE, 60)
 
   p.aim = input.aim & 1023
+  // 후원 "손 떨림": 조준이 틱마다 흔들린다 (쏘는 · 휘두르는 방향 모두)
+  if (don && don[DON_SHAKE] > 0) p.aim = (p.aim + randInt(state.rng, -SHAKE_AIM, SHAKE_AIM + 1)) & 1023
   p.aimDist = (input.aimDist ?? 0) * 4
   p.ads = playing && (input.buttons & BTN_ADS) !== 0 && p.dashTimer === 0
 
@@ -1411,6 +1417,11 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 이동
   let mx = input.mx
   let my = input.my
+  // 후원 "거꾸로 걷기"
+  if (don && don[DON_INVERT] > 0) {
+    mx = -mx
+    my = -my
+  }
   if (!playing) {
     mx = 0
     my = 0
@@ -1442,7 +1453,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   const dashCost = DASH_COST
   const dungeon = state.mode === 'dungeon'
   const canDash = dungeon ? p.dashCharges > 0 && p.dashCooldown < dashRecharge(p) - 20 : p.dashCooldown === 0 && p.stamina >= dashCost
-  if (playing && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
+  // 후원 "스킬 봉인": 스킬 · 궁극기 · 구르기 금지
+  const sealed = !!don && don[DON_SEAL] > 0
+  if (playing && !sealed && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
     if (dungeon) p.dashCharges--
     else p.stamina -= dashCost
     const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
@@ -1461,7 +1474,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   }
 
   // 스킬 Q · E · R · 1 · 2 (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼). 궁극기 빼고는 집중이 든다
-  if (playing && p.dashTimer === 0) {
+  if (playing && p.dashTimer === 0 && !sealed) {
     for (let k = 0; k < SKILL_BTNS.length; k++) {
       if ((input.buttons & SKILL_BTNS[k]) === 0 || (p.cd[k] ?? 0) > 0) continue
       const node = slotNode(p, k)
@@ -2708,11 +2721,13 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
   const def = MONSTER_LIST[m.kind]
   m.hp = 0
   state.events.push({ type: 'mdeath', m: m.id, kind: m.kind, by: suicide ? -1 : by, x: m.x, y: m.y, aim: m.aim })
-  if (state.mode === 'dungeon' && isBossLike(m) && !state.killed.includes(state.curArea)) {
+  // 후원으로 부른 보스는 그 지역의 보스가 아니다 — 처치 기록 · 다음 막 문 · 엔딩 · 퀘스트로 치지 않는다
+  const summoned = m.sum !== undefined
+  if (state.mode === 'dungeon' && isBossLike(m) && !summoned && !state.killed.includes(state.curArea)) {
     state.killed.push(state.curArea)
     state.events.push({ type: 'bossDown', area: state.curArea, kind: m.kind })
   }
-  if (state.mode === 'dungeon' && isBossLike(m)) questGoal(state, 'kill', state.curArea)
+  if (state.mode === 'dungeon' && isBossLike(m) && !summoned) questGoal(state, 'kill', state.curArea)
   if (!suicide) {
     const killer = by >= 0 ? state.players[by] : null
     if (killer) {
@@ -2740,6 +2755,150 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
     const hpMul = m.maxHp / (def.hp * ELITE.hp)
     for (let i = 0; i < AFFIX_TUNE.splitN; i++) spawns.push({ kind: 0, x: m.x, y: m.y, pack: m.pack, hpMul: hpMul * AFFIX_TUNE.splitHp, pow: Math.round(m.pow / ELITE.pow), lvl: m.lvl })
   }
+}
+
+/** 소환 등급 */
+const SUM_HORDE = 0
+const SUM_ELITE = 1
+const SUM_UNIQUE = 2
+const SUM_BOSS = 3
+
+/**
+ * 후원 이벤트 (2026-09-23 — core/donate.ts). 입력 명령이라 모두의 판에서 같은 틱에 같게 일어난다.
+ * 마을 · 투기장 · 죽어 있을 때는 없다(세션이 던전에 나갈 때까지 들고 있다).
+ */
+function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: number): void {
+  const ev = donateEvent(arg & 15)
+  const seq = arg >> 4
+  if (!ev || state.mode !== 'dungeon' || isTown(p.area) || !p.alive || p.out) return
+  const addDon = (slot: number, ticks: number) => {
+    p.don ??= new Array(DON_SLOTS).fill(0)
+    p.don[slot] = Math.min(DON_MAX, p.don[slot] + ticks)
+  }
+  let lead: Monster | null = null
+  switch (ev.key) {
+    case 'horde':
+      lead = summon(state, map, p, SUM_HORDE, seq)
+      break
+    case 'elite':
+      lead = summon(state, map, p, SUM_ELITE, seq)
+      break
+    case 'unique':
+      lead = summon(state, map, p, SUM_UNIQUE, seq)
+      break
+    case 'boss':
+      lead = summon(state, map, p, SUM_BOSS, seq)
+      break
+    case 'hell':
+      lead = summon(state, map, p, SUM_BOSS, seq)
+      summon(state, map, p, SUM_UNIQUE, seq)
+      summon(state, map, p, SUM_UNIQUE, seq)
+      addDon(DON_DARK, HELL_DARK_TICKS)
+      break
+    case 'shake':
+      addDon(DON_SHAKE, DON_TICKS[DON_SHAKE])
+      break
+    case 'dark':
+      addDon(DON_DARK, DON_TICKS[DON_DARK])
+      break
+    case 'invert':
+      addDon(DON_INVERT, DON_TICKS[DON_INVERT])
+      break
+    case 'seal':
+      addDon(DON_SEAL, DON_TICKS[DON_SEAL])
+      break
+    case 'rage':
+      // 이 지역의 살아 있는 괴물 모두 (잠든 무리까지 — 깨우면 이미 세다)
+      for (const m of state.monsters) {
+        if (m.hp <= 0) continue
+        if (!m.rage) m.pow = Math.round(m.pow * RAGE_POW)
+        m.rage = Math.max(m.rage ?? 0, RAGE_TICKS)
+      }
+      break
+  }
+  state.events.push({ type: 'donate', p: p.id, ev: ev.id, seq, m: lead ? lead.id : -1 })
+}
+
+/** 한 지역에 동시에 살아 있을 수 있는 후원 소환 괴물 (졸개 포함) — 후원이 몰려도 판이 무너지지 않게 */
+export const SUMMON_CAP = 30
+
+/** 막마다 부를 수 있는 괴물 종류 (막 무리 · 그 막 지역 무리에 나오는 것 — 도망치는 고블린 · 보스는 빼고) */
+function summonPool(act: number): number[] {
+  const set = new Set<number>()
+  for (const p of ACTS[act]?.packs ?? []) for (const g of p.groups) set.add(g[0])
+  for (const a of AREAS) if (a.act === act) for (const p of a.packs ?? []) for (const g of p.groups) set.add(g[0])
+  return [...set].filter((k) => !MONSTER_LIST[k].boss && MONSTER_LIST[k].attack !== 'flee').sort((a, b) => a - b)
+}
+
+/**
+ * 후원 소환. 부른 사람 둘레 5~8 칸에 깨어 있는 채로 나와 그 사람을 노린다. 돌려주는 것은 우두머리(없으면 null — 한도에 걸림).
+ * - 좀비 떼: 이 막 졸개 여덟 · 정예: 정예 하나(접두 능력 지역 레벨만큼 + 1) + 같은 종류 셋
+ * - 우두머리(중간보스): 지역 우두머리와 같은 세기(체력 ×9 · 접두 셋) + 호위 셋 · 막 보스: 이 막의 보스
+ * 레벨은 지역 레벨 + 1(보스는 + 2). 전리품 · 경험치는 보통 괴물과 같다.
+ */
+function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, seq: number): Monster | null {
+  const alive = state.monsters.filter((m) => m.hp > 0 && m.sum !== undefined).length
+  if (alive >= SUMMON_CAP) return null
+  const act = areaDef(p.area).act
+  const lvl = areaLevel(p.area, partyLevel(state), state.tier) + (tier === SUM_BOSS ? 2 : 1)
+  const tr = tierOf(state.tier)
+  const seats = state.players.length
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp
+  const pow = Math.round(levelPow(lvl) * tr.pow)
+  const pool = summonPool(act)
+  const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
+  const kind = tier === SUM_BOSS && boss !== undefined ? boss : pool[randInt(state.rng, 0, pool.length)] ?? GHOUL_KIND
+  const r = MONSTER_LIST[kind].r
+  // 자리: 여러 방향을 재어 벽에 막히지 않고 가장 멀리 간 곳 (moveCircle — 벽을 넘지 않는다)
+  let at = { x: p.x, y: p.y }
+  let best = -1
+  const a0 = randInt(state.rng, 0, 1024)
+  for (let i = 0; i < 8; i++) {
+    const a = (a0 + i * 128) & 1023
+    const d = 5 * TILE + randInt(state.rng, 0, 3 * TILE)
+    const g = moveCircle(map, p.x, p.y, r, cosA(a) * d, sinA(a) * d)
+    const got = len(g.x - p.x, g.y - p.y)
+    if (got > best) {
+      best = got
+      at = g
+    }
+    if (got >= 5 * TILE) break
+  }
+  const pack = 8000 + p.id * 64 + (seq & 63)
+  const wake = (m: Monster, k: number): Monster => {
+    m.st = MS_CHASE
+    m.target = p.id
+    m.cd = 60 + k * 10
+    m.aim = atan2A(p.y - m.y, p.x - m.x)
+    m.sum = seq + 1
+    m.sumBy = p.id
+    state.monsters.push(m)
+    state.monstersTotal++
+    return m
+  }
+  let lead: Monster
+  if (tier === SUM_BOSS && boss !== undefined) {
+    lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul, pow, lvl), 0)
+  } else if (tier === SUM_UNIQUE) {
+    const u = makeMonster(state, kind, at.x, at.y, pack, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
+    u.elite = rollAffixes(state.rng, 1 | EA_UNIQUE, Math.min(4, UNIQUE.affixes + tr.affix), affixSkip(kind))
+    lead = wake(u, 0)
+  } else if (tier === SUM_ELITE) {
+    const def = MONSTER_LIST[kind]
+    const e = makeMonster(state, kind, at.x, at.y, pack, hpMul * (def.eliteHp ?? ELITE.hp), Math.round(pow * ELITE.pow), lvl)
+    e.elite = rollAffixes(state.rng, 1, Math.min(4, affixCount(lvl) + 1 + tr.affix), affixSkip(kind))
+    lead = wake(e, 0)
+  } else {
+    lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul, pow, lvl), 0)
+  }
+  // 호위 · 무리: 우두머리 · 정예는 같은 종류 셋, 좀비 떼는 일곱을 더 데려온다
+  const more = tier === SUM_BOSS ? 0 : tier === SUM_HORDE ? 7 : 3
+  for (let i = 0; i < more; i++) {
+    const a = (a0 + 200 + i * 341) & 1023
+    const g = moveCircle(map, at.x, at.y, r, cosA(a) * (40 + (i >> 2) * 30), sinA(a) * (40 + (i >> 2) * 30))
+    wake(makeMonster(state, kind, g.x, g.y, pack, hpMul, pow, lvl), i + 1)
+  }
+  return lead
 }
 
 /** 분열로 나온 구울을 넣는다: 깨어 있고, 죽은 자리 둘레에 조금씩 벌려 놓는다 */
@@ -2923,6 +3082,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     else if (npcNear(p.area, p.x, p.y) === 'stash') p.stash = sortItems(p.stash)
     return
   }
+  if (cmd === CMD_DONATE) {
+    donateCommand(state, map, p, arg)
+    return
+  }
   if (cmd === CMD_LOCK) {
     const it = p.bag[arg]
     if (it) {
@@ -3053,6 +3216,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
     if (m.hp <= 0) continue
     const def = MONSTER_LIST[m.kind]
     m.moving = 0
+    if (m.rage && --m.rage === 0) m.pow = Math.round(m.pow / RAGE_POW)
     if (m.mark > 0) m.mark--
     if (m.vuln > 0 && --m.vuln === 0) m.vulnPct = 0
     if (m.st === MS_SLEEP) {
@@ -3324,6 +3488,7 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
   }
   let speed = away ? def.speed * 0.8 : def.speed
   if (m.elite & EA_FAST) speed *= AFFIX_TUNE.fast
+  if (m.rage) speed *= RAGE_SPEED
   if (m.stage >= 2 && def.special === 'lord') speed *= LORD.rageSpeed
   if (m.slow > 0) speed *= 0.5
   const r = moveCircle(map, m.x, m.y, def.r, dirX * speed, dirY * speed)

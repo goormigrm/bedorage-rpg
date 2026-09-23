@@ -16,7 +16,7 @@ export interface ChatLine {
   name: string
   text: string
   /** 이름 색 (나 · 동료 · 알림) */
-  kind: 'me' | 'ally' | 'sys'
+  kind: 'me' | 'ally' | 'sys' | 'stream' | 'don'
   at: number
 }
 

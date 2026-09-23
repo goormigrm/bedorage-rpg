@@ -623,6 +623,9 @@ export class D4Hud {
     c.restore()
   }
 
+  /** 후원 소환 이름표 (renderer3d 가 넣어 준다) */
+  summonLabel: ((by: number, seq: number) => string | undefined) | null = null
+
   /** 위 가운데: 보스 체력 (깨어 있을 때만) — 디아블로식 긴 막대 */
   drawBoss(h: HudCtx, s: GameState): void {
     const boss = s.monsters.find((m) => m.hp > 0 && isBossLike(m) && m.st !== 0)
@@ -645,7 +648,9 @@ export class D4Hud {
     c.textAlign = 'center'
     c.textBaseline = 'alphabetic'
     c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
-    c.fillText(unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name, h.W / 2, y + 8)
+    const who = boss.sum !== undefined ? this.summonLabel?.(boss.sumBy ?? -1, boss.sum - 1) : undefined
+    const name = who ? `${who} ${MONSTER_LIST[boss.kind].name}${unique ? ' · 중간보스' : ''}` : unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name
+    c.fillText(name, h.W / 2, y + 8)
   }
 
   /** 지금 판이 던전인가 (집중 구슬 · 구르기 충전) — hud 가 매 프레임 넣는다 */
