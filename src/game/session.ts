@@ -17,6 +17,7 @@ import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
 import { showEnding, showIntro } from '../ui/ending'
 import { showForgeFx } from '../ui/forgefx'
+import { isKey, keyLabel, keysHintHtml, onKeymap } from './keymap'
 import { LORD_KIND, TIER_LABEL, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
@@ -227,6 +228,8 @@ export class Session {
   private ticker: Ticker
   private lastTick = performance.now()
   private lobbyBeacon = 0
+  /** 키 설정 알림 끊기 */
+  private offKeymap: () => void = () => {}
 
   constructor(
     host: HTMLElement,
@@ -265,13 +268,13 @@ export class Session {
         <div class="game-stage" id="stage">
           <div class="game-ui">
             <div class="top-right"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
-            <div class="keys"><b>WASD</b> 이동 · <b>마우스</b> 조준·<b>좌클릭</b> 사격 · <b>우클릭</b> 정조준 · <b>Q·E</b> 스킬 · <b>R</b> 궁극기 · <b>Space</b> 구르기 · <b>Shift</b> 달리기 · <b>F</b> 이동·열기·일으키기 · <b>T</b> 타운 포털 · <b>I</b> 가방 · <b>K</b> 스킬 · <b>C</b> 능력치 · <b>J</b> 퀘스트 · <b>M</b> 지도 · <b>1·2</b> 배운 스킬 · <b>B</b> 음성 · <b>Enter</b> 채팅 · <b>V</b> 신호 · <b>Esc</b> 메뉴</div>
+            <div class="keys">${keysHintHtml()}</div>
             <div class="winbtns" id="winbtns">
-              <button class="wbtn" data-win="bag" title="가방 (I)">가방<small>I</small></button>
-              <button class="wbtn" data-win="skill" title="스킬 (K)">스킬<small>K</small></button>
-              <button class="wbtn" data-win="attr" title="능력치 (C)">능력치<small>C</small></button>
-              <button class="wbtn" data-win="quest" title="퀘스트 (J)">퀘스트<small>J</small></button>
-              <button class="wbtn" data-win="map" title="지도 (M)">지도<small>M</small></button>
+              <button class="wbtn" data-win="bag" title="가방 (${keyLabel('bag')})">가방<small>${keyLabel('bag')}</small></button>
+              <button class="wbtn" data-win="skill" title="스킬 (${keyLabel('skills')})">스킬<small>${keyLabel('skills')}</small></button>
+              <button class="wbtn" data-win="attr" title="능력치 (${keyLabel('attr')})">능력치<small>${keyLabel('attr')}</small></button>
+              <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
+              <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
@@ -359,6 +362,7 @@ export class Session {
       },
     )
     this.bindWinButtons()
+    this.offKeymap = onKeymap(() => this.refreshKeyLabels())
     // 도입 장면: **새 캐릭터로 처음** 던전에 들어섰을 때 한 번 (레벨 1 · 아직 아무 퀘스트도 받지 않았다)
     if (!this.arena && !cfg.resumeState) {
       const me = this.state.players[this.cfg.localPlayer]
@@ -670,7 +674,7 @@ export class Session {
 
   /** 눌러서 말하기: B 를 떼면 멈춘다 */
   private onKeyUp = (e: KeyboardEvent): void => {
-    if (e.key.toLowerCase() !== 'b' || !this.voice || this.voice.mode !== 'ptt') return
+    if (!isKey(e, 'voice') || !this.voice || this.voice.mode !== 'ptt') return
     void this.voice.hold(false).then(() => this.syncVoiceUi())
   }
 
@@ -815,15 +819,14 @@ export class Session {
       e.preventDefault()
       return
     }
-    if (e.key === 'n' || e.key === 'N') {
+    // 창 · 기타 키는 설정에서 바꿀 수 있다 (keymap.ts — e.code 로 보므로 한글 입력 상태에서도 된다)
+    if (isKey(e, 'mute')) {
       this.sfx.toggle()
       this.syncMute()
       return
     }
-    // 관전 중 대상 바꾸기 (A/D 와 좌우 화살표 둘 다)
-    const k = e.key.toLowerCase()
     // 가방 창: I 또는 Tab (Esc 로도 닫힌다)
-    if (k === 'i' || e.key === 'Tab') {
+    if (isKey(e, 'bag') || e.key === 'Tab') {
       if (this.overlay.hidden) this.inventory.toggle()
       e.preventDefault()
       return
@@ -834,7 +837,7 @@ export class Session {
       return
     }
     // 퀘스트 기록: J
-    if (k === 'j' && !this.arena) {
+    if (isKey(e, 'quest') && !this.arena) {
       this.quests.toggle()
       e.preventDefault()
       return
@@ -845,7 +848,7 @@ export class Session {
       return
     }
     // 전체 지도: M (2026-09-20 — 미니맵은 주변만 보여 준다)
-    if (k === 'm' && !this.arena) {
+    if (isKey(e, 'map') && !this.arena) {
       if (this.overlay.hidden) this.renderer.mapOpen = !this.renderer.mapOpen
       this.applyKeys()
       e.preventDefault()
@@ -858,7 +861,7 @@ export class Session {
       return
     }
     // 스킬 창: K (Esc 로도 닫힌다)
-    if (k === 'k') {
+    if (isKey(e, 'skills')) {
       if (this.overlay.hidden) this.skills.toggle()
       e.preventDefault()
       return
@@ -869,7 +872,7 @@ export class Session {
       return
     }
     // 능력치 창: C (Esc 로도 닫힌다)
-    if (k === 'c' && !this.arena) {
+    if (isKey(e, 'attr') && !this.arena) {
       if (this.overlay.hidden) this.chars.toggle()
       e.preventDefault()
       return
@@ -880,12 +883,13 @@ export class Session {
       return
     }
     // 마을 NPC: 곁에서 F 로 창을 연다 (닫을 때도 F · Esc)
-    if (this.town.open && (k === 'f' || e.key === 'Escape')) {
+    const use = isKey(e, 'use')
+    if (this.town.open && (use || e.key === 'Escape')) {
       this.town.show(null)
       e.preventDefault()
       return
     }
-    if (k === 'f' && !this.arena) {
+    if (use && !this.arena) {
       const me = this.state.players[this.cfg.localPlayer]
       const npc = me && me.alive && !me.left ? npcNear(me.area, me.x, me.y) : null
       if (npc) {
@@ -894,30 +898,30 @@ export class Session {
       }
     }
     // 웨이포인트: 곁에서 F 로 창을 연다 (닫을 때도 F · Esc)
-    if (this.waypoints.open && (k === 'f' || e.key === 'Escape')) {
+    if (this.waypoints.open && (use || e.key === 'Escape')) {
       this.waypoints.toggle(false)
       e.preventDefault()
       return
     }
-    if (k === 'f' && !this.arena && this.nearWaypoint()) {
+    if (use && !this.arena && this.nearWaypoint()) {
       this.waypoints.toggle(true)
       return
     }
-    if (this.spectate >= 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || k === 'a' || k === 'd')) {
-      const next = this.nextAlive(e.key === 'ArrowLeft' || k === 'a' ? this.spectate - 2 : this.spectate)
+    if (this.spectate >= 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || isKey(e, 'left') || isKey(e, 'right'))) {
+      const next = this.nextAlive(e.key === 'ArrowLeft' || isKey(e, 'left') ? this.spectate - 2 : this.spectate)
       if (next >= 0) this.spectate = next
       e.preventDefault()
       return
     }
     // 신호: 커서가 가리키는 곳에 "여기" 를 찍는다 (협동이라 언제나)
-    if (k === 'b' && this.voice) {
+    if (isKey(e, 'voice') && this.voice) {
       e.preventDefault()
       if (e.repeat) return
       if (this.voice.mode === 'ptt') void this.voice.hold(true).then(() => this.syncVoiceUi())
       else void this.toggleVoice()
       return
     }
-    if (e.key === 'v' || e.key === 'V') {
+    if (isKey(e, 'mark')) {
       this.sendMark()
       e.preventDefault()
       return
@@ -940,6 +944,20 @@ export class Session {
       else this.hideOverlay()
       e.preventDefault()
     }
+  }
+
+  /** 키 설정이 바뀌면 조작 안내 띠 · 창 단추 글자를 다시 쓴다 (2026-09-23 키 재설정) */
+  private refreshKeyLabels(): void {
+    const bar = this.stage.querySelector('.keys') as HTMLElement | null
+    if (bar) bar.innerHTML = keysHintHtml()
+    const act: Record<string, Parameters<typeof keyLabel>[0]> = { bag: 'bag', skill: 'skills', attr: 'attr', quest: 'quest', map: 'map' }
+    this.stage.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
+      const a = act[b.dataset.win as string]
+      if (!a) return
+      const sm = b.querySelector('small')
+      if (sm) sm.textContent = keyLabel(a)
+      b.title = `${b.firstChild?.textContent ?? ''} (${keyLabel(a)})`
+    })
   }
 
   private applyKeys(): void {
@@ -2130,6 +2148,7 @@ export class Session {
     this.czBadge?.dispose()
     this.czBadge = null
     window.removeEventListener('keyup', this.onKeyUp)
+    this.offKeymap()
     clearInterval(this.lobbyBeacon)
     if (this.cfg.lobby) {
       // 방송만 거둔다. 통로는 페이지 공용이라 닫지 않는다 — 닫으면 다음 로비의 새 방이 남에게 안 보인다(main.ts 주석, 2026-09-06)

@@ -11,6 +11,7 @@ import {
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
 import { itemHtml } from './inventory'
+import { keyLabel } from '../game/keymap'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
 import { CMD_QUEST } from '../core/input'
 
@@ -291,7 +292,7 @@ export class TownPanel {
   /** 창을 그리고 단추를 잇는다 (모든 NPC 공용) */
   private paint(npc: NpcId, me: PlayerState, body: string): void {
     this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${me.gold} 골드</span><button class="inv-x" data-x>✕</button></div>
-      <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">F · Esc 로 닫기</p>`
+      <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
     this.el.classList.toggle('wide', npc === 'stash')
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
     this.el.classList.toggle('smith', npc === 'smith')

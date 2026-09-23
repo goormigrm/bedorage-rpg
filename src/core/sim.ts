@@ -884,7 +884,9 @@ export function createState(cfg: MatchConfig, maps: MapSource): GameState {
     // 상인 진열 (게임 시드 — 모두 같다). 여러 무기 · 등급이 조금 높다
     const srng = makeRng((cfg.seed ^ 0x5409) >>> 0)
     const lvl = Math.max(1, Math.round(players.filter((q) => !q.vacant).reduce((a, q) => a + q.level, 0) / Math.max(1, players.filter((q) => !q.vacant).length)))
-    for (let k = 0; k < 10; k++) state.shop.push(rollItem(srng, state.nextItemUid++, lvl + 1, WEAPON_IDS[k % WEAPON_IDS.length], 'shop', 0, 1))
+    // 무기 종류를 돌아가며 진열한다 — 물러난 무기(권총 · 리볼버)는 빼고 (2026-09-23: 상점에 "권총" 이 떠 있었다)
+    const kinds = WEAPON_IDS.filter((id) => !WEAPONS[id].retired)
+    for (let k = 0; k < 10; k++) state.shop.push(rollItem(srng, state.nextItemUid++, lvl + 1, kinds[k % kinds.length], 'shop', 0, 1))
   }
   for (const p of players) p.aim = atan2A(map.ph / 2 - p.y, map.pw / 2 - p.x)
   bindPrimary(state)

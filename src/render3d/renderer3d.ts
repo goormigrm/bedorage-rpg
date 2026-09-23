@@ -25,6 +25,7 @@ const BOSS_INTRO: Record<string, string> = {
 }
 import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
+import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, Hud, RenderOptions, ScreenText, VIEW_H, VIEW_W, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
@@ -2465,30 +2466,32 @@ export class Renderer3D {
       ctx.fillStyle = color
       ctx.fillText(text, s.x, s.y + 0.5)
     }
-    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · F`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    // 이름표의 키는 설정을 따른다 (2026-09-23 키 재설정 — 기본 F)
+    const F = keyLabel('use')
+    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · ${F}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
     // 다음 막 문 (보스를 잡았을 때만 보인다)
     const gdef = areaDef(curr.curArea)
     if (gdef.gate !== undefined && l.special && gateOpen(gdef, me)) {
-      label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · F`, '#e0a8ff')
+      label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · ${F}`, '#e0a8ff')
     }
     for (const n of townNpcs(curr.curArea)) {
       // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로)
       const q = me.quests ?? []
       const mark = n.id === 'elder' ? (q.some((v) => v === 2) ? '? ' : q.some((v) => v === 0) ? '! ' : '') : ''
-      label(n.x, n.y - 44, `${mark}${NPC_NAMES[n.id]} · F`, mark ? '#ffd84a' : '#e8d6a8')
+      label(n.x, n.y - 44, `${mark}${NPC_NAMES[n.id]} · ${F}`, mark ? '#ffd84a' : '#e8d6a8')
     }
     for (const o of curr.objects ?? []) {
       if (o.used || o.kind === OBJ_URN || Math.hypot(o.x - me.x, o.y - me.y) > 5 * 32) continue
-      label(o.x, o.y, o.kind === OBJ_SHRINE ? `${SHRINE_NAMES[o.v]} · F` : o.kind === OBJ_GOLDCHEST ? '금빛 상자 · F' : '상자 · F', o.kind === OBJ_GOLDCHEST ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : '#d8cfbf')
+      label(o.x, o.y, o.kind === OBJ_SHRINE ? `${SHRINE_NAMES[o.v]} · ${F}` : o.kind === OBJ_GOLDCHEST ? `금빛 상자 · ${F}` : `상자 · ${F}`, o.kind === OBJ_GOLDCHEST ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : '#d8cfbf')
     }
-    if (l.wp) label(l.wp.x, l.wp.y, '웨이포인트 · F', '#9ac8ff')
+    if (l.wp) label(l.wp.x, l.wp.y, `웨이포인트 · ${F}`, '#9ac8ff')
     if (isTown(curr.curArea)) {
       for (const q of curr.portals) {
         const at = townPortalSpot(l, q.owner)
         if (at) label(at.x, at.y - 40, `타운 포털 → ${AREAS[q.area].name}`, '#9ac8ff')
       }
     } else {
-      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, '타운 포털 · F', '#9ac8ff')
+      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, `타운 포털 · ${F}`, '#9ac8ff')
     }
     ctx.restore()
   }

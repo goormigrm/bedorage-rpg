@@ -5,6 +5,7 @@
 
 import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES } from '../core/items'
 import { isTouchDevice } from '../game/touch'
+import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } from '../game/keymap'
 
 const AUTOPICK_KEY = 'brpg.autopick'
 const REAL_KEY = 'brpg.real'
@@ -82,8 +83,65 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
     `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
+    (isTouchDevice() ? '' : keybindHtml()) +
     `</div>`
   )
+}
+
+/**
+ * 키 설정 (2026-09-23 — "RPG 에 보통 있는데 없는 것" 의 키 재설정). 접었다 펴는 칸 — 펴면 21 줄이라 Esc 메뉴가 길어진다.
+ * 단추를 누르고 새 키를 누르면 바뀐다. 이미 다른 행동에 걸린 키면 **서로 바뀐다**.
+ */
+let kbOpen = false
+let listening: Action | null = null
+let kbNote = ''
+function keybindHtml(): string {
+  if (!kbOpen) return `<div class="keybind"><button type="button" class="kb-toggle">키 설정 ▸</button></div>`
+  let groups = ''
+  let last = ''
+  for (const a of ACTIONS) {
+    if (a.group !== last) {
+      groups += `<div class="kb-g">${a.group}</div>`
+      last = a.group
+    }
+    const wait = listening === a.id
+    groups += `<div class="kb-row${wait ? ' wait' : ''}"><span>${a.label}</span><button type="button" data-kb="${a.id}" class="${keyLabel(a.id) !== label(a.def) ? 'changed' : ''}">${wait ? '키를 누르세요…' : keyLabel(a.id)}</button></div>`
+  }
+  return `<div class="keybind open">
+    <div class="aph"><button type="button" class="kb-toggle">키 설정 ▾</button><button type="button" class="kb-reset">기본값으로</button></div>
+    <div class="kb-grid">${groups}</div>
+    <p class="apn">${kbNote || '단추를 누르고 바꿀 키를 누르세요. 이미 쓰는 키면 서로 바뀝니다 · Esc 는 취소 · 화살표는 늘 이동 · 마우스(사격 · 정조준)는 그대로.'}</p>
+  </div>`
+}
+
+/** 새 키를 기다린다: 창에서 가장 먼저(capture) 잡아 게임 · 메뉴로 흘려보내지 않는다 */
+let capture: ((e: KeyboardEvent) => void) | null = null
+function listen(a: Action | null, redraw: () => void): void {
+  listening = a
+  if (capture) window.removeEventListener('keydown', capture, true)
+  capture = null
+  if (!a) return
+  capture = (e: KeyboardEvent) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    if (e.key === 'Escape') {
+      kbNote = ''
+      listen(null, redraw)
+      redraw()
+      return
+    }
+    const code = codeOf(e)
+    if (RESERVED.has(code)) {
+      kbNote = `${label(code)} 는 정해진 뜻이 있어 걸 수 없습니다 — 다른 키를 누르세요.`
+      redraw()
+      return
+    }
+    bind(a, code)
+    kbNote = `${ACTIONS.find((x) => x.id === a)?.label} → ${label(code)}`
+    listen(null, redraw)
+    redraw()
+  }
+  window.addEventListener('keydown', capture, true)
 }
 
 /** 설정 칸의 단추를 잇는다. 값이 바뀌면 칸을 다시 그리고 다시 잇는다 */
@@ -106,6 +164,31 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         setKeysShown(on)
         o.onKeys?.(on)
       }
+      redraw()
+    }
+  })
+  // 키 설정
+  box.querySelectorAll<HTMLButtonElement>('.kb-toggle').forEach((b) => {
+    b.onclick = () => {
+      kbOpen = !kbOpen
+      listen(null, redraw)
+      kbNote = ''
+      redraw()
+    }
+  })
+  const reset = box.querySelector<HTMLButtonElement>('.kb-reset')
+  if (reset)
+    reset.onclick = () => {
+      resetKeys()
+      listen(null, redraw)
+      kbNote = '모두 기본값으로 되돌렸습니다.'
+      redraw()
+    }
+  box.querySelectorAll<HTMLButtonElement>('[data-kb]').forEach((b) => {
+    b.onclick = () => {
+      const a = b.dataset.kb as Action
+      kbNote = ''
+      listen(listening === a ? null : a, redraw)
       redraw()
     }
   })

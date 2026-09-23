@@ -10,7 +10,8 @@
 
 import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
-import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SKILL_KEYS, SkillId } from '../core/skills'
+import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
+import { keyLabel, skillKeyLabel } from '../game/keymap'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
 import { AREAS, QUESTS, areaDef, isDeadEnd, isTown } from '../core/world'
@@ -359,7 +360,7 @@ export class D4Hud {
       const node = slotNode(me, k)
       if (node < 0) {
         // 빈 칸: 점선 네모 + 옅은 '+' (전에는 'K' 글자만 덩그러니 놓여 뜻이 통하지 않았다 — 2026-09-20)
-        slot(h, slotX(pos), by, S, SKILL_KEYS[k], 0, 0, () => {
+        slot(h, slotX(pos), by, S, skillKeyLabel(k), 0, 0, () => {
           const mx = slotX(pos) + S / 2
           const my = by + S / 2
           c.save()
@@ -388,13 +389,13 @@ export class D4Hud {
       const cost = focusCost(def, me.build, node)
       const poor = !def.ult && me.focus < cost
       const active = this.activeFor(id, me)
-      slot(h, slotX(pos), by, S, SKILL_KEYS[k], poor && cdK <= 0 ? 1 : cdK, (me.cd[k] ?? 0) / 60, (dim) => drawSkillIcon(c, id, slotX(pos) + S / 2, by + S / 2, S * 0.62, dim || poor), def.ult === true, active)
+      slot(h, slotX(pos), by, S, skillKeyLabel(k), poor && cdK <= 0 ? 1 : cdK, (me.cd[k] ?? 0) / 60, (dim) => drawSkillIcon(c, id, slotX(pos) + S / 2, by + S / 2, S * 0.62, dim || poor), def.ult === true, active)
       rects.push({ x: slotX(pos), y: by, id, i: k })
     })
     // 구르기: 던전은 충전 2 (작은 점), 투기장은 기력
     const dashCd = me.dashCooldown / Math.max(1, CHARACTERS[me.char].dashCooldown * 1.6)
     const dungeon = me.dashCharges !== undefined && this.dungeon
-    slot(h, slotX(5), by, S, 'Space', dungeon ? (me.dashCharges > 0 ? 0 : dashCd) : me.stamina < 34 ? 1 : dashCd, me.dashCooldown / 60, (dim) => drawDashIcon(c, slotX(5) + S / 2, by + S / 2, S * 0.62, dim))
+    slot(h, slotX(5), by, S, keyLabel('dash'), dungeon ? (me.dashCharges > 0 ? 0 : dashCd) : me.stamina < 34 ? 1 : dashCd, me.dashCooldown / 60, (dim) => drawDashIcon(c, slotX(5) + S / 2, by + S / 2, S * 0.62, dim))
     if (dungeon) {
       for (let q = 0; q < 2; q++) {
         c.fillStyle = q < me.dashCharges ? '#7fd0f0' : 'rgba(255,255,255,0.15)'
@@ -460,7 +461,7 @@ export class D4Hud {
     } else if (over >= 0) this.hoverT += dt
     if (over >= 0 && this.hoverT > 0.35) {
       const r = rects[over]
-      this.tooltip(h, SKILLS[r.id!], r.x + S / 2, r.y - 22, SKILL_KEYS[over])
+      this.tooltip(h, SKILLS[r.id!], r.x + S / 2, r.y - 22, skillKeyLabel(over))
     }
   }
 

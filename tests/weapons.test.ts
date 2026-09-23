@@ -142,6 +142,14 @@ describe('무기 (2026-09-19)', () => {
     expect(rolled).toBe(0)
   })
 
+  it('상인 진열에도 물러난 무기가 없다 (2026-09-23 — 상점에 "권총" 이 떠 있었다)', () => {
+    for (const seed of [1, 2, 3, 7, 11, 23, 42, 99]) {
+      const map = buildMap('town1', 1, seed)
+      const s = createState({ seed, chars: ['dangun'] }, map)
+      for (const it of s.shop) if (it.slot === SLOT_WEAPON) expect(WEAPONS[WEAPON_IDS[it.wt]].retired).toBeFalsy()
+    }
+  })
+
   it('옛 세이브의 권총 · 리볼버는 SMG · 화염방사기로 바뀐다 (단군 · 우원)', () => {
     const pistol = { uid: 1, slot: SLOT_WEAPON, rarity: 0, ilvl: 1, wt: WEAPON_IDS.indexOf('pistol'), aff: [], price: 1 } as unknown as Item
     const { s } = ready('dangun', [pistol])

@@ -8,6 +8,10 @@ import { WEAPONS } from '../core/weapons'
 import { VIEW_H, VIEW_W } from '../render/hud'
 import { moveDirFromScreen } from '../render3d/camera'
 import { VIEW_RADIUS_PX, canSee } from '../render3d/vision'
+import { Action, codeOf, keyOf } from './keymap'
+
+/** 판에 들어가는 키 (누르고 있는 동안 켜진다). 창 키(I · K …)는 세션이 따로 본다 */
+const PLAY_ACTIONS: Action[] = ['up', 'down', 'left', 'right', 'dash', 'sprint', 'use', 'portal', 'skill1', 'skill2', 'ult', 'skill3', 'skill4']
 import { TouchControls } from './touch'
 
 interface AimSource {
@@ -65,9 +69,11 @@ export class LocalInput {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
-      if (['w', 'a', 's', 'd', ' ', 'r', 'f', 't', '1', '2', '3', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(k)) {
-        if (down) this.keys.add(k)
-        else this.keys.delete(k)
+      // 키는 e.code 로 본다 (keymap.ts — 한글 입력 상태에서도 W 는 KeyW 다). 게임 키로 걸린 것과 화살표만 잡는다
+      const code = codeOf(e)
+      if (PLAY_ACTIONS.some((a) => keyOf(a) === code) || code.startsWith('Arrow') || code === 'Digit3') {
+        if (down) this.keys.add(code)
+        else this.keys.delete(code)
         e.preventDefault()
       } else if (k === 'tab') {
         // 탭은 브라우저 포커스를 옮기므로 막는다 (RPG 에서는 원정 중 캐릭터 교체가 없다 — 캐릭터 = 세이브 칸)
@@ -173,13 +179,14 @@ export class LocalInput {
   /** 내 캐릭터 월드 위치를 받아 조준각을 계산한다 */
   sample(renderer: AimSource, meX: number, meY: number, auto?: AutoAimCtx): Input {
     const k = this.keys
-    // 화면 기준 (W = 화면 위) → 카메라 요를 반영한 월드 8방향
+    const on = (a: Action) => k.has(keyOf(a))
+    // 화면 기준 (W = 화면 위) → 카메라 요를 반영한 월드 8방향. 화살표는 늘 두 번째 이동 키
     let sx = 0
     let sy = 0
-    if (k.has('a') || k.has('arrowleft')) sx -= 1
-    if (k.has('d') || k.has('arrowright')) sx += 1
-    if (k.has('w') || k.has('arrowup')) sy -= 1
-    if (k.has('s') || k.has('arrowdown')) sy += 1
+    if (on('left') || k.has('ArrowLeft')) sx -= 1
+    if (on('right') || k.has('ArrowRight')) sx += 1
+    if (on('up') || k.has('ArrowUp')) sy -= 1
+    if (on('down') || k.has('ArrowDown')) sy += 1
     let { mx, my } = moveDirFromScreen(sx, sy)
     const t = this.touch
     if (t && (t.move.x !== 0 || t.move.y !== 0)) {
@@ -202,19 +209,20 @@ export class LocalInput {
     // Shift 는 달리기다. 구르기는 Space (전에는 Shift 도 구르기였다)
     // 구르기는 Space 뿐이다. Ctrl 도 잠깐 넣었다가(2026-09-05) 뺐다 — Ctrl 을 누른 채 W 를 누르면 크롬이 탭을 닫는데
     // preventDefault 로 막을 수 없어 사용자가 위험하다고 판단했다
-    if (k.has(' ') || t?.takeDash()) buttons |= BTN_DASH
+    if (on('dash') || t?.takeDash()) buttons |= BTN_DASH
     // 폰은 달리기 버튼으로 켜고 끈다 (스틱 끝까지 밀기는 늘 켜져 있어 무조건 달리는 꼴이었다)
-    if (k.has('shift') || t?.sprint) buttons |= BTN_SPRINT
+    if (on('sprint') || t?.sprint) buttons |= BTN_SPRINT
     // F: 쓰러진 동료 일으키기 (누르고 있는 동안)
-    if (k.has('f')) buttons |= BTN_USE
-    if (k.has('t')) buttons |= BTN_PORTAL
-    if (k.has('3')) buttons |= BTN_POTION
+    if (on('use')) buttons |= BTN_USE
+    if (on('portal')) buttons |= BTN_PORTAL
+    if (k.has('Digit3')) buttons |= BTN_POTION
     // 스킬 Q · E, 궁극기 R (누르고 있으면 준비되는 대로 쓴다). 궁극기는 X 였다가 2026-09-19 요청으로 R — 재장전이 없어져 빈 키였다
-    if (k.has('q')) buttons |= BTN_SKILL1
-    if (k.has('e')) buttons |= BTN_SKILL2
-    if (k.has('r')) buttons |= BTN_ULT
-    if (k.has('1')) buttons |= BTN_SKILL3
-    if (k.has('2')) buttons |= BTN_SKILL4
+    // 2026-09-23: 모두 설정 창에서 바꿀 수 있다 (keymap.ts)
+    if (on('skill1')) buttons |= BTN_SKILL1
+    if (on('skill2')) buttons |= BTN_SKILL2
+    if (on('ult')) buttons |= BTN_ULT
+    if (on('skill3')) buttons |= BTN_SKILL3
+    if (on('skill4')) buttons |= BTN_SKILL4
     t?.takeSwap()
     const char = this.pendingChar
     this.pendingChar = 0
