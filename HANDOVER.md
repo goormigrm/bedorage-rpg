@@ -340,6 +340,7 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
   - 브라우저에서 게임 모듈을 import 할 때: 개발 서버는 고친 파일을 `?t=` 주소로 준다 — 상태를 가진 모듈(stream.ts 등)은 `performance.getEntriesByType('resource')` 에서 게임이 쓰는 주소를 찾아 불러야 같은 사본이다.
   - 영상 다시 뜨기: `tools/trailer.js` 머리 주석. `t.start({ diag: { sec, shots } })` 는 영상 없이 장면별 상태(카메라 · 빛 · 밝기)를 모은다.
   - ⚠ 2026-09-24: 이 세션의 미리보기 도구(preview_start)는 **이름과 상관없이 철FPS 의 dev(덕, 5173)만** 띄웠다. RPG 는 `npx vite --port 5174 --strictPort` 를 백그라운드로 띄우고 `preview_start({url: 'http://localhost:5174/bedorage-rpg/?shot=1'})` 로 붙었다(`?shot=1` 이 있어야 `window.__session` 이 생긴다 · 새 출처라 세이브가 비어 인트로 "시작하기" 를 먼저 누른다 · 대기실 "빈 자리는 봇으로 채우기"). 끝나면 그 백그라운드 작업을 멈출 것.
+  - 소개 영상 주인공은 **철면란 · 닉네임 철면수심**(2026-09-24 사용자). 로비에서 `#nick` 에 철면수심 · `.char[data-id="cheolmyeon"]` 을 고른 뒤 방을 만든다.
   - 영상 장면 확인: ffmpeg 가 없다 — 같은 개발 서버에서 `<video src=/bedorage-rpg/docs/img/trailer.webm>` 을 열어 시각마다 캔버스에 그려 `/__shot` 으로 `.frames/shots/` 에 모아 본다.
   - 게임 설명 · UI · 공지 · 영상에 **'디아블로' 라는 말을 쓰지 않는다** (2026-09-23 사용자).
 - ✅ **최적화 규칙** (v0.49.0 — 계측은 `npx vite-node tools/perf.ts`(sim) · 브라우저 GPU 는 EXT_disjoint_timer_query_webgl2 로 `__session.frame` 을 감싸 잰다(readPixels 동기화는 잡음이 커서 못 쓴다)):
