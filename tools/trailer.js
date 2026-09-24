@@ -518,7 +518,8 @@ function ultScenes() {
     })
     if (i === 0) A.push({ t: t + 2.2, fn: () => (ov.title.out = now()) })
     at(i === 0 ? 2.6 : 0.8, () => bossUlt(kind))
-    at(4.6, () => {})
+    // 즉사기 예고 4초(군주 5초 — 2026-09-24) 가 끝나 터지는 것까지
+    at(kind === 15 ? 5.8 : 4.9, () => {})
   })
   at(0.6, () => fadeTo(1, 1200))
   at(1.4, null)
