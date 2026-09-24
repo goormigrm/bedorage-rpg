@@ -1722,13 +1722,19 @@ export class Renderer3D {
     for (const m of curr.monsters) {
       live.add(m.id)
       let near = false
+      // 거대한 보스는 몸 가장자리 넷도 본다 — 가운데만 보면 결투장 둘레 벽 뒤로 가운데가 숨는 순간 온몸이 사라졌다
+      // (2026-09-24 사용자: "도살자가 갑자기 맵에서 없어진다")
+      const br = isGiant(m) ? bodyR(m) : 0
       for (const v of viewers) {
-        if ((m.x - v.x) ** 2 + (m.y - v.y) ** 2 <= (rpx + 40) ** 2) {
+        if ((m.x - v.x) ** 2 + (m.y - v.y) ** 2 <= (rpx + 40 + br) ** 2) {
           near = true
           break
         }
       }
-      const vis = m.mark > 0 || (near && canSee(this.map, viewers, m.x, m.y, rpx))
+      const seeAt = (x: number, y: number) => canSee(this.map, viewers, x, y, rpx + br)
+      const vis =
+        m.mark > 0 ||
+        (near && (seeAt(m.x, m.y) || (br > 0 && (seeAt(m.x + br, m.y) || seeAt(m.x - br, m.y) || seeAt(m.x, m.y + br) || seeAt(m.x, m.y - br)))))
       const t = vis ? 0.22 : Math.max(0, (this.seenM.get(m.id) ?? 0) - this.lastDt)
       this.seenM.set(m.id, t)
       if (t > 0) this.hiddenM.delete(m.id)

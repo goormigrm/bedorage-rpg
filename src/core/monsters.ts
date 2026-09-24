@@ -175,7 +175,8 @@ export const MONSTER_LIST: MonsterDef[] = [
   {
     // 보스 — 관리인: 지하도의 문지기. 쇠곤봉 휘두르기. 패턴 앞뒤 휘두르기 · 내려찍기 · 충격파 십자 · 방패병 (절반 아래 여진) — BOSS_PLANS
     id: 'warden', idx: 12, name: '관리인',
-    hp: 15000, speed: 2.0, r: 26,
+    // 체력 15000 → 12000 (2026-09-24 사용자: "3막 관리인이 너무 어렵다")
+    hp: 12000, speed: 2.0, r: 26,
     attack: 'melee', dmg: 46, range: 20, windup: 26, recover: 32, cooldown: 55, arc: deg(90),
     knockRes: 0.95, globe: 1, xp: 380, loot: 1, boss: true, special: 'warden',
   },
@@ -318,11 +319,12 @@ export const BOSS_PATS: BossPatDef[] = [
   { id: 'shades', name: '그림자 부르기', windup: 34 },
   // 즉사기 넷 (2026-09-24 사용자: "보스들은 모두 가끔 쓰는 패턴에 맞으면 레벨 · 탱에 상관없이 무조건 한 방에 죽는 스킬 —
   // 쓸 때는 보스가 특정 대사를 하고 화면에서도 주의하라는 게 잘 보이게"). 예고가 길다(2.5초) — 대사 · 경고를 읽고 피할 시간
-  { id: 'slaughter', name: '도살의 시간', windup: 150, kill: true, line: '신선한 고기다…!', hint: '도살자에게서 멀리 달아나라' },
-  { id: 'webdoom', name: '죽음의 거미줄', windup: 150, kill: true, line: '내 곁으로 오너라, 아이들아…', hint: '여왕 곁으로 파고들어라' },
-  { id: 'execute', name: '처형', windup: 150, kill: true, line: '내 앞에 선 자, 목을 내놓아라!', hint: '관리인의 등 뒤로 돌아가라' },
+  // 즉사기 예고 2.5 → 4초 · 군주 3.7 → 5초 (2026-09-24 사용자: "전체적으로 모든 보스 즉사기 피하는 게 어렵다 — 피할 시간을 더 많이")
+  { id: 'slaughter', name: '도살의 시간', windup: 240, kill: true, line: '신선한 고기다…!', hint: '도살자에게서 멀리 달아나라' },
+  { id: 'webdoom', name: '죽음의 거미줄', windup: 240, kill: true, line: '내 곁으로 오너라, 아이들아…', hint: '여왕 곁으로 파고들어라' },
+  { id: 'execute', name: '처형', windup: 240, kill: true, line: '내 앞에 선 자, 목을 내놓아라!', hint: '관리인의 등 뒤로 돌아가라' },
   // 군주: 예고 3.7초 · 빛 원을 넓게 (2026-09-24 사용자: "즉사기를 피할 시간을 확보할 수 있게 시전을 길게, 원 범위도 조금 넓혀 난이도를 낮춰")
-  { id: 'abyss', name: '심연의 심판', windup: 220, kill: true, line: '심연이 모두를 삼키리라.', hint: '빛나는 원 안으로 들어가라' },
+  { id: 'abyss', name: '심연의 심판', windup: 300, kill: true, line: '심연이 모두를 삼키리라.', hint: '빛나는 원 안으로 들어가라' },
 ]
 export const PAT: Record<BossPatId, number> = Object.fromEntries(BOSS_PATS.map((p, i) => [p.id, i])) as Record<BossPatId, number>
 
@@ -341,10 +343,11 @@ export const BP = {
   leap: { fly: 16, r: 150, pm: 450, max: 520 },
   venom: { r2: 150, r: 380, pm: 400 },
   // 3막 관리인
-  sweep: { r: 280, arc: 176, back: 36, pm: 400 },
-  slam: { r: 190, pm: 450 },
-  cross: { len: 560, w: 30, second: 44, pm: 400 },
-  quake: { ring: 170, n: 3, gap: 30, pm: 350 },
+  // 관리인 패턴 피해 약 25% 낮춤 (2026-09-24 사용자: "3막 관리인이 너무 어렵다 — 적정 레벨 4명이 깰 수 있게")
+  sweep: { r: 280, arc: 176, back: 36, pm: 300 },
+  slam: { r: 190, pm: 340 },
+  cross: { len: 560, w: 30, second: 44, pm: 300 },
+  quake: { ring: 170, n: 3, gap: 30, pm: 260 },
   // 4막 심연의 군주
   nova: { pm: 200 },
   meteor: { r: 70, pm: 400 },
@@ -353,7 +356,8 @@ export const BP = {
   // 즉사기: 도살자 둘레 원 · 여왕 곁만 안전한 고리 · 관리인 앞 210° 부채 · 군주에게서 떨어진 빛 원 하나만 안전 (고리의 가운데)
   slaughter: { r: 330 },
   webdoom: { r2: 165, r: 1600 },
-  execute: { r: 1100, arc: 300 },
+  // 처형: 앞 210° → 176° (arc 는 반각) — 등 뒤 안전한 자리가 150° → 184° (거대한 몸을 돌아 들어가기 어려웠다)
+  execute: { r: 1100, arc: 250 },
   abyss: { r2: 150, r: 1800, dist: 250 },
 }
 
@@ -377,28 +381,29 @@ export const BOSS_PLANS: Partial<Record<MonsterKindId, BossPlan>> = {
   // 도살자: 멀면 돌진 · 붙으면 회전 베기 · 갈고리로 끌어와 칼질. 절반 아래면 고기 비까지
   butcher: {
     order: [['charge', 'spin', 'hook'], ['charge', 'meat', 'spin', 'hook']],
-    every: [120, 95],
+    // 패턴 사이를 길게 — 그동안은 쫓아와 평타 (2026-09-24 사용자: "모든 보스가 패턴을 실행하는 주기를 천천히 · 중간중간 평타를 섞게")
+    every: [200, 160],
     stages: [0.5],
     speed: [1, 1.2],
   },
   // 거미 여왕: 부채 · 도약 · 새끼 · 독 안개(곁으로 파고들어야 산다). 절반 아래면 부채가 아홉 갈래 · 도약을 두 번
   queen: {
     order: [['fan', 'leap', 'brood', 'venom'], ['fan', 'leap', 'venom', 'brood', 'leap']],
-    every: [150, 115],
+    every: [240, 190],
     stages: [0.5],
     speed: [1, 1.15],
   },
   // 관리인: 앞뒤 휘두르기 · 내려찍기 · 충격파 십자(두 번 — 두 번째는 비스듬히) · 방패병. 절반 아래면 여진(퍼지는 고리)
   warden: {
     order: [['sweep', 'slam', 'cross', 'guards'], ['sweep', 'quake', 'cross', 'slam', 'guards']],
-    every: [170, 120],
+    every: [260, 200],
     stages: [0.5],
     speed: [1, 1.15],
   },
   // 심연의 군주: 불꽃 고리 · 불비 · 심연 광선 → (2/3) 그림자 · 지옥불(안 → 밖) → (1/3) 광선 두 번 · 더 자주 · 더 빨리
   lord: {
     order: [['nova', 'meteor', 'spokes'], ['nova', 'meteor', 'shades', 'hellfire', 'spokes'], ['spokes', 'meteor', 'hellfire', 'nova', 'shades']],
-    every: [200, 150, 110],
+    every: [300, 240, 190],
     stages: [2 / 3, 1 / 3],
     speed: [1, 1.1, 1.3],
   },

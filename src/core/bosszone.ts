@@ -48,8 +48,8 @@ export function zoneEscape(z: ZoneShape, px: number, py: number): { x: number; y
     return inward ? { x: -dx / d, y: -dy / d } : { x: dx / d, y: dy / d }
   }
   if (shape === ZS_CONE) {
-    // 반 바퀴가 넘는 부채(관리인 처형): 등 뒤로
-    if ((z.arc ?? 0) >= 256) {
+    // 반 바퀴 안팎의 부채(관리인 처형 — 앞 176°): 등 뒤로
+    if ((z.arc ?? 0) >= 200) {
       const a = ((z.a ?? 0) + 512) & 1023
       return { x: cosA(a), y: sinA(a) }
     }

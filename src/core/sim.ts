@@ -1031,7 +1031,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     found: 0,
     bestFound: -1,
     area: 0,
-    wps: (sh.wps ?? 0) & ((1 << WAYPOINTS.length) - 1),
+    // 잡은 막 보스의 보스 방 웨이포인트는 늘 안다 — 예전 저장이 16비트로 잘라 지운 것(거미 둥지 · 관리인의 방 · 심연의 옥좌)을 되살린다
+    wps: ((sh.wps ?? 0) | bossRoomWps(sh.quests)) & ((1 << WAYPOINTS.length) - 1),
     btnPrev: 0,
     exitLock: 0,
     portalCast: 0,
@@ -1052,7 +1053,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     carpetDmg: 0,
     build: sanitizeBuild(sh.build),
     spBonus: questPoints(sh.quests ?? []),
-    quests: Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, sh.quests?.[i] ?? 0))),
+    quests: Array.from({ length: QUESTS.length }, (_, i) => Math.max(0, Math.min(3, sh.quests?.[i] ?? 0))),
     merc: -1,
   }
 }
@@ -3801,6 +3802,17 @@ function bossPick(state: GameState, map: GameMap, m: Monster, min: number, max: 
   let best = ok[0]
   for (const p of ok) if (len(p.x - m.x, p.y - m.y) > len(best.x - m.x, best.y - m.y)) best = p
   return best
+}
+
+/** 잡은 막 보스(막 보스 퀘스트를 마친 막)의 보스 방 웨이포인트 비트 */
+function bossRoomWps(quests: number[] | undefined): number {
+  let w = 0
+  for (let a = 0; a < ACTS.length; a++) {
+    if ((quests?.[actBossQuest(a)] ?? 0) < 2) continue
+    const room = AREAS.find((d) => d.act === a && d.boss !== undefined)
+    if (room) w |= wpBit(room.id)
+  }
+  return w
 }
 
 /** 보스 범위 하나를 깐다 (몬스터 편 · 사람만 다친다) */

@@ -534,15 +534,16 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.gold = Math.max(0, Math.floor(Number(o.gold) || 0))
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
   if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
-  e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0xffff
+  // 웨이포인트는 19개(보스 방 넷을 뒤에 붙였다) — 예전 16비트(0xffff)로 잘라 거미 둥지 · 관리인의 방 · 심연의 옥좌가 저장 때마다 지워졌다 (2026-09-24)
+  e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0x3fffffff
   if (Array.isArray(o.playSec)) e.playSec = o.playSec.slice(0, 8).map((v) => Math.max(0, Math.floor(Number(v) || 0)))
-  if (Array.isArray(o.twps)) e.twps = o.twps.slice(0, 3).map((v) => Math.max(0, Math.floor(Number(v) || 0)) & 0xffff)
+  if (Array.isArray(o.twps)) e.twps = o.twps.slice(0, 3).map((v) => Math.max(0, Math.floor(Number(v) || 0)) & 0x3fffffff)
   if (Array.isArray(o.tq)) e.tq = o.tq.slice(0, 3).map((q) => (Array.isArray(q) ? q.slice(0, 32).map((v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0)))) : []))
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build
-  e.quests = Array.from({ length: 16 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))
+  e.quests = Array.from({ length: 32 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))
   // 능력치: 네 칸 · 음수 없음 · 레벨이 준 포인트보다 많으면 모두 되돌린다
   const at = Array.from({ length: 4 }, (_, i) => Math.max(0, Math.floor(Number(o.attr?.[i]) || 0)))
   e.attr = attrFree(e.level, at) >= 0 ? at : [0, 0, 0, 0]

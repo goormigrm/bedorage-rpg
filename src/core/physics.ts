@@ -13,15 +13,40 @@ export function moveCircle(
   dy: number,
 ): { x: number; y: number } {
   // 한 번에 너무 멀리 가면 터널링 → 절반씩 두 번
-  const steps = Math.abs(dx) > r * 0.8 || Math.abs(dy) > r * 0.8 ? 2 : 1
+  if (r <= TILE * 0.6) {
+    const steps = Math.abs(dx) > r * 0.8 || Math.abs(dy) > r * 0.8 ? 2 : 1
+    for (let s = 0; s < steps; s++) {
+      x += dx / steps
+      y += dy / steps
+      for (let iter = 0; iter < 2; iter++) {
+        const res = resolve(map, x, y, r)
+        x = res.x
+        y = res.y
+        if (!res.moved) break
+      }
+    }
+    return { x, y }
+  }
+  // 타일보다 큰 몸(거대한 막 보스 — 몸 반지름 2칸 안팎): 반 칸보다 잘게 나눠 움직이고 여러 번 밀어낸다.
+  // 그래도 중심이 벽 속 · 맵 밖이면 그 걸음은 없던 것으로 (2026-09-24 사용자: "도살자가 돌진하다 벽 밖으로 나가거나 맵에서 없어진다" —
+  // 큰 원이 벽 타일 여럿에 한꺼번에 걸려 밀어내기가 엇갈리면 얇은 테두리 벽을 넘어 맵 밖으로 튀어 나갔다)
+  const stepLen = TILE * 0.4
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / stepLen))
   for (let s = 0; s < steps; s++) {
+    const px = x
+    const py = y
     x += dx / steps
     y += dy / steps
-    for (let iter = 0; iter < 2; iter++) {
+    for (let iter = 0; iter < 4; iter++) {
       const res = resolve(map, x, y, r)
       x = res.x
       y = res.y
       if (!res.moved) break
+    }
+    if (x < TILE || y < TILE || x > map.pw - TILE || y > map.ph - TILE || circleHitsWall(map, x, y, r * 0.5)) {
+      x = px
+      y = py
+      break
     }
   }
   return { x, y }
