@@ -40,12 +40,15 @@ const FRONT_ROW = [[-2.7, -0.95], [-1.8, -1.6], [-0.75, -1.95], [0.75, -1.95], [
 const BACK_ROW = [[-3.45, -1.85], [-2.3, -2.6], [-1.25, -3.0], [1.25, -3.0], [2.3, -2.6], [3.45, -1.85]] as const
 const FRONT_H = 0.4
 const BACK_H = 1.3
-/** 고른 캐릭터가 걸어 나오는 자리 — 불 옆 (불 앞에 서면 불을 등져 새까맣다) */
-const FRONT_SPOT = new THREE.Vector3(1.3, 0, 1.6)
+/**
+ * 고른 캐릭터가 걸어 나오는 자리 — 불 옆 (불 앞에 서면 불을 등져 새까맣다).
+ * 2026-09-24 사용자: "선택한 캐릭터가 제대로 보이지 않는다 — 뒤로 밀어야" — z 1.6 은 카메라 쪽이라 아래 캐릭터 카드에 가렸다 → 불 옆 0.5
+ */
+const FRONT_SPOT = new THREE.Vector3(1.5, 0, 0.5)
 /** 발판 위의 사람들이 바라보는 곳 (불과 카메라 사이 — 얼굴이 보이게) */
 const LOOK = new THREE.Vector3(0, 0, 4.5)
 /** 카메라가 보는 무대 한가운데와 방향(약 20도 내려다봄) · 무대가 들어가야 할 반너비·반높이 (월드 단위) */
-const TARGET = new THREE.Vector3(0, 1.3, -1.1)
+const TARGET = new THREE.Vector3(0, 1.3, -0.9)
 const VIEW_DIR = new THREE.Vector3(0, 0.36, 1).normalize()
 const STAGE_HALF_W = 4.6
 const STAGE_HALF_H = 2.45

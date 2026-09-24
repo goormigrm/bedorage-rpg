@@ -81,6 +81,8 @@ export class Lobby {
   private nick = ''
   /** 대기실 채팅 (방에 들어가 있는 동안만) */
   private roomChat: ChatBox | null = null
+  /** 대기실 전체 채팅 (로비에 접속한 모두 — 2026-09-24) */
+  private lobbyChat: ChatBox | null = null
   /** 치지직 방송 연동 단추 (로비 · 대기실 내내 떠 있다) · 열린 창을 닫는 함수 */
   private czBadge: StreamBadge | null = null
   private czClose: (() => void) | null = null
@@ -152,6 +154,11 @@ export class Lobby {
             </div>
             <button class="btn main lg" id="btn-host">게임 만들기</button>
             <p class="hintline">혼자 시작해도 되고, 친구는 아래 <b>게임 목록</b>에서 들어온다 (최대 ${MAX_PLAYERS}명 · 게임 중에도).</p>
+            <div class="tools">
+              <button class="tool t-set" id="btn-settings" title="소리 · 화질 · 실사 괴물 · 조작 안내 · 키 설정 · 자동 줍기">⚙️ 설정</button>
+              <button class="tool t-exp" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">💾 세이브 내보내기</button>
+              <label class="tool t-imp" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">📂 세이브 가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label>
+            </div>
             <div class="status" id="status"></div>
             <div class="roomchat" id="roomchat" hidden></div>
           </div>
@@ -165,11 +172,13 @@ export class Lobby {
               <button class="btn secondary sm" id="pg-next">다음</button>
             </div>
           </div>
-          <div class="panel small">
-            <div class="savebtns"><button class="lnk" id="btn-settings" title="소리 · 실사 괴물 · 조작 안내 · 자동 줍기">설정</button><button class="lnk" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">세이브 내보내기</button>
-            <label class="lnk" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label></div>
-            <div class="notice" id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</div>
-            <div class="notice">비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></div>
+          <div class="panel lobbychat">
+            <h2>💬 대기실 채팅 <span class="k">로비에 접속한 모두</span></h2>
+            <div class="lchat" id="lobbychat"></div>
+          </div>
+          <div class="d2-foot">
+            <p id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</p>
+            <p>비공식 팬 프로젝트 · 비상업 · 문의 시 즉시 삭제 · 문제·제안은 철면수심 다음 카페 게시글로 · <a href="https://github.com/goormigrm/bedorage-rpg">github.com/goormigrm/bedorage-rpg</a> · <a href="https://github.com/goormigrm/bedorage-rpg/blob/main/CREDITS.md" target="_blank" rel="noopener">괴물 모델 출처 (CC BY)</a></p>
           </div>
         </div>
         <div class="chars" id="chars" hidden></div>
@@ -345,6 +354,7 @@ export class Lobby {
         const n = await importSave(f)
         this.status(`세이브를 불러왔습니다 — 캐릭터 ${n}명`, 'ok')
         this.render()
+        this.mountLobbyChat()
       } catch (e) {
         this.status(`세이브를 불러오지 못했습니다: ${(e as Error).message}`, 'bad')
       }
@@ -537,9 +547,37 @@ export class Lobby {
     return !!this.handlers.lobbyLink
   }
 
+  /**
+   * 대기실 전체 채팅 (2026-09-24 사용자: "오른쪽 아래 버려지는 공간이 너무 크다 — 방마다 채팅창이 아니라 대기실 모든 사람 채팅창"):
+   * 로비 통로(방 목록과 같은 통로)로 접속한 모두에게. 지난 줄은 통로가 들고 있어 로비를 다시 그려도 남는다.
+   * 내가 보낸 줄도 통로의 onChat 으로 돌아온다 (두 번 적지 않게)
+   */
+  private mountLobbyChat(): void {
+    this.lobbyChat?.dispose()
+    this.lobbyChat = null
+    const box = this.host.querySelector('#lobbychat') as HTMLElement | null
+    const link = this.lobbyLink
+    if (!box || !link) return
+    const chat = new ChatBox(
+      box,
+      (text) => {
+        link.sendChat(this.nick || CHARACTERS[this.char].name, text)
+        return true
+      },
+      { docked: true },
+    )
+    for (const l of link.chatHistory()) chat.add(l.nick, l.text, l.mine ? 'me' : 'ally')
+    link.onChat((l) => this.lobbyChat?.add(l.nick, l.text, l.mine ? 'me' : 'ally'))
+    this.lobbyChat = chat
+  }
+
   private openLobbyList(): void {
-    if (this.lobbyLink) return
+    if (this.lobbyLink) {
+      this.mountLobbyChat()
+      return
+    }
     this.lobbyLink = this.handlers.lobbyLink ?? openLobby()
+    this.mountLobbyChat()
     this.lobbyLink.onRooms((rooms) => {
       this.rooms = rooms
       this.renderRooms()
@@ -1446,6 +1484,9 @@ export class Lobby {
     this.czBadge = null
     this.bonfire?.dispose()
     this.bonfire = null
+    this.lobbyChat?.dispose()
+    this.lobbyChat = null
+    this.lobbyLink?.onChat(null)
     clearInterval(this.onlineTimer)
     this.closeLink()
     if (this.lobbyLink) {

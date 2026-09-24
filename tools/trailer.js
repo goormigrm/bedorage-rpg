@@ -257,6 +257,32 @@ function bossPat(kind, phase) {
   b.scd = 0
   b.phase = phase
 }
+/**
+ * 매 장: 멀어진 AI 동료를 주인공 쪽으로 조금씩 당긴다 (2026-09-24 사용자: "영상에서 철면란 소리만 크게 들린다 — 총소리도 잘 섞이게
+ * 다른 캐릭터들도 배치"). 소리는 듣는 사람(주인공)에게서 멀수록 작아져, 흩어진 봇의 총소리가 묻혔다. 4.5 칸 밖이면 틱마다 2.5px
+ */
+function pullBots() {
+  const s = st()
+  const p = s.players[0]
+  for (const q of s.players) {
+    if (q === p || !q.alive || q.left || q.area !== p.area) continue
+    const dx = p.x - q.x
+    const dy = p.y - q.y
+    const d = Math.hypot(dx, dy)
+    const keep = (q.cameo ? 5.5 : 4.5) * T
+    if (d <= keep || d > 30 * T) continue
+    const k = Math.min(2.5, d - keep) / d
+    const map = window.__bd.map()
+    const nx = q.x + dx * k
+    const ny = q.y + dy * k
+    const tx = Math.floor(nx / T)
+    const ty = Math.floor(ny / T)
+    if (map.tiles[ty * map.w + tx] !== 0) continue
+    q.x = nx
+    q.y = ny
+  }
+}
+
 function gatherBots() {
   const s = st()
   const p = s.players[0]
@@ -688,7 +714,8 @@ async function lobbyPhase(ve) {
   performance.now = () => vt
   bf.last = vt
   Object.assign(ov, { title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
-  const order = [...PLAYABLE.filter((id) => id !== 'cheolmyeon'), 'cheolmyeon']
+  // 넷만 눌러 본다 (2026-09-24 사용자: "12개를 모두 클릭할 필요는 없다 — 침착란 · 단군란 · 매직란 · 철면란만")
+  const order = ['chim', 'dangun', 'magic', 'cheolmyeon'].filter((id) => PLAYABLE.includes(id))
   bf.select(null)
   const A = []
   const at = (t, fn) => A.push({ t, fn })
@@ -700,8 +727,8 @@ async function lobbyPhase(ve) {
   })
   at(3.3, () => (ov.title.out = now()))
   at(4.0, () => caption('배도라지 크루 12명', '탱커 3 · 딜러 6 · 힐러 3 — 누구로 떠날까'))
-  // 한 사람 1초 — 0.72초로는 불 앞에 다 나오기 전에 다음 사람으로 넘어갔다
-  const STEP = 1.05
+  // 한 사람 1.4초 — 0.72초로는 불 앞에 다 나오기 전에 다음 사람으로 넘어갔다
+  const STEP = 1.4
   order.forEach((id, i) => {
     at(5.2 + i * STEP, () => {
       const c = CHARACTERS[id]
@@ -894,6 +921,7 @@ export async function start(opts = {}) {
       }
       if (stop) break
       god()
+      if (!holding) pullBots()
       sess.tick()
       god()
       // 영상에서는 화면 흔들림 · 당김을 끈다 (2026-09-23 사용자: "치지직 장면의 화면 흔들림 — 너무 정신없다")

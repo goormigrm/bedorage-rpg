@@ -88,7 +88,8 @@ describe('4막 심연 (D6)', () => {
     p.y = elder.y
     step(s, mapOf, [{ ...idle(), cmd: CMD_QUEST, arg: 103 }])
     expect(p.area).toBe(ACTS[3].town)
-    expect(WAYPOINTS.length).toBeLessThanOrEqual(16)
+    // 세이브 비트(정수) 안 — 보스 방 넷을 더해 19 (2026-09-24)
+    expect(WAYPOINTS.length).toBeLessThanOrEqual(30)
     expect(ACTS.length).toBe(4)
     // 막마다 퀘스트 넷, 지역 번호 = 배열 자리
     for (let act = 0; act < 4; act++) expect(QUESTS.filter((q) => q.act === act).length).toBe(4)

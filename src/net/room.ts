@@ -74,12 +74,51 @@ export interface LobbyLink {
   /** 호스트: 내 방 정보를 방송 (2초마다 자동 재방송) */
   announce(info: RoomAnnounce | null): void
   onlineCount(): number
+  /**
+   * 대기실 전체 채팅 (2026-09-24 사용자: "방마다 채팅창이 아니라 대기실 모든 사람 채팅창") — 로비에 접속한 모두에게 간다.
+   * 받은 글은 다듬어서(cleanChat) 넘긴다. 지난 줄은 로비를 다시 그려도 남게 여기에 둔다
+   */
+  sendChat(nick: string, text: string): void
+  onChat(cb: ((line: LobbyChatLine) => void) | null): void
+  chatHistory(): LobbyChatLine[]
   leave(): void
 }
+
+export interface LobbyChatLine {
+  nick: string
+  text: string
+  mine: boolean
+}
+
+/** 로비 채팅: 한 줄 길이 · 닉네임 길이 · 한 사람이 보내는 간격(ms — 도배 막기) · 남겨 두는 줄 */
+const LOBBY_CHAT_MAX = 80
+const LOBBY_NICK_MAX = 12
+const LOBBY_CHAT_GAP = 700
+const LOBBY_CHAT_KEEP = 60
+const cleanLine = (raw: unknown, max: number): string =>
+  // eslint-disable-next-line no-control-regex
+  typeof raw === 'string' ? raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max) : ''
 
 export function openLobby(): LobbyLink {
   const room: Room = joinRoom({ appId: APP_ID, rtcConfig: RTC_CONFIG, ...RELAYS }, LOBBY_ID)
   const [sendRoom, onRoom] = room.makeAction<RoomAnnounce | null>('room')
+  const [sendChatMsg, onChatMsg] = room.makeAction<{ n: string; t: string }>('chat')
+  const chatLog: LobbyChatLine[] = []
+  let chatCb: ((line: LobbyChatLine) => void) | null = null
+  const lastFrom = new Map<string, number>()
+  const pushChat = (line: LobbyChatLine) => {
+    chatLog.push(line)
+    if (chatLog.length > LOBBY_CHAT_KEEP) chatLog.shift()
+    chatCb?.(line)
+  }
+  onChatMsg((m, peerId) => {
+    const now = performance.now()
+    if (now - (lastFrom.get(peerId) ?? -1e9) < LOBBY_CHAT_GAP) return
+    lastFrom.set(peerId, now)
+    const text = cleanLine(m?.t, LOBBY_CHAT_MAX)
+    if (!text) return
+    pushChat({ nick: cleanLine(m?.n, LOBBY_NICK_MAX) || '손님', text, mine: false })
+  })
   const rooms = new Map<string, RoomInfo>()
   let mine: RoomAnnounce | null = null
   let cb: ((rooms: RoomInfo[]) => void) | null = null
@@ -123,6 +162,19 @@ export function openLobby(): LobbyLink {
     },
     onlineCount() {
       return peers + 1
+    },
+    sendChat(nick, text) {
+      const t = cleanLine(text, LOBBY_CHAT_MAX)
+      if (!t) return
+      const n = cleanLine(nick, LOBBY_NICK_MAX) || '손님'
+      void sendChatMsg({ n, t })
+      pushChat({ nick: n, text: t, mine: true })
+    },
+    onChat(f) {
+      chatCb = f
+    },
+    chatHistory() {
+      return chatLog.slice()
     },
     leave() {
       clearInterval(timer)

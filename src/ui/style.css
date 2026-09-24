@@ -588,8 +588,10 @@ body { background: var(--bg); }
 .d2-title h1 .t1, .d2-title h1 .t2 { background: none !important; -webkit-text-fill-color: transparent; }
 .d2-title h1 .t2 { font-size: 30px; margin-left: 10px; letter-spacing: .3em; }
 .d2-title .tag { color: #9a8a70 !important; font: 500 13px "Nanum Myeongjo", serif !important; margin: 4px 0 0 !important; }
-.d2-char { position: fixed !important; left: calc((100vw - var(--side-w) - 20px) / 2); bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; width: min(940px, calc(100vw - var(--side-w) - 60px)); }
-.d2-char .ci { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(210px, 0.75fr) 1.5fr; gap: 4px 18px; align-items: start; }
+/* 캐릭터 설명 칸을 넓게 · 한글은 낱말 단위로 접는다 (2026-09-24 사용자: "설명 칸을 늘리고 한글 줄바꿈을 제대로 — 읽기 편하게") */
+.d2-char { position: fixed !important; left: calc((100vw - var(--side-w) - 20px) / 2); bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; width: min(1240px, calc(100vw - var(--side-w) - 60px)); }
+.d2-char .ci { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(300px, 1fr) 1.55fr; gap: 4px 22px; align-items: start; word-break: keep-all; overflow-wrap: break-word; line-break: strict; }
+.d2-char .ci .cp, .d2-char .ci .crole, .d2-char .ci .cl, .d2-char .skd .s span { text-wrap: pretty; }
 .d2-char .ci .ch-r { border-left: 1px solid rgba(201,162,74,.18); padding-left: 16px; }
 .d2-char .ci .ch-r .skd { margin-top: 2px; }
 @media (max-width: 1250px) {
@@ -639,6 +641,25 @@ body { background: var(--bg); }
 .d2-side .status { margin-top: 10px; }
 .d2-side .rhead { display: none; }
 .d2-side .savebtns { display: flex; gap: 14px; margin-bottom: 8px; }
+/* 설정 · 세이브 (2026-09-24 사용자: "아무 버튼 모양이나 색감이 눈에 띄지 않아 있는지도 몰랐다") — 이모지 · 색 있는 단추 셋 */
+.d2-side .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.d2-side .tool { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 6px; font: 700 13px "IBM Plex Sans KR", sans-serif; border-radius: 4px; border: 1px solid; cursor: pointer; text-align: center; line-height: 1.25; transition: filter .12s, transform .08s; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.d2-side .tool:hover { filter: brightness(1.3); transform: translateY(-1px); }
+.d2-side .tool.t-set { border-color: #c9a24a; color: #ffe6a8; background: linear-gradient(180deg, rgba(96,74,30,.7), rgba(42,32,14,.75)); }
+.d2-side .tool.t-exp { border-color: #4ec962; color: #c8ffd4; background: linear-gradient(180deg, rgba(30,86,44,.7), rgba(12,38,20,.75)); }
+.d2-side .tool.t-imp { border-color: #5aa9ff; color: #d6ebff; background: linear-gradient(180deg, rgba(30,64,108,.7), rgba(12,28,50,.75)); }
+/* 대기실 전체 채팅 — 오른쪽 칸의 남는 높이를 채운다 */
+.d2-side .lobbychat { flex: 1 1 240px; min-height: 220px; display: flex; flex-direction: column; }
+.d2-side .lobbychat h2 .k { font: 500 11px "IBM Plex Sans KR", sans-serif; color: #8a7a60; }
+.d2-side .lobbychat .lchat { flex: 1; min-height: 0; display: flex; }
+.d2-side .lobbychat .chat.docked { flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.d2-side .lobbychat .chat.docked .chat-log { flex: 1; height: auto; min-height: 140px; }
+.d2-side .lobbychat .chat.docked .chat-log:empty::before { content: "로비에 접속한 모두와 이야기합니다 — 같이 할 사람을 모아 보세요"; }
+/* 저작 · 안내는 맨 아래에 따로 (필요한 칸과 구분) */
+.d2-foot { flex: none; padding: 8px 4px 2px; border-top: 1px solid rgba(201,162,74,.22); font-size: 11px; line-height: 1.55; color: #7e7260; }
+.d2-foot p { margin: 0 0 4px; }
+.d2-foot b { color: #a89a80; }
+.d2-foot a { color: #9a8a70; }
 .d2-side .notice { background: none; border: 0; padding: 0; color: #7e7260; font-size: 11.5px; }
 .lobby.d2 .foot.d2foot { display: none; }
 .lobby.d2 .foot.d2foot a { color: #7e7260; }

@@ -224,6 +224,32 @@ describe('전리품 · 경제', () => {
     expect(gone).toBe(true)
     expect(s.monsters.some((q) => q.kind === GOBLIN_KIND)).toBe(false)
   })
+
+  // 2026-09-24 사용자: "보물 고블린은 실제 만나기도 전에 도망갔다고 뜬다 — 목격된 뒤에 도망가게"
+  it('보물 고블린: 깨어 있어도 들키기 전(멀리 · 안 보임)에는 제자리 · 시계가 돌지 않는다 → 보이는 곳에서 마주치면 그때부터 도망', () => {
+    const { s, run } = field(67)
+    const p = s.players[0]
+    const g = makeMonster(s, GOBLIN_KIND, p.x + GOBLIN.seen + 200, p.y, 9997, 1)
+    g.st = MS_CHASE
+    s.monsters.push(g)
+    const x0 = g.x
+    let gone = false
+    for (let t = 0; t < GOBLIN.escape + 120 && !gone; t++) {
+      p.x = g.x - GOBLIN.seen - 200
+      run(1)
+      gone = s.events.some((e) => e.type === 'goblinGone')
+    }
+    expect(gone).toBe(false)
+    expect(g.hp).toBeGreaterThan(0)
+    expect(g.seen ?? 0).toBe(0)
+    expect(Math.abs(g.x - x0)).toBeLessThan(2)
+    // 가까이(보이는 곳) — 들킨다 · 도망친다
+    p.x = g.x - 150
+    p.y = g.y
+    run(60)
+    expect(g.seen).toBe(1)
+    expect(Math.hypot(g.x - p.x, g.y - p.y)).toBeGreaterThan(150)
+  })
 })
 
 describe('성장 · 전투 (D4)', () => {

@@ -1642,6 +1642,7 @@ export class Renderer3D {
       }
     }
     this.drawDowned(curr, pos, opts)
+    this.drawDownedNav(curr, pos, opts)
     this.hud.drawMain(curr, { ...opts, cursorOn })
     if (opts.showHud) this.drawMinimap(curr, opts)
     if (opts.showHud && this.mapOpen && curr.mode === 'dungeon') this.drawFullMap(curr, opts)
@@ -2026,6 +2027,154 @@ export class Renderer3D {
     ctx.lineTo(cx, cy + 6)
     ctx.stroke()
     ctx.restore()
+    this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
+  }
+
+  /**
+   * 미니맵의 동료 (2026-09-24 사용자: "미니맵에 동료 이름표 · 미니맵 밖에 있고 같은 맵에 있으면 화살표로 방향 · 쓰러진 동료는 빨간색으로"):
+   * 창 안이면 점 위에 이름, 창 밖이면 창 가장자리에 그쪽을 가리키는 화살표 + 이름. 쓰러진 동료는 빨갛게 깜빡인다.
+   * 같은 지역만 (다른 지역의 사람은 areaView 에서 left). 회전 · 배율은 drawMinimap 과 같다
+   */
+  private drawMiniMates(curr: GameState, opts: RenderOptions, x: number, y: number, S: number, mx: number, my: number, rot: number): void {
+    const lp = opts.localPlayer
+    if (lp < 0 || curr.mode !== 'dungeon') return
+    const ctx = this.hud.ctx
+    const cx = x + S / 2
+    const cy = y + S / 2
+    const cr = Math.cos(rot)
+    const sr = Math.sin(rot)
+    const pulse = 0.55 + 0.45 * Math.sin(this.t * 7)
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    ctx.lineWidth = 3
+    for (let i = 0; i < curr.players.length; i++) {
+      const p = curr.players[i]
+      if (i === lp || !p.alive || p.left || p.cameo) continue
+      const dx = (p.x / TILE - mx) * MINIMAP_PX_PER_TILE
+      const dy = (p.y / TILE - my) * MINIMAP_PX_PER_TILE
+      const px = cx + dx * cr - dy * sr
+      const py = cy + dx * sr + dy * cr
+      const name = opts.names[i] ?? CHARACTERS[p.char].name
+      const color = p.downed ? '#ff4a3a' : '#9fd6ff'
+      const inside = px > x + 6 && px < x + S - 6 && py > y + 6 && py < y + S - 6
+      ctx.font = `700 ${p.downed ? 10 : 9}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+      if (inside) {
+        if (p.downed) {
+          ctx.globalAlpha = pulse
+          ctx.strokeStyle = color
+          ctx.lineWidth = 1.6
+          ctx.beginPath()
+          ctx.arc(px, py, 5 + pulse * 2, 0, Math.PI * 2)
+          ctx.stroke()
+          ctx.lineWidth = 3
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+          ctx.globalAlpha = 1
+        }
+        const label = p.downed ? `${name} 쓰러짐` : name
+        const hw = ctx.measureText(label).width / 2 + 3
+        const lx = Math.max(x + hw, Math.min(x + S - hw, px))
+        const ly = Math.max(y + 12, py - 6)
+        ctx.strokeText(label, lx, ly)
+        ctx.fillStyle = color
+        ctx.fillText(label, lx, ly)
+        continue
+      }
+      // 창 밖: 가장자리에 화살표 (창 안쪽으로 7px)
+      const a = Math.atan2(py - cy, px - cx)
+      const ca = Math.cos(a)
+      const sa = Math.sin(a)
+      const half = S / 2 - 8
+      const t = Math.min(half / Math.max(1e-6, Math.abs(ca)), half / Math.max(1e-6, Math.abs(sa)))
+      const ex = cx + ca * t
+      const ey = cy + sa * t
+      ctx.globalAlpha = p.downed ? pulse : 0.95
+      ctx.save()
+      ctx.translate(ex, ey)
+      ctx.rotate(a)
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.moveTo(7, 0)
+      ctx.lineTo(-5, -6)
+      ctx.lineTo(-5, 6)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+      ctx.globalAlpha = 1
+      const label = p.downed ? `${name} 쓰러짐` : name
+      // 글이 창 밖으로 나가지 않게 (글 폭만큼 안쪽으로)
+      const hw = ctx.measureText(label).width / 2 + 4
+      const lx = Math.max(x + hw, Math.min(x + S - hw, ex - ca * 18))
+      const ly = Math.max(y + 12, Math.min(y + S - 4, ey - sa * 14 + 3))
+      ctx.strokeText(label, lx, ly)
+      ctx.fillStyle = color
+      ctx.fillText(label, lx, ly)
+    }
+    ctx.restore()
+  }
+
+  /**
+   * 쓰러진 동료 길잡이 (2026-09-24 사용자: "down 된 동료는 빨간색으로 구하기 쉽도록 내 맵상에 네비게이션처럼 화살표"):
+   * 내 캐릭터 둘레에 그쪽을 가리키는 빨간 화살표 + 거리(칸), 화면 밖이면 화면 가장자리에도 화살표 + 이름.
+   * 내가 쓰러져 있거나 관전 중이면 그리지 않는다
+   */
+  private drawDownedNav(curr: GameState, pos: { x: number; z: number }[], opts: RenderOptions): void {
+    const lp = opts.localPlayer
+    if (lp < 0 || curr.mode !== 'dungeon') return
+    const me = curr.players[lp]
+    if (!me || !me.alive || me.downed || !pos[lp]) return
+    const ctx = this.hud.ctx
+    const pulse = 0.6 + 0.4 * Math.sin(this.t * 7)
+    const sMe = this.worldToScreen(pos[lp].x, 0.9, pos[lp].z)
+    for (let i = 0; i < curr.players.length; i++) {
+      const p = curr.players[i]
+      if (i === lp || !p.alive || !p.downed || p.left || !pos[i]) continue
+      const s = this.worldToScreen(pos[i].x, 0.5, pos[i].z)
+      const name = opts.names[i] ?? CHARACTERS[p.char].name
+      const tiles = Math.round(Math.hypot(p.x - me.x, p.y - me.y) / TILE)
+      const inside = s.x > 30 && s.x < VIEW_W - 30 && s.y > 30 && s.y < VIEW_H - 30
+      if (!inside) {
+        ctx.globalAlpha = pulse
+        this.edgeArrow(s, '#ff4a3a', `${name} 쓰러짐 · ${tiles}칸`)
+        ctx.globalAlpha = 1
+      }
+      // 내 둘레의 길잡이 화살표 (가까이 붙으면 — 일으킬 거리 — 숨긴다)
+      if (tiles <= 2) continue
+      const a = Math.atan2(s.y - sMe.y, s.x - sMe.x)
+      const r = 62 * VIEW_K
+      const ax = sMe.x + Math.cos(a) * r
+      const ay = sMe.y + Math.sin(a) * r
+      ctx.save()
+      ctx.globalAlpha = pulse
+      ctx.translate(ax, ay)
+      ctx.rotate(a)
+      ctx.fillStyle = '#ff4a3a'
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(13, 0)
+      ctx.lineTo(-6, -9)
+      ctx.lineTo(-1, 0)
+      ctx.lineTo(-6, 9)
+      ctx.closePath()
+      ctx.stroke()
+      ctx.fill()
+      ctx.restore()
+      ctx.save()
+      ctx.globalAlpha = pulse
+      ctx.font = '800 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+      ctx.textAlign = 'center'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+      const tx = sMe.x + Math.cos(a) * (r + 22)
+      const ty = sMe.y + Math.sin(a) * (r + 22) + 4
+      const label = `${tiles}칸`
+      ctx.strokeText(label, tx, ty)
+      ctx.fillStyle = '#ffb0a0'
+      ctx.fillText(label, tx, ty)
+      ctx.restore()
+    }
   }
 
   /**

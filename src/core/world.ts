@@ -199,7 +199,7 @@ export const AREAS: AreaDef[] = [
   { id: 6, act: 0, name: '무너진 성당', kind: 'dungeon', map: 'cathedral', level: 5, links: [5, 7], wp: true, packs: ARCHERS, lore: '종은 멈췄고, 기둥 사이로 활시위가 당겨진다' },
   { id: 7, act: 0, name: '납골당 1층', kind: 'dungeon', map: 'crypt', level: 6, links: [6, 8], packs: ARCHERS },
   { id: 8, act: 0, name: '납골당 2층', kind: 'dungeon', map: 'crypt', level: 7, links: [7, 9], packs: ARCHERS, unique: { kind: ARCHER, name: '뼈활 레나' } },
-  { id: 9, act: 0, name: '도살장', kind: 'boss', map: 'butchery', level: 8, links: [8], boss: BUTCHER, gate: 10, density: 0.5, lore: '신선한 고기…!' },
+  { id: 9, act: 0, name: '도살장', kind: 'boss', map: 'butchery', level: 8, links: [8], wp: true, boss: BUTCHER, gate: 10, density: 0.5, lore: '신선한 고기…!' },
   // ---------------- 2막 안개 숲 (지역 레벨 9~16) ----------------
   { id: 10, act: 1, name: '숲 가장자리 야영지', kind: 'town', map: 'town2', level: 0, links: [11], wp: true, lore: '늑대 울음이 밤새 목책을 두드린다' },
   { id: 11, act: 1, name: '안개 숲', kind: 'field', map: 'forest', level: 9, links: [10, 12], wp: true, lore: '안개 너머에서 무언가 따라온다' },
@@ -209,7 +209,7 @@ export const AREAS: AreaDef[] = [
   { id: 15, act: 1, name: '버섯 동굴 1층', kind: 'dungeon', map: 'hollow', level: 13, links: [14, 16], packs: SPORES },
   { id: 16, act: 1, name: '버섯 동굴 2층', kind: 'dungeon', map: 'hollow', level: 14, links: [15, 17], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
   { id: 17, act: 1, name: '거미 숲', kind: 'field', map: 'forest', level: 15, links: [16, 18], wp: true, lore: '나무마다 흰 실이 드리웠다' },
-  { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], boss: QUEEN, gate: 19, density: 0.5, lore: '여왕이 실을 당긴다' },
+  { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], wp: true, boss: QUEEN, gate: 19, density: 0.5, lore: '여왕이 실을 당긴다' },
   // ---------------- 3막 잠긴 지하도 (지역 레벨 17~24) ----------------
   { id: 19, act: 2, name: '수문 야영지', kind: 'town', map: 'town3', level: 0, links: [20], wp: true, lore: '누런 등불 아래, 물 떨어지는 소리만 들린다' },
   { id: 20, act: 2, name: '잠긴 수로', kind: 'field', map: 'sewer', level: 17, links: [19, 21], wp: true, lore: '도시의 오물이 흐르던 길 — 이제는 무언가 거슬러 올라온다' },
@@ -219,7 +219,7 @@ export const AREAS: AreaDef[] = [
   { id: 24, act: 2, name: '의식의 회랑 1층', kind: 'dungeon', map: 'rite', level: 21, links: [23, 25], packs: RITES, lore: '촛불이 저절로 켜진다' },
   { id: 25, act: 2, name: '의식의 회랑 2층', kind: 'dungeon', map: 'rite', level: 22, links: [24, 26], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
   { id: 26, act: 2, name: '봉인된 문서고', kind: 'dungeon', map: 'archive', level: 23, links: [25, 27], wp: true, lore: '누군가 봉인을 뜯었다' },
-  { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], boss: WARDEN, gate: 28, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
+  { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], wp: true, boss: WARDEN, gate: 28, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
   // ---------------- 4막 심연 (지역 레벨 25~30) ----------------
   { id: 28, act: 3, name: '심연의 문', kind: 'town', map: 'town4', level: 0, links: [29], wp: true, lore: '문틈으로 붉은 빛이 샌다 — 여기가 마지막 불이다' },
   { id: 29, act: 3, name: '불타는 균열', kind: 'field', map: 'rift', level: 25, links: [28, 35], wp: true, lore: '땅이 갈라져 불을 토한다' },
@@ -227,7 +227,7 @@ export const AREAS: AreaDef[] = [
   { id: 31, act: 3, name: '그림자 미궁 1층', kind: 'dungeon', map: 'maze', level: 27, links: [30, 32], packs: SHADOWS, lore: '벽이 숨을 쉰다' },
   { id: 32, act: 3, name: '그림자 미궁 2층', kind: 'dungeon', map: 'maze', level: 28, links: [31, 33], wp: true, packs: SHADOWS, unique: { kind: SHADE, name: '속삭이는 자' } },
   { id: 33, act: 3, name: '군주의 계단', kind: 'dungeon', map: 'stair', level: 29, links: [32, 34], lore: '계단은 끝없이 아래로 이어진다' },
-  { id: 34, act: 3, name: '심연의 옥좌', kind: 'boss', map: 'throne', level: 30, links: [33], boss: LORD, density: 0.4, lore: '종이 처음 울린 곳' },
+  { id: 34, act: 3, name: '심연의 옥좌', kind: 'boss', map: 'throne', level: 30, links: [33], wp: true, boss: LORD, density: 0.4, lore: '종이 처음 울린 곳' },
   { id: 35, act: 3, name: '끓는 구덩이', kind: 'dungeon', map: 'pit', level: 26, links: [29, 30], packs: FIRES, density: 1.2, lore: '바닥이 끓는다' },
 ]
 
@@ -239,8 +239,11 @@ export function isTown(id: number): boolean {
   return areaDef(id).kind === 'town'
 }
 
-/** 웨이포인트가 있는 지역 (순서 = 세이브의 비트 번호) */
-export const WAYPOINTS: number[] = AREAS.filter((a) => a.wp).map((a) => a.id)
+/**
+ * 웨이포인트가 있는 지역 (순서 = 세이브의 비트 번호 — 바꾸면 저장된 웨이포인트가 어긋난다).
+ * 보스 방 웨이포인트(2026-09-24 사용자: "보스 도전 중에 실패해도 바로 보스방으로")는 **맨 뒤에** 붙였다 — 예전 비트는 그대로
+ */
+export const WAYPOINTS: number[] = [...AREAS.filter((a) => a.wp && a.kind !== 'boss'), ...AREAS.filter((a) => a.wp && a.kind === 'boss')].map((a) => a.id)
 
 export function wpBit(area: number): number {
   const i = WAYPOINTS.indexOf(area)

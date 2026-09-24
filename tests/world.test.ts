@@ -470,3 +470,24 @@ describe('2막 난입', () => {
     expect(s.players[2].area).toBe(TOWN)
   })
 })
+
+// 2026-09-24 사용자: "보스방에도 웨이포인트 — 보스 도전 중에 실패해도 바로 보스방으로"
+describe('보스 방 웨이포인트', () => {
+  it('막 보스 방 넷 모두 웨이포인트 · 예전 웨이포인트의 비트 번호는 그대로(보스 방은 맨 뒤) · 결투장 밖 입구 쪽', () => {
+    const bosses = AREAS.filter((a) => a.kind === 'boss')
+    expect(bosses.length).toBe(4)
+    for (const a of bosses) expect(a.wp).toBe(true)
+    // 예전 순서 (보스 방 없이) 가 앞에 그대로
+    const old = AREAS.filter((a) => a.wp && a.kind !== 'boss').map((a) => a.id)
+    expect(WAYPOINTS.slice(0, old.length)).toEqual(old)
+    expect(WAYPOINTS.slice(old.length)).toEqual(bosses.map((a) => a.id))
+    const mapOf = world(61)
+    for (const a of bosses) {
+      const map = mapOf(a.id)
+      const l = areaLayout(a.id, map)
+      expect(l.wp).not.toBeNull()
+      const ar = map.arena!
+      expect(Math.hypot(l.wp!.x - ar.x, l.wp!.y - ar.y)).toBeGreaterThan(ar.r)
+    }
+  })
+})

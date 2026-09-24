@@ -742,25 +742,27 @@ export class Sfx {
     const scale = [293.7, 349.2, 392, 440, 523.3, 587.3]
     const pick = () => scale[Math.floor(Math.random() * scale.length)] * low
     const f = pick()
-    this.noiseBurst(node, t0, 0.1, 'bandpass', 700 * low, 1100 * low, 0.16, 0.7)
+    // 전체 크기 (2026-09-24 사용자: "철면란 공격 효과음이 너무 크다 — 볼륨을 약간 줄여") — 1 → 0.7
+    const V = 0.7
+    this.noiseBurst(node, t0, 0.1, 'bandpass', 700 * low, 1100 * low, 0.16 * V, 0.7)
     const kind = Math.floor(Math.random() * 5)
     if (kind === 0) {
       // 짧은 활 (데타셰)
-      this.stringNote(node, t0 + 0.01, 0.26, f, f, 0.2, 0.025)
+      this.stringNote(node, t0 + 0.01, 0.26, f, f, 0.2 * V, 0.025)
     } else if (kind === 1) {
       // 피치카토: 현을 퉁긴다
-      this.pluck(node, t0 + 0.005, f, 0.34)
-      this.pluck(node, t0 + 0.07, f * 1.5, 0.18)
+      this.pluck(node, t0 + 0.005, f, 0.34 * V)
+      this.pluck(node, t0 + 0.07, f * 1.5, 0.18 * V)
     } else if (kind === 2) {
       // 겹음: 5도 두 줄을 함께 긋는다
-      this.stringNote(node, t0 + 0.01, 0.3, f, f, 0.14, 0.03)
-      this.stringNote(node, t0 + 0.01, 0.3, f * 1.5, f * 1.5, 0.1, 0.035)
+      this.stringNote(node, t0 + 0.01, 0.3, f, f, 0.14 * V, 0.03)
+      this.stringNote(node, t0 + 0.01, 0.3, f * 1.5, f * 1.5, 0.1 * V, 0.035)
     } else if (kind === 3) {
       // 미끄러져 오르기 (글리산도)
-      this.stringNote(node, t0 + 0.01, 0.32, f * 0.84, f, 0.18, 0.02)
+      this.stringNote(node, t0 + 0.01, 0.32, f * 0.84, f, 0.18 * V, 0.02)
     } else {
       // 트레몰로: 짧게 세 번
-      for (let k = 0; k < 3; k++) this.stringNote(node, t0 + 0.01 + k * 0.06, 0.09, f, f, 0.15, 0.012, 0)
+      for (let k = 0; k < 3; k++) this.stringNote(node, t0 + 0.01 + k * 0.06, 0.09, f, f, 0.15 * V, 0.012, 0)
     }
   }
 
@@ -823,7 +825,8 @@ export class Sfx {
 
   /** 근접 타격음: 바이올린 = 살을 치는 묵직한 퍽 · 검 = 베는 쉭 · 후라이팬 = 쇠 울림 (+ 치명타 팅) */
   private meleeHit(s: Spatial, crit: boolean, fam: string): void {
-    const { node, t0 } = this.bus(s, 0.95)
+    // 바이올린은 휘두를 때마다 치므로 조금 작게 (2026-09-24 — 공격 소리가 너무 크다)
+    const { node, t0 } = this.bus(s, fam === 'violin' ? 0.78 : 0.95)
     if (fam === 'violin') {
       // 살을 치는 퍽 — 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게
       const k = 0.88 + Math.random() * 0.24

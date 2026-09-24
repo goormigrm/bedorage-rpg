@@ -3615,7 +3615,13 @@ function stepMonsters(state: GameState, map: GameMap): void {
         if (m.los === 1 && d < keep * 0.7) away = true
         else if (m.los === 1 && d <= keep) hold = true
       } else if (def.attack === 'flee') {
-        // 보물 고블린: 늘 도망친다. 골드를 흘리고, 오래 버티면 사라진다 (t = 깨어 있던 틱 — 예고·회복 상태를 쓰지 않아 비어 있다)
+        // 보물 고블린: **들킨 뒤부터** 도망친다 — 골드를 흘리고, 오래 버티면 사라진다 (t = 들킨 뒤 틱 — 예고·회복 상태를 쓰지 않아 비어 있다).
+        // 2026-09-24 사용자: "실제 만나기도 전에 도망갔다고 뜬다" — 총소리에 깨어(벽 너머로도) 곧장 시계가 돌았다.
+        // 이제 사람이 보이는 거리(GOBLIN.seen)에서 벽 없이 마주쳐야 들킨다 — 그 전에는 제자리에서 기다린다
+        if (!m.seen) {
+          if (m.los === 1 && d <= GOBLIN.seen) m.seen = 1
+          else continue
+        }
         away = true
         m.t++
         if (m.t % GOBLIN.trail === 0) state.drops.push({ id: state.nextDropId++, owner: -1, x: m.x, y: m.y, item: null, gold: Math.max(1, Math.round(3 + m.lvl * 1.5)), pot: 0, ttl: 60 * 60, lock: 10 })

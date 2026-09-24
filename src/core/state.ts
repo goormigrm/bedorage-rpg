@@ -433,6 +433,8 @@ export interface Monster {
   mode: number
   /** 보스 단계 (심연의 군주: 0 → 1 → 2, 체력 2/3 · 1/3 에서 오른다) */
   stage: number
+  /** 보물 고블린: 사람에게 들켰다 (그때부터 도망 · 골드 흘리기 · 사라지는 시계) */
+  seen?: number
   /** 후원 소환 (2026-09-23): 후원 번호 + 1 · 부른 사람. 있으면 쓰러뜨려도 막 보스 처치 · 퀘스트로 치지 않는다 */
   sum?: number
   sumBy?: number
