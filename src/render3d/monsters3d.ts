@@ -7,7 +7,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { MONSTER_LIST } from '../core/monsters'
+import { GIANT_VIEW, MONSTER_LIST, isGiant } from '../core/monsters'
 import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
 import { AnchorName, BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
@@ -105,6 +105,8 @@ interface Anim {
   ally?: boolean
   /** 막 보스 — 맞아도 그림이 밀려 보이지 않는다 (보스는 밀리지 않는다 — 2026-09-24) */
   boss?: boolean
+  /** 보스 방의 거대한 막 보스 (그림 4배 — core/monsters isGiant) */
+  giant?: boolean
 }
 
 interface Part {
@@ -129,6 +131,7 @@ interface Corpse {
   /** 정예·우두머리였나 (시체도 큰 몸 그대로) */
   elite?: boolean
   unique?: boolean
+  giant?: boolean
 }
 
 interface MVis extends Anim {
@@ -815,6 +818,13 @@ const BUILDERS = [
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
 // 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 · 포격 악마(14)는 네 발 짐승(balrog)이 되어 1.3 → 0.9 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
 // 고블린 · 주술사 · 방패병 · 강령술사 · 토사꾼 · 그림자는 2026-09-24 제 모델 키에 맞췄다 (0.85 · 1.2 · 1.3 · 1.3 · 0.7 · 1.3)
+/** 괴물 키 (월드 단위 — 이름표 · 말풍선 자리) */
+export function monsterTop(m: { kind: number; sum?: number }): number {
+  return MONSTER_TOP[m.kind] * (MONSTER_LIST[m.kind].r / 13) * (isGiant(m) ? GIANT_VIEW : 1)
+}
+/** 네 발 짐승 (거대한 보스를 겨눌 때 옆으로 넓다) */
+export const isQuadruped = (kind: number): boolean => QUADRUPEDS.has(kind)
+
 export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 0.85, 0.8, 0.8, 1.2, 0.8, 1.3, 1.3, 0.7, 1.25, 1.3, 0.9, 1.4]
 
 export class MonsterView {
@@ -1067,7 +1077,7 @@ export class MonsterView {
     const s = this.shown.get(m.m)
     // 쏜 사람을 바라보게 두면 "뒤로" 넘어지는 쪽이 곧 쏜 쪽 반대다
     const yaw = dx !== 0 || dz !== 0 ? Math.atan2(-dz, -dx) : v ? v.yaw : 0
-    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw, t: 0, vx: dx * power, vz: dz * power, elite: v?.elite, unique: v?.unique })
+    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw, t: 0, vx: dx * power, vz: dz * power, elite: v?.elite, unique: v?.unique, giant: v?.giant })
     if (this.corpses.length > CORPSE_MAX) this.corpses.shift()
   }
 
@@ -1112,7 +1122,9 @@ export class MonsterView {
       // 움직임 상태
       const def = MONSTER_LIST[m.kind]
       v.move += ((m.moving ? 1 : 0) - v.move) * Math.min(1, dt * 10)
-      v.walk += dt * (6 + def.speed * 3) * v.move
+      v.giant = isGiant(m)
+      // 거대한 보스는 걸음이 네 배 길다 — 발이 미끄러져 보이지 않게, 묵직하게 천천히 딛는다
+      v.walk += dt * (6 + def.speed * 3) * v.move * (v.giant ? 0.4 : 1)
       // 보스 패턴은 예고가 보통 공격보다 길다 (wmax) — 비율이 음수가 되지 않게
       const wlen = (m.pat ?? -1) >= 0 && m.wmax ? m.wmax : def.windup
       v.wind = m.st === MS_WINDUP ? Math.max(0, Math.min(1, 1 - m.t / Math.max(1, wlen))) : Math.max(0, v.wind - dt * 6)
@@ -1150,6 +1162,7 @@ export class MonsterView {
       }
       dead.elite = c.elite
       dead.unique = c.unique
+      dead.giant = c.giant
       still.push(c)
       // 죽음 동작이 있는 모델은 동작을 0.8초에 걸쳐 튼다 (없으면 0.35초 만에 넘어진다)
       const mk = this.real ? this.models[c.kind] : undefined
@@ -1197,7 +1210,8 @@ export class MonsterView {
     if (model) this.mcounts[kind]++
     else counts[kind]++
     const def = MONSTER_LIST[kind]
-    const size = (def.r / 13) * (a.unique ? 1.7 : a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게
+    // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게 · 보스 방의 막 보스는 네 배 (화면을 거의 채운다)
+    const size = (def.r / 13) * (a.giant ? GIANT_VIEW : a.unique ? 1.7 : a.elite ? 1.35 : 1)
     // 발밑 그림자: 실사 떼 괴물 (살아 있을 때 · 쓰러지는 동안은 옅게 사라진다)
     if (model && !def.boss && corpseT === 0 && a.dead < 1 && this.blobN < CAP * 4) {
       const r = size * (QUADRUPEDS.has(kind) ? 0.55 : 0.42) * (1 - a.dead * 0.6)

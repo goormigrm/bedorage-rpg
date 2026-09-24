@@ -11,6 +11,8 @@ const OUTLINE = 0x2b2412
 
 /** 달걀 세로 비율 (반지름 대비) */
 const EGG_Y = 1.15
+/** 가려진 몸 윤곽의 짙기 */
+const XRAY_OPACITY = 0.7
 /** 정수리 쪽 좁아지는 정도 */
 const EGG_TAPER = 0.1
 const LEG_H = 0.14
@@ -152,6 +154,20 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   const egg = new THREE.Mesh(eggify(new THREE.SphereGeometry(R, 40, 28), R), bodyM)
   egg.castShadow = true
   head.add(egg)
+  // 가려진 몸: 무언가(거대한 보스 · 벽) 뒤에 있으면 옅은 윤곽만 보인다 (2026-09-24 — 보스가 네 배로 커져 뒤에 선 사람이 사라졌다).
+  // 깊이 시험을 거꾸로(GreaterDepth) — 앞에 가린 것이 있는 자리에만 그린다. 가장자리만 밝게(프레넬) — 납작한 원판이 아니라 윤곽으로 보이게
+  const xrayM = new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(0x9fd8ff) }, opacity: { value: XRAY_OPACITY } },
+    vertexShader: 'varying vec3 vN; varying vec3 vV; void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform vec3 color; uniform float opacity; varying vec3 vN; varying vec3 vV; void main() { float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); gl_FragColor = vec4(color, opacity * (0.18 + 0.82 * f * f)); }',
+    transparent: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+  })
+  xrayM.userData.xray = true
+  const xray = new THREE.Mesh(egg.geometry, xrayM)
+  xray.renderOrder = 8
+  egg.add(xray)
 
   // 귀: 눈 높이 옆
   const earY = R * EGG_Y * 0.48
@@ -481,6 +497,10 @@ export function setRigOpacity(rig: CharacterRig, opacity: number): void {
     if (!m) return
     const list = Array.isArray(m) ? m : [m]
     for (const mm of list) {
+      if (mm.userData.xray) {
+        ;(mm as THREE.ShaderMaterial).uniforms.opacity.value = XRAY_OPACITY * opacity
+        continue
+      }
       mm.transparent = opacity < 1 || (mm as THREE.MeshLambertMaterial).map !== undefined
       mm.opacity = opacity
     }

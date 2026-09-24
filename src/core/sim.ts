@@ -22,6 +22,7 @@ import { makeRng, rand, randInt } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
   BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
+  bodyR, GIANT_HP,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
@@ -253,7 +254,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   const at = l.special
   if (def.boss !== undefined) {
     // 막 보스: 가장 깊은 곳에서 잠들어 있다가 누가 다가오면 깬다
-    state.monsters.push(makeMonster(state, def.boss, at.x, at.y, 9999, hpMul, pow, lvl))
+    state.monsters.push(makeMonster(state, def.boss, at.x, at.y, 9999, hpMul * GIANT_HP, pow, lvl))
     state.monstersTotal++
   } else if (def.unique) {
     // 우두머리: 평범한 원형을 크게 키우고 접두 능력 셋. 같은 원형 셋이 지킨다
@@ -1844,10 +1845,10 @@ function aimedMonster(state: GameState, map: GameMap, p: PlayerState): number {
   const ax = p.x + cosA(p.aim) * p.aimDist
   const ay = p.y + sinA(p.aim) * p.aimDist
   let found = -1
-  gridFor(map).query(ax - 24, ay - 24, ax + 24, ay + 24, (i) => {
+  gridFor(map).query(ax - 40, ay - 40, ax + 40, ay + 40, (i) => {
     const m = state.monsters[i]
     if (!m || m.hp <= 0) return
-    if (len(ax - m.x, ay - m.y) <= MONSTER_LIST[m.kind].r * HEAD_AIM_FRAC && (found < 0 || m.id < found)) found = m.id
+    if (len(ax - m.x, ay - m.y) <= bodyR(m) * HEAD_AIM_FRAC && (found < 0 || m.id < found)) found = m.id
   })
   return found
 }
@@ -1910,11 +1911,11 @@ function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: 
     return d < 1 || Math.abs(angleDiff(atan2A(ty - y, tx - x), o.arcAim)) <= o.arc
   }
   const hit: Monster[] = []
-  gridFor(map).query(x - r - 20, y - r - 20, x + r + 20, y + r + 20, (i) => {
+  gridFor(map).query(x - r - 80, y - r - 80, x + r + 80, y + r + 80, (i) => {
     const m = state.monsters[i]
     if (!m || m.hp <= 0) return
     if (o.tag !== undefined && m.tag === o.tag) return
-    if (len(m.x - x, m.y - y) > r + MONSTER_LIST[m.kind].r) return
+    if (len(m.x - x, m.y - y) > r + bodyR(m)) return
     if (!inArc(m.x, m.y)) return
     if (rayCast(map, x, y, m.x, m.y, 'bullet', true).blocked) return
     hit.push(m)
@@ -1953,7 +1954,7 @@ function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: 
 function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, arc: number, dmg: number, knock: number): number {
   dmg = Math.round(dmg * weaponMul(p))
   let n = 0
-  const reach = range + PLAYER_RADIUS + 20
+  const reach = range + PLAYER_RADIUS + 80
   const hit: Monster[] = []
   gridFor(map).query(p.x - reach, p.y - reach, p.x + reach, p.y + reach, (i) => {
     const m = state.monsters[i]
@@ -1961,7 +1962,7 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     const dx = m.x - p.x
     const dy = m.y - p.y
     const d = len(dx, dy)
-    if (d > range + PLAYER_RADIUS + MONSTER_LIST[m.kind].r) return
+    if (d > range + PLAYER_RADIUS + bodyR(m)) return
     if (d > 1 && Math.abs(angleDiff(atan2A(dy, dx), p.aim)) > arc) return
     if (rayCast(map, p.x, p.y, m.x, m.y, 'bullet', true).blocked) return
     hit.push(m)
@@ -2466,7 +2467,7 @@ function lineAoe(state: GameState, p: PlayerState, len: number, halfW: number, d
     const ry = m.y - p.y
     const along = rx * dx + ry * dy
     if (along < 0 || along > len) continue
-    if (Math.abs(rx * dy - ry * dx) > halfW + MONSTER_LIST[m.kind].r) continue
+    if (Math.abs(rx * dy - ry * dx) > halfW + bodyR(m)) continue
     hit.push(m)
   }
   hit.sort((a, b) => a.id - b.id)
@@ -2610,10 +2611,10 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
       let bestM: Monster | null = null
       let bestP: PlayerState | null = null
       if (state.monsters.length > 0) {
-        grid.query(Math.min(b.px, b.x) - 24, Math.min(b.py, b.y) - 24, Math.max(b.px, b.x) + 24, Math.max(b.py, b.y) + 24, (k) => {
+        grid.query(Math.min(b.px, b.x) - 80, Math.min(b.py, b.y) - 80, Math.max(b.px, b.x) + 80, Math.max(b.py, b.y) + 80, (k) => {
           const m = state.monsters[k]
           if (!m || m.hp <= 0 || m.id === b.lastHit) return
-          if (!segmentHitsCircle(b.px, b.py, b.x, b.y, m.x, m.y, MONSTER_LIST[m.kind].r)) return
+          if (!segmentHitsCircle(b.px, b.py, b.x, b.y, m.x, m.y, bodyR(m))) return
           const t = ((m.x - b.px) * sx + (m.y - b.py) * sy) / s2
           if (t < bestT || (t === bestT && bestM && m.id < bestM.id)) {
             bestT = t
@@ -2679,7 +2680,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   const dist = len(m.x - b.ox, m.y - b.oy)
   // 치명타 = 덕의 헤드샷: 쏠 때 커서가 이 몬스터의 약점 위였고, 그 탄이 이 몬스터를 맞혔다.
   // 산탄은 정중앙을 지나는 탄만 (일곱 개가 전부 치명타가 되면 과하다). 침착 모드는 전부
-  const crit = b.forceCrit || (b.critMon === m.id && (w.pellets === 1 || partForOffset(dOff, def.r) === PART_HEAD))
+  const crit = b.forceCrit || (b.critMon === m.id && (w.pellets === 1 || partForOffset(dOff, bodyR(m)) === PART_HEAD))
   const shooter = state.players[b.owner]
   let dmg = b.damage * b.mul * (crit ? headMult(w) + shooter.st[ST_CRIT] / 100 : 1) * falloff(w, dist)
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
@@ -3433,10 +3434,10 @@ function runBooms(state: GameState, map: GameMap, grid: Grid): void {
     }
     if (b.by === -2) continue
     const hit: Monster[] = []
-    grid.query(b.x - b.r - 20, b.y - b.r - 20, b.x + b.r + 20, b.y + b.r + 20, (i) => {
+    grid.query(b.x - b.r - 80, b.y - b.r - 80, b.x + b.r + 80, b.y + b.r + 80, (i) => {
       const m = state.monsters[i]
       if (!m || m.hp <= 0) return
-      if (len(m.x - b.x, m.y - b.y) > b.r + MONSTER_LIST[m.kind].r) return
+      if (len(m.x - b.x, m.y - b.y) > b.r + bodyR(m)) return
       hit.push(m)
     })
     hit.sort((a, c) => a.id - c.id)
@@ -3499,7 +3500,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
     if (m.taunt > 0) m.taunt--
     // 넉백: 벽에 막히며 밀리고 금방 줄어든다
     if (m.kx !== 0 || m.ky !== 0) {
-      const r = moveCircle(map, m.x, m.y, def.r, m.kx, m.ky)
+      const r = moveCircle(map, m.x, m.y, bodyR(m), m.kx, m.ky)
       m.x = r.x
       m.y = r.y
       m.kx *= 0.72
@@ -3539,7 +3540,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       if (m.pat === PAT.leap) {
         // 여왕 도약: 예고 때 정한 자리로 날아간다 (내려앉는 원이 친다 — 몸으로는 안 친다)
         const left = Math.max(1, m.t)
-        const r = moveCircle(map, m.x, m.y, def.r, (m.ax - m.x) / left, (m.ay - m.y) / left)
+        const r = moveCircle(map, m.x, m.y, bodyR(m), (m.ax - m.x) / left, (m.ay - m.y) / left)
         m.x = r.x
         m.y = r.y
         m.moving = 1
@@ -3548,13 +3549,13 @@ function stepMonsters(state: GameState, map: GameMap): void {
       }
       // 도살자 돌진: 정한 방향으로 곧게, 닿는 사람을 한 번씩 치고 옆으로 밀쳐 낸다
       const sp = BP.charge.speed
-      const r = moveCircle(map, m.x, m.y, def.r, cosA(m.aim) * sp, sinA(m.aim) * sp)
+      const r = moveCircle(map, m.x, m.y, bodyR(m), cosA(m.aim) * sp, sinA(m.aim) * sp)
       const blocked = Math.abs(r.x - m.x) + Math.abs(r.y - m.y) < sp * 0.3
       m.x = r.x
       m.y = r.y
       m.moving = 1
       for (const p of state.players) {
-        if (!isActive(p) || ((m.hitMask ?? 0) >> p.id) & 1 || len(p.x - m.x, p.y - m.y) > def.r + PLAYER_RADIUS + 4) continue
+        if (!isActive(p) || ((m.hitMask ?? 0) >> p.id) & 1 || len(p.x - m.x, p.y - m.y) > bodyR(m) + PLAYER_RADIUS + 4) continue
         if (hurtPct(state, p, bossPm(state, m, BP.charge.pm), m.id, m.x, m.y)) {
           m.hitMask = (m.hitMask ?? 0) | (1 << p.id)
           const side = -(p.x - m.x) * sinA(m.aim) + (p.y - m.y) * cosA(m.aim) >= 0 ? 1 : -1
@@ -3603,7 +3604,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       let away = false
       let hold = false
       if (def.attack === 'melee') {
-        attack = m.cd === 0 && m.los === 1 && d - def.r - PLAYER_RADIUS <= def.range
+        attack = m.cd === 0 && m.los === 1 && d - bodyR(m) - PLAYER_RADIUS <= def.range
       } else if (def.attack === 'ranged' || def.attack === 'lob') {
         attack = m.cd === 0 && m.los === 1 && d <= def.range
         const keep = def.keepDist ?? 200
@@ -3701,7 +3702,7 @@ function moveMonster(map: GameMap, m: Monster, def: MonsterDef, tx: number, ty: 
   if (m.rage) speed *= RAGE_SPEED
   if (def.boss) speed *= BOSS_PLANS[def.id]?.speed[m.stage] ?? 1
   if (m.slow > 0) speed *= 0.5
-  const r = moveCircle(map, m.x, m.y, def.r, dirX * speed, dirY * speed)
+  const r = moveCircle(map, m.x, m.y, bodyR(m), dirX * speed, dirY * speed)
   m.x = r.x
   m.y = r.y
   m.moving = 1
@@ -3805,7 +3806,7 @@ function bossZone(state: GameState, m: Monster, z: Omit<Zone, 'id' | 'kind' | 'o
  * 패턴 시작: 예고 범위를 깔고 예고(MS_WINDUP · mode 2)에 들어간다. 쓸 수 없으면 false (아무것도 바꾸지 않는다).
  * 거리와 상관없이 늘 쓴다 — 차례가 흔들리지 않게 (거리로 거르면 근접 캐릭터 앞에서 회전 베기만 되풀이했다). 못 쓰는 것은 부를 자리가 없을 때 · 보이는 사람이 없을 때뿐
  */
-function bossStart(state: GameState, map: GameMap, m: Monster, def: MonsterDef, id: BossPatId, tp: PlayerState): boolean {
+function bossStart(state: GameState, map: GameMap, m: Monster, _def: MonsterDef, id: BossPatId, tp: PlayerState): boolean {
   const W = BOSS_PATS[PAT[id]].windup
   let aim = atan2A(tp.y - m.y, tp.x - m.x)
   let ax = tp.x
@@ -3819,7 +3820,7 @@ function bossStart(state: GameState, map: GameMap, m: Monster, def: MonsterDef, 
       aim = atan2A(t.y - m.y, t.x - m.x)
       ax = t.x
       ay = t.y
-      bossZone(state, m, { kind: ZONE_WARN, x: m.x, y: m.y, shape: ZS_LINE, a: aim, len: BP.charge.speed * BP.charge.ticks + def.r, r: def.r + PLAYER_RADIUS, t: W })
+      bossZone(state, m, { kind: ZONE_WARN, x: m.x, y: m.y, shape: ZS_LINE, a: aim, len: BP.charge.speed * BP.charge.ticks + bodyR(m), r: bodyR(m) + PLAYER_RADIUS, t: W })
       break
     }
     case 'spin':
@@ -4000,7 +4001,7 @@ function bossBlast(state: GameState, map: GameMap, z: Zone): void {
     if (z.slow && isActive(p)) p.legInjury = Math.max(p.legInjury, z.slow)
     if (puller && isActive(p)) {
       // 갈고리: 보스 바로 앞으로 끌어오고, 보스는 곧장 칼질한다
-      const pr = MONSTER_LIST[puller.kind].r + PLAYER_RADIUS + 6
+      const pr = bodyR(puller) + PLAYER_RADIUS + 6
       const dd = len(p.x - puller.x, p.y - puller.y) || 1
       const q = moveCircle(map, puller.x, puller.y, PLAYER_RADIUS, ((p.x - puller.x) / dd) * pr, ((p.y - puller.y) / dd) * pr)
       state.events.push({ type: 'hook', x: p.x, y: p.y, x2: q.x, y2: q.y })
@@ -4019,8 +4020,8 @@ function queenFan(state: GameState, m: Monster, def: MonsterDef, n: number): voi
   const pm = bossPm(state, m, BP.fan.pm)
   for (let i = 0; i < n; i++) {
     const a = (base - deg(QUEEN.spread) + step * i) & 1023
-    const sx = m.x + cosA(a) * (def.r + 4)
-    const sy = m.y + sinA(a) * (def.r + 4)
+    const sx = m.x + cosA(a) * (bodyR(m) + 4)
+    const sy = m.y + sinA(a) * (bodyR(m) + 4)
     state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: BP.fan.slow, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: 0, r: def.shotR ?? 6, pm })
   }
   state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
@@ -4033,7 +4034,7 @@ function lordNova(state: GameState, m: Monster, def: MonsterDef): void {
   const pm = bossPm(state, m, BP.nova.pm)
   for (let i = 0; i < n; i++) {
     const a = (m.aim + Math.round((i * 1024) / n)) & 1023
-    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: 0, x: m.x + cosA(a) * (def.r + 4), y: m.y + sinA(a) * (def.r + 4), vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 100, dmg: 0, r: def.shotR ?? 8, pm })
+    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: 0, x: m.x + cosA(a) * (bodyR(m) + 4), y: m.y + sinA(a) * (bodyR(m) + 4), vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 100, dmg: 0, r: def.shotR ?? 8, pm })
   }
   state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: m.x, y: m.y })
 }
@@ -4080,7 +4081,7 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
   }
   if (def.attack === 'melee') {
     state.events.push({ type: 'swipe', m: m.id, x: m.x, y: m.y, aim: m.aim })
-    const reach = def.r + PLAYER_RADIUS + def.range + 8
+    const reach = bodyR(m) + PLAYER_RADIUS + def.range + 8
     for (const p of state.players) {
       if (!isActive(p)) continue
       const dx = p.x - m.x
@@ -4129,13 +4130,13 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
   for (let i = 0; i < ms.length; i++) {
     const a = ms[i]
     if (a.hp <= 0 || a.st === MS_SLEEP) continue
-    const ra = MONSTER_LIST[a.kind].r
+    const ra = bodyR(a)
     const q = big(a) ? ra + 40 : 40
     grid.query(a.x - q, a.y - q, a.x + q, a.y + q, (j) => {
       if (j <= i) return
       const b = ms[j]
       if (b.hp <= 0) return
-      const rb = MONSTER_LIST[b.kind].r
+      const rb = bodyR(b)
       const dx = b.x - a.x
       const dy = b.y - a.y
       const d2 = dx * dx + dy * dy
@@ -4164,10 +4165,10 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
   }
   for (const p of state.players) {
     if (!p.alive || p.left) continue
-    grid.query(p.x - 80, p.y - 80, p.x + 80, p.y + 80, (j) => {
+    grid.query(p.x - 110, p.y - 110, p.x + 110, p.y + 110, (j) => {
       const m = ms[j]
       if (m.hp <= 0) return
-      const r = MONSTER_LIST[m.kind].r
+      const r = bodyR(m)
       const dx = m.x - p.x
       const dy = m.y - p.y
       const d = len(dx, dy)

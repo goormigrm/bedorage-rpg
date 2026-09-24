@@ -16,6 +16,8 @@ import { TouchControls } from './touch'
 
 interface AimSource {
   screenToWorld(sx: number, sy: number): { x: number; y: number }
+  /** 거대한 보스 몸 위를 누르면 그 보스를 겨눈다 (renderer3d aimPoint) */
+  aimPoint?(sx: number, sy: number, state?: GameState, me?: { x: number; y: number }): { x: number; y: number }
 }
 
 /** 자동 조준에 필요한 것 (터치 조작일 때만 넘어온다) */
@@ -202,7 +204,7 @@ export class LocalInput {
     if (t && auto) {
       this.autoAim(auto, mx, my)
     } else {
-      const w = renderer.screenToWorld(this.mouse.x, this.mouse.y)
+      const w = renderer.aimPoint ? renderer.aimPoint(this.mouse.x, this.mouse.y, undefined, { x: meX, y: meY }) : renderer.screenToWorld(this.mouse.x, this.mouse.y)
       const dx = w.x - meX
       const dy = w.y - meY
       if (dx !== 0 || dy !== 0) this.lastAim = radToAngle(Math.atan2(dy, dx))

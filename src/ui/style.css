@@ -1,4 +1,4 @@
-/* 배도라지RPG (배도라지 덕에서 가져옴) — 로비·대기실·게임 화면 스타일.
+/* 배도라지 알PG (배도라지 덕에서 가져옴) — 로비·대기실·게임 화면 스타일.
    톤: 깊은 남색 바탕 + 유리질 패널 + 금선 헤더 + 초록 유리 진행 버튼 (개리그 매니저 팀 선택 화면 계열) */
 :root {
   --bg: #0d1117;
@@ -586,7 +586,12 @@ body { background: var(--bg); }
 .d2-title h1 { font-family: "Nanum Myeongjo", serif !important; font-weight: 800 !important; font-size: 64px !important; margin: 0; letter-spacing: .02em;
   background: linear-gradient(180deg, #ffe6a8, #c9a24a 55%, #6a4a1a); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; }
 .d2-title h1 .t1, .d2-title h1 .t2 { background: none !important; -webkit-text-fill-color: transparent; }
-.d2-title h1 .t2 { font-size: 30px; margin-left: 10px; letter-spacing: .3em; }
+.d2-title h1 .t2 { font-size: 40px; letter-spacing: .04em; }
+/* 게임 이름 "배도라지 알PG" (2026-09-24 사용자: "캐릭터가 계란이니까 '알'을 강조해서 다른 색으로") — 노른자 빛 '알' */
+.egg { background: linear-gradient(180deg, #fff6c2 0%, #ffc61a 32%, #ff8a00 66%, #ff5400 100%) !important; -webkit-background-clip: text !important; background-clip: text !important;
+  -webkit-text-fill-color: transparent !important; color: transparent; filter: drop-shadow(0 0 10px rgba(255,110,0,.75)) drop-shadow(0 2px 0 rgba(90,30,0,.6)); }
+.d2-title h1 .egg { font-size: 64px; margin-left: 18px; letter-spacing: 0; }
+.ending-sub .egg { font-weight: 800; }
 .d2-title .tag { color: #9a8a70 !important; font: 500 13px "Nanum Myeongjo", serif !important; margin: 4px 0 0 !important; }
 /* 캐릭터 설명 칸을 넓게 · 한글은 낱말 단위로 접는다 (2026-09-24 사용자: "설명 칸을 늘리고 한글 줄바꿈을 제대로 — 읽기 편하게") */
 .d2-char { position: fixed !important; left: calc((100vw - var(--side-w) - 20px) / 2); bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; width: min(1240px, calc(100vw - var(--side-w) - 60px)); }

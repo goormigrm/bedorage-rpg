@@ -36,6 +36,39 @@ let snap = null
 const saves = []
 const now = () => vt
 const vidSec = () => vid / FPS
+/** 거대한 보스 장면은 카메라를 뒤로 (온몸이 화면에 들어오게) */
+const GIANT_ZOOM = 1.3
+
+/** 글을 가운데에 쓴다 — 게임 이름이면 '알'만 노른자 빛으로 (2026-09-24 사용자: "캐릭터가 계란이니까 '알'을 강조해서 다른 색으로") */
+function drawName(g, text, cx, cy) {
+  const i = text.indexOf('알PG')
+  if (i < 0) {
+    g.fillText(text, cx, cy)
+    return
+  }
+  const parts = [text.slice(0, i), '알', text.slice(i + 1)]
+  const ws = parts.map((p) => g.measureText(p).width)
+  let x = cx - (ws[0] + ws[1] + ws[2]) / 2
+  g.save()
+  g.textAlign = 'left'
+  parts.forEach((p, k) => {
+    if (k === 1) {
+      g.save()
+      const grd = g.createLinearGradient(0, cy - 70, 0, cy + 60)
+      grd.addColorStop(0, '#fff6c2')
+      grd.addColorStop(0.32, '#ffc61a')
+      grd.addColorStop(0.66, '#ff8a00')
+      grd.addColorStop(1, '#ff5400')
+      g.fillStyle = grd
+      g.shadowColor = 'rgba(255,100,0,0.95)'
+      g.shadowBlur = 46
+      g.fillText(p, x, cy)
+      g.restore()
+    } else g.fillText(p, x, cy)
+    x += ws[k]
+  })
+  g.restore()
+}
 /** 덧그리는 것 */
 const ov = { title: null, cap: null, fade: { a: 1, from: 1, to: 1, at: 0, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: 0, dur: 1 }, end: null }
 /** 소리 단서 (영상 초) */
@@ -102,7 +135,7 @@ function drawOverlay() {
       g.shadowBlur = 40
       g.fillStyle = '#f1d58a'
       g.font = '800 150px "Nanum Myeongjo", serif'
-      g.fillText(ov.title.text, W / 2, H / 2 - 40 + rise)
+      drawName(g, ov.title.text, W / 2, H / 2 - 40 + rise)
       g.shadowBlur = 0
       g.fillStyle = 'rgba(241,213,138,0.85)'
       g.fillRect(W / 2 - 260, H / 2 + 62 + rise, 520, 2)
@@ -156,7 +189,7 @@ function drawOverlay() {
     g.shadowBlur = 36
     g.fillStyle = '#f1d58a'
     g.font = '800 132px "Nanum Myeongjo", serif'
-    g.fillText('배도라지RPG', W / 2, H / 2 - 110)
+    drawName(g, '배도라지 알PG', W / 2, H / 2 - 110)
     g.shadowBlur = 0
     g.font = '600 40px "IBM Plex Sans KR", sans-serif'
     g.fillStyle = '#e8dcc0'
@@ -345,12 +378,10 @@ function faceBoss(kind, dist) {
   const b = s.monsters.find((m) => m.kind === kind && m.hp > 0)
   if (!b || !a) return
   for (const m of s.monsters) if (m !== b) m.hp = 0
-  const l = M.world.areaLayout(s.curArea, window.__bd.map())
-  const ex = l.exits[0]
-  const d = Math.hypot(ex.x - b.x, ex.y - b.y) || 1
+  // 카메라 쪽(화면 아래 — 남동)에 선다: 거대한 보스가 파티 뒤(화면 위)로 온몸이 보이고, 보스 몸에 파티가 가려지지 않는다 (2026-09-24 — 보스 4배)
   const p = s.players[0]
-  p.x = b.x + ((ex.x - b.x) / d) * dist
-  p.y = b.y + ((ex.y - b.y) / d) * dist
+  p.x = b.x + Math.SQRT1_2 * dist
+  p.y = b.y + Math.SQRT1_2 * dist
   gatherBots()
   b.st = 1
   b.target = 0
@@ -465,8 +496,9 @@ function ultScenes() {
       ov.cap = null
       for (const m of st().monsters) m.hp = 0
       warpParty(area)
+      window.__bd.zoom(GIANT_ZOOM)
     })
-    at(1.2, () => faceBoss(kind, 170))
+    at(1.2, () => faceBoss(kind, 190))
     at(0.35, () => {
       holding = false
       fadeTo(0, 520)
@@ -597,12 +629,15 @@ function scenes() {
       ov.cap = null
       for (const m of st().monsters) m.hp = 0
       warpParty(area)
+      window.__bd.zoom(GIANT_ZOOM)
     })
     at(1.2, () => faceBoss(kind, dist))
     at(0.35, () => {
       holding = false
       fadeTo(0, 520)
       caption(capText, capSub)
+      // 보스가 나오면 대사 한마디 (즉사기는 쓰지 않는다 — 목소리만)
+      sfxCues.push({ t: vidSec() + 0.45, line: kind })
       zoomTo(1.0, 1.05, stay * 1000)
       if (extra) extra()
     })
@@ -611,9 +646,9 @@ function scenes() {
   }
   at(0, () => cue('boss'))
   boss(9, 3, 180, '막 보스 넷 — 저마다의 보스 방', '1막 도살자 — 돌진 · 회전 베기 · 갈고리', [[0.3, 1], [2.1, 2], [4.0, 0]], 5.4)
-  boss(18, 8, 200, '2막 거미 여왕', '거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', [[0.3, 0], [1.9, 1], [3.6, 3]], 5.4)
-  boss(27, 12, 200, '3막 관리인', '충격파 십자 · 내려찍기 · 방패병', [[0.3, 2], [2.3, 1]], 4.6)
-  boss(34, 15, 190, '최종 보스 — 심연의 군주', '체력이 줄면 분노 — 광선 · 지옥불 · 그림자', [[0.3, 4], [2.4, 3]], 4.8, () => {
+  boss(18, 8, 190, '2막 거미 여왕', '거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', [[0.3, 0], [1.9, 1], [3.6, 3]], 5.4)
+  boss(27, 12, 190, '3막 관리인', '충격파 십자 · 내려찍기 · 방패병', [[0.3, 2], [2.3, 1]], 4.6)
+  boss(34, 15, 210, '최종 보스 — 심연의 군주', '체력이 줄면 분노 — 광선 · 지옥불 · 그림자', [[0.3, 4], [2.4, 3]], 4.8, () => {
     cue('rage')
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
     if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
@@ -622,6 +657,7 @@ function scenes() {
   // ---- 마지막: 크루 12명이 함께 군주를 — 쓰러지면 전리품이 쏟아진다
   cut(at, () => {
     finale()
+    window.__bd.zoom(1.4)
     caption('배도라지 크루 12명', '탱커 · 딜러 · 힐러 — 혼자부터 최대 4명, 빈 자리는 봇')
   })
   const fin = t
@@ -718,15 +754,16 @@ async function renderAudio(durSec) {
     performance.now = () => c.t * 1000
     try {
       if (c.donate !== undefined) sx.donate(c.donate)
-      else sx.onEvents(c.ev, c.st, c.lp)
+      else if (c.line === undefined) sx.onEvents(c.ev, c.st, c.lp)
     } catch (e) {
       log.push('소리 ' + e)
     }
   }
   performance.now = pn
-  // 보스 목소리 영상: 즉사기 순간에 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
-  // 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1). 게임의 브라우저 음성 합성은 녹음할 수 없다
-  if (ULT) {
+  // 보스 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
+  // 보스 목소리 영상은 즉사기 순간에, 소개 영상은 보스가 나올 때(2026-09-24 사용자: "즉사기는 쓰지 않지만 보스 나왔을 때 각 보스의
+  // 대사 일부분이 들리도록" — lineCue). 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1)
+  {
     let n = 0
     for (const k of [3, 8, 12, 15]) {
       try {
@@ -737,7 +774,11 @@ async function renderAudio(durSec) {
       }
     }
     for (const c of sfxCues) {
-      for (const e of c.ev ?? []) {
+      if (c.line !== undefined) {
+        fakeT = c.t
+        if (sx.bossLine(c.line)) n++
+      }
+      for (const e of ULT ? c.ev ?? [] : []) {
         if (e.type !== 'bossUlt') continue
         fakeT = c.t + 0.1
         if (sx.bossLine(e.kind)) n++
@@ -816,7 +857,7 @@ async function lobbyPhase(ve) {
     cue('calm')
     fadeTo(0, 1200)
     zoomTo(1.1, 1.0, 5000)
-    ov.title = { text: '배도라지RPG', sub: '계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', at: now() }
+    ov.title = { text: '배도라지 알PG', sub: '계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', at: now() }
   })
   at(3.3, () => (ov.title.out = now()))
   at(4.0, () => caption('배도라지 크루 12명', '탱커 3 · 딜러 6 · 힐러 3 — 누구로 떠날까'))

@@ -143,7 +143,7 @@ export class Lobby {
         <canvas class="bonfire" id="bonfire"></canvas>
         <div class="czdock" id="czdock"></div>
         <div class="d2-title">
-          <h1><span class="t1">배도라지</span><span class="t2">RPG</span></h1>
+          <h1><span class="t1">배도라지</span><span class="egg">알</span><span class="t2">PG</span></h1>
           <p class="tag">MT 공포체험에서 길을 잃은 배도라지 크루 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
         </div>
         <div class="d2-char" id="my-char">

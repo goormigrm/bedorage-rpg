@@ -22,7 +22,7 @@ export function showEnding(parent: HTMLElement, tier: number, onClose: () => voi
   el.innerHTML = `<div class="ending-box">
     <h2>종이 울렸다</h2>
     ${LINES.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
-    <p class="ending-sub" style="animation-delay:${1 + LINES.length * 1.6}s">배도라지RPG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
+    <p class="ending-sub" style="animation-delay:${1 + LINES.length * 1.6}s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
     <p class="ending-hint" style="animation-delay:${1.6 + LINES.length * 1.6}s">${NEXT[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다</p>
     <button class="btn ending-go" style="animation-delay:${2 + LINES.length * 1.6}s">계속하기</button>
   </div>`

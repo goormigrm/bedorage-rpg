@@ -7,7 +7,7 @@ import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { Ally, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
-import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, isBossLike } from '../core/monsters'
+import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -33,7 +33,7 @@ import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
-import { MONSTER_TOP, MonsterView } from './monsters3d'
+import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
@@ -212,6 +212,8 @@ export class Renderer3D {
   private globeMeshes = new Map<number, THREE.Group>()
   /** 몬스터 (인스턴스 렌더) */
   private monsterView = new MonsterView()
+  /** 마지막으로 그린 판 (조준점 — aimPoint) */
+  private lastCurr: GameState | null = null
   /** 시야 밖이라 숨긴 몬스터 id · 경계에서 깜빡이지 않게 남은 시간 */
   private hiddenM = new Set<number>()
   /** 이미 등장을 알린 보스 (몬스터 번호) */
@@ -221,6 +223,8 @@ export class Renderer3D {
   private shotPool: THREE.Sprite[] = []
   /** 던전: 플레이어마다 드는 등불 — 디아블로의 빛 반경. 어둠과 시야 제한이 겹쳐 분위기를 만든다 */
   private lanterns: THREE.PointLight[] = []
+  /** 거대한 막 보스를 카메라 쪽에서 비추는 빛 (등불 반경 밖으로 몸이 나가 검은 덩어리로 보였다 — 2026-09-24) */
+  private giantLight = new THREE.PointLight(0xffb48c, 0, 30, 1.1)
   /** 스킬 연출: 땅의 무대(스포트라이트) · 던진 수류탄 · 버프 고리 */
   private zoneMeshes = new Map<number, THREE.Group>()
   private throwMeshes = new Map<number, THREE.Mesh>()
@@ -437,6 +441,8 @@ export class Renderer3D {
       this.lanterns.push(l)
       this.scene.add(l)
     }
+    this.giantLight.visible = false
+    this.scene.add(this.giantLight)
     const pad = (): THREE.PointLight => {
       const l = new THREE.PointLight(0x000000, 0, 0.01, 2)
       l.position.set(0, -60, 0)
@@ -1514,6 +1520,7 @@ export class Renderer3D {
 
   // ---------- 프레임 ----------
   draw(prev: GameState, curr: GameState, alpha: number, dt: number, opts: RenderOptions): void {
+    this.lastCurr = curr
     // 빛 상한으로 지난 프레임에 끈 빛을 먼저 되살린다 — 그 뒤 각자(등불 · 장판 …)가 제 켜짐을 정하고, padLights 가 다시 잰다
     for (const l of this.capped) l.visible = true
     this.capped.length = 0
@@ -1590,6 +1597,7 @@ export class Renderer3D {
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
     this.updateLanterns(curr, pos)
+    this.updateGiantLight(curr)
     this.updateCamera(curr, pos, dt, opts)
     this.world.update(this.t, this.camTarget.x, this.camTarget.z)
     this.padLights()
@@ -1622,10 +1630,10 @@ export class Renderer3D {
     // 커서가 몬스터의 약점 위에 있는가 (보이는 것만) → 조준선 금색 = 지금 쏘면 치명타
     let cursorOn = false
     if (opts.cursor && opts.localPlayer >= 0 && curr.players[opts.localPlayer]?.alive) {
-      const w = this.screenToWorld(opts.cursor.x, opts.cursor.y)
+      const w = this.aimPoint(opts.cursor.x, opts.cursor.y, curr, curr.players[opts.localPlayer])
       for (const m of curr.monsters) {
         if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
-        if (Math.hypot(w.x - m.x, w.y - m.y) <= MONSTER_LIST[m.kind].r * HEAD_AIM_FRAC) {
+        if (Math.hypot(w.x - m.x, w.y - m.y) <= bodyR(m) * HEAD_AIM_FRAC) {
           cursorOn = true
           break
         }
@@ -3353,6 +3361,32 @@ export class Renderer3D {
     for (let i = n; i < this.shotPool.length; i++) this.shotPool[i].visible = false
   }
 
+  /** 거대한 막 보스 빛: 보이는 가장 가까운 거대한 보스의 앞(카메라 쪽) 위에서 비춘다 (어두운 곳만) */
+  private updateGiantLight(curr: GameState): void {
+    const dark = this.map.theme.dark
+    let best: { x: number; z: number; top: number } | null = null
+    let bd = 30 * 30
+    for (const m of curr.monsters) {
+      if (m.hp <= 0 || !isGiant(m) || this.hiddenM.has(m.id)) continue
+      const at = this.monsterView.shown.get(m.id)
+      if (!at) continue
+      const d = (at.x - this.camTarget.x) ** 2 + (at.z - this.camTarget.z) ** 2
+      if (d < bd) {
+        bd = d
+        best = { x: at.x, z: at.z, top: monsterTop(m) }
+      }
+    }
+    const l = this.giantLight
+    if (!dark || !best) {
+      l.visible = false
+      return
+    }
+    l.visible = true
+    l.intensity = dark.lantern * 9 * (1 + Math.sin(this.t * 2.1) * 0.05)
+    l.distance = 12 + best.top * 1.6
+    l.position.set(best.x + Math.sin(YAW) * best.top * 0.45, best.top * 0.6, best.z + Math.cos(YAW) * best.top * 0.45)
+  }
+
   /** 등불: 살아 있는 플레이어마다 따뜻한 빛. 쓰러지면 꺼져 간다 (던전만) */
   private updateLanterns(curr: GameState, pos: { x: number; z: number }[]): void {
     const dark = this.map.theme.dark
@@ -3579,14 +3613,56 @@ export class Renderer3D {
     ctx.restore()
   }
 
-  /** 보스 이름표 자리: 모델 키 바로 위 (실사 모델은 키 = MONSTER_TOP × 크기 — 예전 1.4 배는 머리 위로 한참 떴다) */
-  private bossPlateAt(m: Monster, at: { x: number; z: number }, def: MonsterDef): { x: number; y: number } {
-    return this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.3, at.z)
+  /**
+   * 보스 이름표 자리: 모델 키 바로 위 (실사 모델은 키 = MONSTER_TOP × 크기 — 예전 1.4 배는 머리 위로 한참 떴다).
+   * 거대한 보스는 머리가 화면 위로 나가기도 한다 → 화면 안(위에서 90px)에 붙잡아 둔다
+   */
+  private bossPlateAt(m: Monster, at: { x: number; z: number }, _def: MonsterDef): { x: number; y: number } {
+    const p = this.worldToScreen(at.x, monsterTop(m) + 0.3, at.z)
+    if (isGiant(m)) p.y = Math.max(p.y, 90)
+    return p
+  }
+
+  /**
+   * 조준점 (sim px): 보통은 커서 아래 바닥. 커서가 **거대한 보스의 몸** 위면 그 보스를 겨눈다 (2026-09-24 — 보스가 네 배로 커져
+   * 몸 위쪽을 누르면 바닥 자리가 보스 한참 뒤였다). 머리 쪽(위 30%)이면 가운데 — 약점(치명타), 아니면 몸 앞쪽(치명타 아님)
+   */
+  aimPoint(sx: number, sy: number, state?: GameState, me?: { x: number; y: number }): { x: number; y: number } {
+    const w = this.screenToWorld(sx, sy)
+    state ??= this.lastCurr ?? undefined
+    if (!state) return w
+    let best: { x: number; y: number } | null = null
+    let bestD = Infinity
+    for (const m of state.monsters) {
+      if (m.hp <= 0 || !isGiant(m) || this.hiddenM.has(m.id)) continue
+      const at = this.monsterView.shown.get(m.id)
+      if (!at) continue
+      const foot = this.worldToScreen(at.x, 0, at.z)
+      const top = this.worldToScreen(at.x, monsterTop(m), at.z)
+      const h = foot.y - top.y
+      if (h <= 0) continue
+      const half = h * (isQuadruped(m.kind) ? 0.62 : 0.3)
+      if (sy < top.y || sy > foot.y + h * 0.08 || Math.abs(sx - foot.x) > half) continue
+      const d = Math.abs(sx - foot.x)
+      if (d >= bestD) continue
+      bestD = d
+      const head = sy < top.y + h * 0.3
+      if (head || !me) best = { x: m.x, y: m.y }
+      else {
+        // 몸 앞쪽: 가운데에서 나를 향해 몸 반지름의 0.7 (약점 반경 0.5 밖)
+        const dx = me.x - m.x
+        const dy = me.y - m.y
+        const dd = Math.hypot(dx, dy) || 1
+        const k = Math.min(bodyR(m) * 0.7, dd * 0.5)
+        best = { x: m.x + (dx / dd) * k, y: m.y + (dy / dd) * k }
+      }
+    }
+    return best ?? w
   }
 
   /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글). 말풍선 자리를 기억해 둔다 */
   private drawSay(ctx: CanvasRenderingContext2D, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
-    const top = MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
+    const top = isGiant(m) ? monsterTop(m) : MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
     let head = this.worldToScreen(at.x, top + 0.35, at.z)
     // 보스 · 우두머리는 큰 이름표(drawBossPlate) 위로
     if (isBossLike(m)) {

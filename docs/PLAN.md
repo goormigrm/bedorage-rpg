@@ -1,4 +1,4 @@
-# 배도라지RPG — 개발 계획서
+# 배도라지 알PG — 개발 계획서
 
 > 2026-09-18 작성 · 같은 날 **결정 확정(10장)** → 개발 시작. 배도라지 덕 v1.11.1(`709fba5`)을 바탕으로 만드는 **최대 4인 협동 쿼터뷰 슈팅 RPG**(디아블로류).
 > 저장소 https://github.com/goormigrm/bedorage-rpg · 배포 https://goormigrm.github.io/bedorage-rpg/

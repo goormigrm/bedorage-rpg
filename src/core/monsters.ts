@@ -214,6 +214,25 @@ export const GOBLIN_KIND = 4
 
 export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MONSTER_LIST.map((m) => [m.id, m])) as Record<MonsterKindId, MonsterDef>
 
+/**
+ * 거대한 막 보스 (2026-09-24 사용자: "보스의 크기를 지금보다 4배는 더 크게 — 거의 화면에 꽉 찰 정도로 위엄 있게").
+ * 보스 방(둥근 결투장)의 진짜 보스만 — 응원으로 부른 보스(sum) · 아군 보스(ally)는 좁은 복도를 다녀야 해서 예전 크기.
+ * 그림은 4배(render3d) · 몸(맞는 자리 · 부딪는 둘레 · 손이 닿는 거리)은 2.5배(sim — 도살자 60 · 여왕 · 관리인 65 · 군주 75px).
+ * 몸이 커진 만큼 보스를 둘러싼 패턴(회전 베기 · 내려찍기 · 곁의 안전한 자리 …)의 반지름도 BP 에서 넓혔다
+ */
+export const GIANT_VIEW = 4
+export const GIANT_BODY = 2.5
+/** 몸이 커져 더 잘 맞는 만큼 체력을 올린다 (tools/bossfight.ts — 싸움 길이를 예전과 비슷하게: 44 · 51 · 74 · 87초 → 34 · 41 · 42 · 56초였다) */
+export const GIANT_HP = 1.3
+export function isGiant(m: { kind: number; sum?: number }): boolean {
+  return !!MONSTER_LIST[m.kind]?.boss && m.sum === undefined && (m as { ally?: number }).ally !== 1
+}
+/** 괴물 몸 반지름 (px) — 거대한 보스는 2.5배 */
+export function bodyR(m: { kind: number; sum?: number }): number {
+  const r = MONSTER_LIST[m.kind].r
+  return isGiant(m) ? r * GIANT_BODY : r
+}
+
 /** 쓰러뜨려서 터질 때는 이만큼만 (다가와 터질 때보다 약하게) */
 export const DEATH_BLAST_MULT = 0.6
 
@@ -312,26 +331,26 @@ export const PAT: Record<BossPatId, number> = Object.fromEntries(BOSS_PATS.map((
 export const BP = {
   // 1막 도살자
   charge: { speed: 10, ticks: 32, pm: 400, min: 120, max: 560 },
-  spin: { r: 150, pm: 450 },
+  spin: { r: 190, pm: 450 },
   hook: { len: 440, w: 24, pm: 200 },
   meat: { r: 84, pm: 300, extra: 3 },
   // 2막 거미 여왕
   fan: { pm: 200, slow: 150 },
-  leap: { fly: 16, r: 120, pm: 450, max: 520 },
-  venom: { r2: 110, r: 360, pm: 400 },
+  leap: { fly: 16, r: 150, pm: 450, max: 520 },
+  venom: { r2: 150, r: 380, pm: 400 },
   // 3막 관리인
-  sweep: { r: 250, arc: 176, back: 36, pm: 400 },
-  slam: { r: 150, pm: 450 },
+  sweep: { r: 280, arc: 176, back: 36, pm: 400 },
+  slam: { r: 190, pm: 450 },
   cross: { len: 560, w: 30, second: 44, pm: 400 },
-  quake: { ring: 130, n: 3, gap: 30, pm: 350 },
+  quake: { ring: 170, n: 3, gap: 30, pm: 350 },
   // 4막 심연의 군주
   nova: { pm: 200 },
   meteor: { r: 70, pm: 400 },
   spokes: { n: 6, len: 600, w: 28, second: 50, pm: 450 },
   hellfire: { r: 190, outer: 520, second: 50, pm: 500 },
   // 즉사기: 도살자 둘레 원 · 여왕 곁만 안전한 고리 · 관리인 앞 210° 부채 · 군주에게서 떨어진 빛 원 하나만 안전 (고리의 가운데)
-  slaughter: { r: 300 },
-  webdoom: { r2: 125, r: 1600 },
+  slaughter: { r: 330 },
+  webdoom: { r2: 165, r: 1600 },
   execute: { r: 1100, arc: 300 },
   abyss: { r2: 105, r: 1800, dist: 250 },
 }
