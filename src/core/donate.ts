@@ -46,11 +46,12 @@ export interface CheerDef extends DonateEvent {
   /** 무적 틱 */
   invuln: number
 }
+// 이름 = 효과 (2026-09-24 사용자: "힘내라 · 함성 · 기적 이런 건 직관적이지 않다 — 무슨 효과인지 간단하게")
 export const CHEER_EVENTS: CheerDef[] = [
-  { id: 11, key: 'cheer', name: '응원', desc: '우리 편 체력 30% 회복', amount: 1000, heal: 0.3, rate: 1, ticks: 0, revive: false, invuln: 0 },
-  { id: 12, key: 'cheer', name: '힘내라', desc: '체력 50% 회복 · 20초 공격 속도 +25%', amount: 5000, heal: 0.5, rate: 1.25, ticks: 20 * TICK_RATE, revive: false, invuln: 0 },
-  { id: 13, key: 'cheer', name: '함성', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 30초 공격 속도 +35%', amount: 10000, heal: 1, rate: 1.35, ticks: 30 * TICK_RATE, revive: true, invuln: 0 },
-  { id: 14, key: 'cheer', name: '기적', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 5초 무적 · 40초 공격 속도 +50%', amount: 30000, heal: 1, rate: 1.5, ticks: 40 * TICK_RATE, revive: true, invuln: 5 * TICK_RATE },
+  { id: 11, key: 'cheer', name: '체력 30% 회복', desc: '우리 편 체력 30% 회복', amount: 1000, heal: 0.3, rate: 1, ticks: 0, revive: false, invuln: 0 },
+  { id: 12, key: 'cheer', name: '체력 50% + 공격 속도', desc: '우리 편 체력 50% 회복 · 20초 공격 속도 +25%', amount: 5000, heal: 0.5, rate: 1.25, ticks: 20 * TICK_RATE, revive: false, invuln: 0 },
+  { id: 13, key: 'cheer', name: '동료 부활 + 체력 전부', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 30초 공격 속도 +35%', amount: 10000, heal: 1, rate: 1.35, ticks: 30 * TICK_RATE, revive: true, invuln: 0 },
+  { id: 14, key: 'cheer', name: '부활 + 체력 전부 + 무적', desc: '쓰러진 동료 일으키기 · 체력 모두 회복 · 5초 무적 · 40초 공격 속도 +50%', amount: 30000, heal: 1, rate: 1.5, ticks: 40 * TICK_RATE, revive: true, invuln: 5 * TICK_RATE },
 ]
 export const cheerEvent = (id: number): CheerDef | undefined => CHEER_EVENTS.find((e) => e.id === id)
 /** 후원 글에 이것이 있으면 응원 */

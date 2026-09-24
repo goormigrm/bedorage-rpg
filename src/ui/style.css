@@ -1095,5 +1095,6 @@ body { background: var(--bg); }
 
 .dontable .dr.cheer .da, .dontable .dr.cheer .dn { color: #7aff9a; }
 .dontable .dh.cheer { margin: 5px 0 2px; font-size: 12px; color: #7aff9a; }
+.czpanel .czr.cheer { grid-template-columns: 92px 1fr auto; }
 .czpanel .czr.cheer input { color: #7aff9a; }
 .czpanel .czr.cheer b { color: #9affb4; }

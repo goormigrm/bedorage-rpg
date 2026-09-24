@@ -382,7 +382,7 @@ export class Session {
         showIntro(this.stage.querySelector('.game-ui') as HTMLElement, () => this.sfx.blip())
       }
     }
-    ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.exit()
+    ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.confirmExit()
     // 음성 대화: 같은 게임(방)에 있는 사람끼리 (최대 4명)
     if (cfg.link) {
       this.voice = new Voice(cfg.link)
@@ -1089,7 +1089,7 @@ export class Session {
       solo ? '봇은 기다려 줍니다.' : '대전 중에는 게임이 멈추지 않습니다.',
       [
         { label: '계속', primary: true, onClick: () => this.hideOverlay() },
-        { label: '로비로', primary: false, onClick: () => this.exit() },
+        { label: '로비로', primary: false, onClick: () => this.confirmExit() },
       ],
       // 감싸는 칸에 잇는다 — .settings 자체에 이으면 다시 그릴 때 그 안에 .settings 가 또 들어갔다(키 설정 넓게 펴기가 안 먹던 원인)
       `<div class="sethost">${settingsHtml({ keys: !this.touch })}</div>`,
@@ -1945,11 +1945,12 @@ export class Session {
       // 색 · 소리의 세기는 **이벤트**로 정한다 (금액은 적지도 들고 있지도 않는다)
       const cheer = !!cheerEvent(ev.id)
       const color = cheer ? '#7aff9a' : ev.id >= 7 ? '#ff6a4a' : ev.id >= 6 ? '#ffae4a' : '#f1d58a'
-      this.renderer.banner(`${nick}님 · ${ev.name}!`, ev.desc, color)
+      // 응원은 "○○님의 응원!" + 효과 (이름이 곧 효과라 겹치지 않게)
+      this.renderer.banner(cheer ? `${nick}님의 응원!` : `${nick}님 · ${ev.name}!`, ev.desc, color)
       if (e.p !== this.cfg.localPlayer) this.sfx.donate(ev.id >= 6 && !cheer)
       if (e.m >= 0) this.renderer.monsterSay(e.m, nick, info?.text || `${nick}님이 보냈다!`, true)
     }
-    this.chat?.add(nick, `${ev.name}: ${ev.desc}`, 'don')
+    this.chat?.add(nick, cheerEvent(ev.id) ? `응원: ${ev.desc}` : `${ev.name}: ${ev.desc}`, 'don')
   }
 
   /**
@@ -1989,7 +1990,7 @@ export class Session {
     // 후원 글에 "!응원" — 돕는 후원도 있다는 것을 시청자에게 알린다. 금액마다 단계가 다르다 (2026-09-23)
     const cr = cheerRows(cfg)
     const cheer = cr.length
-      ? `<div class="dh cheer">💚 후원 글에 !응원</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt"></span></div>`).join('')
+      ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt"></span></div>`).join('')
       : ''
     const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
@@ -2269,6 +2270,27 @@ export class Session {
     }, 2200)
   }
 
+
+  /**
+   * 로비로 나가기 전에 한 번 더 묻는다 (2026-09-24 사용자: "잘못 누르면 게임하다가 방이 터지거나 날아가 버리니까").
+   * 방장 · 손님 · 혼자에 따라 나가면 무슨 일이 생기는지 알려 준다. 판이 끝난 뒤의 안내 창("로비로")은 묻지 않는다
+   */
+  private confirmExit(): void {
+    const others = this.state.players.filter((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i]).length
+    const hard = this.state.mode === 'dungeon' && this.state.deathRule === 2
+    const what =
+      others > 0 && this.isHost
+        ? '방장이 나가면 <b>방이 닫힙니다</b> — 같이 하던 사람들은 혼자 이어하기로 그 판을 이어 갈 수 있습니다.'
+        : others > 0
+          ? '이 판에서 빠집니다. 자리가 남아 있으면 방 목록에서 다시 들어올 수 있습니다.'
+          : '지금 판을 끝내고 로비로 갑니다.'
+    const save = hard ? '하드코어 — 마지막으로 마을에 들어온 뒤 얻은 것은 저장되지 않습니다.' : '캐릭터 · 가방 · 골드는 저장됩니다.'
+    if (this.cfg.mode === 'solo') this.paused = true
+    this.showOverlay('로비로 나갈까요?', `${what}<br>${save}`, [
+      { label: '계속하기', primary: true, onClick: () => this.hideOverlay() },
+      { label: '로비로 나가기', primary: false, onClick: () => this.exit() },
+    ])
+  }
 
   private exit(): void {
     this.saveMine(true)

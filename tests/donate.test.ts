@@ -223,11 +223,11 @@ describe('후원 이벤트 — 응원', () => {
 
   it('금액이 넘는 단계 중 가장 비싼 것 · 끈 단계는 건너뛴다', () => {
     expect(cheerForAmount(999, cfg)).toBeUndefined()
-    expect(cheerForAmount(1000, cfg)?.name).toBe('응원')
-    expect(cheerForAmount(7000, cfg)?.name).toBe('힘내라')
-    expect(cheerForAmount(10000, cfg)?.name).toBe('함성')
-    expect(cheerForAmount(500000, cfg)?.name).toBe('기적')
-    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('함성')
+    expect(cheerForAmount(1000, cfg)?.name).toBe('체력 30% 회복')
+    expect(cheerForAmount(7000, cfg)?.name).toBe('체력 50% + 공격 속도')
+    expect(cheerForAmount(10000, cfg)?.name).toBe('동료 부활 + 체력 전부')
+    expect(cheerForAmount(500000, cfg)?.name).toBe('부활 + 체력 전부 + 무적')
+    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('동료 부활 + 체력 전부')
   })
 
   it('가장 싼 응원: 우리 편 체력 30% · 공격 속도는 그대로 · 초록 고리', () => {
@@ -246,7 +246,7 @@ describe('후원 이벤트 — 응원', () => {
     expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
   })
 
-  it('힘내라: 체력 50% · 공격 속도 1.25 배', () => {
+  it('5천 원: 체력 50% · 공격 속도 1.25 배', () => {
     const g = game(82)
     toField(g)
     const a = g.s.players[0]
@@ -256,7 +256,7 @@ describe('후원 이벤트 — 응원', () => {
     expect(a.rateMul).toBeCloseTo(1.25)
   })
 
-  it('함성 · 기적: 쓰러진 동료를 일으키고 체력을 모두 채운다 · 기적은 무적', () => {
+  it('1만 · 3만 원: 쓰러진 동료를 일으키고 체력을 모두 채운다 · 3만 원은 무적', () => {
     for (const [i, rate] of [[2, 1.35], [3, 1.5]] as const) {
       const g = game(83 + i)
       toField(g)

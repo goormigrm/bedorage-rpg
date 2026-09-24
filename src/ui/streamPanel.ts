@@ -149,7 +149,7 @@ function panelHtml(): string {
   // 응원 금액표 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") — 후원 글에 !응원 이면 이 표로
   const cheers = CHEER_EVENTS.map(
     (e, i) =>
-      `<div class="czr cheer"><input type="number" min="0" step="500" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><b>${e.name}</b><span title="${e.desc}">${e.desc}</span>` +
+      `<div class="czr cheer"><input type="number" min="0" step="500" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><span title="${e.desc}">${e.desc}</span>` +
       `<button type="button" class="lnk" data-cheertry="${i}" title="이 금액 + !응원 으로 시험 후원 — 던전에서 일어납니다">시험</button></div>`,
   ).join('')
   return (
@@ -164,9 +164,9 @@ function panelHtml(): string {
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
     `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요.</p>` +
-    `<div class="czh"><b>💚 !응원 금액 → 효과</b></div>` +
+    `<div class="czh"><b>💚 후원 글에 !응원 입력 — 금액 → 효과</b></div>` +
     `<div class="czt">${cheers}</div>` +
-    `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
+    `<p class="czn">후원 글에 <b>!응원</b> 입력 → 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
