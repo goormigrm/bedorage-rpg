@@ -108,7 +108,7 @@ describe('전리품 · 경제', () => {
     expect(p.shrineT).toBe(0)
   })
 
-  it('지역마다 상자·항아리가 놓이고, 막다른 굴과 보스 방 앞에는 금빛 상자가 있다 (같은 시드면 같다)', () => {
+  it('지역마다 상자·항아리가 놓이고, 비워라 퀘스트의 굴과 보스 방 앞에는 금빛 상자가 있다 (같은 시드면 같다)', () => {
     const count = (area: number, seed: number) => {
       const map: GameMap = buildAreaMap(seed, area)
       const s = createState({ area, seed, chars: ['chim'] }, map)

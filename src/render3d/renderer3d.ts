@@ -5,8 +5,8 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
-import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL } from '../core/skills'
+import { Ally, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
+import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, isBossLike } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
@@ -297,7 +297,7 @@ export class Renderer3D {
   /** 팀 신호 (같은 편이 찍은 "여기"). 지면 마커 + 화면 밖이면 가장자리 화살표 */
   private marks: { x: number; z: number; life: number; max: number; mesh: THREE.Mesh }[] = []
   /** 빠른 감정 표현 말풍선 (플레이어 번호 → 글·끝나는 시각) */
-  private emotes = new Map<number, { text: string; until: number }>()
+  private emotes = new Map<number, { text: string; until: number; ally?: boolean; shout?: boolean }>()
   /**
    * 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 · 마지막으로 그린 자리.
    * 괴물이 죽어도 말풍선은 제 시간까지 그 자리(시체 위)에 남는다 — 사용자: "죽어도 일정 시간은 떠 있도록"
@@ -484,6 +484,17 @@ export class Renderer3D {
     const text = EMOTES[id]
     if (!text) return
     this.emotes.set(i, { text, until: performance.now() + 2200 })
+  }
+
+  /**
+   * 스킬 외침 (core/skills.ts skillShout): 머리 위 말풍선 — 스킬명만이면 1.5초, 우리 편을 부르는 말이면 초록으로 2.8초.
+   * 채팅 말풍선이 떠 있으면 덮지 않는다 (사람이 쓴 글이 먼저)
+   */
+  showShout(i: number, text: string, ally: boolean): void {
+    const cur = this.emotes.get(i)
+    const now = performance.now()
+    if (cur && cur.until > now && !cur.shout) return
+    this.emotes.set(i, { text, until: now + (ally ? 2800 : 1500), ally, shout: true })
   }
 
   /** 채팅 말풍선: 머리 위에 받은 글 (길면 줄여서) · 글 길이에 따라 3~6초 */
@@ -1544,7 +1555,8 @@ export class Renderer3D {
     this.updateVision(curr, opts)
     this.announceBoss(curr)
     for (let i = 0; i < n; i++) this.updateRig(i, curr.players[i], pos[i], sdt)
-    this.monsterView.update(prev, curr, alpha, sdt, (m) => this.hiddenM.has(m.id))
+    // 응원 아군 괴물은 괴물과 같은 표에 초록으로 그린다 (sim 에서는 따로 — core/state.ts Ally)
+    this.monsterView.update(withAllies(prev), withAllies(curr), alpha, sdt, (m) => this.hiddenM.has(m.id))
     this.updateBullets(prev, curr, alpha)
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
@@ -1571,6 +1583,7 @@ export class Renderer3D {
       return { x: p.x, y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
     this.drawMonsterBars(curr)
+    this.drawAllyTags(curr)
     this.drawOrphanSays(curr)
     this.drawDropLabels(curr, opts.localPlayer)
     this.drawPlaceLabels(curr, opts.localPlayer)
@@ -2224,16 +2237,22 @@ export class Renderer3D {
           ctx.font = '700 15px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
           const tw = ctx.measureText(em.text).width + 20
           const by = s.y - 40
-          ctx.fillStyle = '#ffffff'
+          // 우리 편을 부르는 스킬 외침은 초록 (초록 = 우리 편 좋은 효과 — 범위 고리와 같은 색)
+          ctx.fillStyle = em.ally ? '#e2ffe9' : '#ffffff'
           roundRect(ctx, s.x - tw / 2, by - 13, tw, 26, 13)
           ctx.fill()
+          if (em.ally) {
+            ctx.strokeStyle = '#34c26a'
+            ctx.lineWidth = 2
+            ctx.stroke()
+          }
           ctx.beginPath()
           ctx.moveTo(s.x - 5, by + 12)
           ctx.lineTo(s.x + 5, by + 12)
           ctx.lineTo(s.x, by + 19)
           ctx.closePath()
           ctx.fill()
-          ctx.fillStyle = '#1a1f26'
+          ctx.fillStyle = em.ally ? '#0e5a2c' : '#1a1f26'
           ctx.textBaseline = 'middle'
           ctx.fillText(em.text, s.x, by + 1)
           ctx.textBaseline = 'alphabetic'
@@ -2804,6 +2823,9 @@ export class Renderer3D {
   // ---------- 스킬 연출 ----------
   /** 스킬을 쓴 순간: 시전 고리 + 스킬마다의 튀는 효과 */
   private onSkill(e: Extract<SimEvent, { type: 'skill' }>, state: GameState, localPlayer: number): void {
+    // 스킬명을 외친다 (우리 편 범위 스킬이면 모이라는 말까지 — 초록 말풍선)
+    const shout = skillShout((e.rid ?? e.id) as SkillId)
+    if (shout) this.showShout(e.p, shout.text, shout.ally)
     const x = e.x * U
     const z = e.y * U
     const ult = e.slot === 2
@@ -3419,6 +3441,33 @@ export class Renderer3D {
     this.drawBubble(ctx, head, say)
   }
 
+  /**
+   * 응원 아군 괴물 머리 위 (초록): 졸개는 "아군 · 남은 초" 만 (넷이 붙어 서면 긴 이름표가 겹쳤다 — 보낸 사람은 배너 · 채팅 줄에),
+   * 보스 모습은 "○○님의 아군 · 남은 초"
+   */
+  private drawAllyTags(curr: GameState): void {
+    if (!curr.allies?.length) return
+    const ctx = this.hud.ctx
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+    for (const a of curr.allies) {
+      const at = this.monsterView.shown.get(a.id)
+      if (!at) continue
+      const def = MONSTER_LIST[a.kind]
+      const p = this.worldToScreen(at.x, MONSTER_TOP[a.kind] * (def.r / 13) + 0.3, at.z)
+      const who = def.boss ? this.summonLabel?.(a.by, a.seq) : undefined
+      const label = `${who ? `${who}님의 아군` : '아군'} · ${Math.ceil(a.t / 60)}`
+      ctx.font = `800 ${def.boss ? 14 : 11}px ${SAY_FONT}`
+      ctx.strokeText(label, p.x, p.y)
+      ctx.fillStyle = ALLY_TAG
+      ctx.fillText(label, p.x, p.y)
+    }
+    ctx.restore()
+  }
+
   /** 괴물이 쓰러졌거나 사라진 말풍선: 마지막으로 그린 자리(시체 위, 조금 낮게)에 제 시간까지 */
   private drawOrphanSays(curr: GameState): void {
     if (this.says.size === 0) return
@@ -3703,7 +3752,7 @@ export class Renderer3D {
       const me = curr.players[lp]
       tx = pos[lp].x
       tz = pos[lp].z
-      // 정조준이면 조준 쪽을 더 보여 준다. 단 후원 "손 떨림" 중에는 하지 않는다 — 조준이 매 틱 ±20° 흔들려
+      // 정조준이면 조준 쪽을 더 보여 준다. 단 후원 "손 떨림" 중에는 하지 않는다 — 조준이 좌우로 흔들려
       // 카메라가 따라 흔들리면 화면 전체가 정신없이 떨렸다 (2026-09-23 사용자: "화면 흔들림은 없도록"). 조준만 흔들린다
       if (me.alive && me.ads && !((me.don?.[DON_SHAKE] ?? 0) > 0)) {
         const r = angleToRad(me.aim)
@@ -3842,6 +3891,18 @@ export { hex, PLAYER_RADIUS }
  * 빨강 = 적의 범위 공격(장판 · 예고 원 · 폭발) · 초록 = 동료를 고치거나 지켜 주는 범위 · 보라 = 적이 세지는 것(괴물 치유 등).
  * 초록을 다른 뜻에 쓰지 말 것 — 예전 산성 웅덩이가 초록이라 좋은 범위로 착각했다.
  */
+/** 응원 아군 이름표 색 */
+const ALLY_TAG = '#8dffb0'
+
+/** 아군을 괴물 모습으로 (monsterView 는 괴물만 그린다 — 보간 스냅샷은 id · x · y 만 있다) */
+function allyLook(a: Ally): Monster {
+  return { id: a.id, kind: a.kind, x: a.x, y: a.y, aim: a.aim, hp: 1, maxHp: 1, st: MS_CHASE, t: 0, moving: a.moving, elite: 0, ally: 1 } as unknown as Monster
+}
+
+function withAllies(s: GameState): GameState {
+  return s.allies?.length ? { ...s, monsters: s.monsters.concat(s.allies.map(allyLook)) } : s
+}
+
 /** 보스 이름표 높이 (말풍선 · 소환 이름표를 그 위로 올린다) */
 const BOSS_PLATE_H = 50
 const ENEMY_AOE = 0xff4a3a

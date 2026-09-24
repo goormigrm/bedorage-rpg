@@ -11,7 +11,7 @@ import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
 import { SUMMON_CAP, areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
-import { ACTS, AREAS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isDeadEnd, isTown, npcNear, questPoints, townNpcs, tierQuests, WAYPOINTS, wpBit } from '../core/world'
+import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, questPoints, townNpcs, tierQuests, WAYPOINTS, wpBit } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
@@ -422,6 +422,7 @@ export class Session {
       (c) => this.onStreamChat(c),
       (d) => this.onStreamDonation(d),
     )
+    stream.sayBlock = () => this.sayBlock()
     this.czBadge = new StreamBadge(this.stage.querySelector('.game-ui .top-right') as HTMLElement, () => this.openCz(), true)
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
@@ -652,10 +653,7 @@ export class Session {
     const a = areaDef(this.viewArea)
     const t = this.state.tier ?? 0
     const tag = t > 0 ? `${TIER_LABEL[t]} · ` : ''
-    // 막다른 옆길은 들어서자마자 알린다 (다음 맵이 없다 — 끝의 금빛 상자를 열고 들어온 곳으로 돌아간다)
-    const sub = isDeadEnd(a.id)
-      ? `${tag}지역 레벨 ${a.level + tierOf(t).lvl} · 막다른 옆길 — 끝에 금빛 상자, 나가는 길은 ${AREAS[a.links[0]].name} 쪽뿐`
-      : a.kind === 'town'
+    const sub = a.kind === 'town'
         ? `${tag}${a.act + 1}막 · ${a.lore ?? '안전지대'}`
         : `${tag}지역 레벨 ${a.level + tierOf(t).lvl}${a.lore ? ` · ${a.lore}` : ''}`
     this.renderer.banner(a.name, sub)
@@ -1808,6 +1806,21 @@ export class Session {
     if (!loadStreamCfg().bubbles || this.arena) return
     this.chatQueue.push({ ...c, at: performance.now() })
     if (this.chatQueue.length > 12) this.chatQueue.shift()
+    // 시험인데 지금 화면에 괴물이 없으면 알린다 (나타나면 30초 안에 그 머리 위에 뜬다)
+    if (c.test && this.renderer.pickSpeaker(this.view()) < 0) {
+      this.message = '채팅 시험 — 괴물이 화면에 보이면 그 머리 위에 뜹니다'
+      setTimeout(() => {
+        if (this.message.startsWith('채팅 시험')) this.message = ''
+      }, 4000)
+    }
+  }
+
+  /** 채팅 시험 단추가 묻는다: 지금 말풍선을 띄울 수 없는 까닭 · 'wait' = 화면에 괴물이 없어 기다린다 · null = 바로 뜬다 */
+  private sayBlock(): string | null {
+    if (!loadStreamCfg().bubbles) return '말풍선이 꺼져 있습니다'
+    if (this.arena) return '대전에서는 뜨지 않습니다'
+    if (isTown(this.viewArea)) return '마을에는 괴물이 없습니다 — 던전에서'
+    return this.renderer.pickSpeaker(this.view()) < 0 ? 'wait' : null
   }
 
   /**
@@ -1919,8 +1932,8 @@ export class Session {
         this.donNextAt = now + 1500
       }
     }
-    // 괴물 머리 위에만. 말할 괴물이 없으면(마을 · 빈 방) 기다리고, 8초 넘게 못 한 말은 버린다 — 채팅 칸으로도 캐릭터 머리 위로도 돌리지 않는다
-    while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > 8000) this.chatQueue.shift()
+    // 괴물 머리 위에만. 말할 괴물이 없으면(마을 · 빈 방) 기다리고, 8초(시험은 30초) 넘게 못 한 말은 버린다 — 채팅 칸으로도 캐릭터 머리 위로도 돌리지 않는다
+    while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > (this.chatQueue[0].test ? 30000 : 8000)) this.chatQueue.shift()
     if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
       const c = this.chatQueue[0]
       if (this.viewerSay(c.nick, c.text)) {
@@ -2308,6 +2321,7 @@ export class Session {
     this.chat = null
     this.unlistenStream?.()
     this.unlistenStream = null
+    if (stream.sayBlock) stream.sayBlock = null
     for (const f of this.unlistenCz) f()
     this.unlistenCz = []
     this.czClose?.()

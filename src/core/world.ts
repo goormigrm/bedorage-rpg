@@ -26,15 +26,17 @@ export interface AreaDef {
   /** 지역 레벨 (몬스터·아이템). 마을은 0 */
   level: number
   /**
-   * 이어진 지역. 순서가 출구 칸이다: 0 = 들어온 쪽(맵의 입구), 1 = 입구에서 가장 먼 곳, 2 = 둘 다에서 먼 옆길.
-   * 마을은 TOWNS 의 자리를 쓴다.
+   * 이어진 지역. 순서가 출구 칸이다: 0 = 들어온 쪽(맵의 입구), 1 = 입구에서 가장 먼 곳(다음 지역).
+   * **막마다 한 줄**(마을 → 1 → 2 → … → 보스): 갈림길 · 막다른 옆길은 두지 않는다 (2026-09-24 사용자 — "한 맵에서 다음 맵으로
+   * 가는 게 두 개가 돼서 한쪽은 더 갈 수 없으면 유저는 당황한다. 설명이 있어도 읽지 않는다"). 예전 옆길 넷(굶주린 굴 · 늑대 굴 ·
+   * 저수조 · 끓는 구덩이)은 큰길 사이에 넣었다. 마을은 TOWNS 의 자리를 쓴다.
    */
   links: number[]
   /** 웨이포인트가 있다 */
   wp?: boolean
   /** 무리 틀 (없으면 막의 기본) */
   packs?: PackDef[]
-  /** 이름 있는 우두머리 (옆길 자리에서 기다린다) */
+  /** 이름 있는 우두머리 (입구 · 출구 둘 다에서 먼 자리에서 기다린다) */
   unique?: { kind: number; name: string }
   /** 막 보스 (가장 먼 곳) */
   boss?: number
@@ -189,9 +191,9 @@ const ARCHERS: PackDef[] = [
 /** 1막 (GUIDE 5.1 표). 번호 = 배열 자리 */
 export const AREAS: AreaDef[] = [
   { id: 0, act: 0, name: '순례자 야영지', kind: 'town', map: 'town1', level: 0, links: [1], wp: true, lore: '눈을 떠 보니 모닥불 곁이었다 — 여기가 어디인지는 아무도 모른다' },
-  { id: 1, act: 0, name: '핏빛 들판', kind: 'field', map: 'fields', level: 1, links: [0, 3, 2], wp: true, packs: GHOULS, lore: '성당 종이 멈춘 밤, 시체들이 들판으로 기어 나왔다' },
-  { id: 2, act: 0, name: '굶주린 굴', kind: 'dungeon', map: 'cave', level: 2, links: [1], packs: GHOULS, density: 1.2, lore: '굴 속에서 무언가 뼈를 씹는다' },
-  { id: 3, act: 0, name: '묘지 길', kind: 'field', map: 'fields', level: 3, links: [1, 4], wp: true, unique: { kind: GHOUL, name: '묘지기 오스' }, lore: '묘지기는 돌아오지 않았다' },
+  { id: 1, act: 0, name: '핏빛 들판', kind: 'field', map: 'fields', level: 1, links: [0, 2], wp: true, packs: GHOULS, lore: '성당 종이 멈춘 밤, 시체들이 들판으로 기어 나왔다' },
+  { id: 2, act: 0, name: '굶주린 굴', kind: 'dungeon', map: 'cave', level: 2, links: [1, 3], packs: GHOULS, density: 1.2, lore: '굴 속에서 무언가 뼈를 씹는다' },
+  { id: 3, act: 0, name: '묘지 길', kind: 'field', map: 'fields', level: 3, links: [2, 4], wp: true, unique: { kind: GHOUL, name: '묘지기 오스' }, lore: '묘지기는 돌아오지 않았다' },
   { id: 4, act: 0, name: '지하 묘지 1층', kind: 'dungeon', map: 'crypt', level: 4, links: [3, 5] },
   { id: 5, act: 0, name: '지하 묘지 2층', kind: 'dungeon', map: 'crypt', level: 5, links: [4, 6] },
   { id: 6, act: 0, name: '무너진 성당', kind: 'dungeon', map: 'cathedral', level: 5, links: [5, 7], wp: true, packs: ARCHERS, lore: '종은 멈췄고, 기둥 사이로 활시위가 당겨진다' },
@@ -200,9 +202,9 @@ export const AREAS: AreaDef[] = [
   { id: 9, act: 0, name: '도살장', kind: 'boss', map: 'butchery', level: 8, links: [8], boss: BUTCHER, gate: 10, density: 0.5, lore: '신선한 고기…!' },
   // ---------------- 2막 안개 숲 (지역 레벨 9~16) ----------------
   { id: 10, act: 1, name: '숲 가장자리 야영지', kind: 'town', map: 'town2', level: 0, links: [11], wp: true, lore: '늑대 울음이 밤새 목책을 두드린다' },
-  { id: 11, act: 1, name: '안개 숲', kind: 'field', map: 'forest', level: 9, links: [10, 13, 12], wp: true, lore: '안개 너머에서 무언가 따라온다' },
-  { id: 12, act: 1, name: '늑대 굴', kind: 'dungeon', map: 'hollow', level: 10, links: [11], packs: WOLVES, density: 1.2, lore: '뼈가 발목까지 쌓였다' },
-  { id: 13, act: 1, name: '늑대 길', kind: 'field', map: 'forest', level: 11, links: [11, 14], packs: WOLVES, unique: { kind: WOLF, name: '회색 갈기' }, lore: '사방에서 울음이 좁혀 온다' },
+  { id: 11, act: 1, name: '안개 숲', kind: 'field', map: 'forest', level: 9, links: [10, 12], wp: true, lore: '안개 너머에서 무언가 따라온다' },
+  { id: 12, act: 1, name: '늑대 굴', kind: 'dungeon', map: 'hollow', level: 10, links: [11, 13], packs: WOLVES, density: 1.2, lore: '뼈가 발목까지 쌓였다' },
+  { id: 13, act: 1, name: '늑대 길', kind: 'field', map: 'forest', level: 11, links: [12, 14], packs: WOLVES, unique: { kind: WOLF, name: '회색 갈기' }, lore: '사방에서 울음이 좁혀 온다' },
   { id: 14, act: 1, name: '포자 늪', kind: 'field', map: 'swamp', level: 12, links: [13, 15], wp: true, packs: SPORES, lore: '쓰러진 것들이 포자를 뒤집어쓰고 다시 일어선다' },
   { id: 15, act: 1, name: '버섯 동굴 1층', kind: 'dungeon', map: 'hollow', level: 13, links: [14, 16], packs: SPORES },
   { id: 16, act: 1, name: '버섯 동굴 2층', kind: 'dungeon', map: 'hollow', level: 14, links: [15, 17], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
@@ -210,9 +212,9 @@ export const AREAS: AreaDef[] = [
   { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], boss: QUEEN, gate: 19, density: 0.5, lore: '여왕이 실을 당긴다' },
   // ---------------- 3막 잠긴 지하도 (지역 레벨 17~24) ----------------
   { id: 19, act: 2, name: '수문 야영지', kind: 'town', map: 'town3', level: 0, links: [20], wp: true, lore: '누런 등불 아래, 물 떨어지는 소리만 들린다' },
-  { id: 20, act: 2, name: '잠긴 수로', kind: 'field', map: 'sewer', level: 17, links: [19, 22, 21], wp: true, lore: '도시의 오물이 흐르던 길 — 이제는 무언가 거슬러 올라온다' },
-  { id: 21, act: 2, name: '저수조', kind: 'dungeon', map: 'cistern', level: 18, links: [20], packs: SPITTERS, density: 1.2, lore: '고인 물이 부글거린다' },
-  { id: 22, act: 2, name: '무너진 시장', kind: 'field', map: 'ruins', level: 19, links: [20, 23], packs: GUARDS, unique: { kind: SHIELD, name: '철문 브론' }, lore: '무너진 기둥 사이로 방패가 줄지어 섰다' },
+  { id: 20, act: 2, name: '잠긴 수로', kind: 'field', map: 'sewer', level: 17, links: [19, 21], wp: true, lore: '도시의 오물이 흐르던 길 — 이제는 무언가 거슬러 올라온다' },
+  { id: 21, act: 2, name: '저수조', kind: 'dungeon', map: 'cistern', level: 18, links: [20, 22], packs: SPITTERS, density: 1.2, lore: '고인 물이 부글거린다' },
+  { id: 22, act: 2, name: '무너진 시장', kind: 'field', map: 'ruins', level: 19, links: [21, 23], packs: GUARDS, unique: { kind: SHIELD, name: '철문 브론' }, lore: '무너진 기둥 사이로 방패가 줄지어 섰다' },
   { id: 23, act: 2, name: '하수 광장', kind: 'field', map: 'sewer', level: 20, links: [22, 24], wp: true, lore: '광장의 분수가 검은 물을 뿜는다' },
   { id: 24, act: 2, name: '의식의 회랑 1층', kind: 'dungeon', map: 'rite', level: 21, links: [23, 25], packs: RITES, lore: '촛불이 저절로 켜진다' },
   { id: 25, act: 2, name: '의식의 회랑 2층', kind: 'dungeon', map: 'rite', level: 22, links: [24, 26], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
@@ -220,13 +222,13 @@ export const AREAS: AreaDef[] = [
   { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], boss: WARDEN, gate: 28, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
   // ---------------- 4막 심연 (지역 레벨 25~30) ----------------
   { id: 28, act: 3, name: '심연의 문', kind: 'town', map: 'town4', level: 0, links: [29], wp: true, lore: '문틈으로 붉은 빛이 샌다 — 여기가 마지막 불이다' },
-  { id: 29, act: 3, name: '불타는 균열', kind: 'field', map: 'rift', level: 25, links: [28, 30, 35], wp: true, lore: '땅이 갈라져 불을 토한다' },
-  { id: 30, act: 3, name: '재의 들판', kind: 'field', map: 'ashen', level: 26, links: [29, 31], packs: FIRES, unique: { kind: DEMON, name: '불꽃 혀 가르' }, lore: '하늘에서 재가 내린다' },
+  { id: 29, act: 3, name: '불타는 균열', kind: 'field', map: 'rift', level: 25, links: [28, 35], wp: true, lore: '땅이 갈라져 불을 토한다' },
+  { id: 30, act: 3, name: '재의 들판', kind: 'field', map: 'ashen', level: 27, links: [35, 31], packs: FIRES, unique: { kind: DEMON, name: '불꽃 혀 가르' }, lore: '하늘에서 재가 내린다' },
   { id: 31, act: 3, name: '그림자 미궁 1층', kind: 'dungeon', map: 'maze', level: 27, links: [30, 32], packs: SHADOWS, lore: '벽이 숨을 쉰다' },
   { id: 32, act: 3, name: '그림자 미궁 2층', kind: 'dungeon', map: 'maze', level: 28, links: [31, 33], wp: true, packs: SHADOWS, unique: { kind: SHADE, name: '속삭이는 자' } },
   { id: 33, act: 3, name: '군주의 계단', kind: 'dungeon', map: 'stair', level: 29, links: [32, 34], lore: '계단은 끝없이 아래로 이어진다' },
   { id: 34, act: 3, name: '심연의 옥좌', kind: 'boss', map: 'throne', level: 30, links: [33], boss: LORD, density: 0.4, lore: '종이 처음 울린 곳' },
-  { id: 35, act: 3, name: '끓는 구덩이', kind: 'dungeon', map: 'pit', level: 26, links: [29], packs: FIRES, density: 1.2, lore: '바닥이 끓는다' },
+  { id: 35, act: 3, name: '끓는 구덩이', kind: 'dungeon', map: 'pit', level: 26, links: [29, 30], packs: FIRES, density: 1.2, lore: '바닥이 끓는다' },
 ]
 
 export function areaDef(id: number): AreaDef {
@@ -235,16 +237,6 @@ export function areaDef(id: number): AreaDef {
 
 export function isTown(id: number): boolean {
   return areaDef(id).kind === 'town'
-}
-
-/**
- * 막다른 옆길: 이어진 곳이 하나뿐인 던전(보스 방 · 마을 제외) — 굶주린 굴 · 늑대 굴 · 저수조 · 끓는 구덩이.
- * 끝에 금빛 상자가 있고 나가는 길은 들어온 출구뿐이다. 2026-09-19 "굶주린 굴에서 다음 맵으로 가는 포탈이 없다" —
- * 설계상 막다른 곳인데 알려 주지 않아 길이 끊긴 것처럼 보였다 → 배너 · 추적 칸에 적는다.
- */
-export function isDeadEnd(id: number): boolean {
-  const a = areaDef(id)
-  return a.links.length === 1 && a.kind !== 'boss' && a.kind !== 'town'
 }
 
 /** 웨이포인트가 있는 지역 (순서 = 세이브의 비트 번호) */
@@ -297,7 +289,7 @@ export interface QuestDef {
 export const QUESTS: QuestDef[] = [
   {
     name: '굴 속의 것들', act: 0, area: 2, goal: 'clear', sp: 1,
-    task: '핏빛 들판 옆 굶주린 굴을 비워라',
+    task: '핏빛 들판 너머 굶주린 굴을 비워라',
     ask: '깨어나자마자 이런 부탁을 해 미안하오. 허나 당신들 같은 사람이 전에도 몇 있었소 — 종이 멈춘 밤에 떨어져, 굴로 물을 길러 갔다가 돌아오지 않았지. 굴 속의 것들을 치워 주시오.',
     thanks: '굴이 조용해졌군. 그 둘의 넋도 이제 쉬겠지… 받으시오. 여기서 살아 나가려면 싸우는 법부터 늘려야 하오.',
     reward: '스킬 포인트 1',
@@ -326,7 +318,7 @@ export const QUESTS: QuestDef[] = [
   // ---------------- 2막 ----------------
   {
     name: '늑대 굴', act: 1, area: 12, goal: 'clear', sp: 1,
-    task: '안개 숲 옆 늑대 굴을 비워라',
+    task: '안개 숲 너머 늑대 굴을 비워라',
     ask: '사냥꾼 셋이 늑대 굴에 들어가 돌아오지 않았소. 늑대가 아니오 — 늑대처럼 생긴 무언가지. 굴을 비워 주시오.',
     thanks: '굴에서 사냥꾼들의 활을 찾았다고? …고맙소. 이걸 익혀 두시오.',
     reward: '스킬 포인트 1',
@@ -355,7 +347,7 @@ export const QUESTS: QuestDef[] = [
   // ---------------- 3막 ----------------
   {
     name: '막힌 저수조', act: 2, area: 21, goal: 'clear', sp: 1,
-    task: '잠긴 수로 옆 저수조를 비워라',
+    task: '잠긴 수로 너머 저수조를 비워라',
     ask: '수문이 막힌 건 저수조 때문이오. 산을 뱉는 것들이 그 안에 둥지를 틀었지. 저수조를 비우면 물길이 다시 트일 거요.',
     thanks: '물이 다시 흐르는 소리가 들리는구려. 고맙소 — 이걸 익혀 두시오.',
     reward: '스킬 포인트 1',
@@ -384,7 +376,7 @@ export const QUESTS: QuestDef[] = [
   // ---------------- 4막 ----------------
   {
     name: '끓는 구덩이', act: 3, area: 35, goal: 'clear', sp: 1,
-    task: '불타는 균열 옆 끓는 구덩이를 비워라',
+    task: '불타는 균열 너머 끓는 구덩이를 비워라',
     ask: '균열 옆 구덩이에서 악마들이 불덩이를 빚고 있소. 구덩이를 비우지 않으면 이 야영지도 오래 못 버티오.',
     thanks: '불덩이가 멎었구려. 고맙소 — 이걸 익혀 두시오. 마지막까지 쓸 데가 있을 거요.',
     reward: '스킬 포인트 1',
@@ -549,7 +541,7 @@ const tileOf = (map: GameMap, s: Spot) => Math.floor(s.y / TILE) * map.w + Math.
 
 /**
  * 지역의 자리들. 마을은 손으로 정한 자리, 나머지는 맵에서:
- * 입구 = 맵의 첫 스폰(왼쪽 위의 트인 곳) · 가장 먼 곳 = 입구에서 걸음 수가 가장 큰 트인 칸 · 옆길 = 둘 다에서 먼 칸.
+ * 입구 = 맵의 첫 스폰(왼쪽 위의 트인 곳) · 가장 먼 곳(다음 지역) = 입구에서 걸음 수가 가장 큰 트인 칸 · 우두머리 자리 = 둘 다에서 먼 칸.
  */
 export function areaLayout(area: number, map: GameMap): AreaLayout {
   const cached = layouts.get(map)
@@ -607,7 +599,7 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
       wp = nearSteps(map, dE, 6)
       wpArrive = nearSteps(map, walkField(map, tileOf(map, wp)), 2)
     }
-    // 보스는 결투장 가운데(없으면 가장 먼 곳 — 보스 방은 출구가 하나뿐이라 비어 있다), 우두머리는 옆길 자리
+    // 보스는 결투장 가운데(없으면 가장 먼 곳 — 보스 방은 출구가 하나뿐이라 비어 있다), 우두머리는 입구 · 출구 둘 다에서 먼 자리
     const bossAt = arena ? { x: arena.x, y: arena.y } : farS
     out = { spawn: wpArrive ?? exits[0]?.arrive ?? entry, exits, wp, wpArrive, special: def.boss !== undefined ? bossAt : midS, portal: null }
   }

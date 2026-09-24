@@ -4,7 +4,7 @@
 //   ② 출구 · 도착 자리 · 웨이포인트 · 처음 자리가 벽 속이 아닌가
 //   ③ 처음 자리에서 모든 출구 · 웨이포인트까지 걸어갈 수 있나 (흐름장)
 //   ④ 출구로 들어와 서는 자리가 어느 출구의 F 거리(52px) 안이 아닌가 (들어와서 누른 F 가 출구로 가지 않게)
-//   ⑤ 막다른 곳(링크 하나 · 보스 방 아님) 목록 — 옆길 던전
+//   ⑤ 막다른 곳(링크 하나 · 보스 방 · 마을 아님)이 없나 — 2026-09-24 막마다 한 줄
 //
 //   npx vite-node tools/links.ts            (시드 8개)
 //   npx vite-node tools/links.ts -- seeds=30
@@ -65,8 +65,9 @@ for (const a of AREAS) {
 
 // ⑤ 막다른 곳
 const dead = AREAS.filter((a) => a.links.length === 1 && a.kind !== 'boss' && !isTown(a.id))
+for (const a of dead) bad(`${a.id} ${a.name}: 막다른 곳 (← ${AREAS[a.links[0]].name})`)
+for (const a of AREAS) if (a.links.length > 2) bad(`${a.id} ${a.name}: 갈림길 (${a.links.map((l) => AREAS[l].name).join(' · ')})`)
 console.log(`지역 ${AREAS.length}개 · 맵 ${maps}장(시드 ${SEEDS.length}개) 검사`)
-console.log(`막다른 옆길 ${dead.length}곳: ${dead.map((a) => `${a.id} ${a.name}(← ${AREAS[a.links[0]].name})`).join(' · ')}`)
 console.log(`보스 방: ${AREAS.filter((a) => a.kind === 'boss').map((a) => `${a.id} ${a.name}`).join(' · ')}`)
 if (problems.length === 0) console.log('문제 없음')
 else {

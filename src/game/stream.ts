@@ -10,6 +10,8 @@ export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 export interface StreamChat {
   nick: string
   text: string
+  /** 설정 창의 채팅 시험 (말할 괴물을 더 오래 기다리고, 못 띄우면 알린다) */
+  test?: boolean
 }
 export interface StreamDonation {
   nick: string
@@ -169,6 +171,13 @@ class StreamHub {
     return this.chatFns.size > 0
   }
 
+  /**
+   * 게임(세션)이 넣는다: 지금 말풍선을 띄울 수 없는 까닭 (마을 · 말풍선 끔 · 화면에 괴물 없음). 띄울 수 있으면 null.
+   * 채팅 시험 단추가 누르자마자 알린다 (2026-09-24 사용자: "채팅 시험이 동작하지 않아" — 괴물이 없는 곳에서 누르면
+   * 8초 기다렸다 조용히 버려서, 아무 일도 안 일어난 것처럼 보였다)
+   */
+  sayBlock: (() => string | null) | null = null
+
   chat(c: StreamChat): void {
     this.note()
     for (const f of [...this.chatFns]) f(c)
@@ -191,7 +200,7 @@ class StreamHub {
   fakeChat(): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    this.chat({ nick: r(this.nicks), text: r(this.samples) })
+    this.chat({ nick: r(this.nicks), text: r(this.samples), test: true })
   }
 
   /** 응원 시험: 그 단계 금액 + "!응원" */

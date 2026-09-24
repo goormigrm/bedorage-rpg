@@ -157,6 +157,33 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   ...(Object.fromEntries(TREE_SKILLS.map((t) => [t.id, { ...BASE_SKILLS[t.base], id: t.id, base: t.base, name: t.name, desc: t.desc }])) as Record<TreeSkillId, SkillDef>),
 }
 
+/**
+ * 스킬을 쓰면 머리 위에 외치는 말 (2026-09-24 사용자: "스킬을 쓸 때 스킬명을 외치도록 — 말풍선으로. 특히 범위로 아군에게 이로운
+ * 효과를 줄 때는 이쪽으로 오라는 식의 외침도"). 우리 편에게 닿는 범위 스킬(치유 · 피해 감소 · 공격 속도 · 부활)은 스킬명 뒤에
+ * 모이라는 말을 붙인다 — 초록 말풍선. 트리 스킬은 바탕 스킬의 말을 쓴다(이름은 자기 것).
+ */
+export const ALLY_CALL: Partial<Record<BaseSkillId, string>> = {
+  roar: '내 곁으로 모여!',
+  broadcast: '내 곁으로 붙어!',
+  spotlight: '무대 안으로 들어와!',
+  firstaid: '치료한다, 이쪽으로 와!',
+  surgery: '다 일으킨다, 이쪽으로!',
+  mirror: '이쪽으로 와, 고쳐 줄게!',
+  supernova: '빛 안으로 모여!',
+  kenwang: '내 곁에 붙어!',
+  snack: '치킨 나눠 줄게, 이쪽으로!',
+  angelshot: '빛 곁으로 모여!',
+  encore: '다들 모여, 한 번 더!',
+}
+
+/** 외침: 스킬명 + (우리 편 범위면) 모이라는 말. ally = 초록 말풍선 */
+export function skillShout(id: SkillId): { text: string; ally: boolean } | null {
+  const def = SKILLS[id]
+  if (!def) return null
+  const call = ALLY_CALL[baseSkill(id)]
+  return { text: call ? `${def.name}! ${call}` : `${def.name}${def.ult ? '!!' : '!'}`, ally: !!call }
+}
+
 /** 효과를 내는 바탕 스킬 (트리 스킬이면 그 바탕, 아니면 자기) */
 export function baseSkill(id: SkillId): BaseSkillId {
   return SKILLS[id]?.base ?? (id as BaseSkillId)

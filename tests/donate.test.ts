@@ -223,58 +223,89 @@ describe('후원 이벤트 — 응원', () => {
 
   it('금액이 넘는 단계 중 가장 비싼 것 · 끈 단계는 건너뛴다', () => {
     expect(cheerForAmount(999, cfg)).toBeUndefined()
-    expect(cheerForAmount(1000, cfg)?.name).toBe('체력 30% 회복')
-    expect(cheerForAmount(7000, cfg)?.name).toBe('체력 50% + 공격 속도')
-    expect(cheerForAmount(10000, cfg)?.name).toBe('동료 부활 + 체력 전부')
-    expect(cheerForAmount(500000, cfg)?.name).toBe('부활 + 체력 전부 + 무적')
-    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('동료 부활 + 체력 전부')
+    expect(cheerForAmount(1000, cfg)?.name).toBe('회복 구슬 3개')
+    expect(cheerForAmount(7000, cfg)?.name).toBe('회복 구슬 5개 + 공격 속도')
+    expect(cheerForAmount(10000, cfg)?.name).toBe('아군 괴물 넷 + 공격 강화')
+    expect(cheerForAmount(500000, cfg)?.name).toBe('아군 보스 + 공격 강화')
+    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('아군 괴물 넷 + 공격 강화')
   })
 
-  it('가장 싼 응원: 우리 편 체력 30% · 공격 속도는 그대로 · 초록 고리', () => {
+  // 2026-09-24 사용자: 즉시 회복 · 부활 대신 회복 구슬 · 공격 강화 · 아군 괴물
+  it('가장 싼 응원: 부른 사람 둘레에 회복 구슬 셋 (즉시 회복은 없다) · 공격 속도는 그대로 · 초록 고리', () => {
     const g = game(81)
+    toField(g)
+    const a = g.s.players[0]
+    a.hp = Math.round(a.maxHp * 0.9)
+    const hp0 = a.hp
+    const before = areaView(g.s, 1).globes.length
+    g.donate(CHEER_EVENTS[0].id)
+    const globes = areaView(g.s, 1).globes.slice(before)
+    expect(globes.length).toBe(3)
+    for (const o of globes) expect(Math.hypot(o.x - a.x, o.y - a.y)).toBeLessThan(5 * 32)
+    expect(a.hp).toBeLessThanOrEqual(hp0 + 1)
+    expect(a.rateMul).toBeCloseTo(1)
+    expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
+  })
+
+  it('5천 원: 회복 구슬 다섯 · 공격 속도 1.3 배 (공격력은 그대로)', () => {
+    const g = game(82)
+    toField(g)
+    const a = g.s.players[0]
+    const before = areaView(g.s, 1).globes.length
+    g.donate(CHEER_EVENTS[1].id)
+    expect(areaView(g.s, 1).globes.length - before).toBe(5)
+    expect(a.rateMul).toBeCloseTo(1.3)
+    expect(a.cpow ?? 0).toBe(0)
+  })
+
+  it('1만 원: 아군 괴물 넷이 10초 동안 둘레 괴물을 치고 사라진다 · 우리 편 30초 공격력 · 공격 속도 1.4 배', () => {
+    const g = game(83)
     toField(g)
     const [a, b] = g.s.players
     b.area = a.area
     b.x = a.x + 40
     b.y = a.y
-    a.hp = Math.round(a.maxHp * 0.2)
-    b.hp = Math.round(b.maxHp * 0.3)
-    g.donate(CHEER_EVENTS[0].id)
-    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.49))
-    expect(b.hp).toBeGreaterThanOrEqual(Math.round(b.maxHp * 0.59))
-    expect(a.rateMul).toBeCloseTo(1)
-    expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
-  })
-
-  it('5천 원: 체력 50% · 공격 속도 1.25 배', () => {
-    const g = game(82)
-    toField(g)
-    const a = g.s.players[0]
-    a.hp = Math.round(a.maxHp * 0.2)
-    g.donate(CHEER_EVENTS[1].id)
-    expect(a.hp).toBeGreaterThanOrEqual(Math.round(a.maxHp * 0.69))
-    expect(a.rateMul).toBeCloseTo(1.25)
-  })
-
-  it('1만 · 3만 원: 쓰러진 동료를 일으키고 체력을 모두 채운다 · 3만 원은 무적', () => {
-    for (const [i, rate] of [[2, 1.35], [3, 1.5]] as const) {
-      const g = game(83 + i)
-      toField(g)
-      const [a, b] = g.s.players
-      b.area = a.area
-      b.x = a.x + 40
-      b.y = a.y
-      b.hp = 0
-      b.downed = true
-      b.downTimer = 999
-      a.hp = 10
-      g.donate(CHEER_EVENTS[i].id)
-      expect(b.downed).toBe(false)
-      expect(b.hp).toBe(b.maxHp)
-      expect(a.hp).toBe(a.maxHp)
-      expect(a.rateMul).toBeCloseTo(rate)
-      expect(g.s.events.some((e) => e.type === 'revive')).toBe(true)
-      if (i === 3) expect(a.invuln).toBeGreaterThan(60)
+    g.donate(CHEER_EVENTS[2].id)
+    const allies = areaView(g.s, 1).allies ?? []
+    expect(allies.length).toBe(4)
+    for (const al of allies) expect(MONSTER_LIST[al.kind].attack).toBe('melee')
+    for (const q of [a, b]) {
+      expect(q.rateMul).toBeCloseTo(1.4)
+      expect(q.cpowMul).toBeCloseTo(1.4)
+      expect(q.cpow).toBeGreaterThan(29 * 60)
     }
+    // 곁에 괴물 하나를 깨워 두면 아군이 달려가 친다 (쏜 사람 몫)
+    // (들판 입구는 맵 가장자리 — 아군이 선 안쪽으로 놓는다)
+    const m = areaView(g.s, 1).monsters.find((x) => x.hp > 0 && MONSTER_LIST[x.kind].attack !== 'flee')!
+    m.x = allies[0].x - 70
+    m.y = allies[0].y
+    m.st = MS_CHASE
+    const hp0 = m.hp
+    let swipes = 0
+    for (let t = 0; t < 120; t++) {
+      g.run(() => idle())
+      swipes += g.s.events.filter((e) => e.type === 'swipe' && allies.some((al) => al.id === e.m)).length
+    }
+    expect(m.hp < hp0 || !areaView(g.s, 1).monsters.includes(m)).toBe(true)
+    expect(swipes).toBeGreaterThan(0)
+    for (let t = 0; t < 10 * 60; t++) g.run(() => idle())
+    expect(areaView(g.s, 1).allies ?? []).toEqual([])
+  })
+
+  it('3만 원: 그 막 보스 모습의 아군 하나 · 공격력 · 공격 속도 1.6 배 · 회복 구슬 다섯 · 같은 입력이면 같은 판', () => {
+    const run = () => {
+      const g = game(84)
+      toField(g)
+      const before = areaView(g.s, 1).globes.length
+      g.donate(CHEER_EVENTS[3].id)
+      const allies = areaView(g.s, 1).allies ?? []
+      expect(allies.length).toBe(1)
+      expect(MONSTER_LIST[allies[0].kind].boss).toBe(true)
+      expect(areaView(g.s, 1).globes.length - before).toBe(5)
+      expect(g.s.players[0].cpowMul).toBeCloseTo(1.6)
+      for (let t = 0; t < 300; t++) g.run(() => idle())
+      return hashState(g.s)
+    }
+    expect(run()).toBe(run())
   })
 })

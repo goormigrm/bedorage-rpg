@@ -211,6 +211,12 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
           flashBtn(b, '게임 안에서 됩니다')
           return
         }
+        // 못 띄우는 곳이면 까닭을 단추에 (마을 · 말풍선 끔). 화면에 괴물이 없을 뿐이면 보내고, 게임이 30초 동안 기다린다
+        const why = stream.sayBlock?.()
+        if (why && why !== 'wait') {
+          flashBtn(b, why)
+          return
+        }
         stream.fakeChat()
         // 창이 화면 가운데를 덮어 말풍선이 가려진다 — 닫고 게임을 보여 준다
         close()

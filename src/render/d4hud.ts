@@ -14,7 +14,7 @@ import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS,
 import { keyLabel, skillKeyLabel } from '../game/keymap'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
-import { AREAS, QUESTS, areaDef, isDeadEnd, isTown } from '../core/world'
+import { AREAS, QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { xpNeed } from '../core/items'
 import { drawPortrait } from './character'
@@ -529,14 +529,17 @@ export class D4Hud {
             : st === 1
               ? ['▸', '#e8dcc4', here ? (d.goal === 'clear' ? `남은 ${left}` : '여기') : AREAS[d.area].name, here ? '#ffd88a' : '#9d8f78']
               : ['○', '#7e7260', '촌장', '#6a5e4c']
+      // 오른쪽(상태)을 먼저 재고, 이름은 남은 폭에 맞춰 줄인다 — 둘이 겹치거나 칸을 넘지 않게
+      c.font = `500 11px ${SANS}`
+      const rightT = fitText(c, right, (W - 24) * 0.55)
+      const rw = c.measureText(rightT).width
+      c.textAlign = 'right'
+      c.fillStyle = rc
+      c.fillText(rightT, x + W - 12, ly)
       c.textAlign = 'left'
       c.font = `600 12px ${SANS}`
       c.fillStyle = color
-      c.fillText(`${mark} ${d.name}`, x + 12, ly)
-      c.textAlign = 'right'
-      c.font = `500 11px ${SANS}`
-      c.fillStyle = rc
-      c.fillText(right, x + W - 12, ly)
+      c.fillText(fitText(c, `${mark} ${d.name}`, W - 24 - rw - 8), x + 12, ly)
     })
     c.textAlign = 'left'
   }
@@ -551,16 +554,12 @@ export class D4Hud {
     c.textAlign = 'left'
     c.textBaseline = 'alphabetic'
     if (s.mode === 'dungeon') {
-      const left = s.monsters.length
+      // 남은 괴물: 보물 고블린은 세지 않는다 (퀘스트 "비워라" 와 같게)
+      const left = s.monsters.filter((m) => m.hp > 0 && MONSTER_LIST[m.kind].attack !== 'flee').length
       const total = Math.max(1, s.monstersTotal)
+      const inner = W - 24
       // 이 막의 퀘스트 넷을 아래에 늘어놓는다 (2026-09-19 요청 "퀘스트 진행 사항을 맵 아래에서 확인")
       const actQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act)
-      ironPanel(c, x, y, W, 84 + (actQuests.length > 0 ? 22 + actQuests.length * 18 : 0), false)
-      c.font = `800 16px ${SERIF}`
-      c.fillStyle = GOLD_HI
-      c.fillText(opts.floorName ?? '던전', x + 12, y + 24)
-      c.font = `600 12px ${SANS}`
-      c.fillStyle = '#d8cfbf'
       const a = areaDef(s.curArea)
       const town = isTown(s.curArea)
       const bossHere = s.monsters.some((m) => m.hp > 0 && isBossLike(m))
@@ -579,18 +578,37 @@ export class D4Hud {
           ? a.boss !== undefined
             ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`
             : `◆ 우두머리 ${a.unique?.name ?? ''}`
-          : isDeadEnd(s.curArea)
-            ? '◆ 막다른 옆길 · 끝에 금빛 상자 · 되돌아 나가기'
-            : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
-      c.fillText(goal, x + 12, y + 46)
+          : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
+      // 글이 칸을 넘지 않게 (2026-09-24 사용자): 목표는 낱말 단위로 세 줄까지 접고, 나머지는 줄여서 맞춘다
+      c.font = `600 12px ${SANS}`
+      const goalLines = wrapWords(c, goal, inner, 3)
+      const ex = (goalLines.length - 1) * 16
+      ironPanel(c, x, y, W, 84 + ex + (actQuests.length > 0 ? 22 + actQuests.length * 18 : 0), false)
+      c.font = `800 16px ${SERIF}`
+      c.fillStyle = GOLD_HI
+      c.fillText(fitText(c, opts.floorName ?? '던전', inner), x + 12, y + 24)
+      c.font = `600 12px ${SANS}`
+      c.fillStyle = '#d8cfbf'
+      goalLines.forEach((l, i) => c.fillText(l, x + 12, y + 46 + i * 16))
       c.fillStyle = 'rgba(255,255,255,0.08)'
-      c.fillRect(x + 12, y + 53, W - 24, 4)
+      c.fillRect(x + 12, y + 53 + ex, inner, 4)
       c.fillStyle = GOLD
-      c.fillRect(x + 12, y + 53, (W - 24) * (1 - left / total), 4)
+      c.fillRect(x + 12, y + 53 + ex, inner * Math.max(0, 1 - left / total), 4)
+      // 남은 괴물은 늘 (2026-09-24 사용자: "적을 때만 보여 주는 게 아니라 항상") — 마을은 빼고
+      let used = 0
+      if (!town) {
+        c.font = `700 12px ${SANS}`
+        c.fillStyle = left === 0 ? '#9fd08a' : '#e8dcc4'
+        const t = `남은 괴물 ${left}`
+        c.fillText(t, x + 12, y + 74 + ex)
+        used = c.measureText(t).width + 10
+      }
       c.font = `600 11px ${SANS}`
       c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#8d8170'
-      c.fillText(`죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, x + 12, y + 74)
-      if (actQuests.length > 0) this.drawQuestList(c, s, q, actQuests, x, y + 84, W)
+      c.textAlign = town ? 'left' : 'right'
+      c.fillText(fitText(c, `죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, inner - used), town ? x + 12 : x + W - 12, y + 74 + ex)
+      c.textAlign = 'left'
+      if (actQuests.length > 0) this.drawQuestList(c, s, q, actQuests, x, y + 84 + ex, W)
     } else {
       const teams = isTeamMatch(s)
       const rows = teams
@@ -786,6 +804,41 @@ export class D4Hud {
     c.fillStyle = g
     c.fillRect(0, 0, h.W, h.H)
   }
+}
+
+/** 폭에 맞춰 줄인다 (넘으면 끝을 …) — 지금 글꼴로 잰다 */
+function fitText(c: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (c.measureText(text).width <= maxW) return text
+  let t = text
+  while (t.length > 1 && c.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+  return t.trimEnd() + '…'
+}
+
+/** 낱말(띄어쓰기) 단위로 접는다 — 한 낱말이 폭보다 길면 글자로. max 줄을 넘으면 마지막 줄을 줄인다 */
+function wrapWords(c: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+  const out: string[] = []
+  let cur = ''
+  for (const w of text.split(' ')) {
+    const next = cur ? `${cur} ${w}` : w
+    if (c.measureText(next).width <= maxW) {
+      cur = next
+      continue
+    }
+    if (cur) out.push(cur)
+    if (c.measureText(w).width <= maxW) cur = w
+    else {
+      const parts = wrap(c, w, maxW)
+      cur = parts.pop() ?? ''
+      out.push(...parts)
+    }
+  }
+  if (cur) out.push(cur)
+  if (out.length > max) {
+    const keep = out.slice(0, max)
+    keep[max - 1] = fitText(c, `${keep[max - 1]} ${out.slice(max).join(' ')}`, maxW)
+    return keep
+  }
+  return out
 }
 
 function wrap(c: CanvasRenderingContext2D, text: string, maxW: number): string[] {

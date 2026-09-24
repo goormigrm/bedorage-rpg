@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, isDeadEnd, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { flowField } from '../src/core/flow'
 import { TILE } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
@@ -286,7 +286,7 @@ describe('이어진 세계', () => {
     }
   })
 
-  it('모든 지역 (시드 둘): 처음 자리에서 모든 출구 · 웨이포인트까지 걸어갈 수 있고, 막다른 옆길은 넷뿐 (tools/links.ts 의 짧은 판)', () => {
+  it('모든 지역 (시드 둘): 처음 자리에서 모든 출구 · 웨이포인트까지 걸어갈 수 있고, 막마다 한 줄 (tools/links.ts 의 짧은 판)', () => {
     for (const seed of [3, 777]) {
       const mapOf = world(seed)
       for (const a of AREAS) {
@@ -301,8 +301,24 @@ describe('이어진 세계', () => {
         if (l.wp) expect(field[tile(l.wp)], `${a.name} 웨이포인트 (시드 ${seed})`).toBeGreaterThanOrEqual(0)
       }
     }
-    // 굶주린 굴처럼 다음 맵이 없는 곳은 배너 · 추적 칸에 "막다른 옆길" 로 알린다
-    expect(AREAS.filter((a) => isDeadEnd(a.id)).map((a) => a.name)).toEqual(['굶주린 굴', '늑대 굴', '저수조', '끓는 구덩이'])
+    // 막마다 한 줄 (2026-09-24 사용자 — 갈림길 · 막다른 옆길이 없게): 마을은 출구 하나, 보스 방은 들어온 길 하나, 나머지는 앞 · 뒤 둘.
+    // 마을에서 links[1] 을 따라가면 그 막의 모든 지역을 한 번씩 지나 보스 방에 닿는다
+    for (const [i, act] of ACTS.entries()) {
+      const areas = AREAS.filter((a) => a.act === i)
+      for (const a of areas) expect(a.links.length, a.name).toBe(a.kind === 'town' || a.kind === 'boss' ? 1 : 2)
+      const path = [act.town]
+      for (let at = AREAS[act.town].links[0]; ; ) {
+        path.push(at)
+        const a = AREAS[at]
+        if (a.kind === 'boss') break
+        expect(a.links[0], `${a.name} 의 들어온 쪽`).toBe(path[path.length - 2])
+        at = a.links[1]
+      }
+      expect(path.length, `${i + 1}막`).toBe(areas.length)
+      // 지역 레벨은 앞으로 갈수록 오른다
+      const lv = path.slice(1).map((id) => AREAS[id].level)
+      expect([...lv].sort((a, b) => a - b)).toEqual(lv)
+    }
     // 맵 72장을 만든다 — 기본 5초로는 모자라다
   }, 30000)
 })

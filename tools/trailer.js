@@ -379,7 +379,7 @@ function scenes() {
     for (let i = 0; i < 4; i++) M.stream.fakeChat()
   })
   every(t + 0.3, t + 6.5, 0.35, () => M.stream.fakeChat())
-  // 1만 원 !응원 = 함성 (쓰러진 동료 일으키기 · 모두 회복 · 공격 속도)
+  // 1만 원 !응원 = 아군 괴물 넷 + 공격 강화 (v0.53.0 — 아군 괴물 넷이 10초 싸운다 · 공격력 · 공격 속도)
   at(1.6, () => M.stream.fakeCheer(10000))
   // 5만 원 = 막 보스 (1막 들판이라 도살자)
   at(3.2, () => M.stream.fakeDonation(50000))
