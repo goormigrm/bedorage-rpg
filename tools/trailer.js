@@ -1,7 +1,7 @@
 // 소개 영상 (2026-09-23 사용자: "공지글에 들어갈 webm — 1분 정도 주요 장면, 자막 · 효과를 넣은 게임 소개 영상").
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
-//   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (POST /__save)
+//   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   t.status()  → 진행 상황
 //
 // **오프라인으로 그린다**: 실시간으로 녹화하면 미리보기 창이 가려져 있을 때 페이지가 1초에 한 번꼴로만 돌아 영상이
@@ -820,17 +820,64 @@ export async function start(opts = {}) {
   out.height = H
   g = out.getContext('2d')
   await document.fonts?.ready
-  const chunks = []
-  const ve = new VideoEncoder({
-    output: (c) => {
-      const b = new Uint8Array(c.byteLength)
-      c.copyTo(b)
-      chunks.push({ data: b, ts: c.timestamp, key: c.type === 'key' })
+  // 영상은 **두 벌**을 한 번에 뜬다 (2026-09-24 사용자: "화질 괜찮은 버전도 만들고, 낮춘 버전으로 해서 2개를 항상"):
+  //  trailer.webm    — 게시판용(파일당 40 MB): 720 후보 셋 중 **38 MB 안에서 가장 큰 것**.
+  //                    VP8 은 비트레이트를 지키지 못한다 — 2초마다 키 프레임(1080 한 장 수백 KB)과 파티클 많은 화면이 바닥을 올려
+  //                    1.9 · 2.4 Mbps 가 1분 37초에 44.5 · 45.9 MB 였다 → 키 프레임 8초마다 · 720 후보를 더해 뜬 뒤에 크기로 고른다
+  //  trailer_hq.webm — 고화질: 1080 · 가변 16 Mbps · 키 2초 (크기는 상관없다)
+  // 같은 장을 인코더 넷에 넣는다 — 게임을 한 번만 돌린다. 소리는 한 번 만들어 모두에 붙인다
+  const LOW_MAX = 38_000_000
+  const encs = [
+    // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
+    { name: 'trailer', w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: 'trailer', w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: 'trailer', w: 1280, h: 720, bitrate: 1_500_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: 'trailer_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 16_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+  ]
+  // 720 후보에 넣을 작은 장
+  const small = document.createElement('canvas')
+  small.width = 1280
+  small.height = 720
+  const sg = small.getContext('2d')
+  for (const e of encs) {
+    e.enc = new VideoEncoder({
+      output: (c) => {
+        const b = new Uint8Array(c.byteLength)
+        c.copyTo(b)
+        e.chunks.push({ data: b, ts: c.timestamp, key: c.type === 'key' })
+      },
+      error: (err) => log.push(`영상 인코더(${e.name}) ` + err),
+    })
+    e.enc.configure({ codec: 'vp8', width: e.w, height: e.h, bitrate: e.bitrate, bitrateMode: e.mode, framerate: FPS })
+    e.n = 0
+  }
+  // 인코더 하나처럼 쓴다 (로비 장면 · 게임 장면이 같은 것을 부른다). 키 프레임은 인코더마다 제 간격으로
+  const ve = {
+    encode: (vf) => {
+      let sf = null
+      for (const e of encs) {
+        const keyFrame = e.n++ % e.key === 0
+        if (e.w === W) {
+          e.enc.encode(vf, { keyFrame })
+          continue
+        }
+        if (!sf) {
+          sg.drawImage(out, 0, 0, small.width, small.height)
+          sf = new VideoFrame(small, { timestamp: vf.timestamp, duration: vf.duration })
+        }
+        e.enc.encode(sf, { keyFrame })
+      }
+      sf?.close()
     },
-    error: (e) => log.push('영상 인코더 ' + e),
-  })
-  // 게시판 파일당 40 MB (공지글-모음 0장) — 1분 · 1080p 가 약 35 MB 가 되게 (전에는 14 Mbps · 99 MB)
-  ve.configure({ codec: 'vp8', width: W, height: H, bitrate: opts.bitrate ?? 4_400_000, framerate: FPS })
+    flush: () => Promise.all(encs.map((e) => e.enc.flush())),
+    get encodeQueueSize() {
+      return Math.max(...encs.map((e) => e.enc.encodeQueueSize))
+    },
+    close: () => {
+      for (const e of encs) e.enc.close()
+    },
+  }
+  const chunks = encs[0].chunks
 
   // 여는 장면: 캐릭터 고르는 화면 — 로비에서 부르면 모닥불 장면을 담고 방을 만들어 판을 연다
   Object.defineProperty(window, 'devicePixelRatio', { get: () => 1, configurable: true })
@@ -1000,9 +1047,15 @@ export async function start(opts = {}) {
   const abuf = await renderAudio(dur)
   log.push(`소리 ${abuf.duration.toFixed(1)}초 · 효과음 단서 ${sfxCues.length}`)
   const au = await encodeAudio(abuf)
-  const file = muxWebM({ width: W, height: H, video: chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
-  const res = await fetch('/__save?name=trailer&ext=webm', { method: 'POST', body: file })
-  log.push('저장 ' + (await res.text()))
+  const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
+  // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
+  const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
+  const fit = lows.filter((x) => x.size <= LOW_MAX).sort((a, b) => b.size - a.size)[0] ?? lows.sort((a, b) => a.size - b.size)[0]
+  log.push('게시판용 후보 ' + lows.map((x) => `${x.e.h}p ${(x.e.bitrate / 1e6).toFixed(1)} Mbps → ${(x.size / 1e6).toFixed(1)} MB`).join(' · '))
+  for (const { e, file } of [fit, ...encs.filter((e) => !e.low).map((e) => ({ e, file: mux(e) }))]) {
+    const res = await fetch(`/__save?name=${e.name}&ext=webm`, { method: 'POST', body: file })
+    log.push(`저장 ${await res.text()} (${e.h}p ${(e.bitrate / 1e6).toFixed(1)} Mbps ${e.mode === 'constant' ? '고정' : '가변'})`)
+  }
   log.push('사진 ' + (await Promise.all(saves)).join(' · '))
   running = false
   return log

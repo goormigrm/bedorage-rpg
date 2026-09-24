@@ -98,7 +98,8 @@ describe('스킬 — 캐릭터마다 셋', () => {
       const { s } = ready([c])
       expect(s.players[0].cd[2]).toBeGreaterThan(SKILLS[ids[2]].cd * ULT_START_FRAC - COUNTDOWN_TICKS - 5)
     }
-  })
+    // 캐릭터 열둘 맵을 하나씩 만든다 — 혼자는 1.5초지만 전체를 나란히 돌리면 5초를 넘기곤 했다
+  }, 20000)
 
   it('누르면 쓰이고 재사용 대기에 들어간다 (궁극기는 대기가 끝난 뒤)', () => {
     for (const c of PLAYABLE) {

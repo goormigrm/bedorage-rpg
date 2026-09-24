@@ -742,8 +742,8 @@ export class Sfx {
     const scale = [293.7, 349.2, 392, 440, 523.3, 587.3]
     const pick = () => scale[Math.floor(Math.random() * scale.length)] * low
     const f = pick()
-    // 전체 크기 (2026-09-24 사용자: "철면란 공격 효과음이 너무 크다 — 볼륨을 약간 줄여") — 1 → 0.7
-    const V = 0.7
+    // 전체 크기 (2026-09-24 사용자: "철면란 공격 효과음이 너무 크다" → 0.7 → "0.5 배 정도가 더 적당") — 1 → 0.5
+    const V = 0.5
     this.noiseBurst(node, t0, 0.1, 'bandpass', 700 * low, 1100 * low, 0.16 * V, 0.7)
     const kind = Math.floor(Math.random() * 5)
     if (kind === 0) {
@@ -826,7 +826,7 @@ export class Sfx {
   /** 근접 타격음: 바이올린 = 살을 치는 묵직한 퍽 · 검 = 베는 쉭 · 후라이팬 = 쇠 울림 (+ 치명타 팅) */
   private meleeHit(s: Spatial, crit: boolean, fam: string): void {
     // 바이올린은 휘두를 때마다 치므로 조금 작게 (2026-09-24 — 공격 소리가 너무 크다)
-    const { node, t0 } = this.bus(s, fam === 'violin' ? 0.78 : 0.95)
+    const { node, t0 } = this.bus(s, fam === 'violin' ? 0.65 : 0.95)
     if (fam === 'violin') {
       // 살을 치는 퍽 — 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게
       const k = 0.88 + Math.random() * 0.24

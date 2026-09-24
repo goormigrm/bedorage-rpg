@@ -49,6 +49,12 @@ const KILL_OPTIONS = [5, 10, 15, 20, 30]
 /** 투기장 맵: 덕의 셋 (던전 층은 빼고) */
 const ARENA_MAPS = MAP_LIST.filter((m) => !m.fixedScale)
 /** 죽음 규칙 설명 (방 만들기·혼자 하기 창) */
+/**
+ * 한글 설명 줄바꿈 (2026-09-24 사용자: "캐릭터 스킬 설명에 한글 줄바꿈을 제대로"): 낱말 단위로 접되(keep-all — CSS),
+ * 숫자는 앞말에 붙이고("연사 1.5배" · "피해 +30%") 가운뎃점은 앞 낱말에 붙인다 — 줄 머리 · 끝에 홀로 떨어지지 않게
+ */
+const krWrap = (t: string): string => t.replace(/ (?=[+\-−]?\d)/g, '\u00a0').replace(/ · /g, '\u00a0· ')
+
 const DEATH_RULE_DESC = [
   '쓰러져도 잃는 것이 없습니다. 죽으면 그 막의 마을에서 다시 일어납니다.',
   '죽으면 골드 20% · 지금 레벨 경험치 10% 를 잃습니다 (레벨은 떨어지지 않음).',
@@ -471,11 +477,12 @@ export class Lobby {
     const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
     const role = ROLE_INFO[c.role]
     el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
-      <div class="cp"><i>${c.passiveName}</i> ${c.passiveDesc}</div>
-      <div class="crole" style="--rc:${role.color}" title="${role.desc}"><b>${role.name}</b> ${role.short} <small>(던전)</small></div></div>
+      <div class="cp"><i>${c.passiveName}</i> ${krWrap(c.passiveDesc)}</div>
+      <div class="crole" style="--rc:${role.color}" title="${role.desc}"><b>${role.name}</b> ${krWrap(role.short)} <small>(던전)</small></div></div>
       <div class="ch-r"><div class="skd">${own
         .map(
-          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i><div><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em><span>${SKILLS[sid].desc}</span></div></div>`,
+          // 키 · (이름 / 재사용) · 설명 세 칸 — 설명은 제 칸 안에서만 접힌다 (예전에는 한 줄에 이어 써서 둘째 줄이 이름 밑으로 돌아가고 "1.5배." 처럼 끝이 홀로 떨어졌다)
+          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i><div class="sh"><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em></div><div class="sd">${krWrap(SKILLS[sid].desc)}</div></div>`,
         )
         .join('')}</div>
       ${extra.length ? `<div class="skx"><small>스킬 트리(K)에서 더 배우는 스킬</small>${extra.map((sid) => `<span tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')} (재사용 ${cd(sid)})">${SKILLS[sid].name}</span>`).join('')}</div>` : ''}</div>`

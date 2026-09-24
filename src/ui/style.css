@@ -610,7 +610,11 @@ body { background: var(--bg); }
 .d2-char .cp i { font-style: normal; color: #e8c46a; font-weight: 700; margin-right: 4px; }
 /* 스킬 설명: Q · E · R 은 한 줄씩 설명까지, 트리에서 배우는 셋은 이름표 + 말풍선 */
 .d2-char .skd { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
-.d2-char .skd .s { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.45; color: #d8cfbf; }
+.d2-char .skd .s { display: grid; grid-template-columns: 20px 116px 1fr; column-gap: 10px; align-items: start; font-size: 12px; line-height: 1.5; color: #d8cfbf; }
+.d2-char .skd .s .sh { display: flex; flex-direction: column; line-height: 1.3; }
+.d2-char .skd .s .sh b { margin-right: 0; }
+.d2-char .skd .s .sh em { margin: 2px 0 0; }
+.d2-char .skd .s .sd { word-break: keep-all; overflow-wrap: break-word; line-break: strict; text-wrap: pretty; }
 .d2-char .skd .s > i { flex: none; width: 20px; height: 20px; border: 1px solid #6a5434; border-radius: 3px; display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 11px; color: #e8c46a; background: rgba(0,0,0,.4); margin-top: 1px; }
 .d2-char .skd .s.ult > i { border-color: #c9a24a; color: #ffe6a8; box-shadow: 0 0 6px rgba(201,162,74,.4); }
 .d2-char .skd .s b { color: #f1d58a; margin-right: 6px; }

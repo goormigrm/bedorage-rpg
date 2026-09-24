@@ -155,7 +155,13 @@ export class BonfireScene {
     // 캐릭터: 돌 발판 두 단 (앞 단 여섯 · 뒤 단 여섯)
     const stoneM = new THREE.MeshLambertMaterial({ color: 0x4a443d, flatShading: true })
     const capM = new THREE.MeshLambertMaterial({ color: 0x625a50, flatShading: true })
-    ids.forEach((id, i) => {
+    // 발판 자리 차례: 캐릭터 차례(PLAYABLE) 그대로에서 옥냥란 ↔ 우재란만 바꾼다 (2026-09-24 사용자: "키가 맞게" —
+    // 키 큰 우재란이 앞 단 오른쪽 끝, 작은 옥냥란이 뒤 단 오른쪽 끝). 캐릭터 차례는 바꾸지 않는다(용병 명령 번호 등이 그 차례를 쓴다)
+    const seatOrder = [...ids]
+    const a = seatOrder.indexOf('oknyang')
+    const b = seatOrder.indexOf('juwoojae')
+    if (a >= 0 && b >= 0) [seatOrder[a], seatOrder[b]] = [seatOrder[b], seatOrder[a]]
+    seatOrder.forEach((id, i) => {
       const back = i >= FRONT_ROW.length
       const [x, z] = (back ? BACK_ROW[i - FRONT_ROW.length] : FRONT_ROW[i]) ?? [0, -4.5]
       const h = back ? BACK_H : FRONT_H
