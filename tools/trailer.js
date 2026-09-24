@@ -589,7 +589,8 @@ function liteState(s) {
     phaseTimer: s.phaseTimer,
     mode: s.mode,
     players: s.players.map((p) => ({ x: p.x, y: p.y, alive: p.alive, weapon: p.weapon, char: p.char })),
-    monsters: s.monsters.map((m) => ({ hp: m.hp, st: m.st, kind: m.kind, maxHp: m.maxHp })),
+    // x · y — 곁의 괴물 옆 소리(sfx ambientVoice)가 가까운 괴물을 고른다
+    monsters: s.monsters.map((m) => ({ hp: m.hp, st: m.st, kind: m.kind, maxHp: m.maxHp, x: m.x, y: m.y })),
   }
 }
 

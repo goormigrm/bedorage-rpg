@@ -5,7 +5,7 @@
 import { GameState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
-import { MONSTER_LIST } from '../core/monsters'
+import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
 import { worldDirToScreen } from '../render3d/camera'
 
 const STORAGE_KEY = 'brpg.muted'
@@ -81,7 +81,11 @@ export class Sfx {
   private lastMDeath = 0
   private lastMelee = 0
   private lastKill = 0
-  private lastGrowl = 0
+  /** 괴물 목소리 되풀이 제한 (ms 시각): 아무 괴물 · 종류마다 · 보스 · 곁의 괴물 옆 소리 */
+  private lastVoice = 0
+  private kindVoice = new Map<number, number>()
+  private lastBossRoar = 0
+  private nextIdle = 0
   private lastCountdownSec = -1
   private unlockOff: (() => void) | null = null
   private bgmTimer = 0
@@ -102,6 +106,12 @@ export class Sfx {
   private stalls = 0
 
   constructor() {
+    // 음성 합성 목소리 목록은 처음 부를 때 늦게 채워진다 — 미리 한 번 불러 둔다 (보스 대사 TTS)
+    try {
+      if (typeof speechSynthesis !== 'undefined') speechSynthesis.getVoices()
+    } catch {
+      /* 음성 합성 없음 */
+    }
     let m = false
     try {
       m = localStorage.getItem(STORAGE_KEY) === '1'
@@ -266,6 +276,8 @@ export class Sfx {
       if (b === 0 && this.boss > 0 && this.ready() && events.some((e) => e.type === 'mdeath' && MONSTER_LIST[e.kind]?.boss)) this.bossWin()
       this.boss = b
     }
+    // 곁의 괴물 옆 소리 (좀비의 그르릉 · 늑대의 으르렁 …) — 1초에 하나 안팎
+    if (state.mode === 'dungeon' && !this.mutedFlag && this.ready()) this.ambientVoice(state, localPlayer)
     if (events.length === 0) return
     // 멈춰 있으면 되살린다 (onstatechange 를 놓친 경우)
     if (this.ctx && this.ctx.state === 'suspended' && !this.mutedFlag) void this.ctx.resume().catch(() => {})
@@ -408,6 +420,8 @@ export class Sfx {
             this.lastMDeath = now
             this.squelch(sp(e.x, e.y))
           }
+          // 쓰러지는 소리 (종류마다 — 짧게)
+          this.voice(e.kind, 'death', sp(e.x, e.y), 0.55)
           // 손맛: 내가 잡았으면 묵직한 "퍽" (40ms 에 한 번)
           if (e.by === localPlayer && now - this.lastKill > 40) {
             this.lastKill = now
@@ -418,12 +432,9 @@ export class Sfx {
         }
         case 'wake':
         case 'windup': {
-          // 으르렁: 깨어날 때, 그리고 가까이서 공격을 준비할 때 (거리 감쇠가 알아서 멀리 것을 줄인다)
-          const now = performance.now()
-          if (now - this.lastGrowl > (e.type === 'wake' ? 250 : 400)) {
-            this.lastGrowl = now
-            this.growl(sp(e.x, e.y), e.type === 'wake' ? 1 : 0.55)
-          }
+          // 괴물마다 제 소리 (2026-09-24 사용자: "좀비면 그르릉 · 늑대면 울음소리"): 깨어날 때 · 공격을 준비할 때
+          const kind = e.type === 'wake' ? (e.kind ?? 0) : e.kind
+          this.voice(kind, e.type === 'wake' ? 'wake' : 'attack', sp(e.x, e.y), e.type === 'wake' ? 0.9 : 0.6)
           if (e.type === 'wake') this.intensity = Math.min(1, this.intensity + 0.3)
           break
         }
@@ -450,6 +461,9 @@ export class Sfx {
           break
         }
         case 'bossUlt': {
+          // 보스의 포효 + 대사를 목소리로 (브라우저 음성 합성 — 설정 "보스 목소리") — 2026-09-24 사용자: "즉사기 대사에 TTS 나 특수한 소리"
+          this.voice(e.kind, 'ult', sp(e.x, e.y), 1.1)
+          this.speak(BOSS_PATS[e.pat]?.line, e.kind)
           // 막 보스 즉사기 경보: 낮은 뿔피리 둘(어긋난 음) + 떨어지는 종 — 화면 경고와 같이 (2026-09-24)
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 1.0)
           this.tone(b.node, b.t0, 1.4, 'sawtooth', 98, 92, 0.32, 0.05)
@@ -848,6 +862,238 @@ export class Sfx {
     const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.8)
     this.tone(b.node, b.t0, 0.14, 'sine', 120, 42, 0.9, 0.002)
     this.noiseBurst(b.node, b.t0, 0.07, 'lowpass', 1400, 300, 0.5, 1)
+  }
+
+  // ---------- 괴물 목소리 (2026-09-24 — 종류마다 · 모두 즉석 합성, 파일 없음) ----------
+
+  /**
+   * 곁(13칸 안)의 깬 괴물 하나가 가끔 제 소리를 낸다. 많이 몰려 있을수록 조금 자주(최소 0.65초 간격) — 소리 노드가 늘지 않게
+   * 한 번에 하나만. 뽑기는 저수지 뽑기(한 번 훑기)
+   */
+  private ambientVoice(state: GameState, localPlayer: number): void {
+    const now = performance.now()
+    if (now < this.nextIdle) return
+    const me = localPlayer >= 0 ? state.players[localPlayer] : undefined
+    if (!me || !state.monsters) {
+      this.nextIdle = now + 1000
+      return
+    }
+    const R = 13 * 32
+    let pick: { kind: number; x: number; y: number } | null = null
+    let n = 0
+    for (const m of state.monsters) {
+      if (m.hp <= 0 || m.st === 0 || m.x === undefined) continue
+      const dx = m.x - me.x
+      const dy = m.y - me.y
+      if (dx * dx + dy * dy > R * R) continue
+      n++
+      if (Math.random() * n < 1) pick = m
+    }
+    this.nextIdle = now + (n === 0 ? 800 : Math.max(650, 1900 / Math.sqrt(n)) * (0.7 + Math.random() * 0.6))
+    if (pick) this.voice(pick.kind, 'idle', spatial(pick.x - me.x, pick.y - me.y), 0.42)
+  }
+
+  /**
+   * 괴물 소리 하나. 되풀이 제한: 아무 괴물 90ms · 같은 종류 350ms(옆 소리 700ms) · 보스 2.2초(즉사기 · 쓰러짐은 늘).
+   * 너무 멀면(거리 감쇠) 아예 만들지 않는다
+   */
+  private voice(kind: number, act: 'wake' | 'attack' | 'death' | 'idle' | 'ult', s: Spatial, vol: number): void {
+    if (s.gain < 0.06) return
+    const now = performance.now()
+    const def = MONSTER_LIST[kind]
+    if (!def) return
+    if (def.boss) {
+      if (act !== 'ult' && act !== 'death' && now - this.lastBossRoar < 2200) return
+      this.lastBossRoar = now
+    } else {
+      if (now - this.lastVoice < 90) return
+      if (now - (this.kindVoice.get(kind) ?? -1e9) < (act === 'idle' ? 700 : 350)) return
+      this.lastVoice = now
+      this.kindVoice.set(kind, now)
+    }
+    const { node, t0 } = this.bus(s, vol)
+    const r = (a: number, b: number) => a + Math.random() * (b - a)
+    const big = act === 'wake' || act === 'ult'
+    switch (def.id) {
+      case 'ghoul':
+        // 좀비: 목구멍으로 그르릉 — 낮은 톱니 + "우어" 모음이 천천히 바뀐다
+        this.vox(node, t0, act === 'death' ? 0.45 : r(0.55, 0.95), r(80, 115), r(70, 95), 420, 650, big ? 0.5 : 0.36, 0.05, 6)
+        this.noiseBurst(node, t0, 0.35, 'lowpass', 700, 260, 0.12, 0.8)
+        break
+      case 'archer':
+        // 해골: 뼈가 달그락 (쓰러지면 와르르)
+        this.clatter(node, t0, act === 'death' ? 9 : act === 'attack' ? 3 : 4, 0.3)
+        break
+      case 'bloater':
+        // 부푼 시체: 뱃속이 꾸르륵
+        this.gurgle(node, t0, act === 'death' ? 0.7 : 0.45, 0.32)
+        break
+      case 'goblin':
+        // 보물 고블린: 킥킥 (높은 소리가 내려간다)
+        for (let i = 0; i < 4; i++) this.tone(node, t0 + i * 0.075, 0.07, 'triangle', r(900, 1150) - i * 90, r(700, 850) - i * 60, 0.22, 0.004)
+        break
+      case 'wolf':
+        if (act === 'wake') {
+          // 늑대: 우우— 길게 오르내리는 울음
+          this.vox(node, t0, 1.35, r(360, 420), r(470, 540), 900, 1100, 0.34, 0.012, 3, 0.35)
+          this.tone(node, t0 + 0.1, 1.2, 'sine', r(720, 840), 900, 0.1, 0.2)
+        } else if (act === 'death') {
+          // 깨갱
+          this.tone(node, t0, 0.14, 'triangle', 980, 620, 0.3, 0.003)
+          this.tone(node, t0 + 0.16, 0.12, 'triangle', 820, 520, 0.2, 0.003)
+        } else {
+          // 으르렁 (이를 드러낸 떨림)
+          this.vox(node, t0, act === 'idle' ? 0.35 : 0.45, r(120, 150), r(105, 125), 800, 600, 0.34, 0.12, 5)
+          this.noiseBurst(node, t0, 0.3, 'bandpass', 1100, 700, 0.18, 1.5)
+        }
+        break
+      case 'spider':
+      case 'queen':
+        // 거미: 쉬익 + 딸깍 · 여왕은 날카롭게 비명
+        if (def.id === 'queen' && (act === 'ult' || act === 'wake' || act === 'attack' || act === 'death')) {
+          this.vox(node, t0, act === 'ult' ? 1.3 : 0.8, 900, act === 'death' ? 400 : 1400, 1800, 2600, act === 'ult' ? 0.4 : 0.3, 0.04, 3)
+          this.noiseBurst(node, t0, 0.9, 'highpass', 4200, 3000, 0.25, 0.8)
+        } else {
+          this.noiseBurst(node, t0, act === 'death' ? 0.4 : 0.28, 'highpass', 4500, 3200, 0.2, 0.7)
+          for (let i = 0; i < 3; i++) this.tone(node, t0 + 0.05 + i * 0.05, 0.02, 'square', 2600, 2200, 0.06, 0.001)
+        }
+        break
+      case 'shaman':
+        // 버섯 주술사: 쌕쌕거리는 주문 (어긋난 두 음)
+        this.vox(node, t0, 0.6, 220, 200, 700, 900, 0.2, 0.03, 5)
+        this.vox(node, t0, 0.6, 233, 210, 900, 700, 0.14, 0.03, 5)
+        this.noiseBurst(node, t0, 0.5, 'bandpass', 2400, 1600, 0.1, 2)
+        break
+      case 'shield':
+        // 방패병: 쇠가 부딪는 챙 + 짧은 끙
+        this.tone(node, t0, 0.35, 'triangle', 1750, 1650, 0.16, 0.002)
+        this.tone(node, t0, 0.3, 'sine', 2630, 2500, 0.08, 0.002)
+        this.vox(node, t0 + 0.02, 0.25, 120, 100, 500, 450, 0.26, 0.02, 6)
+        break
+      case 'necro':
+      case 'shade':
+        // 강령술사: 속삭임 + 낮은 웅얼 · 그림자: 길게 흐느끼는 울음
+        if (def.id === 'shade') this.vox(node, t0, act === 'death' ? 0.7 : 1.0, r(480, 560), r(280, 330), 900, 700, 0.22, 0.02, 4, 0.25)
+        else this.vox(node, t0, 0.55, 150, 135, 500, 600, 0.18, 0.02, 5)
+        this.noiseBurst(node, t0, def.id === 'shade' ? 0.9 : 0.55, 'bandpass', 2600, 1800, 0.16, 2.5)
+        break
+      case 'spitter':
+        // 산성 토사꾼: 우웩 (내려가는 음 + 꾸르륵)
+        this.vox(node, t0, 0.4, 190, 95, 650, 450, 0.3, 0.05, 5)
+        this.gurgle(node, t0 + 0.1, 0.3, 0.2)
+        break
+      case 'demon':
+        // 포격 악마: 불길이 치솟는 포효 (낮은 톱니 + 타닥 불똥)
+        this.vox(node, t0, big ? 0.9 : 0.55, r(75, 95), r(60, 70), 500, 350, 0.32, 0.04, 4)
+        this.noiseBurst(node, t0, 0.6, 'lowpass', 900, 250, 0.3, 0.7)
+        for (let i = 0; i < 4; i++) this.noiseBurst(node, t0 + r(0.05, 0.5), 0.02, 'highpass', 3000, 2500, 0.12, 1)
+        break
+      case 'butcher':
+        // 도살자: 돼지 같은 꽥 — 거칠게 올랐다 떨어지는 포효
+        this.vox(node, t0, act === 'ult' ? 1.4 : act === 'idle' ? 0.5 : 0.95, act === 'idle' ? 110 : 190, 85, 750, 450, act === 'idle' ? 0.26 : 0.46, 0.06, 5, 0.12)
+        this.vox(node, t0, act === 'ult' ? 1.4 : 0.9, 95, 60, 350, 300, act === 'idle' ? 0.16 : 0.3, 0.05, 4)
+        this.noiseBurst(node, t0, 0.8, 'lowpass', 1200, 300, act === 'idle' ? 0.12 : 0.28, 0.8)
+        break
+      case 'warden':
+        // 관리인: 쇠가 울리는 듯한 낮은 호통
+        this.vox(node, t0, act === 'ult' ? 1.5 : act === 'idle' ? 0.5 : 1.0, 70, 58, 420, 360, act === 'idle' ? 0.22 : 0.42, 0.03, 5)
+        this.tone(node, t0, act === 'ult' ? 1.6 : 0.9, 'triangle', 1100, 1040, act === 'idle' ? 0.05 : 0.12, 0.01)
+        this.tone(node, t0, act === 'ult' ? 1.6 : 0.9, 'sine', 1650, 1600, 0.06, 0.01)
+        this.noiseBurst(node, t0, 0.5, 'lowpass', 800, 200, 0.2, 0.8)
+        break
+      case 'lord':
+        // 심연의 군주: 땅이 울리는 악마의 포효 (어긋난 두 톱니 + 낮은 사인)
+        this.vox(node, t0, act === 'ult' ? 1.8 : act === 'idle' ? 0.6 : 1.2, 58, 44, 380, 260, act === 'idle' ? 0.24 : 0.46, 0.04, 4)
+        this.vox(node, t0, act === 'ult' ? 1.8 : 1.1, 61, 46, 300, 220, act === 'idle' ? 0.16 : 0.34, 0.05, 4)
+        this.tone(node, t0, act === 'ult' ? 1.8 : 1.0, 'sine', 42, 32, act === 'idle' ? 0.25 : 0.5, 0.08)
+        this.noiseBurst(node, t0, 1.0, 'lowpass', 700, 150, 0.3, 0.7)
+        break
+      default:
+        this.growl(s, vol)
+        break
+    }
+  }
+
+  /**
+   * 목소리 한 줄: 톱니파(f0 → f1)를 모음 필터(formant0 → formant1)로 거르고 떨림(vib — 음높이 비율)을 준다. attack = 서서히 커지는 초
+   */
+  private vox(bus: AudioNode, t0: number, dur: number, f0: number, f1: number, form0: number, form1: number, peak: number, vib: number, vibHz: number, attack = 0.04): void {
+    const ctx = this.ctx!
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(f0, t0)
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur)
+    const lfo = ctx.createOscillator()
+    lfo.frequency.value = vibHz
+    const depth = ctx.createGain()
+    depth.gain.value = f0 * vib
+    lfo.connect(depth)
+    depth.connect(osc.frequency)
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.Q.value = 1.6
+    bp.frequency.setValueAtTime(form0, t0)
+    bp.frequency.linearRampToValueAtTime(form1, t0 + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + Math.min(attack, dur * 0.5))
+    g.gain.setValueAtTime(peak, t0 + dur * 0.6)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    osc.connect(bp)
+    bp.connect(g)
+    g.connect(bus)
+    this.finish(osc, [bp, g, depth, lfo], bus, true)
+    const end = t0 + dur + 0.05
+    osc.start(t0)
+    osc.stop(end)
+    lfo.start(t0)
+    lfo.stop(end)
+  }
+
+  /** 뼈 달그락: 짧은 딸깍 여럿 (간격 · 높이를 조금씩) */
+  private clatter(bus: AudioNode, t0: number, n: number, peak: number): void {
+    let t = t0
+    for (let i = 0; i < n; i++) {
+      // 좁은 대역 · 짧은 딸깍은 에너지가 작다 — 크게 (오프라인 계측: 0.3 이면 -58dB 로 거의 안 들렸다)
+      this.noiseBurst(bus, t, 0.03, 'bandpass', 1800 + Math.random() * 1600, 1400, peak * 4, 3)
+      t += 0.03 + Math.random() * 0.05
+    }
+  }
+
+  /** 꾸르륵: 낮은 음이 이리저리 튀는 거품 몇 개 */
+  private gurgle(bus: AudioNode, t0: number, dur: number, peak: number): void {
+    const n = Math.max(3, Math.round(dur / 0.08))
+    for (let i = 0; i < n; i++) {
+      const f = 70 + Math.random() * 60
+      this.tone(bus, t0 + (i * dur) / n, 0.07, 'sine', f, f * (0.6 + Math.random() * 0.8), peak, 0.004)
+    }
+    this.noiseBurst(bus, t0, dur, 'lowpass', 500, 180, peak * 0.4, 0.8)
+  }
+
+  /**
+   * 보스 대사를 목소리로 (브라우저 음성 합성 — 무료 · 기기 안에서, 서버 없음). 한국어 목소리가 없으면 소리 효과만.
+   * 보스마다 높낮이 · 빠르기 (군주 · 관리인은 아주 낮게, 여왕은 높게). 소리 끔 · 설정 "보스 목소리" 끔 · 영상(오프라인)에서는 없다
+   */
+  private speak(text: string | undefined, kind: number): void {
+    if (!text || this.mutedFlag || typeof speechSynthesis === 'undefined') return
+    try {
+      if (localStorage.getItem('brpg.bossvoice') === '0') return
+    } catch {
+      /* 저장소 없음 — 켠 것으로 */
+    }
+    if (typeof (this.ctx as unknown as { startRendering?: unknown } | null)?.startRendering === 'function') return
+    const ko = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith('ko'))
+    if (!ko) return
+    const u = new SpeechSynthesisUtterance(text.replace(/…/g, '...'))
+    u.voice = ko
+    u.lang = ko.lang
+    const id = MONSTER_LIST[kind]?.id
+    const [pitch, rate] = id === 'lord' ? [0.1, 0.72] : id === 'warden' ? [0.25, 0.78] : id === 'butcher' ? [0.35, 0.85] : id === 'queen' ? [1.5, 0.85] : [0.5, 0.8]
+    u.pitch = pitch
+    u.rate = rate
+    u.volume = 1
+    speechSynthesis.cancel()
+    speechSynthesis.speak(u)
   }
 
   /** 몬스터가 쓰러지는 소리: 질척한 저음 */

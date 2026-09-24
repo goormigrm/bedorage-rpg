@@ -2760,15 +2760,16 @@ export function syncSandbags(state: GameState, map: GameMap): void {
 // ================================================================ 몬스터
 
 function wakePack(state: GameState, pack: number, x: number, y: number): void {
-  let woke = false
+  let kind = -1
   for (const m of state.monsters) {
     if (m.pack !== pack || m.st !== MS_SLEEP || m.hp <= 0) continue
     m.st = MS_CHASE
     // 한꺼번에 똑같이 움직이지 않게 첫 공격을 조금씩 늦춘다 (id 로 정하므로 결정론)
     m.cd = 10 + (m.id % 5) * 8
-    woke = true
+    if (kind < 0) kind = m.kind
   }
-  if (woke) state.events.push({ type: 'wake', pack, x, y })
+  // kind = 무리의 첫 괴물 (깨어날 때 그 괴물의 소리 — audio/sfx.ts voice)
+  if (kind >= 0) state.events.push({ type: 'wake', pack, x, y, kind })
 }
 
 /** 총소리가 닿는 잠든 무리를 깨운다 (무리 번호 순서로) */

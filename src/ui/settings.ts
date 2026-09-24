@@ -45,6 +45,11 @@ export function realMonstersOn(): boolean {
 }
 export const setRealMonsters = (on: boolean): void => set(REAL_KEY, on ? '1' : '0')
 
+/** 보스 즉사기 대사를 목소리로(브라우저 음성 합성 — audio/sfx.ts speak). 저장한 값이 없으면 켬 */
+const BOSSVOICE_KEY = 'brpg.bossvoice'
+export const bossVoiceOn = (): boolean => get(BOSSVOICE_KEY) !== '0'
+export const setBossVoice = (on: boolean): void => set(BOSSVOICE_KEY, on ? '1' : '0')
+
 /** 조작 안내 띠 */
 export const keysShown = (): boolean => get(KEYS_KEY) !== '0'
 export const setKeysShown = (on: boolean): void => set(KEYS_KEY, on ? '1' : '0')
@@ -119,6 +124,8 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     onoff('소리', !soundMuted()) +
     onoff('실사 괴물', realMonstersOn()) +
     `<p class="apn">실사 괴물은 처음 만날 때 모델을 받습니다. 느린 기기·데이터가 아까우면 끄세요.</p>` +
+    onoff('보스 목소리', bossVoiceOn()) +
+    `<p class="apn">보스가 즉사기를 쓸 때 대사를 목소리로 읽습니다(기기의 한국어 음성 — 없으면 소리 효과만).</p>` +
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
     gfxRowHtml() +
@@ -215,6 +222,8 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       } else if (name === '실사 괴물') {
         setRealMonsters(on)
         o.onReal?.(on)
+      } else if (name === '보스 목소리') {
+        setBossVoice(on)
       } else {
         setKeysShown(on)
         o.onKeys?.(on)

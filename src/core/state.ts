@@ -660,7 +660,7 @@ export type SimEvent =
   /** 몬스터가 쓰러짐 */
   | { type: 'mdeath'; m: number; kind: number; by: number; x: number; y: number; aim: number }
   /** 몬스터가 깨어남 (무리 단위로 한 번) */
-  | { type: 'wake'; pack: number; x: number; y: number }
+  | { type: 'wake'; pack: number; x: number; y: number; kind?: number }
   /** 몬스터 공격 예고 시작 (소리·연출) */
   | { type: 'windup'; m: number; kind: number; x: number; y: number }
   /** 몬스터 근접 공격이 휘둘러짐 */
