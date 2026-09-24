@@ -30,7 +30,7 @@ import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
-import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './character3d'
+import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
@@ -406,6 +406,8 @@ export class Renderer3D {
     this.gl = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
+      // 스텐실: 가려진 캐릭터 윤곽이 제 몸 · 다른 캐릭터 위에 그려지지 않게 (character3d enableXray)
+      stencil: true,
       powerPreference: 'high-performance',
       // 스크린샷을 뜰 때만 켠다(기본은 성능 우선). 주소 뒤 ?shot=1
       preserveDrawingBuffer: typeof location !== 'undefined' && location.search.includes('shot=1'),
@@ -834,7 +836,11 @@ export class Renderer3D {
     const chars = state.players.map((p) => p.char)
     if (chars.length !== this.rigChars.length) {
       for (const r of this.rigs) this.scene.remove(r.root)
-      this.rigs = chars.map((c) => buildCharacter(CHARACTERS[c]))
+      this.rigs = chars.map((c) => {
+        const r = buildCharacter(CHARACTERS[c])
+        enableXray(r)
+        return r
+      })
       this.rigChars = [...chars]
       for (const r of this.rigs) this.scene.add(r.root)
       this.vis = chars.map(() => newVis())
@@ -847,6 +853,7 @@ export class Renderer3D {
       if (chars[i] === this.rigChars[i]) continue
       this.scene.remove(this.rigs[i].root)
       const rig = buildCharacter(CHARACTERS[chars[i]])
+      enableXray(rig)
       this.scene.add(rig.root)
       this.rigs[i] = rig
       this.rigChars[i] = chars[i]

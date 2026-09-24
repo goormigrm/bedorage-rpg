@@ -102,6 +102,8 @@ export interface CharacterRig {
   centerY: number
   /** 걸음 폭 배율 (다리가 길수록 성큼성큼). 렌더러의 걷기 애니메이션이 쓴다 */
   stride: number
+  /** 가려진 몸 윤곽 (판 안에서만 켠다 — enableXray) */
+  xray: THREE.Mesh
   /** 피격 플래시용 재질 목록 */
   flashMats: THREE.MeshLambertMaterial[]
   /** 피격 플래시. tint 는 색(기본 흰색) — 몸통은 빨강, 머리는 금색 */
@@ -165,8 +167,15 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
     depthFunc: THREE.GreaterDepth,
   })
   xrayM.userData.xray = true
+  // 스텐실: 캐릭터 몸 · 옷 · 무기가 찍힌 자리(1)에는 그리지 않는다 — 제 모자 · 머리칼 · 손에 가린 몸이 파란 선으로 보였다(2026-09-24 대기실)
+  xrayM.stencilWrite = true
+  xrayM.stencilWriteMask = 0
+  xrayM.stencilRef = 1
+  xrayM.stencilFunc = THREE.NotEqualStencilFunc
   const xray = new THREE.Mesh(egg.geometry, xrayM)
   xray.renderOrder = 8
+  // 판 안에서만 켠다 (enableXray) — 대기실 모닥불 장면에는 가릴 것이 없다
+  xray.visible = false
   egg.add(xray)
 
   // 귀: 눈 높이 옆
@@ -210,7 +219,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   body.scale.set(wide, tall, wide)
   const height = (centerY + R * EGG_Y + R * 0.35) * tall
   const rig: CharacterRig = {
-    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, height, centerY,
+    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, height, centerY, xray,
     stride: Math.max(0.7, Math.min(1.55, legStretch)),
     flashMats,
     setFlash(k: number, tint = 0xffffff) {
@@ -223,6 +232,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
       gun = buildGun(w, R)
       gun.group.position.set(0.02, -0.02, armLen * 0.55)
       arms.add(gun.group)
+      if (xray.visible) markStencil(gun.group)
       rig.gunTip = gun.tip
       rig.weapon = w
     },
@@ -489,6 +499,34 @@ export function makeShield(radius: number): THREE.Mesh {
   const m = new THREE.Mesh(geo, mat)
   m.renderOrder = 5
   return m
+}
+
+/**
+ * 캐릭터 재질이 스텐실에 1 을 찍게 한다 (가려진 몸 윤곽이 제 몸 위에는 그려지지 않게).
+ * 캐릭터는 다른 불투명한 것(보스 · 벽)보다 **나중에** 그린다(renderOrder 2) — 먼저 그리면 뒤에 올 보스에 덮일 자리에도 1 이 찍혀 윤곽이 막혔다
+ */
+function markStencil(o: THREE.Object3D): void {
+  o.traverse((c) => {
+    const m = (c as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+    if (!m) return
+    if (!(Array.isArray(m) ? m : [m]).some((mm) => mm.userData.xray)) c.renderOrder = Math.max(c.renderOrder, 2)
+    for (const mm of Array.isArray(m) ? m : [m]) {
+      if (mm.userData.xray) continue
+      mm.stencilWrite = true
+      mm.stencilRef = 1
+      mm.stencilFunc = THREE.AlwaysStencilFunc
+      mm.stencilZPass = THREE.ReplaceStencilOp
+    }
+  })
+}
+
+/**
+ * 가려진 몸 윤곽을 켠다 (판 렌더러만 — 거대한 보스 · 벽 뒤의 캐릭터). 렌더러는 stencil: true 로 만들어야 한다.
+ * 캐릭터끼리 · 제 몸끼리 가린 곳에는 스텐실이 막아 그리지 않는다
+ */
+export function enableXray(rig: CharacterRig): void {
+  markStencil(rig.root)
+  rig.xray.visible = true
 }
 
 export function setRigOpacity(rig: CharacterRig, opacity: number): void {
