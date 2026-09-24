@@ -136,7 +136,7 @@ export class Lobby {
         <div class="czdock" id="czdock"></div>
         <div class="d2-title">
           <h1><span class="t1">배도라지</span><span class="t2">RPG</span></h1>
-          <p class="tag">종소리에 끌려 떨어진 배도라지 크루 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
+          <p class="tag">MT 공포체험에서 길을 잃은 배도라지 크루 · 최대 ${MAX_PLAYERS}인 협동 · 서버 없는 P2P · 비공식 팬게임</p>
         </div>
         <div class="d2-char" id="my-char">
           <button class="arrow" id="char-prev" title="이전 캐릭터">◀</button>
@@ -177,7 +177,7 @@ export class Lobby {
         <div class="dlg" id="dlg-host" hidden>
           <div class="dbox">
             <h3>게임 만들기</h3>
-            <p class="cardp"><b>던전</b>: 방장이 연 가장 뒤 막의 마을에서 시작합니다. 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채웁니다.<br><b>투기장</b>: 키운 캐릭터끼리 배도라지 덕의 대전(PvP). 둘 이상이면 되고, 빈 자리는 봇으로 채울 수 있습니다.</p>
+            <p class="cardp"><b>던전</b>: 방장이 연 가장 뒤 막의 마을에서 시작합니다. 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채웁니다.<br><b>투기장</b>: 키운 캐릭터끼리 겨루는 대전(PvP). 둘 이상이면 되고, 빈 자리는 봇으로 채울 수 있습니다.</p>
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>

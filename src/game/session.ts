@@ -835,8 +835,8 @@ export class Session {
     const steps = Session.GFX_STEPS
     const lv = Math.max(0, Math.min(steps.length - 1, this.gfx.level))
     this.renderer.setRenderScale(steps[lv])
-    // 그림자: 낮게 고정이거나 자동의 가장 낮은 단계에서만 끈다
-    this.renderer.setShadows(!(this.gfx.mode === 'low' || lv >= steps.length - 1))
+    // 그림자: 낮게 고정이거나 자동으로 두 단계 내려가면(0.72) 끈다 — 느린 기기(내장 그래픽)는 해상도보다 그림자 맵이 더 무겁다 (2026-09-24)
+    this.renderer.setShadows(!(this.gfx.mode === 'low' || lv >= 2))
   }
 
   private autoQuality(ms: number): void {
@@ -1448,15 +1448,6 @@ export class Session {
         this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: cleanChat(m.nick).slice(0, 20) || '후원자', amount: 0, text: cleanChat(m.text), ev: m.ev })
         break
       }
-      case 'pchat': {
-        // 시청자 말풍선을 우리 편 머리 위에 (보낸 사람 화면에서 말할 괴물이 없었을 때)
-        if (!this.peerIndex.has(from)) break
-        const nick = cleanChat(m.nick).slice(0, 20)
-        const text = cleanChat(m.text)
-        if (!nick || !text || m.a !== this.viewArea || typeof m.p !== 'number') break
-        this.renderer.playerSay(m.p, nick, text, !!m.gold)
-        break
-      }
       case 'mchat': {
         if (!this.peerIndex.has(from)) break
         const nick = cleanChat(m.nick).slice(0, 20)
@@ -1863,20 +1854,15 @@ export class Session {
   }
 
   /**
-   * 시청자 말풍선: 화면의 괴물 머리 위 — 말할 괴물이 없으면(마을 · 빈 방) 우리 편 캐릭터 머리 위로 (2026-09-23 사용자:
-   * "채팅 시험 버튼이 동작하지 않는다" — 마을에서 누르면 말할 괴물이 없어 8초 기다리다 버려졌다). 방 사람들에게도 보낸다. 띄웠으면 true
+   * 시청자 말풍선: **화면의 괴물 머리 위에만** (2026-09-24 사용자: "시청자 채팅은 캐릭터가 아니라 몬스터에만 나와야 된다" —
+   * v0.50.1 에 괴물이 없으면 우리 편 머리 위로 띄우던 것을 되돌렸다). 말할 괴물이 없으면(마을) 기다렸다가 8초 지나면 버린다.
+   * 방 사람들에게도 보낸다. 띄웠으면 true
    */
   private viewerSay(nick: string, text: string, gold = false): boolean {
     const id = this.renderer.pickSpeaker(this.view())
-    if (id >= 0) {
-      this.renderer.monsterSay(id, nick, text, gold)
-      this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text })
-      return true
-    }
-    const p = this.renderer.pickPlayerSpeaker(this.view(), this.cfg.localPlayer)
-    if (p < 0) return false
-    this.renderer.playerSay(p, nick, text, gold)
-    this.cfg.link?.sendCtl({ t: 'pchat', a: this.viewArea, p, nick, text, gold })
+    if (id < 0) return false
+    this.renderer.monsterSay(id, nick, text, gold)
+    this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text })
     return true
   }
 
@@ -1933,7 +1919,7 @@ export class Session {
         this.donNextAt = now + 1500
       }
     }
-    // 괴물 머리 위 — 없으면(마을 · 빈 방) 우리 편 머리 위. 둘 다 자리가 없으면 기다리고, 8초 넘게 못 한 말은 버린다 — 채팅 칸으로 돌리지 않는다
+    // 괴물 머리 위에만. 말할 괴물이 없으면(마을 · 빈 방) 기다리고, 8초 넘게 못 한 말은 버린다 — 채팅 칸으로도 캐릭터 머리 위로도 돌리지 않는다
     while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > 8000) this.chatQueue.shift()
     if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
       const c = this.chatQueue[0]

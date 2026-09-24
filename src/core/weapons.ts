@@ -112,7 +112,7 @@ const INF = { magSize: 0, reloadTicks: 0, auto: true }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   // ---------------- 권총 계열 — 물러남 (2026-09-20 사용자: "재장전이 없어서 권총과 SMG 차이가 없게 느껴진다") ----------------
-  // 단군덕 · 우원덕은 SMG 계열로 옮겼다. 정의만 남긴다: 옛 세이브의 아이템 번호(WEAPON_IDS)가 밀리지 않게.
+  // 단군란 · 우원란은 SMG 계열로 옮겼다. 정의만 남긴다: 옛 세이브의 아이템 번호(WEAPON_IDS)가 밀리지 않게.
   // 소음기(무리를 안 깨움)는 무기가 아니라 두 캐릭터의 특성이 됐다.
   pistol: {
     ...INF, retired: true, pvp: 1.12, id: 'pistol', family: 'pistol', name: '권총', desc: '소음기 권총 — 조용하고 정확하다. 총소리가 무리를 깨우지 않는다.',
@@ -127,7 +127,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(3), spreadAds: deg(0.9), recoil: deg(4), recoilRecover: deg(0.6),
     speed: 18, life: 55, moveMul: 1.0, length: 16, color: 0xb08a50, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // ---------------- SMG 계열 (주펄덕) — 근접 난사 ----------------
+  // ---------------- SMG 계열 (주펄란) — 근접 난사 ----------------
   // DPS 11/5 = 2.2 (가까이). 멀면 0.62 배
   smg: {
     ...INF, pvp: 1.1, id: 'smg', family: 'smg', name: 'SMG', desc: '빠르게 퍼붓는다. 가까울수록 세다.',
@@ -142,7 +142,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(10), spreadAds: deg(7), recoil: 0, recoilRecover: 0,
     speed: 9, life: 17, moveMul: 0.95, length: 20, color: 0xff7a2a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // ---------------- 소총 계열 (침착덕 · 기열덕 · 우재덕) — 멀리서 정확 ----------------
+  // ---------------- 소총 계열 (침착란 · 기열란 · 우재란) — 멀리서 정확 ----------------
   // DPS 18/10 = 1.8, 멀어도 0.78 배까지만 준다
   rifle: {
     ...INF, pvp: 0.95, id: 'rifle', family: 'rifle', name: '소총', desc: '멀리서도 정확하다. 탄이 빠르다.',
@@ -157,7 +157,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(3), spreadAds: deg(0.8), recoil: deg(2), recoilRecover: deg(0.5),
     speed: 20, life: 60, moveMul: 0.95, length: 22, color: 0x7a5a38, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // ---------------- 산탄 계열 (매직덕 · 풍월덕) — 근접 폭발력 ----------------
+  // ---------------- 산탄 계열 (매직란 · 풍월란) — 근접 폭발력 ----------------
   // 2026-09-19 사용자: "샷건이 너무 좋다 — 괴물이 많은데 가까이서 세게 넣을 수 있으니" → 12 → 10 · 감쇠 200 → 160px.
   // DPS 10×7/38 = 1.84 (가까이 — 소총과 같다). 멀면 0.35 배. 투기장은 배율로 예전 그대로(1.08 × 1.2 = 1.3)
   shotgun: {
@@ -173,9 +173,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(11), spreadAds: deg(8), recoil: deg(6), recoilRecover: deg(0.4),
     speed: 14, life: 30, moveMul: 0.9, length: 28, color: 0x6a4a2a, falloffStart: 130, falloffEnd: 420, falloffMin: 0.3,
   },
-  // ---------------- 저격 계열 (옥냥덕 · 통천덕) — 한 발 · 관통 ----------------
+  // ---------------- 저격 계열 (옥냥란 · 통천란) — 한 발 · 관통 ----------------
   // 2026-09-19: 조준경·한 방·개머리판을 없앴다. 80 피해 · 0.7초마다 · 둘을 더 꿰뚫는다. 한 마리 DPS 1.9
-  // (48틱 · 관통 1 이면 혼자 한 바퀴 계측에서 통천덕이 6.2시간 · 죽음 136 — 무리에 너무 약했다. 투기장 배율은 그만큼 낮춰 PvP 는 그대로)
+  // (48틱 · 관통 1 이면 혼자 한 바퀴 계측에서 통천란이 6.2시간 · 죽음 136 — 무리에 너무 약했다. 투기장 배율은 그만큼 낮춰 PvP 는 그대로)
   sniper: {
     ...INF, pvp: 0.68, id: 'sniper', family: 'sniper', name: '저격총', desc: '멀리서 한 발(80) — 탄이 둘을 더 꿰뚫고 멀리 밀친다.',
     knock: 4, damage: 80, pellets: 1, fireInterval: 42, pierce: 2,
@@ -189,7 +189,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(1.5), spreadAds: deg(0.3), recoil: deg(6), recoilRecover: deg(0.4),
     speed: 44, life: 50, moveMul: 0.85, length: 34, color: 0x5ac8ff, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // ---------------- 기관총 계열 (철면덕) — 버티며 퍼붓기 ----------------
+  // ---------------- 기관총 계열 (철면란) — 버티며 퍼붓기 ----------------
   // DPS 10/5 = 2.0. 퍼짐이 크고 느리게 걷는다
   mg: {
     ...INF, pvp: 0.95, id: 'mg', family: 'mg', name: '기관총', desc: '끝없이 퍼붓는다. 퍼짐이 크고 무겁다.',
@@ -204,7 +204,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     spreadHip: deg(3), spreadAds: deg(1.5), recoil: deg(4), recoilRecover: deg(0.4),
     speed: 11, life: 55, moveMul: 0.88, length: 26, color: 0x5a6a3a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
   },
-  // ---------------- 근접 (승빠덕) ----------------
+  // ---------------- 근접 (승빠란) ----------------
   // 후라이팬: 45 · 23틱 = 1.96. 기력으로 앞에서 오는 공격을 막는다
   pan: {
     ...INF, id: 'pan', family: 'pan', name: '후라이팬', desc: '휘두르고 막는다. 앞에서 오는 공격을 기력으로 막는다.',
@@ -221,8 +221,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 0, life: 0, moveMul: 0.98, length: 26, color: 0x2a2a2e, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 82, meleeArc: deg(90),
   },
-  // ---------------- 근접 탱커 (철면덕, 2026-09-19 사용자 "딱딱한 고기 바이올린") ----------------
-  // 2026-09-20 사용자 "철면덕 공격 범위 · 공격력이 너무 높다": 58 → 52 · 사거리 78 → 70 · ±75° → ±62°.
+  // ---------------- 근접 탱커 (철면란, 2026-09-19 사용자 "딱딱한 고기 바이올린") ----------------
+  // 2026-09-20 사용자 "철면란 공격 범위 · 공격력이 너무 높다": 58 → 52 · 사거리 78 → 70 · ±75° → ±62°.
   // 휘두르는 넓이가 후라이팬과 비슷해지고(7964 → 5302 px²), 한 대 피해는 근접 중 가장 낮다(52 · 30틱 = 1.73).
   // 대신 체력 290(1위) · 탱커 보정 · 막기는 그대로다 — 가장 튼튼한 대신 덜 아프게.
   violin: {
@@ -240,7 +240,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 0, life: 0, moveMul: 0.94, length: 30, color: 0x8e2c22, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,
     melee: true, meleeRange: 82, meleeArc: deg(80),
   },
-  // ---------------- 근접 딜러 (우재덕, 2026-09-19 사용자 "길고 얇은 검") ----------------
+  // ---------------- 근접 딜러 (우재란, 2026-09-19 사용자 "길고 얇은 검") ----------------
   // 멀리(104px) 좁게(±28°) 빠르게 찌른다. 30 · 14틱 = 2.14. 앞에서 오는 공격은 검으로 쳐 낸다(기력)
   rapier: {
     ...INF, pvp: 2.6, id: 'rapier', family: 'rapier', name: '장검', desc: '길고 얇은 검. 멀리까지 빠르게 찌른다. 좁게 닿는 대신 줄지어 선 것을 함께 벤다.',

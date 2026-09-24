@@ -234,7 +234,7 @@ describe('전리품 · 성장 (sim)', () => {
     const { s, map } = ready(['chim', 'magic'], [sheet, emptySheet()])
     const [a, b] = s.players
     const d0 = a.st[ST_DMG]
-    step(s, map, [cmd(CMD_EQUIP, 0), idle()]) // 산탄총 — 침착덕은 못 낀다
+    step(s, map, [cmd(CMD_EQUIP, 0), idle()]) // 산탄총 — 침착란은 못 낀다
     expect(a.equip[SLOT_WEAPON]).toBeNull()
     step(s, map, [cmd(CMD_EQUIP, 1), idle()]) // 소총
     expect(a.equip[SLOT_WEAPON]?.uid).toBe(11)

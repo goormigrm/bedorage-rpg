@@ -47,6 +47,19 @@ SPECS = {
     'warden': dict(tex=512, tris=4500, normal=True, normal_tex=256, anims=[], morph={}),
     # 심연의 군주 — balrog demon rig (2026-09-23). 네 발 짐승이라 사람형 UAL 은 못 옮긴다 — 받은 동작 하나로
     'lord': dict(tex=512, tris=6000, normal=False, anims=['Armature|ArmatureAction'], morph={}),
+    # ---- 2차 졸개 (2026-09-24 — 사용자가 받아 준 여섯). 졸개는 떼로 나와 면을 더 줄이고, 작은 것은 텍스처 256 ----
+    # 보물 고블린 — Minion (DJMaesen). 받은 동작(CINEMA_4D_Main 8.7초 한 줄)은 쓰지 않는다 — 모두 UAL_
+    'goblin': dict(tex=256, tris=2600, normal=False, anims=[], morph={}),
+    # 방패병 — Cursed Undead Soldier Rig (DM-913). 받은 Slash 는 공격. material_0 은 뼈 조종용 도형(IK 막대 · 공)이라 뺀다
+    'shield': dict(tex=512, tris=3400, normal=False, anims=['Slash'], morph={}, drop=['material_0']),
+    # 버섯 주술사 — Witch (LxNazarov). 받은 동작 여섯 중 다섯 (던지기는 안 쓴다)
+    'shaman': dict(tex=512, tris=3400, normal=False, anims=['Witch.Skeleton|idle', 'Witch.Skeleton|walk', 'Witch.Skeleton|attack', 'Witch.Skeleton|skill', 'Witch.Skeleton|death'], morph={}),
+    # 산성 토사꾼 — Crawling mutated human (Elisey). 네 발로 기는 자세 · 받은 기어가기 동작 하나 (Mixamo 동작 — 게임 안에서 쓰는 것은 Adobe 가 허용)
+    'spitter': dict(tex=256, tris=3000, normal=False, anims=['Armature|Armature|mixamo.com|Layer0'], morph={}),
+    # 그림자 — Terrifying Hooded Horror Woman (Purple.Point). 받은 RunFast 는 걷기
+    'shade': dict(tex=256, tris=2400, normal=False, anims=['Armature|RunFast|baselayer'], morph={}),
+    # 강령술사 — PBR Shadowkin Mage (Ferocious Industries). 받은 것은 자세 둘뿐 — 모두 UAL_
+    'necro': dict(tex=512, tris=3400, normal=False, anims=[], morph={}),
 }
 FPS = 15
 
@@ -160,6 +173,22 @@ def pack(kind: str) -> None:
                 continue
             s['input'] = add_floats([(times[i],) for i in keep], 1, 'SCALAR')
             s['output'] = add_floats([out[i] for i in keep], NCOMP[acc[s['output']]['type']], acc[s['output']]['type'])
+
+    # 1.8) 그리지 않을 재질의 조각은 뺀다 (뼈 조종용 도형 등 — 방패병 material_0)
+    if spec.get('drop'):
+        drop_mi = {i for i, m in enumerate(j.get('materials', [])) if m.get('name') in spec['drop']}
+        for me in j['meshes']:
+            me['primitives'] = [p for p in me['primitives'] if p.get('material') not in drop_mi]
+        dead = {i for i, me in enumerate(j['meshes']) if not me['primitives']}
+        for n in j['nodes']:
+            if n.get('mesh') in dead:
+                del n['mesh']
+                n.pop('skin', None)
+        for i in sorted(dead, reverse=True):
+            for n in j['nodes']:
+                if n.get('mesh') is not None and n['mesh'] > i:
+                    n['mesh'] -= 1
+            del j['meshes'][i]
 
     # 2) 모양 키: 남길 것만
     for mi, me in enumerate(j['meshes']):

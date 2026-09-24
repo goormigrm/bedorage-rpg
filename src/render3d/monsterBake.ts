@@ -151,19 +151,58 @@ async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
     anchors[a] = out
   })
 
-  const parts = meshes.map((m, i) => {
-    const src = m.geometry
+  // 같은 재질의 조각은 하나로 합친다 — 조각마다 그리기 호출이 하나씩이라 (마녀 네 조각 · 구울 몸 · 손 …) 합치면 가볍다 (2026-09-24)
+  const groups = new Map<THREE.Material, number[]>()
+  meshes.forEach((m, i) => {
+    const key = m.material as THREE.Material
+    const g = groups.get(key)
+    if (g) g.push(i)
+    else groups.set(key, [i])
+  })
+  const parts: BakedModel['parts'] = []
+  for (const [srcMat, idx] of groups) {
+    const geos = idx.map((i) => meshes[i].geometry)
+    const counts = geos.map((g) => g.attributes.position.count)
+    const total = counts.reduce((a, b) => a + b, 0)
+    const cat = (arrs: Float32Array[]) => {
+      const out = new Float32Array(total * 3)
+      let o = 0
+      arrs.forEach((a) => {
+        out.set(a, o)
+        o += a.length
+      })
+      return out
+    }
     const geo = new THREE.BufferGeometry()
-    if (src.index) geo.setIndex(src.index)
-    geo.setAttribute('position', new THREE.BufferAttribute(pos[i][0].slice(), 3))
-    geo.setAttribute('normal', new THREE.BufferAttribute(nrm[i][0].slice(), 3))
-    if (src.attributes.uv) geo.setAttribute('uv', src.attributes.uv)
-    geo.morphAttributes.position = pos[i].map((f) => new THREE.BufferAttribute(f, 3))
-    geo.morphAttributes.normal = nrm[i].map((f) => new THREE.BufferAttribute(f, 3))
+    // 인덱스: 조각마다 정점 번호를 밀어서 잇는다 (정점이 65535 를 넘으면 32비트)
+    const idxTotal = geos.reduce((a, g) => a + (g.index ? g.index.count : g.attributes.position.count), 0)
+    const index = total > 65535 ? new Uint32Array(idxTotal) : new Uint16Array(idxTotal)
+    let io = 0
+    let base = 0
+    geos.forEach((g, k) => {
+      if (g.index) for (let t = 0; t < g.index.count; t++) index[io++] = g.index.getX(t) + base
+      else for (let t = 0; t < counts[k]; t++) index[io++] = t + base
+      base += counts[k]
+    })
+    geo.setIndex(new THREE.BufferAttribute(index, 1))
+    geo.setAttribute('position', new THREE.BufferAttribute(cat(idx.map((i) => pos[i][0])), 3))
+    geo.setAttribute('normal', new THREE.BufferAttribute(cat(idx.map((i) => nrm[i][0])), 3))
+    if (geos.some((g) => g.attributes.uv)) {
+      const uv = new Float32Array(total * 2)
+      let o = 0
+      geos.forEach((g, k) => {
+        const a = g.attributes.uv
+        if (a) for (let t = 0; t < a.count; t++) uv.set([a.getX(t), a.getY(t)], (o + t) * 2)
+        o += counts[k]
+      })
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+    }
+    geo.morphAttributes.position = pos[idx[0]].map((_, f) => new THREE.BufferAttribute(cat(idx.map((i) => pos[i][f])), 3))
+    geo.morphAttributes.normal = nrm[idx[0]].map((_, f) => new THREE.BufferAttribute(cat(idx.map((i) => nrm[i][f])), 3))
     geo.morphTargetsRelative = false
     geo.computeBoundingSphere()
-    return { geo, mat: toLambert(m.material as THREE.MeshStandardMaterial, spec) }
-  })
+    parts.push({ geo, mat: toLambert(srcMat as THREE.MeshStandardMaterial, spec) })
+  }
   return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest }
 }
 
@@ -252,6 +291,12 @@ function toLambert(src: THREE.MeshStandardMaterial, spec: ModelSpec): THREE.Mate
     side: src.side,
   })
   if (spec.tint) mat.color.multiply(new THREE.Color(...spec.tint))
+  // 받은 모델의 빛 텍스처 (고블린 · 방패병 · 주술사의 눈 등 — 2026-09-24). 조명과 상관없이 빛난다
+  if (src.emissiveMap && (spec.emissive ?? 1) > 0) {
+    mat.emissiveMap = src.emissiveMap
+    mat.emissive = src.emissive ? src.emissive.clone() : new THREE.Color(1, 1, 1)
+    mat.emissiveIntensity = spec.emissive ?? 1
+  }
   const glow = spec.glow?.[src.name]
   if (glow !== undefined) {
     // 눈: 조명과 상관없이 빛난다

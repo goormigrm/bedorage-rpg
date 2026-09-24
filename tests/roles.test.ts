@@ -1,4 +1,4 @@
-// 역할 (2026-09-19 사용자 "탱 · 딜 · 힐로 확실히 나눠서") · 근접 캐릭터 둘(철면덕 고기 바이올린 · 우재덕 장검) · 산탄 하향.
+// 역할 (2026-09-19 사용자 "탱 · 딜 · 힐로 확실히 나눠서") · 근접 캐릭터 둘(철면란 고기 바이올린 · 우재란 장검) · 산탄 하향.
 // 역할 효과는 던전에서만 — 투기장은 그대로.
 import { describe, expect, it } from 'vitest'
 import { CHARACTERS, CHARACTER_LIST, CharacterId } from '../src/core/characters'
@@ -42,7 +42,7 @@ function ready(chars: CharacterId[], mode: 'dungeon' | 'arena' = 'dungeon', bag:
 describe('역할 · 근접 캐릭터 (2026-09-19)', () => {
   it('12명 모두 역할이 있고 탱커 · 딜러 · 힐러가 고루 있다', () => {
     const roles = CHARACTER_LIST.map((c) => c.role)
-    // 2026-09-19 기열덕 탱커 → 딜러, 2026-09-20 풍월덕 딜러 → 탱커 (탱 3 · 딜 6 · 힐 3)
+    // 2026-09-19 기열란 탱커 → 딜러, 2026-09-20 풍월란 딜러 → 탱커 (탱 3 · 딜 6 · 힐 3)
     expect(roles.filter((r) => r === 'tank').length).toBe(3)
     expect(roles.filter((r) => r === 'heal').length).toBe(3)
     expect(roles.filter((r) => r === 'dps').length).toBe(6)
@@ -62,7 +62,7 @@ describe('역할 · 근접 캐릭터 (2026-09-19)', () => {
     expect(a.s.players[0].maxHp).toBe(CHARACTERS.cheolmyeon.maxHp)
   })
 
-  it('철면덕 = 고기 바이올린(근접) · 우재덕 = 장검(근접) — 옛 기관총 · 소총 아이템은 새 계열로 바뀐다', () => {
+  it('철면란 = 고기 바이올린(근접) · 우재란 = 장검(근접) — 옛 기관총 · 소총 아이템은 새 계열로 바뀐다', () => {
     expect(CHARACTERS.cheolmyeon.weapon).toBe('violin')
     expect(CHARACTERS.juwoojae.weapon).toBe('rapier')
     expect(WEAPONS.violin.melee && WEAPONS.rapier.melee).toBe(true)

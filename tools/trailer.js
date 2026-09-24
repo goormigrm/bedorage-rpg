@@ -187,6 +187,9 @@ function god() {
   for (const p of s.players) {
     p.hp = p.maxHp
     p.downed = false
+    // 보스 공격은 ‰ 라 괴물 공격력 0 으로는 못 막는다 — 맞으면 갈고리에 끌려가거나 돌진에 밀려 카메라가 튄다(2026-09-24 "버벅거리는 장면").
+    // 보스 공격 쿨다운을 늘 걸어 두면 예고 · 폭발은 그대로 보이고 사람만 안 맞는다 (무적은 황금 보호막이 떠서 안 쓴다)
+    p.bossCd = 999
   }
   for (const m of s.monsters) m.pow = 0
 }
@@ -302,7 +305,7 @@ function scenes() {
     cue('calm')
     zoomTo(1.12, 1.0, 6000)
     fadeTo(0, 1200)
-    ov.title = { text: '배도라지RPG', sub: '종소리에 끌려 떨어진 오리들의 쿼터뷰 슈팅 RPG', at: now() }
+    ov.title = { text: '배도라지RPG', sub: 'MT 공포체험에서 길을 잃고 계란이 된 크루의 쿼터뷰 슈팅 RPG', at: now() }
     key('KeyD', true)
   })
   at(2.3, () => {
@@ -386,6 +389,8 @@ function scenes() {
   at(1.0, () => {
     caption('막 보스는 정해진 패턴으로', '빨간 예고 범위를 피하라 — 보스 공격은 최대 체력의 %, 탱커도 똑같이 아프다')
     zoomTo(1.0, 1.06, 6500)
+    // 도살자를 카메라 앞에 새로 세우는 순간을 섬광으로 가린다 (불쑥 나타나 보이지 않게)
+    flash(0.55)
     // 후원으로 불린 도살자는 화면 밖에 나타날 수 있다 — 카메라 앞(4~6칸)에 다시 세운다
     for (const m of st().monsters) if (m.kind === 3) m.hp = 0
     spawn([3], 1, 4, 6)
@@ -472,7 +477,8 @@ async function renderAudio(durSec) {
   master.connect(comp)
   comp.connect(off.destination)
   const bgm = off.createGain()
-  bgm.gain.value = 0.2
+  // 배경음 (2026-09-24 사용자: "효과음만 있으니 허전하다 — 어둡고 무서운 배경음"): 효과음 1,500여 개 사이에서 들리게 0.2 → 0.5 (약 +8dB)
+  bgm.gain.value = 0.5
   bgm.connect(master)
   const noise = off.createBuffer(1, rate, rate)
   const d = noise.getChannelData(0)
@@ -575,10 +581,20 @@ export async function start(opts = {}) {
     },
     error: (e) => log.push('영상 인코더 ' + e),
   })
-  ve.configure({ codec: 'vp8', width: W, height: H, bitrate: 14_000_000, framerate: FPS })
+  // 게시판 파일당 40 MB (공지글-모음 0장) — 1분 · 1080p 가 약 35 MB 가 되게 (전에는 14 Mbps · 99 MB)
+  ve.configure({ codec: 'vp8', width: W, height: H, bitrate: opts.bitrate ?? 4_400_000, framerate: FPS })
 
-  // 가상 시계 — 게임 · 렌더러 · HUD 가 모두 이 시각을 본다
+  // 영상에 나오는 괴물의 실사 모델을 먼저 받아 굽는다 — 녹화 도중 처음 나오면 도형 모습에서 실사로 한순간 바뀌어 튀어 보였다
   const sess = S()
+  const kinds = [0, 1, 2, 3, 14, 15]
+  sess.renderer.monsterView.prefetch(kinds)
+  for (let k = 0; k < 120; k++) {
+    const r = window.__bd.models()
+    if (kinds.every((x) => r.ready.includes(x) || r.failed.includes(x))) break
+    await new Promise((res) => setTimeout(res, 250))
+  }
+  log.push('모델 ' + JSON.stringify(window.__bd.models().ready))
+  // 가상 시계 — 게임 · 렌더러 · HUD 가 모두 이 시각을 본다
   const realNow = performance.now.bind(performance)
   vt = realNow()
   const t0 = vt
@@ -723,3 +739,24 @@ export async function start(opts = {}) {
 }
 
 export const status = () => ({ running, vid, sec: +vidSec().toFixed(1), log })
+
+/** 배경음만 그려 초마다 크기(RMS · 최고)를 잰다 — 소리를 내지 않고 섞음 비율을 맞출 때 (2026-09-24) */
+export async function musicTest(plan = [[0, 'calm'], [18, 'hot'], [30, 'boss'], [40, 'rage']], sec = 48) {
+  music = plan.map(([t, kind]) => ({ t, kind }))
+  sfxCues = []
+  const buf = await renderAudio(sec)
+  const L = buf.getChannelData(0)
+  const out = []
+  for (let s0 = 0; s0 < sec; s0 += 2) {
+    let sum = 0
+    let pk = 0
+    const a = Math.floor(s0 * buf.sampleRate)
+    const b = Math.min(L.length, Math.floor((s0 + 2) * buf.sampleRate))
+    for (let i = a; i < b; i++) {
+      sum += L[i] * L[i]
+      pk = Math.max(pk, Math.abs(L[i]))
+    }
+    out.push([s0, +(20 * Math.log10(Math.sqrt(sum / (b - a)) + 1e-9)).toFixed(1), +(20 * Math.log10(pk + 1e-9)).toFixed(1)])
+  }
+  return out
+}

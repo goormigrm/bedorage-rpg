@@ -163,7 +163,7 @@ function panelHtml(): string {
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
-    `<p class="czn">채팅 시험은 게임 안에서 보입니다 — 괴물(없으면 우리 편) 머리 위 말풍선.</p>` +
+    `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요.</p>` +
     `<div class="czh"><b>💚 !응원 금액 → 효과</b></div>` +
     `<div class="czt">${cheers}</div>` +
     `<p class="czn">후원 글에 <b>!응원</b> 을 쓰면 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +

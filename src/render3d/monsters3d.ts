@@ -2,7 +2,7 @@
 // 매 프레임 몬스터마다 "뿌리 행렬 × 부품 행렬" 을 채운다 → 몬스터가 100마리여도 그리기 호출은 부품 수만큼(종류당 6~8번).
 // 뼈대 애니메이션 없이 기울기·흔들림·부풀기로 움직임을 낸다. 로컬 좌표: 발 아래 원점, +y 위, 정면 +z (character3d.ts 와 같다).
 //
-// 분위기(2026-09-18 사용자): 디아블로·다키스트 던전풍 어두운 괴물. 캐릭터(말랑한 오리)와 대비되도록
+// 분위기(2026-09-18 사용자): 디아블로·다키스트 던전풍 어두운 괴물. 캐릭터(말랑한 계란)와 대비되도록
 // 창백하고 마른 살빛 · 뼈 · 썩은 녹색, 그리고 **어둠 속에서 빛나는 눈**(MeshBasic — 조명과 상관없이 보인다).
 
 import * as THREE from 'three'
@@ -38,27 +38,13 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
     { part: 4, s: 0.88, dx: 0.131, dy: -0.088, dz: -0.255, at: 'handL', still: true }, // 활 (왼손)
     { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
   ],
+  // 방패병 (2026-09-24 제 모델 — Cursed Undead Soldier): 칼은 모델이 들었다 · 방패만 도형으로 몸 앞에 (정면 막기가 보이게)
   9: [
-    { part: 1, s: 0.55, dx: -0.056, dy: 0.496, dz: -0.096, at: 'head' }, // 투구
-    { part: 2, s: 0.55, dx: -0.056, dy: 0.48, dz: -0.09, at: 'head' }, // 눈구멍 빛
-    { part: 3, s: 0.7, dx: 0.092, dy: 0.186, dz: -0.192, at: 'chest' }, // 방패 (몸 앞 — 손에 붙이면 검을 휘두를 때 방패가 춤춘다)
-    { part: 4, s: 0.7, dx: 0.092, dy: 0.186, dz: -0.192, at: 'chest' }, // 방패 징
+    // 자리 = 부품 자세(방패 0.04 · 0.62 · 0.36) × s + (dx, dy, dz). 가슴 뼈(0 · 0.77 · -0.15) 앞 · 조금 아래에 오게
+    { part: 3, s: 0.72, dx: 0.05, dy: 0.17, dz: -0.21, at: 'chest' }, // 방패
+    { part: 4, s: 0.72, dx: 0.05, dy: 0.17, dz: -0.21, at: 'chest' }, // 방패 징
   ],
-  10: [
-    { part: 3, s: 0.75, dx: -0.058, dy: 0.25, dz: -0.158, at: 'head' }, // 눈
-    { part: 4, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 지팡이 (예고 때 치켜든다)
-    { part: 5, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 지팡이 끝 해골
-    { part: 6, s: 0.9, dx: -0.086, dy: 0.029, dz: -0.131, at: 'handL' }, // 빛나는 구슬
-  ],
-  13: [
-    { part: 0, s: 0.7, dx: -0.04, dy: 0.286, dz: -0.09, at: 'chest' }, // 반투명 망토
-    { part: 1, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.136, at: 'head' }, // 두건
-    { part: 2, s: 0.6, dx: -0.056, dy: 0.418, dz: -0.112, at: 'head' }, // 눈
-  ],
-  // 좀비 모델 (도살자 · 고블린 · 버섯 주술사 · 토사꾼 · 포격 악마 · 군주): 기준 자세는 좀비 대기 첫 장 그대로 — 자리 값은 전에 맞춘 것
-  4: [{ part: 4, s: 0.85, dy: 0, at: 'chest' }, { part: 5, s: 0.85, dy: 0, at: 'chest' }], // 고블린: 금 자루 · 반짝임
-  7: [{ part: 2, s: 0.95, dy: -0.12, at: 'head' }, { part: 3, s: 0.95, dy: 0, at: 'chest' }], // 버섯 주술사: 버섯 갓 · 지팡이
-  11: [{ part: 2, s: 0.95, dy: 0, at: 'chest' }], // 산성 토사꾼: 산 주머니
+  // 고블린 · 버섯 주술사 · 강령술사 · 산성 토사꾼 · 그림자는 2026-09-24 제 모델이 생겨 도형 부품을 뺐다
 }
 
 /**
@@ -149,8 +135,8 @@ interface MVis extends Anim {
 }
 
 const CAP = 220
-/** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 · 포격 악마 · 심연의 군주(balrog — 2026-09-23) — MONSTER_LIST 번호 */
-const QUADRUPEDS = new Set([5, 6, 8, 14, 15])
+/** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 · 산성 토사꾼(기는 사람 — 2026-09-24) · 포격 악마 · 심연의 군주(balrog — 2026-09-23) — MONSTER_LIST 번호 */
+const QUADRUPEDS = new Set([5, 6, 8, 11, 14, 15])
 const SPIDER_KIND = 6
 /** 옆으로 눕거나 뒤집힐 때 들어 올리는 높이 (크기 1 기준 타일) */
 const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45, 14: 0.3, 15: 0.3 }
@@ -824,7 +810,8 @@ const BUILDERS = [
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
 // 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 · 포격 악마(14)는 네 발 짐승(balrog)이 되어 1.3 → 0.9 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 1.1, 0.8, 0.8, 1.45, 0.8, 1.3, 1.6, 1.05, 1.25, 1.3, 0.9, 1.4]
+// 고블린 · 주술사 · 방패병 · 강령술사 · 토사꾼 · 그림자는 2026-09-24 제 모델 키에 맞췄다 (0.85 · 1.2 · 1.3 · 1.3 · 0.7 · 1.3)
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 0.85, 0.8, 0.8, 1.2, 0.8, 1.3, 1.3, 0.7, 1.25, 1.3, 0.9, 1.4]
 
 export class MonsterView {
   readonly group = new THREE.Group()
@@ -851,10 +838,34 @@ export class MonsterView {
   private aqa = [0, 0, 0, 1]
   private am = new THREE.Matrix4()
 
+  /**
+   * 발밑 그림자 (2026-09-24 최적화): 떼 괴물(실사 모델 · 보스 빼고)은 그림자 맵에 그리지 않고 둥근 그림자 한 장을 깐다.
+   * 그림자 맵에 한 번 더 그리면 괴물 삼각형이 두 배(400마리에서 183만 → 99만)다 — 내장 그래픽 노트북은 정점 처리가 약하다.
+   * 모두 합쳐 그리기 호출 1번. 보스는 진짜 그림자 그대로
+   */
+  private blob: THREE.InstancedMesh
+  private blobN = 0
+
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
     for (const parts of this.kinds) for (const p of parts) this.group.add(p.mesh)
     this.mcounts = this.kinds.map(() => 0)
+    const c = document.createElement('canvas')
+    c.width = c.height = 64
+    const g = c.getContext('2d')!
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+    grad.addColorStop(0, 'rgba(0,0,0,0.62)')
+    grad.addColorStop(0.55, 'rgba(0,0,0,0.38)')
+    grad.addColorStop(1, 'rgba(0,0,0,0)')
+    g.fillStyle = grad
+    g.fillRect(0, 0, 64, 64)
+    const geo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2)
+    this.blob = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }), CAP * 4)
+    this.blob.count = 0
+    this.blob.frustumCulled = false
+    this.blob.renderOrder = -1
+    this.blob.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    this.group.add(this.blob)
   }
 
   /** 실사 괴물 켜기/끄기. 끄면 받은 모델은 두고 도형 괴물로 그린다 */
@@ -967,7 +978,8 @@ export class MonsterView {
           frameShader(p.mat)
           const mesh = new THREE.InstancedMesh(p.geo, p.mat, CAP) as InstancedMesh
           mesh.frustumCulled = false
-          mesh.castShadow = true
+          // 그림자 맵에는 보스만 (떼는 발밑 그림자 — blob)
+          mesh.castShadow = !!MONSTER_LIST[kind].boss
           mesh.customDepthMaterial = depth
           // InstancedMesh 는 가중치 배열을 비워 둔다(setMorphAt 을 쓰라고) — 셰이더가 aFrame 을 쓰지만 three 가 이 배열을 읽는다
           mesh.morphTargetInfluences = new Array(baked.frames).fill(0)
@@ -1069,6 +1081,7 @@ export class MonsterView {
     for (const m of prev.monsters) this.prevPos.set(m.id, { x: m.x, y: m.y })
     const counts = this.kinds.map(() => 0)
     this.mcounts.fill(0)
+    this.blobN = 0
     this.clock += dt
     const live = new Set<number>()
     this.shown.clear()
@@ -1138,6 +1151,8 @@ export class MonsterView {
       this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)))
     }
     this.corpses = still
+    this.blob.count = this.blobN
+    if (this.blobN > 0) this.blob.instanceMatrix.needsUpdate = true
     this.kinds.forEach((parts, k) => {
       for (const p of parts) {
         p.mesh.count = counts[k]
@@ -1176,6 +1191,15 @@ export class MonsterView {
     else counts[kind]++
     const def = MONSTER_LIST[kind]
     const size = (def.r / 13) * (a.unique ? 1.7 : a.elite ? 1.35 : 1) // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게
+    // 발밑 그림자: 실사 떼 괴물 (살아 있을 때 · 쓰러지는 동안은 옅게 사라진다)
+    if (model && !def.boss && corpseT === 0 && a.dead < 1 && this.blobN < CAP * 4) {
+      const r = size * (QUADRUPEDS.has(kind) ? 0.55 : 0.42) * (1 - a.dead * 0.6)
+      this.o.position.set(x, 0.025, z)
+      this.o.rotation.set(0, 0, 0)
+      this.o.scale.set(r, 1, r)
+      this.o.updateMatrix()
+      this.blob.setMatrixAt(this.blobN++, this.o.matrix)
+    }
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
     this.o.position.set(x, -Math.max(0, corpseT - 0.5) * 0.9, z)
     this.o.rotation.set(0, Math.PI / 2 - yaw, 0)

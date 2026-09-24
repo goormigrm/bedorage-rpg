@@ -174,10 +174,128 @@ const TARGETS = {
     clips: ['Idle_Loop', 'Walk_Loop', 'Hit_Chest', 'Sword_Attack', 'Death01'],
     skip: /thumb|pink|ring|middle|point|Joint_|toes|tip/,
   },
+  // ---- 2차 졸개 (2026-09-24 — 사용자가 받아 준 여섯 중 사람형 넷) ----
+  // 보물 고블린 — Minion (DJMaesen · CC BY 4.0). 관리인과 같은 제작자 뼈대(목 없음 — 가슴에 머리). 기본 자세가 앞으로 숙여
+  // 머리 → 골반으로 위를 잡으면 동작 전체가 눕는다 → 위는 세계 +Y (upY)
+  goblin: {
+    map: {
+      pelvis: 'hip_01',
+      spine_01: 'spine_011',
+      spine_03: 'chest_012',
+      Head: 'head_045',
+      clavicle_l: 'L_shoulder_029',
+      upperarm_l: 'L_arm_030',
+      lowerarm_l: 'L_elbow_031',
+      hand_l: 'L_wrist_032',
+      clavicle_r: 'R_shoulder_013',
+      upperarm_r: 'R_arm_014',
+      lowerarm_r: 'R_elbow_015',
+      hand_r: 'R_wrist_016',
+      thigh_l: 'L_leg_02',
+      calf_l: 'L_knee_03',
+      foot_l: 'L_ankle_04',
+      ball_l: 'L_foot_05',
+      thigh_r: 'R_leg_07',
+      calf_r: 'R_knee_08',
+      foot_r: 'R_ankle_09',
+      ball_r: 'R_foot_010',
+    },
+    clips: ['Idle_Loop', 'Jog_Fwd_Loop', 'Hit_Chest', 'Death01'],
+    skip: /thumb|pink|finger|Joint_|jaw|lip|tip|Eye|toes/,
+    upY: true,
+  },
+  // 방패병 — Cursed Undead Soldier Rig (DM-913 · CC BY 4.0). 손 · 발이 IK 조종 뼈(ArmIK · LegIK — 뿌리의 자식)에 달려 있다 →
+  // 짝 뼈 따라가기(follow)가 손은 아래팔 끝, 발은 정강이 끝에 붙인다. 앞으로 숙인 자세라 위는 +Y. 받은 동작 Slash 는 공격으로 쓴다
+  shield: {
+    map: {
+      pelvis: 'Pelvis_52',
+      spine_01: 'Spine_13',
+      spine_03: 'Torso_49',
+      neck_01: 'Neck_31',
+      Head: 'Head_47',
+      clavicle_l: 'Shoulder.L_38',
+      upperarm_l: 'Upper Arm.L_34',
+      lowerarm_l: 'Forearm.L_32',
+      hand_l: 'Hand.L_68',
+      clavicle_r: 'Shoulder.R_45',
+      upperarm_r: 'Upper Arm.R_41',
+      lowerarm_r: 'Forearm.R_39',
+      hand_r: 'Hand.R_86',
+      thigh_l: 'Thigh.L_17',
+      calf_l: 'Lower Leg.L_14',
+      foot_l: 'Foot.L_92',
+      ball_l: 'Toes.L_91',
+      thigh_r: 'Thigh.R_25',
+      calf_r: 'Lower Leg.R_22',
+      foot_r: 'Foot.R_89',
+      ball_r: 'Toes.R_88',
+    },
+    clips: ['Idle_Loop', 'Walk_Loop', 'Hit_Chest', 'Death01'],
+    skip: /Pinky|Ring Finger|Mid Finger|Index|Thumb|POLE|Pole|Target|Jaw/,
+    upY: true,
+  },
+  // 강령술사 — PBR Shadowkin Mage (Rigged) (Ferocious Industries · CC BY 4.0). Character Creator 뼈대 · 받은 동작은 자세 둘뿐
+  necro: {
+    map: {
+      pelvis: 'CC_Base_Hip_03',
+      spine_01: 'CC_Base_Waist_035',
+      spine_02: 'CC_Base_Spine01_036',
+      spine_03: 'CC_Base_Spine02_037',
+      neck_01: 'CC_Base_NeckTwist01_038',
+      Head: 'CC_Base_Head_040',
+      clavicle_l: 'CC_Base_L_Clavicle_051',
+      upperarm_l: 'CC_Base_L_Upperarm_052',
+      lowerarm_l: 'CC_Base_L_Forearm_053',
+      hand_l: 'CC_Base_L_Hand_057',
+      clavicle_r: 'CC_Base_R_Clavicle_079',
+      upperarm_r: 'CC_Base_R_Upperarm_080',
+      lowerarm_r: 'CC_Base_R_Forearm_081',
+      hand_r: 'CC_Base_R_Hand_085',
+      thigh_l: 'CC_Base_L_Thigh_05',
+      calf_l: 'CC_Base_L_Calf_06',
+      foot_l: 'CC_Base_L_Foot_07',
+      ball_l: 'CC_Base_L_ToeBase_09',
+      thigh_r: 'CC_Base_R_Thigh_020',
+      calf_r: 'CC_Base_R_Calf_021',
+      foot_r: 'CC_Base_R_Foot_023',
+      ball_r: 'CC_Base_R_ToeBase_024',
+    },
+    clips: ['Idle_Loop', 'Walk_Loop', 'Spell_Simple_Shoot', 'Hit_Chest', 'Death01'],
+    skip: /Twist|Share|Toe1|Finger|Thumb|Index|Mid|Ring|Pinky|Facial|Jaw|Tongue|Teeth|Eye|_end/,
+  },
+  // 그림자 — Terrifying Hooded Horror Woman (Purple.Point · CC BY 4.0). 뼈 스물다섯의 단순한 사람형 · 받은 RunFast 는 걷기로 쓴다
+  shade: {
+    map: {
+      pelvis: 'Hips_23',
+      spine_01: 'Spine02_22',
+      spine_02: 'Spine01_21',
+      spine_03: 'Spine_20',
+      neck_01: 'neck_19',
+      Head: 'Head_18',
+      clavicle_l: 'LeftShoulder_11',
+      upperarm_l: 'LeftArm_10',
+      lowerarm_l: 'LeftForeArm_9',
+      hand_l: 'LeftHand_8',
+      clavicle_r: 'RightShoulder_15',
+      upperarm_r: 'RightArm_14',
+      lowerarm_r: 'RightForeArm_13',
+      hand_r: 'RightHand_12',
+      thigh_l: 'LeftUpLeg_3',
+      calf_l: 'LeftLeg_2',
+      foot_l: 'LeftFoot_1',
+      ball_l: 'LeftToeBase_0',
+      thigh_r: 'RightUpLeg_7',
+      calf_r: 'RightLeg_6',
+      foot_r: 'RightFoot_5',
+      ball_r: 'RightToeBase_4',
+    },
+    clips: ['Idle_Loop', 'Punch_Cross', 'Hit_Chest', 'Death01'],
+    skip: /head_end|headfront/,
+  },
 }
 
 // 제자리 동작(대기 · 걷기)은 골반의 앞뒤 · 옆 움직임을 빼고 위아래만 남긴다
-const IN_PLACE = new Set(['Idle_Loop', 'Walk_Loop'])
+const IN_PLACE = new Set(['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop'])
 
 // ---------- glTF 읽기 ----------
 const NCOMP = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }
@@ -283,8 +401,9 @@ function sampleClip(g, anim, t) {
   return locals
 }
 
-function frameBasis(pos, pelvis, head, thighL, thighR) {
-  const up = pos(head).sub(pos(pelvis)).normalize()
+function frameBasis(pos, pelvis, head, thighL, thighR, upY = false) {
+  // upY: 기본 자세가 앞으로 숙인 모델(고블린 · 방패병)은 머리 → 골반 대신 세계 +Y 를 위로 (안 그러면 동작 전체가 기운다)
+  const up = upY ? new THREE.Vector3(0, 1, 0) : pos(head).sub(pos(pelvis)).normalize()
   const left = pos(thighL).sub(pos(thighR))
   left.addScaledVector(up, -left.dot(up)).normalize()
   const fwd = new THREE.Vector3().crossVectors(left, up)
@@ -314,7 +433,7 @@ function retarget(kind) {
 
   // 방향틀: 원본 → 대상
   const Ms = frameBasis(sPos, 'pelvis', 'Head', 'thigh_l', 'thigh_r')
-  const Md = frameBasis(dPos, 'pelvis', 'Head', 'thigh_l', 'thigh_r')
+  const Md = frameBasis(dPos, 'pelvis', 'Head', 'thigh_l', 'thigh_r', T.upY)
   const qB = new THREE.Quaternion().setFromRotationMatrix(Md.clone().multiply(Ms.clone().transpose()))
   const qBi = qB.clone().invert()
 
@@ -359,7 +478,7 @@ function retarget(kind) {
   const dToS = new Map(Object.entries(T.map).map(([s, d]) => [D(d), s]))
   const pelvisD = D(T.map.pelvis)
   // 골반을 먼저 (Biped 는 척추가 골반의 형제라 같은 깊이다)
-  const order = [...joints].sort((a, b) => depth(a) - depth(b) || (a === pelvisD ? -1 : b === pelvisD ? 1 : 0))
+  const byDepth = [...joints].sort((a, b) => depth(a) - depth(b) || (a === pelvisD ? -1 : b === pelvisD ? 1 : 0))
   // 뼈 계층이 원본과 다른 짝 뼈 → 원본 쪽 부모(가장 가까운 짝 뼈)를 따라가게 한다.
   // 예: Biped 의 척추는 골반의 자식이 아니다 — 골반이 내려가면 몸통이 떠 있었다(2026-09-19)
   const follow = new Map()
@@ -371,6 +490,19 @@ function retarget(kind) {
     const j = D(dn)
     if (dst.parent[j] !== dp) follow.set(j, { dp, off: dec(dRest[dp].clone().invert().multiply(dRest[j])).p })
   }
+  // 차례: 부모 · 따라갈 짝 뼈가 먼저 (방패병처럼 손이 IK 조종 뼈에 달려 계층이 얕으면, 깊이 순서로는 아래팔보다 손을 먼저 계산했다)
+  const order = []
+  const done = new Set()
+  const visit = (j) => {
+    if (done.has(j)) return
+    done.add(j)
+    const P = dst.parent[j]
+    if (jointSet.has(P)) visit(P)
+    const fo = follow.get(j)
+    if (fo) visit(fo.dp)
+    order.push(j)
+  }
+  for (const j of byDepth) visit(j)
   // 기준 자세의 관절 로컬
   const bindLocal = new Map()
   for (const j of joints) bindLocal.set(j, dec(nodeLocal(dst.nodes[j])))

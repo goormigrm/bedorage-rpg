@@ -78,7 +78,7 @@ describe('3막 잠긴 지하도 (D6)', () => {
     expect(TIERS[1].guard).toBe(GUARD.mult)
   })
 
-  it('관통 저격(옥냥덕 E)은 던전에서 방패를 뚫는다 — 막히지 않고 제 피해가 들어간다', () => {
+  it('관통 저격(옥냥란 E)은 던전에서 방패를 뚫는다 — 막히지 않고 제 피해가 들어간다', () => {
     const g = duel('shield', 'ruins', 5, 71, 'oknyang')
     const m: Monster = g.m
     m.maxHp = m.hp = 5000

@@ -116,18 +116,18 @@ export interface CharacterDef {
    * 제외한 캐릭터는 `tools/melee.ts` 로 따로 본다.
    */
   skipBotBalance?: boolean
-  /** 기력 통 크기 (없으면 STAMINA_MAX). 승빠덕만 150 */
+  /** 기력 통 크기 (없으면 STAMINA_MAX). 승빠란만 150 */
   staminaMax?: number
 }
 
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   cheolmyeon: {
-    id: 'cheolmyeon', name: '철면덕', basedOn: '철면수심', tagline: '배도라지장. 딱딱한 고기 바이올린으로 앞에서 버티는 차돌야차.',
+    id: 'cheolmyeon', name: '철면란', basedOn: '철면수심', tagline: '배도라지장. 딱딱한 고기 바이올린으로 앞에서 버티는 차돌야차.',
     prominence: 1, role: 'tank',
     // 2026-09-19 사용자: 기관총 → 딱딱한 고기 바이올린(근접). 탱커 — 넓게 후려치고 앞에서 오는 공격을 기력으로 막는다
     maxHp: 290, speed: 2.8, weapon: 'violin', dashCooldown: 65,
     passiveName: '차돌', passiveDesc: '가장 튼튼한 몸으로 앞에서 버티는 탱커.\n딱딱한 고기 바이올린으로 넓게 후려치고, 앞에서 오는 공격은 기력으로 막아 냅니다. 대신 느리고, 머리가 커서 헤드샷을 잘 맞습니다.',
-    skipBotBalance: true, // 근접 — 봇 표에서 뺀다 (승빠덕과 같은 이유)
+    skipBotBalance: true, // 근접 — 봇 표에서 뺀다 (승빠란과 같은 이유)
     bodyColor: 0xff5a36, accentColor: 0x1e1e1e,
     look: {
       // 철면수심 공식 마스코트: 빨간 얼굴, 삐죽삐죽한 검은 머리 + 정수리 흰 별, 회색 옆머리, 반쯤 감은 눈, 쭉 내민 입술, 큰 귀
@@ -138,7 +138,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   chim: {
-    id: 'chim', name: '침착덕', basedOn: '침착맨', tagline: '크루의 중심. 유튜브 배너의 그 아저씨, 무슨 일이 있어도 침착하게.',
+    id: 'chim', name: '침착란', basedOn: '침착맨', tagline: '크루의 중심. 유튜브 배너의 그 아저씨, 무슨 일이 있어도 침착하게.',
     prominence: 2, role: 'dps',
     maxHp: 190, speed: 3.2, weapon: 'rifle', dashCooldown: 55,
     passiveName: '침착', passiveDesc: '연사해도 총이 거의 흔들리지 않습니다.\n중거리에서 꾸준히 맞히는 기본기형. 특별한 트릭 없이 강합니다.',
@@ -151,7 +151,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   dangun: {
-    id: 'dangun', name: '단군덕', basedOn: '단군', tagline: '무대 위의 게임 캐스터. 물방울 재킷과 파란 선글라스, 마이크는 놓지 않는다.',
+    id: 'dangun', name: '단군란', basedOn: '단군', tagline: '무대 위의 게임 캐스터. 물방울 재킷과 파란 선글라스, 마이크는 놓지 않는다.',
     prominence: 3, role: 'dps',
     // 2026-09-20 사용자: 권총 계열을 없애고 SMG 로 (재장전이 없어 권총과 SMG 가 같게 느껴진다). 소음기는 캐릭터 특성으로 남는다
     maxHp: 200, speed: 3.6, weapon: 'smg', dashCooldown: 35,
@@ -164,7 +164,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   magic: {
-    id: 'magic', name: '매직덕', basedOn: '매직박', tagline: '치과의사. 산탄총을 들고 동료를 치료합니다.',
+    id: 'magic', name: '매직란', basedOn: '매직박', tagline: '치과의사. 산탄총을 들고 동료를 치료합니다.',
     prominence: 4, role: 'heal',
     // 2026-09-05 체력 235 → 255. 머리가 제일 커서 헤드샷을 가장 많이 맞는 만큼 몸이 두꺼워야 한다
     // 체력 300 → 260 → 235 → 255(헤드샷 판정 확대 보상) → 275 (2026-09-05 오픈 베타: 보통 봇 표 바닥 40%, 사용자 '다시 늘려라')
@@ -180,7 +180,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   jupeol: {
-    id: 'jupeol', name: '주펄덕', basedOn: '주펄', tagline: '침펄 콤비의 반쪽. 가까이 오면 눈이 부십니다.',
+    id: 'jupeol', name: '주펄란', basedOn: '주펄', tagline: '침펄 콤비의 반쪽. 가까이 오면 눈이 부십니다.',
     prominence: 5, role: 'heal',
     maxHp: 200, speed: 3.3, weapon: 'smg', dashCooldown: 55,
     passiveName: '빛남', passiveDesc: '너무 빛나서 가까이 온 상대는 눈이 부셔 더 아프게 맞습니다.\n그 빛으로 곁의 동료를 치유하는 힐러. SMG를 들고 붙을수록 강합니다.',
@@ -193,7 +193,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   },
   // ---- 2차 멤버 (참고 사진 반영, 2026-09-04) ----
   uwon: {
-    id: 'uwon', name: '우원덕', basedOn: '우원박', tagline: '단정한 정장의 배우. 구른 뒤에도 잠깐 무적이다.',
+    id: 'uwon', name: '우원란', basedOn: '우원박', tagline: '단정한 정장의 배우. 구른 뒤에도 잠깐 무적이다.',
     prominence: 6, role: 'dps',
     maxHp: 190, speed: 3.5, weapon: 'smg', dashCooldown: 50,
     passiveName: '연기', passiveDesc: '구르고 난 뒤에도 잠깐 무적이 이어집니다 (황금 보호막).\n구르기로 총알을 흘리며 치고 빠지는 데 특화.\n소음기 SMG: 발소리가 안 나고 총소리도 거의 안 들립니다.',
@@ -207,11 +207,11 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   giyeol: {
-    id: 'giyeol', name: '기열덕', basedOn: '기열킹', tagline: '뇌절의 왕. 입을 크게 벌리고 달려든다.',
+    id: 'giyeol', name: '기열란', basedOn: '기열킹', tagline: '뇌절의 왕. 입을 크게 벌리고 달려든다.',
     // 2026-09-19 사용자: 탱커 → 딜러. 고함의 도발 · 피해 감소를 빼고, 던전 고함이 뇌절을 쌓는다(skills.ts)
     prominence: 7, role: 'dps',
     // 2026-09-05 SMG → 소총. 연속 명중 패시브인데 SMG 는 애초에 잘 안 맞아 특성과 어긋났다
-    // 소총이 되면서 세져(계측 67%) 체력을 우재덕과 같은 185 로 내렸다
+    // 소총이 되면서 세져(계측 67%) 체력을 우재란과 같은 185 로 내렸다
     // 2026-09-19 재장전을 없앤 뒤 투기장 1:1 에서 17~21% (머리가 커서 헤드샷을 잘 맞는다) → 205
     maxHp: 205, speed: 3.2, weapon: 'rifle', dashCooldown: 55,
     passiveName: '뇌절', passiveDesc: '연달아 맞힐수록 한 발 한 발이 점점 아파집니다. 빗나가면 조금 식습니다.\n시끄러운 딜러 — 고함으로 밀쳐 내며 맞힌 만큼 뇌절을 단숨에 쌓고 몰아칩니다.',
@@ -225,7 +225,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   pungwol: {
-    id: 'pungwol', name: '풍월덕', basedOn: '풍월량', tagline: '노랗게 물들인 머리에 파란 후드. 작고 통통한 몸으로 앞에서 버티는 근성의 아저씨.',
+    id: 'pungwol', name: '풍월란', basedOn: '풍월량', tagline: '노랗게 물들인 머리에 파란 후드. 작고 통통한 몸으로 앞에서 버티는 근성의 아저씨.',
     // 2026-09-20 사용자: "풍월량은 사실 바람과 상관없다" (닉네임은 '풍월주인한량'의 준말) → 바람(자주 구르기)을 버리고 **탱커**로.
     // 나무위키: 키 167cm · 92.5kg(배도라지 '삼돼장') · 욕 안 하는 클린 방송 · 남들이 포기하는 게임을 끝까지 붙드는 근성.
     prominence: 8, role: 'tank',
@@ -243,7 +243,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   oknyang: {
-    id: 'oknyang', name: '옥냥덕', basedOn: '옥냥이', tagline: '주황 고양이. 눈을 감고 웃지만 저격은 정확하다.',
+    id: 'oknyang', name: '옥냥란', basedOn: '옥냥이', tagline: '주황 고양이. 눈을 감고 웃지만 저격은 정확하다.',
     prominence: 9, role: 'dps',
     maxHp: 200, speed: 3.0, weapon: 'sniper', dashCooldown: 55,
     passiveName: '냉정', passiveDesc: '정조준(우클릭)하면서도 평소처럼 걷습니다.\n저격총: 멀리서 크게 한 발 — 탄이 하나를 더 꿰뚫고 멀리 밀칩니다.',
@@ -257,7 +257,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   tongdak: {
-    id: 'tongdak', name: '통천덕', basedOn: '통닭천사', tagline: '검은 단발에 줄무늬 스웨터. 치킨을 나눠 주는 천사, 저격으로 한 방도 노린다.',
+    id: 'tongdak', name: '통천란', basedOn: '통닭천사', tagline: '검은 단발에 줄무늬 스웨터. 치킨을 나눠 주는 천사, 저격으로 한 방도 노린다.',
     prominence: 10, role: 'heal',
     maxHp: 220, speed: 2.9, weapon: 'sniper', dashCooldown: 60,
     passiveName: '치킨', passiveDesc: '한 명 잡을 때마다 최대 체력이 조금 늘고 체력도 조금 찹니다 (죽으면 원래대로).\n치킨을 나눠 동료를 살리는 힐러. 저격총으로 멀리서 크게 한 발.',
@@ -271,7 +271,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   juwoojae: {
-    id: 'juwoojae', name: '우재덕', basedOn: '주우재', tagline: '가죽 재킷에 청바지. 길고 얇은 검을 든 런웨이 검객.',
+    id: 'juwoojae', name: '우재란', basedOn: '주우재', tagline: '가죽 재킷에 청바지. 길고 얇은 검을 든 런웨이 검객.',
     prominence: 11, role: 'dps',
     // 2026-09-19 사용자: 소총 → 길고 얇은 검(근접 딜러). 체력 185 로는 떼에 붙어 한 바퀴 58번 죽었다(보통 봇) → 210 · 던전에서 벤 피해의 4% 흡혈 (225 · 6% 는 죽음 1 · 2.9시간으로 가장 쉬웠다)
     maxHp: 210, speed: 3.3, weapon: 'rapier', dashCooldown: 50,
@@ -287,7 +287,7 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     },
   },
   seungwoo: {
-    id: 'seungwoo', name: '승빠덕', basedOn: '승우아빠', tagline: '검은 모자에 파란 앞치마. 후라이팬으로 총알을 막고 후려친다.',
+    id: 'seungwoo', name: '승빠란', basedOn: '승우아빠', tagline: '검은 모자에 파란 앞치마. 후라이팬으로 총알을 막고 후려친다.',
     prominence: 12, role: 'tank',
     // 2026-09-05 체력 260 → 220, 후라이팬 피해 80 → 62 → 55 → 45, 막기 50% → 40% → 25%, 대신 기력 통 100 → 150 (오픈 베타 제보: 숨었다 나타나면 총이 대응을 못 한다)
     maxHp: 220, speed: 3.7, weapon: 'pan', dashCooldown: 20, staminaMax: 150,
@@ -312,18 +312,18 @@ export const CHARACTER_LIST: CharacterDef[] = Object.values(CHARACTERS).sort(
 
 /**
  * 봇 밸런스 표에 넣을 캐릭터.
- * 승빠덕(후라이팬)은 봇이 "굴러서 붙고 막으며 버티는" 운용을 못 해서 표가 실제와 반대로 나온다
+ * 승빠란(후라이팬)은 봇이 "굴러서 붙고 막으며 버티는" 운용을 못 해서 표가 실제와 반대로 나온다
  * (사람이 쓰면 오히려 강한데 표에서는 최하위). 그래서 표에서 빼고 `tools/melee.ts` 로 따로 본다.
  */
 /**
  * 머리 판정 배율 = 그 캐릭터의 머리 크기(`look.headScale`). 2026-09-05 사용자 요청:
- * "철면덕·매직덕은 머리가 큰 만큼 헤드샷 판정을 여유롭게 — 체력이 높은 대신 헤드샷을 잘 맞게".
- * 매직덕 1.45 · 철면덕 1.2 · 통천덕 1.12 … 우재덕 0.9 · 기열덕/주펄덕 0.95.
+ * "철면란·매직란은 머리가 큰 만큼 헤드샷 판정을 여유롭게 — 체력이 높은 대신 헤드샷을 잘 맞게".
+ * 매직란 1.45 · 철면란 1.2 · 통천란 1.12 … 우재란 0.9 · 기열란/주펄란 0.95.
  * 보이는 머리 크기와 판정이 같아서 "머리가 크면 잘 맞는다" 가 눈으로 설명된다.
  */
 export function headHitScale(id: CharacterId): number {
-  // 머리 크기를 그대로 쓰면 매직덕(1.45)이 맞은 탄의 37.8% 를 머리로 맞아 승률이 20% 까지 떨어졌다.
-  // 차이는 남기되 절반쯤으로 눌러 준다: 매직덕 1.27 · 철면덕 1.12 · 우재덕 0.94
+  // 머리 크기를 그대로 쓰면 매직란(1.45)이 맞은 탄의 37.8% 를 머리로 맞아 승률이 20% 까지 떨어졌다.
+  // 차이는 남기되 절반쯤으로 눌러 준다: 매직란 1.27 · 철면란 1.12 · 우재란 0.94
   return 1 + (CHARACTERS[id].look.headScale - 1) * HEAD_SIZE_EFFECT
 }
 
@@ -365,7 +365,7 @@ export function isPlayable(id: CharacterId): boolean {
   return PLAYABLE.includes(id)
 }
 
-/** 같은 캐릭터가 여럿이면 "철면덕 2" 처럼 번호를 붙인 표시 이름 */
+/** 같은 캐릭터가 여럿이면 "철면란 2" 처럼 번호를 붙인 표시 이름 */
 export function displayNames(chars: CharacterId[]): string[] {
   const count = new Map<CharacterId, number>()
   for (const c of chars) count.set(c, (count.get(c) ?? 0) + 1)

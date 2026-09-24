@@ -49,7 +49,7 @@ const MAX_RECOIL_MUL = 3
 const WAKE_RANGE = 11 * TILE
 /**
  * 총소리: 쏜 자리에서 이 거리 안의 잠든 무리가 깬다 (벽 너머도 — 소리니까). 한 방씩 조용히 정리하지 못하게 해서
- * 무리를 몰고 다니는 디아블로식 압박을 만든다. **소음기 권총(단군덕)은 깨우지 않는다** — 덕의 소음기가 여기서 정찰이 된다
+ * 무리를 몰고 다니는 디아블로식 압박을 만든다. **소음기 권총(단군란)은 깨우지 않는다** — 덕의 소음기가 여기서 정찰이 된다
  */
 const NOISE_RANGE = 7 * TILE
 /** 이 거리 안에서 표적이 보이면 흐름장 대신 곧장 다가간다 */
@@ -910,7 +910,7 @@ function roleOf(p: PlayerState): Role {
   return CHARACTERS[p.char].role
 }
 
-/** 무기를 바꾼 캐릭터의 옛 무기 아이템을 새 계열로 (2026-09-19 — 철면덕 기관총 → 고기 바이올린 · 우재덕 소총 → 장검) */
+/** 무기를 바꾼 캐릭터의 옛 무기 아이템을 새 계열로 (2026-09-19 — 철면란 기관총 → 고기 바이올린 · 우재란 소총 → 장검) */
 const LEGACY_WEAPON: Partial<Record<CharacterId, Partial<Record<WeaponId, WeaponId>>>> = {
   cheolmyeon: { mg: 'violin', launcher: 'cello' },
   juwoojae: { rifle: 'rapier', crossbow: 'katana' },
@@ -1390,7 +1390,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   const recover = c.id === 'chim' ? w.recoilRecover * CHIM.recoverMul : w.recoilRecover
   p.recoil = p.fx[FX_CRIT] > 0 ? 0 : Math.max(0, p.recoil - recover)
 
-  // 매직덕 패시브(진료): 3초 안 맞으면 초당 6 회복
+  // 매직란 패시브(진료): 3초 안 맞으면 초당 6 회복
   if (c.id === 'magic' && state.tick - p.lastHitTick > 180 && p.hp < p.maxHp) {
     p.hp = Math.min(p.maxHp, p.hp + 6 / 60)
   }
@@ -1401,9 +1401,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 후원 효과 (core/donate.ts): 남은 틱을 줄인다
   const don = p.don
   if (don) for (let k = 0; k < don.length; k++) if (don[k] > 0) don[k]--
-  // 풍월덕 패시브(근성): 잠깐 안 맞으면 쌓인 칸이 식는다
+  // 풍월란 패시브(근성): 잠깐 안 맞으면 쌓인 칸이 식는다
   if (c.id === 'pungwol' && p.grit > 0 && state.tick - p.lastHitTick > PUNGWOL.gritCool) p.grit = 0
-  // 풍월덕 궁극기(켠왕): 켜져 있는 동안 8칸 안 괴물이 계속 나만 노린다 (0.5초마다 다시 건다)
+  // 풍월란 궁극기(켠왕): 켜져 있는 동안 8칸 안 괴물이 계속 나만 노린다 (0.5초마다 다시 건다)
   if (p.fx[FX_KENWANG] > 0 && isActive(p) && state.tick % 30 === 0) tauntNear(state, p, 8 * TILE, 60)
 
   p.aim = input.aim & 1023
@@ -1412,7 +1412,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   p.aimDist = (input.aimDist ?? 0) * 4
   p.ads = playing && (input.buttons & BTN_ADS) !== 0 && p.dashTimer === 0
 
-  // 돌진·도약 (승빠덕 Q · 옥냥덕 Q): 정해진 방향으로 빠르게, 그동안 무적. 조작은 받지 않는다
+  // 돌진·도약 (승빠란 Q · 옥냥란 Q): 정해진 방향으로 빠르게, 그동안 무적. 조작은 받지 않는다
   if (p.fx[FX_CHARGE] > 0) {
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, p.dashDx * CHARGE_SPEED, p.dashDy * CHARGE_SPEED)
     p.x = r.x
@@ -1445,7 +1445,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
     let speed = c.speed * w.moveMul
     if (p.sprinting) speed *= SPRINT_MUL
-    if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥덕 패시브: 정조준해도 느려지지 않음
+    if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥란 패시브: 정조준해도 느려지지 않음
     if (p.legInjury > 0) speed *= 0.7
     if (p.shrineT > 0 && p.shrine === 3) speed *= 1.2
     if (p.build.r[8] > 0) speed *= 1 + 0.02 * p.build.r[8]
@@ -1620,7 +1620,7 @@ function respawn(state: GameState, map: GameMap, p: PlayerState): void {
   state.events.push({ type: 'respawn', p: p.id, x: p.x, y: p.y })
 }
 
-/** 도발: 반경 안의 (깨어 있는) 몬스터가 ticks 동안 이 사람만 노린다 (철면덕 철벽 · 풍월덕 훈수 · 켠왕) */
+/** 도발: 반경 안의 (깨어 있는) 몬스터가 ticks 동안 이 사람만 노린다 (철면란 철벽 · 풍월란 훈수 · 켠왕) */
 function tauntNear(state: GameState, p: PlayerState, r: number, ticks: number): void {
   for (const m of state.monsters) {
     if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > r) continue
@@ -1637,9 +1637,9 @@ function takenMul(p: PlayerState): number {
   if (p.fx[FX_WHIRL] > 0) k *= 0.5
   if (p.fx[FX_REFLECT] > 0) k *= 0.4
   if (p.fx[FX_PARTYDR] > 0) k *= 0.7
-  // 풍월덕 궁극기(켠왕): 깰 때까지 버틴다
+  // 풍월란 궁극기(켠왕): 깰 때까지 버틴다
   if (p.fx[FX_KENWANG] > 0) k *= 0.4
-  // 풍월덕 패시브(근성): 맞을수록 단단해진다 (최대 -30%)
+  // 풍월란 패시브(근성): 맞을수록 단단해진다 (최대 -30%)
   if (p.char === 'pungwol' && p.grit > 0) k *= 1 - Math.min(PUNGWOL.gritMax, p.grit) * PUNGWOL.gritPer
   if (roleOn && roleOf(p) === 'tank') k *= 0.8
   if (p.shrineT > 0 && p.shrine === 1) k *= 0.75
@@ -1680,9 +1680,9 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
   p.dmgTaken += dmg
   p.lastHitTick = state.tick
   p.portalCast = 0
-  // 풍월덕 패시브(근성): 맞을 때마다 한 칸 더 단단해진다
+  // 풍월란 패시브(근성): 맞을 때마다 한 칸 더 단단해진다
   if (p.char === 'pungwol') p.grit = Math.min(PUNGWOL.gritMax, p.grit + 1)
-  // 풍월덕 궁극기(켠왕, 던전): 그동안은 쓰러지지 않는다 — 대신 한 번 버티면 끝난다 ("다시 갈게요")
+  // 풍월란 궁극기(켠왕, 던전): 그동안은 쓰러지지 않는다 — 대신 한 번 버티면 끝난다 ("다시 갈게요")
   if (p.hp <= 0 && p.fx[FX_KENWANG] > 0 && state.mode === 'dungeon') {
     p.hp = 1
     p.fx[FX_KENWANG] = 0
@@ -1736,7 +1736,7 @@ const BOSS_HIT_CD = 20
  */
 function hurtPvp(state: GameState, shooter: PlayerState, victim: PlayerState, dmg: number, part: number, hx: number, hy: number): void {
   if (dmg <= 0 || !victim.alive || victim.left) return
-  // 풍월덕은 투기장에서도 탱커답게 조금 덜 맞는다 (역할 효과는 던전에만 있다 — state.ts PUNGWOL)
+  // 풍월란은 투기장에서도 탱커답게 조금 덜 맞는다 (역할 효과는 던전에만 있다 — state.ts PUNGWOL)
   dmg = Math.round(dmg * takenMul(victim) * (victim.char === 'pungwol' ? PUNGWOL.pvpTaken : 1))
   if (dmg <= 0) return
   shooter.hits++
@@ -1902,7 +1902,7 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
   hit.sort((a, b) => a.id - b.id)
   for (const m of hit) {
     const d = len(m.x - p.x, m.y - p.y) || 1
-    // 격정 연주(철면덕 E) · 다지기 연타 중 휘두르기에 맞은 괴물은 느려진다 (총의 탄막과 같은 효과)
+    // 격정 연주(철면란 E) · 다지기 연타 중 휘두르기에 맞은 괴물은 느려진다 (총의 탄막과 같은 효과)
     if (p.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 60)
     const k = knock * (1 - MONSTER_LIST[m.kind].knockRes)
     m.kx += ((m.x - p.x) / d) * k
@@ -1910,7 +1910,7 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     hurtMonster(state, m, dmg, p.id, false, m.x, m.y)
     n++
   }
-  // 검(우재덕)의 흡혈 (던전): 벤 피해의 4% — 근접 딜러가 떼 속에서 버티게 (조용히, 숫자는 띄우지 않는다)
+  // 검(우재란)의 흡혈 (던전): 벤 피해의 4% — 근접 딜러가 떼 속에서 버티게 (조용히, 숫자는 띄우지 않는다)
   if (roleOn && n > 0 && WEAPONS[p.weapon].family === 'rapier' && isActive(p)) p.hp = Math.min(p.maxHp, p.hp + dmg * n * 0.04)
   if (state.mode === 'arena') {
     for (const victim of state.players) {
@@ -1988,7 +1988,7 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
   const overR = nearSandbag(map, p.x, p.y) ? COVER_REACH : 0
   const headTarget = aimedEnemy(state, p)
   const critMon = aimedMonster(state, map, p)
-  // 관통탄(침착덕 Q) · 아홉 목숨(관통 2) · 고양이 걸음 다음 한 발(2배)
+  // 관통탄(침착란 Q) · 아홉 목숨(관통 2) · 고양이 걸음 다음 한 발(2배)
   let pierce = 0
   let mul = 1
   if (p.pierceShots > 0) {
@@ -2082,7 +2082,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
   state.events.push({ type: 'skill', p: p.id, slot, id, x: p.x, y: p.y, aim: p.aim, tx, ty })
   const T = TILE
   switch (id) {
-    // ---- 철면덕
+    // ---- 철면란
     case 'ironwall': {
       p.fx[FX_GUARD] = 240
       tauntNear(state, p, 7 * T, 240)
@@ -2098,7 +2098,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       if (dun) p.fx[FX_GUARD] = Math.max(p.fx[FX_GUARD], 360)
       break
     }
-    // ---- 침착덕
+    // ---- 침착란
     case 'pierce':
       p.pierceShots = 6
       break
@@ -2109,7 +2109,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_CRIT] = dun ? 480 : 360
       buffRate(p, dun ? 480 : 360, dun ? 2 : 1.5)
       break
-    // ---- 단군덕
+    // ---- 단군란
     case 'broadcast': {
       for (const m of state.monsters) {
         if (m.hp <= 0 || len(m.x - p.x, m.y - p.y) > 18 * T) continue
@@ -2142,7 +2142,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       state.zones.push({ id: state.nextFxId++, kind: ZONE_SPOTLIGHT, owner: p.id, x: tx, y: ty, r: (dun ? 5 : 4) * T, t: 480, max: 480, dmg: dun ? Math.round(30 * skillPow) : 0 })
       if (dun) aoe(state, map, p, tx, ty, 5 * T, 0, { stun: 90, id, quiet: true })
       break
-    // ---- 매직덕
+    // ---- 매직란
     case 'firstaid': {
       for (const q of alliesFx(state, p, 6 * T)) {
         // 던전: 4초간 받는 피해 -30% (붙은 떼 속에서 회복만으로는 다시 쓰러졌다)
@@ -2174,7 +2174,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       }
       break
     }
-    // ---- 승빠덕
+    // ---- 승빠란
     case 'pancharge':
       p.dashDx = cosA(p.aim)
       p.dashDy = sinA(p.aim)
@@ -2188,7 +2188,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
     case 'kitchen':
       p.fx[FX_WHIRL] = dun ? 420 : 300
       break
-    // ---- 옥냥덕
+    // ---- 옥냥란
     case 'catstep':
       // 던전: 뛰어오르며 원래 자리를 할퀸다 — 추격하던 떼를 2초 묶고, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초
       if (state.mode === 'dungeon') {
@@ -2218,13 +2218,13 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
         p.fx[FX_CRIT] = Math.max(p.fx[FX_CRIT], 480)
       }
       break
-    // ---- 주펄덕
+    // ---- 주펄란
     case 'flash':
       aoe(state, map, p, p.x, p.y, 3.5 * T, 25, { stun: 90, id })
       break
     case 'mirror':
       p.fx[FX_REFLECT] = 180
-      // 후광 (던전 — 주펄덕 힐러): 7칸 안 동료(나 포함) 체력 15% · 5초간 받는 피해 -30%
+      // 후광 (던전 — 주펄란 힐러): 7칸 안 동료(나 포함) 체력 15% · 5초간 받는 피해 -30%
       if (dun) {
         for (const q of alliesFx(state, p, 7 * T)) {
           healPlayer(state, q, q.maxHp * 0.15 * healMul(p))
@@ -2236,7 +2236,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       aoe(state, map, p, p.x, p.y, (dun ? 7 : 6) * T, dun ? 380 : 200, { stun: dun ? 180 : 150, knock: 10, id })
       if (dun) for (const q of alliesFx(state, p, 9 * T)) healPlayer(state, q, q.maxHp * 0.4 * healMul(p))
       break
-    // ---- 우원덕
+    // ---- 우원란
     case 'stunt': {
       // 뒤로 구른다 (앞으로 구르면 조준한 괴물 떼 한가운데로 들어갔다)
       p.dashDx = -cosA(p.aim)
@@ -2272,13 +2272,13 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_CARPET] = 480
       p.carpetDmg = Math.round((dun ? 160 : 70) * skillPow)
       break
-    // ---- 기열덕
+    // ---- 기열란
     case 'overdrive':
       p.streak = Math.max(p.streak, GIYEOL.maxStacks)
       buffRate(p, 300, 1.3)
       break
     case 'shout': {
-      // 던전 (기열덕 딜러 — 2026-09-19 탱커에서 바뀜): 앞 6칸 · 120 피해, 맞힌 괴물 하나마다 뇌절 한 칸
+      // 던전 (기열란 딜러 — 2026-09-19 탱커에서 바뀜): 앞 6칸 · 120 피해, 맞힌 괴물 하나마다 뇌절 한 칸
       const n = aoe(state, map, p, p.x, p.y, (dun ? 6 : 5) * T, dun ? 120 : 50, { knock: 9, slow: 120, arcAim: p.aim, arc: deg(45), id })
       if (dun) p.streak = Math.min(GIYEOL.maxStacks, p.streak + n)
       break
@@ -2287,12 +2287,12 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.fx[FX_KING] = dun ? 600 : 480
       if (dun) buffRate(p, 600, 1.5)
       break
-    // ---- 풍월덕
-    // 우재덕 트리 스킬 "칼바람" (옛 돌풍)
+    // ---- 풍월란
+    // 우재란 트리 스킬 "칼바람" (옛 돌풍)
     case 'bladewind':
       aoe(state, map, p, p.x, p.y, 4 * T, 30, { knock: 12, stun: 60, id })
       break
-    // ---- 풍월덕 (2026-09-20 탱커: 바람 셋 → 훈수 · 꼬꼬꼬 · 켠왕)
+    // ---- 풍월란 (2026-09-20 탱커: 바람 셋 → 훈수 · 꼬꼬꼬 · 켠왕)
     case 'advice':
       // 훈수: 채팅창의 훈수가 쏟아진다 — 끌어모으고 약하게 만든다
       tauntNear(state, p, (dun ? 10 : 8) * T, dun ? 360 : 300)
@@ -2314,9 +2314,9 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       tauntNear(state, p, 8 * T, 120)
       for (const q of alliesFx(state, p, 6 * T)) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], dun ? 720 : 600)
       break
-    // ---- 통천덕
+    // ---- 통천란
     case 'snack': {
-      // 치킨 나눔 (2026-09-19 통천덕 = 힐러): 나와 7칸 안 동료 체력 25%
+      // 치킨 나눔 (2026-09-19 통천란 = 힐러): 나와 7칸 안 동료 체력 25%
       for (const q of alliesFx(state, p, 7 * T)) {
         healPlayer(state, q, q.maxHp * 0.25 * healMul(p))
         if (state.mode === 'dungeon') q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
@@ -2345,7 +2345,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       }
       break
     }
-    // ---- 우재덕
+    // ---- 우재란
     case 'catwalk':
       // 던전: 출발하며 둘레를 밀쳐 낸다 — 둘러싸여도 빠져나간다
       if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 3 * T, 20, { knock: 10, slow: 90, id, quiet: true })
@@ -2584,7 +2584,7 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
       booms.push({ x: b.x, y: b.y, r: b.boom, dmg: Math.round(b.damage * b.mul * (bw.boom?.mul ?? 1)), by: b.owner, safe: true })
       state.events.push({ type: 'aoe', p: b.owner, id: 'grenade', x: b.x, y: b.y, r: b.boom })
     }
-    // 맞히지 못하고 사라진 탄 → 기열덕 연속 명중 한 단계 내림
+    // 맞히지 못하고 사라진 탄 → 기열란 연속 명중 한 단계 내림
     if (dead && !b.hitSomeone) state.players[b.owner].streak = Math.max(0, state.players[b.owner].streak - 1)
     if (!dead) bullets[write++] = b
   }
@@ -2617,7 +2617,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   const k = w.knock * (1 - def.knockRes)
   m.kx += (b.vx / speed) * k
   m.ky += (b.vy / speed) * k
-  // 탄막(철면덕 E): 맞은 괴물은 잠깐 느려진다
+  // 탄막(철면란 E): 맞은 괴물은 잠깐 느려진다
   if (shooter.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 30)
   hurtMonster(state, m, dmg, b.owner, crit, b.x, b.y)
   {

@@ -287,12 +287,12 @@ function buildPan(len: number, bodyM: THREE.MeshLambertMaterial, darkM: THREE.Me
 }
 
 /**
- * 딱딱한 고기 바이올린 (철면덕, 2026-09-19 사용자): 붉은 살코기 몸통 + 흰 지방 줄무늬 + 뼈 목(스크롤). 첼로는 더 크다.
+ * 딱딱한 고기 바이올린 (철면란, 2026-09-19 사용자): 붉은 살코기 몸통 + 흰 지방 줄무늬 + 뼈 목(스크롤). 첼로는 더 크다.
  * 손잡이(목)를 쥐고 몸통으로 후려친다 — 몸통이 앞(+z).
  */
 function buildViolin(len: number, big: boolean): { group: THREE.Group; tip: THREE.Object3D } {
   const g = new THREE.Group()
-  // 몸집이 큰 철면덕 손에서 스테이크가 아니라 악기로 읽히도록 크게 (2026-09-19 확인)
+  // 몸집이 큰 철면란 손에서 스테이크가 아니라 악기로 읽히도록 크게 (2026-09-19 확인)
   const k = (big ? 1.35 : 1) * 1.6
   const meat = mat(0xa8392c)
   const fat = mat(0xf2d8c8)
@@ -335,7 +335,7 @@ function buildViolin(len: number, big: boolean): { group: THREE.Group; tip: THRE
   return { group: g, tip }
 }
 
-/** 길고 얇은 검 (우재덕 장검 · 태도, 2026-09-19 사용자): 가죽 손잡이 · 금빛 코등이 · 가늘고 긴 칼날. 칼날이 앞(+z) */
+/** 길고 얇은 검 (우재란 장검 · 태도, 2026-09-19 사용자): 가죽 손잡이 · 금빛 코등이 · 가늘고 긴 칼날. 칼날이 앞(+z) */
 function buildSword(len: number, katana: boolean): { group: THREE.Group; tip: THREE.Object3D } {
   const g = new THREE.Group()
   const steel = mat(0xd8dde3, { emissive: 0x1a1d22 })
@@ -424,7 +424,7 @@ function buildHair(
       break
     }
     case 'bob': {
-      // 단발(통천덕): 정수리 캡 + 볼 옆·뒤로 턱까지 내려오는 커튼 + 일자 앞머리.
+      // 단발(통천란): 정수리 캡 + 볼 옆·뒤로 턱까지 내려오는 커튼 + 일자 앞머리.
       // 얼굴은 +Z 쪽(phi = pi/2)이라 커튼은 그 앞을 비워 둔다.
       head.add(eggCap(R, 1.05, Math.PI * 0.32, hairM))
       head.add(eggCap(R, 1.05, Math.PI * 0.64, hairM, Math.PI * 0.82, Math.PI * 1.36))

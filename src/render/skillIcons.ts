@@ -344,7 +344,7 @@ const P: Record<BaseSkillId, Painter> = {
     c.closePath()
     c.fill()
   },
-  // 칼바람(우재덕 트리): 바람 줄 셋
+  // 칼바람(우재란 트리): 바람 줄 셋
   bladewind: (c, s) => wind(c, s, 3),
   // 훈수: 말풍선 셋이 쏟아진다
   advice: (c, s) => {

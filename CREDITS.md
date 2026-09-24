@@ -1,6 +1,6 @@
 # 출처 (CREDITS)
 
-배도라지RPG 는 비공식 · 비상업 팬 게임입니다. 캐릭터(오리) · 배경 · 소리는 코드로 만들었고,
+배도라지RPG 는 비공식 · 비상업 팬 게임입니다. 캐릭터(계란) · 배경 · 소리는 코드로 만들었고,
 **괴물 모델**은 아래 작가들이 무료로 공개한 것을 줄여서 씁니다. 고마운 분들입니다.
 
 ## 괴물 모델 (CC BY 4.0 — 출처 표기)
@@ -17,6 +17,12 @@
 | 도살자 (1막 보스) | ["Pig Demon"](https://sketchfab.com/3d-models/pig-demon-bba636efaee04b3ea988b2ae4487cfc1) | [Lexington Dath](https://sketchfab.com/Lexinator117) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 | 관리인 (3막 보스) | ["Overlord"](https://sketchfab.com/3d-models/overlord-4e61da8bb7f3440db3df42ee26c4b797) | [DJMaesen](https://sketchfab.com/bumstrum) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 | 심연의 군주 (4막 보스) | ["balrog demon rig"](https://sketchfab.com/3d-models/balrog-demon-rig-4a7f90a1f2b64d4cb404dbfce6bfcc78) | [KrazyKaijus](https://sketchfab.com/pincers60) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 보물 고블린 (2026-09-24) | ["Minion"](https://sketchfab.com/3d-models/minion-8b24f1d553f643ee8f5f48197cb2f375) | [DJMaesen](https://sketchfab.com/bumstrum) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 방패병 (2026-09-24) | ["Cursed Undead Soldier Rig"](https://sketchfab.com/3d-models/cursed-undead-soldier-rig-b2e39de76b834d978adee5716aec814d) | [DM-913](https://sketchfab.com/SuperKapoo913) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 버섯 주술사 (2026-09-24) | ["Witch"](https://sketchfab.com/3d-models/witch-fd9a39890fc64ae8bb3cad97e4a2d4f3) | [LxNazarov](https://sketchfab.com/LxNazarov) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 산성 토사꾼 (2026-09-24) | ["Crawling mutated human"](https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf) | [Elisey](https://sketchfab.com/dwelfster) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 그림자 (2026-09-24) | ["Terrifying Hooded Horror Woman"](https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd) | [PurplePoint](https://sketchfab.com/tyajik) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 강령술사 (2026-09-24) | ["PBR Shadowkin Mage (Rigged)"](https://sketchfab.com/3d-models/pbr-shadowkin-mage-rigged-7aab96637055455297d158584b1602cd) | [Ferocious Industries](https://sketchfab.com/ferociousindustries.matthias) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
 
 원문 표기 (Sketchfab 이 권하는 형식):
 
@@ -28,6 +34,12 @@
 - This work is based on "Pig Demon" (https://sketchfab.com/3d-models/pig-demon-bba636efaee04b3ea988b2ae4487cfc1) by Lexington Dath (https://sketchfab.com/Lexinator117) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "Overlord" (https://sketchfab.com/3d-models/overlord-4e61da8bb7f3440db3df42ee26c4b797) by DJMaesen (https://sketchfab.com/bumstrum) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "balrog demon rig" (https://sketchfab.com/3d-models/balrog-demon-rig-4a7f90a1f2b64d4cb404dbfce6bfcc78) by KrazyKaijus (https://sketchfab.com/pincers60) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Minion" (https://sketchfab.com/3d-models/minion-8b24f1d553f643ee8f5f48197cb2f375) by DJMaesen (https://sketchfab.com/bumstrum) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Cursed Undead Soldier Rig" (https://sketchfab.com/3d-models/cursed-undead-soldier-rig-b2e39de76b834d978adee5716aec814d) by DM-913 (https://sketchfab.com/SuperKapoo913) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Witch" (https://sketchfab.com/3d-models/witch-fd9a39890fc64ae8bb3cad97e4a2d4f3) by LxNazarov (https://sketchfab.com/LxNazarov) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Crawling mutated human" (https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf) by Elisey (https://sketchfab.com/dwelfster) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "Terrifying Hooded Horror Woman" (https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd) by PurplePoint (https://sketchfab.com/tyajik) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- This work is based on "PBR Shadowkin Mage (Rigged)" (https://sketchfab.com/3d-models/pbr-shadowkin-mage-rigged-7aab96637055455297d158584b1602cd) by Ferocious Industries (https://sketchfab.com/ferociousindustries.matthias) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 
 ## 동작 (CC0 — 표기 의무는 없지만 적어 둔다)
 
@@ -35,6 +47,7 @@
   - 좀비 · 해골 모델에 없던 동작을 옮겨 붙였다(`tools/retarget.mjs`, 2026-09-19).
   - 좀비: 죽음 · 맞음 · 공격 셋(검 휘두르기 · 마법 쏘기 · 겨누기). 해골: 대기 · 걷기 · 맞음 · 죽음 · 공격 넷(검 휘두르기 · 마법 쏘기 · 겨누기 · 주먹).
   - 도살자 · 관리인(2026-09-23): 대기 · 걷기 · 맞음 · 검 휘두르기 · 죽음(도살자는 주먹도). 심연의 군주는 네발이라 옮기지 않고 원본의 동작 하나를 걷기 · 공격으로 나눠 쓴다.
+  - 2차 졸개(2026-09-24): 고블린(대기 · 뛰기 · 맞음 · 죽음) · 방패병(대기 · 걷기 · 맞음 · 죽음 — 칼 휘두르기는 원본 Slash) · 강령술사(대기 · 걷기 · 주문 · 맞음 · 죽음) · 그림자(대기 · 할퀴기 · 맞음 · 죽음 — 달리기는 원본). 마녀(주술사)는 원본 동작 그대로 · 산성 토사꾼은 원본의 기어가기(Mixamo 동작 — 모델에 들어 있던 것을 게임 안에서만 쓴다).
   - 원본은 `art-src/`(저장소 밖)에 있다.
 
 ## 넣는 법 (개발자)

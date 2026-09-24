@@ -898,44 +898,185 @@ export class Sfx {
     this.bgmTimer = window.setInterval(() => this.scheduleBgm(), 80)
   }
 
-  // ---------- 던전 배경음: 72 BPM 단조 (Dm - B♭ - Gm - A) ----------
-  // 지하 묘지는 쫓기는 음악이 아니라 **스며드는** 음악이어야 한다(디아블로 1 의 트리스트럼·던전처럼).
-  // 낮은 지속음 · 심장 박동 킥 · 드문 종소리 · 합창 같은 두 음. 교전이 붙으면 8분 맥박과 북이 더해진다.
-  private static readonly DARK = [
-    { root: 36.71, pad: [146.8, 174.6, 220.0] }, // Dm
-    { root: 29.14, pad: [116.5, 146.8, 174.6] }, // B♭
-    { root: 49.0, pad: [196.0, 233.1, 293.7] }, // Gm
-    { root: 55.0, pad: [220.0, 277.2, 329.6] }, // A (화성 단조의 C#)
+  // ---------- 던전 배경음 (2026-09-24 사용자: "어둡고 무서운 느낌의 배경음 — 어울리면 게임 안에도") ----------
+  // 박자로 쫓는 음악이 아니라 **스며드는 공포**: 낮게 우는 지속음(두 음이 살짝 어긋나 울렁인다) · 반음으로 부딪는 현악 덩어리가
+  // 천천히 부풀었다 가라앉고 · 먼 합창 · 배음이 어긋난 쇠 종 · 심장 박동 · 숨 같은 바람 · 잔향. 교전이 붙으면 낮은 맥박과 북.
+  // 한 마디 ≈ 4.3초(56 BPM), 네 마디(약 17초)가 한 바퀴. D 단조 — 보스 곡과 같은 조라 넘어갈 때 튀지 않는다.
+  private static readonly HORROR = [
+    { root: 36.71, pad: [146.8, 155.6, 220.0], bell: 587.3 }, // Dm + E♭ (반음 부딪힘)
+    { root: 29.14, pad: [116.5, 146.8, 164.8], bell: 0 }, // B♭ + E (셋온음)
+    { root: 49.0, pad: [196.0, 207.7, 233.1], bell: 554.4 }, // Gm + A♭
+    { root: 55.0, pad: [220.0, 233.1, 277.2], bell: 0 }, // A + B♭ (화성 단조의 C#)
   ]
-  private static readonly BELL = [0, 0, 587.3, 0, 0, 0, 698.5, 0, 0, 0, 880.0, 0, 0, 0, 659.3, 0]
 
   private scheduleDark(ctx: AudioContext): void {
-    const step16 = 60 / 72 / 4
+    const bar = (60 / 56) * 4
+    const step16 = bar / 16
     this.intensity = Math.max(0, this.intensity - 0.0012)
     while (this.bgmNextBeat < ctx.currentTime + 0.4) {
       const t = this.bgmNextBeat
       const step = this.bgmBeatIndex % 64
-      const bar = (step / 16) | 0
+      const b = (step / 16) | 0
       const s16 = step % 16
-      const ch = Sfx.DARK[bar]
+      const ch = Sfx.HORROR[b]
       const hot = this.intensity > 0.3
-      // 마디 시작: 낮은 지속음 + 합창 두 음 (길게)
       if (s16 === 0) {
-        this.bgmNote(t, ch.root * 2, 'sawtooth', step16 * 16, 0.28, 320)
-        this.bgmNote(t, ch.pad[0], 'sine', step16 * 15, 0.07, 900)
-        this.bgmNote(t, ch.pad[2] * 1.003, 'sine', step16 * 15, 0.05, 900)
+        // 낮게 우는 지속음: 두 음 맥놀이 · 필터가 마디 가운데까지 열렸다 닫힌다 (다음 마디와 겹쳐 끊기지 않게 길게)
+        this.bgmPad(t, [ch.root * 2, ch.root * 2 * 1.007], bar + 1.6, 0.2, 170, { attack: 1.4, release: 1.6, sweep: 2.2 })
+        // 반음으로 부딪는 현악 덩어리 (두 줄씩 조금 어긋나게)
+        this.bgmPad(t + 0.3, ch.pad, bar + 1.8, 0.028, 950, { attack: 2.2, release: 2, detune: 9 })
+        // 먼 합창 "아—" (둘째 · 넷째 마디): 입 모양 대역 + 떨림
+        if (b % 2 === 1) this.bgmPad(t + 0.6, [ch.pad[0] * 2, ch.pad[2] * 2], bar, 0.035, 900, { type: 'triangle', band: 760, attack: 1.6, release: 1.8, vib: 5 })
+        // 쇠 종 (첫 · 셋째 마디 — 교전 중엔 작게)
+        if (ch.bell) this.bgmBell(t + step16 * 2, ch.bell, hot ? 0.03 : 0.055)
+        // 숨 같은 바람 (넷째 마디)
+        if (b === 3) this.bgmWind(t, bar, 0.05)
       }
-      // 심장 박동: 쿵-쿵 (교전 중엔 두 배)
-      if (s16 === 0 || s16 === 2 || (hot && (s16 === 8 || s16 === 10))) this.bgmKick(t)
+      // 심장 박동: 쿵-쿵 (교전 중엔 마디에 두 번)
+      if (s16 === 0 || s16 === 1 || (hot && (s16 === 8 || s16 === 9))) this.bgmHeart(t, s16 % 8 === 0 ? 0.55 : 0.34)
       // 교전: 8분 낮은 맥박 + 먼 북
-      if (hot && s16 % 2 === 0) this.bgmNote(t, ch.root * 4, 'sawtooth', step16 * 1.4, 0.12, 420)
-      if (hot && s16 === 12) this.bgmSnare(t, 0.08)
-      // 드문 종소리 (2·4마디, 조용할 때 더 또렷하게)
-      const bell = Sfx.BELL[s16]
-      if (bell && bar % 2 === 1) this.bgmNote(t, bell * (bar === 3 ? 0.944 : 1), 'triangle', step16 * 7, hot ? 0.05 : 0.08, 2400)
+      if (hot && s16 % 2 === 0) this.bgmNote(t, ch.root * 4, 'sawtooth', step16 * 1.2, 0.1, 380)
+      if (hot && (s16 === 6 || s16 === 14)) this.bgmTom(t, 0.35)
       this.bgmNextBeat += step16
       this.bgmBeatIndex++
     }
+  }
+
+  /** 잔향 (배경음만): 소음을 줄여 가며 만든 응답 · 컨텍스트마다 하나 (영상 녹화는 다른 컨텍스트 — 녹화 도구의 가짜 컨텍스트와도 맞춘다) */
+  private verbFor: unknown = null
+  private verbIn: AudioNode | null = null
+  private verbSend(node: AudioNode, ctx: BaseAudioContext): void {
+    if (this.verbFor !== ctx || !this.verbIn) {
+      const len = Math.round(ctx.sampleRate * 2.6)
+      const ir = ctx.createBuffer(2, len, ctx.sampleRate)
+      for (let c = 0; c < 2; c++) {
+        const d = ir.getChannelData(c)
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2)
+      }
+      const conv = ctx.createConvolver()
+      conv.buffer = ir
+      const wet = ctx.createGain()
+      wet.gain.value = 0.45
+      conv.connect(wet)
+      wet.connect(this.bgmGain!)
+      this.verbIn = conv
+      this.verbFor = ctx
+    }
+    node.connect(this.verbIn)
+  }
+
+  /** 길게 부풀었다 가라앉는 화음 (현악 · 지속음 · 합창) */
+  private bgmPad(t0: number, freqs: number[], dur: number, peak: number, cutoff: number, o: { type?: OscillatorType; attack?: number; release?: number; detune?: number; sweep?: number; band?: number; vib?: number } = {}): void {
+    const ctx = this.ctx!
+    const a = o.attack ?? 1.5
+    const r = o.release ?? 1.5
+    const flt = ctx.createBiquadFilter()
+    flt.type = o.band ? 'bandpass' : 'lowpass'
+    flt.frequency.setValueAtTime(o.band ?? cutoff, t0)
+    if (o.band) flt.Q.value = 3.5
+    if (o.sweep) {
+      flt.frequency.linearRampToValueAtTime(cutoff * o.sweep, t0 + dur * 0.5)
+      flt.frequency.linearRampToValueAtTime(cutoff, t0 + dur)
+    }
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + a)
+    g.gain.setValueAtTime(peak, t0 + Math.max(a, dur - r))
+    g.gain.linearRampToValueAtTime(0.0001, t0 + dur)
+    flt.connect(g)
+    g.connect(this.bgmGain!)
+    this.verbSend(g, ctx)
+    const oscs: OscillatorNode[] = []
+    const extra: AudioNode[] = []
+    for (const f of freqs) {
+      for (const dt of o.detune ? [-o.detune, o.detune] : [0]) {
+        const osc = ctx.createOscillator()
+        osc.type = o.type ?? 'sawtooth'
+        osc.frequency.value = f
+        osc.detune.value = dt
+        if (o.vib) {
+          const lfo = ctx.createOscillator()
+          lfo.frequency.value = o.vib
+          const lg = ctx.createGain()
+          lg.gain.value = 7
+          lfo.connect(lg)
+          lg.connect(osc.detune)
+          lfo.start(t0)
+          lfo.stop(t0 + dur + 0.05)
+          this.finish(lfo, [lg], null, false)
+        }
+        osc.connect(flt)
+        osc.start(t0)
+        osc.stop(t0 + dur + 0.05)
+        oscs.push(osc)
+      }
+    }
+    void extra
+    oscs.forEach((osc, i) => this.finish(osc, i === oscs.length - 1 ? [flt, g] : [], null, false))
+  }
+
+  /** 쇠 종: 배음이 어긋난 넷 (종답게 금속성) · 길게 울린다 */
+  private bgmBell(t0: number, f: number, peak: number): void {
+    const ctx = this.ctx!
+    for (const [k, m] of [[1, 1], [2.76, 0.5], [5.4, 0.28], [8.93, 0.14]]) {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.value = f * k
+      const g = ctx.createGain()
+      const d = 4.5 / Math.sqrt(k)
+      g.gain.setValueAtTime(0.0001, t0)
+      g.gain.linearRampToValueAtTime(peak * m, t0 + 0.006)
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d)
+      osc.connect(g)
+      g.connect(this.bgmGain!)
+      this.verbSend(g, ctx)
+      this.finish(osc, [g], null, false)
+      osc.start(t0)
+      osc.stop(t0 + d + 0.05)
+    }
+  }
+
+  /** 숨 같은 바람: 소음을 좁은 대역으로 훑는다 */
+  private bgmWind(t0: number, dur: number, peak: number): void {
+    const ctx = this.ctx!
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise
+    src.loop = true
+    const flt = ctx.createBiquadFilter()
+    flt.type = 'bandpass'
+    flt.Q.value = 5
+    flt.frequency.setValueAtTime(320, t0)
+    flt.frequency.linearRampToValueAtTime(1150, t0 + dur * 0.45)
+    flt.frequency.linearRampToValueAtTime(420, t0 + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + dur * 0.4)
+    g.gain.linearRampToValueAtTime(0.0001, t0 + dur)
+    src.connect(flt)
+    flt.connect(g)
+    g.connect(this.bgmGain!)
+    this.verbSend(g, ctx)
+    this.finish(src, [flt, g], null, false)
+    src.start(t0)
+    src.stop(t0 + dur + 0.05)
+  }
+
+  /** 심장 박동: 낮고 둔한 쿵 */
+  private bgmHeart(t0: number, peak: number): void {
+    const ctx = this.ctx!
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(86, t0)
+    osc.frequency.exponentialRampToValueAtTime(38, t0 + 0.16)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.012)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.34)
+    osc.connect(g)
+    g.connect(this.bgmGain!)
+    this.finish(osc, [g], null, false)
+    osc.start(t0)
+    osc.stop(t0 + 0.38)
   }
 
   // ---------- 보스 배경음: 84 BPM 단조 (Dm - Dm - B♭ - A) ----------

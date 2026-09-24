@@ -46,6 +46,8 @@ export interface ModelSpec {
   tint?: [number, number, number]
   /** 빛나는 눈 재질 이름 → 빛 색 (어둠 속에서 먼저 보이는 것 — 이 게임 괴물의 정체성) */
   glow?: Record<string, number>
+  /** 받은 모델의 빛 텍스처(emissive) 세기 (없으면 1 · 0 이면 끈다) */
+  emissive?: number
 }
 
 // "UAL_" 로 시작하는 동작은 Quaternius Universal Animation Library(CC0)에서 옮겨 붙인 것 (tools/retarget.mjs · 2026-09-19).
@@ -89,19 +91,48 @@ MODEL_SPECS[2] = { file: 'ghoul', size: 1.0, clips: GHOUL_CLIPS, windup: 0.5, fa
 // 받은 동작(Take 001)은 쓰지 않고 대기 · 걷기 · 공격 · 맞음 · 죽음 모두 UAL 에서 옮겨 붙였다(Biped 뼈대 — 해골과 같은 계열).
 // 머리가 -x 를 본다 → 90° 돌려 +z 로. 공격은 큰 부채꼴이라 검 휘두르기 동작으로
 MODEL_SPECS[3] = { file: 'butcher', size: 1.05, yaw: Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5 }
-// ---- 임시 실사화 (2026-09-19): 받은 모델 + 도형 부품(monsters3d MODEL_EXTRAS). 2차 묶음을 받으면 제 모델로 바꾼다 ----
-// 보물 고블린 — 작고 푸르죽죽한 좀비 + 금 자루
-MODEL_SPECS[4] = { file: 'ghoul', size: 0.8, clips: GHOUL_CLIPS, windup: 0.5, tint: [0.78, 1.0, 0.7], glow: { 'Sphere.001': 0xffe05c, 'Sphere_1.001': 0xffe05c } }
-// 버섯 주술사 — 창백한 좀비 + 빛나는 버섯 갓 · 지팡이
-MODEL_SPECS[7] = { file: 'ghoul', size: 1.1, clips: { ...GHOUL_CLIPS, attack: SPELL }, windup: 0.4, tint: [0.85, 0.92, 1.05], glow: { 'Sphere.001': 0x7affc8, 'Sphere_1.001': 0x7affc8 } }
-// 방패병 — 해골 + 투구 · 눈구멍 빛 · 큰 방패
-MODEL_SPECS[9] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skeletonClips(SWORD), windup: 0.5, tint: [0.82, 0.82, 0.78] }
-// 강령술사 — 검게 삭은 해골 + 해골 지팡이 · 빛나는 구슬
-MODEL_SPECS[10] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(SPELL), windup: 0.4, tint: [0.62, 0.56, 0.7] }
-// 산성 토사꾼 — 초록 살찐 좀비 + 산 주머니
-MODEL_SPECS[11] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: SPELL }, windup: 0.4, fat: 1.0, tint: [0.72, 1.1, 0.55], glow: { 'Sphere.001': 0xb8ff5a, 'Sphere_1.001': 0xb8ff5a } }
-// 그림자 — 검보라 해골 + 두건 · 빛나는 눈
-MODEL_SPECS[13] = { file: 'archer', size: 1.15, yaw: -Math.PI / 2, clips: skeletonClips({ clip: 'UAL_Punch_Cross', frames: 6 }), windup: 0.45, tint: [0.34, 0.28, 0.46] }
+// ---- 2차 졸개 (2026-09-24 — 사용자가 받아 준 여섯. 전에는 좀비 · 해골 모델에 도형 부품을 붙인 임시 모습이었다) ----
+// 셋 모두 정면이 이미 +z. 던전 어둠에 묻히지 않게 밝게 · 종류 색으로 곱한다 (관리인 검은 갑옷이 안 보였던 것 — 2026-09-23)
+// 보물 고블린 — Minion · DJMaesen · CC BY 4.0. 받은 동작(8.7초 한 줄)은 안 쓰고 UAL 에서 옮겨 붙였다. 늘 도망치니 걷기는 뜀
+MODEL_SPECS[4] = {
+  file: 'goblin', size: 0.8, tint: [1.35, 1.2, 0.85],
+  clips: { idle: { clip: 'UAL_Idle_Loop', frames: 6 }, walk: { clip: 'UAL_Jog_Fwd_Loop', frames: 10 }, hit: UAL_HIT, death: UAL_DEATH },
+}
+// 버섯 주술사 — Witch · LxNazarov · CC BY 4.0. 받은 동작을 그대로 (고치기 = 주문 skill 의 앞부분)
+MODEL_SPECS[7] = {
+  file: 'shaman', size: 1.1, tint: [1.25, 1.35, 1.2],
+  clips: {
+    idle: { clip: 'Witch.Skeleton|idle', frames: 6 },
+    walk: { clip: 'Witch.Skeleton|walk', frames: 10 },
+    attack: { clip: 'Witch.Skeleton|skill', from: 0.2, to: 1.8, frames: 8 },
+    death: { clip: 'Witch.Skeleton|death', from: 0.1, to: 1.6, frames: 6 },
+  },
+  windup: 0.5,
+}
+// 방패병 — Cursed Undead Soldier Rig · DM-913 · CC BY 4.0. 칼 휘두르기는 받은 Slash · 나머지는 UAL. 방패는 도형 부품(정면 막기가 보이게)
+MODEL_SPECS[9] = { file: 'shield', size: 1.2, tint: [1.6, 1.55, 1.5], clips: { ...skeletonClips({ clip: 'Slash', frames: 8 }) }, windup: 0.45 }
+// 강령술사 — PBR Shadowkin Mage (Rigged) · Ferocious Industries · CC BY 4.0. 받은 것은 자세뿐 — 모두 UAL (주문 쏘기)
+MODEL_SPECS[10] = { file: 'necro', size: 1.2, tint: [3.2, 2.8, 3.6], clips: skeletonClips(SPELL), windup: 0.4 }
+// 산성 토사꾼 — Crawling mutated human · Elisey · CC BY 4.0. 네 발로 긴다 — 받은 기어가기 하나로 걷고, 앞부분을 뱉기 예고로.
+// 색 텍스처가 없는 모델이라 누런 녹색으로 칠한다. 쓰러질 때는 네 발 짐승처럼 옆으로 (죽음 동작 없음)
+MODEL_SPECS[11] = {
+  file: 'spitter', size: 1.25, fit: 'length', tint: [0.55, 0.85, 0.3],
+  clips: { walk: { clip: 'Armature|Armature|mixamo.com|Layer0', frames: 14 }, attack: { clip: 'Armature|Armature|mixamo.com|Layer0', from: 0, to: 1.2, frames: 6 } },
+  windup: 0.5,
+}
+// 그림자 — Terrifying Hooded Horror Woman · Purple.Point · CC BY 4.0. 받은 RunFast 로 달리고, 할퀴기는 UAL.
+// 빛 텍스처가 온몸이라 약하게만 — 어둠 속 보랏빛 윤곽
+MODEL_SPECS[13] = {
+  file: 'shade', size: 1.2, tint: [1.1, 0.95, 1.5], emissive: 0.3,
+  clips: {
+    idle: { clip: 'UAL_Idle_Loop', frames: 6 },
+    walk: { clip: 'Armature|RunFast|baselayer', frames: 8 },
+    attack: { clip: 'UAL_Punch_Cross', frames: 6 },
+    hit: UAL_HIT,
+    death: UAL_DEATH,
+  },
+  windup: 0.45,
+}
 // 관리인(3막 보스) — Overlord · DJMaesen · CC BY 4.0 (2026-09-23 — 해골에 투구를 씌운 임시 모습을 바꿨다).
 // 검은 갑옷 거인 · 휘날리는 천. 받은 동작(50초 한 줄)은 쓰지 않고 모두 UAL 에서 옮겨 붙였다. 정면이 이미 +z
 // 검은 갑옷이 던전 어둠에 그대로 묻혀 보이지 않았다(2026-09-23 게임 안 확인) → 두 배 넘게 밝힌다
@@ -162,6 +193,8 @@ export const FILE_ANCHORS: Record<string, Partial<Record<AnchorName, string>>> =
   archer: { head: 'Bip01_Head1_016', chest: 'Bip01_Spine4_014', hips: 'Bip01_Pelvis_01', handR: 'Bip01_R_Hand_045', handL: 'Bip01_L_Hand_021' },
   butcher: { head: 'Bip001_Head_05', chest: 'Bip001_Spine2_0105', hips: 'Bip001_Pelvis_058', handR: 'Bip001_R_Hand_086', handL: 'Bip001_L_Hand_036' },
   warden: { head: 'head_2_062', chest: 'chest_2_013', hips: 'hips_2_01', handR: 'R_wrist_2_041', handL: 'L_wrist_2_017' },
+  // 방패병 — 방패 도형을 가슴에 (GLTFLoader 가 '.' 과 ' ' 를 다듬는다: "Hand.L_68" → "HandL_68")
+  shield: { head: 'Head_47', chest: 'Torso_49', hips: 'Pelvis_52', handR: 'HandR_86', handL: 'HandL_68' },
 }
 
 export interface BakedModel {

@@ -32,17 +32,17 @@ export const BLOCK_COST = 0.55
 export const BLOCK_LOCK_TICKS = 30
 /** 앞에서 오는 몬스터 공격을 후라이팬으로 막을 확률 (덕 오픈 베타 값 그대로. PvE 에서는 M5 에서 다시 본다) */
 export const BLOCK_CHANCE = 0.25
-/** 통천덕 패시브(치킨): 킬마다 최대 체력이 늘고 조금 회복한다. 죽으면 원래대로 (M7 에서 PvE 값으로) */
-// 통천덕 "치킨"(투기장): 잡을 때마다 최대 체력 · 회복. 2026-09-19 투기장 1:1 67%(혼자 높음) → 15/60/20 에서 줄였다
+/** 통천란 패시브(치킨): 킬마다 최대 체력이 늘고 조금 회복한다. 죽으면 원래대로 (M7 에서 PvE 값으로) */
+// 통천란 "치킨"(투기장): 잡을 때마다 최대 체력 · 회복. 2026-09-19 투기장 1:1 67%(혼자 높음) → 15/60/20 에서 줄였다
 export const CHICKEN_MAXHP_PER_KILL = 10
 export const CHICKEN_MAXHP_CAP = 30
 export const CHICKEN_HEAL = 15
-/** 침착덕 패시브(침착): 탄퍼짐 배율 · 발당 반동 배율 · 반동 회복 배율 */
+/** 침착란 패시브(침착): 탄퍼짐 배율 · 발당 반동 배율 · 반동 회복 배율 */
 export const CHIM = { spreadMul: 0.55, recoilMul: 0.45, recoverMul: 3 }
 /**
- * 풍월덕 패시브(근성) — 2026-09-20 사용자: "풍월량은 바람과 상관없다" → 바람(자주 구르기)을 버리고 **탱커**가 됐다.
+ * 풍월란 패시브(근성) — 2026-09-20 사용자: "풍월량은 바람과 상관없다" → 바람(자주 구르기)을 버리고 **탱커**가 됐다.
  * 실제 풍월량: 키 167cm · 92.5kg 단신 통통 체형(배도라지 '삼돼장'), 남들이 포기하는 게임을 끝까지 붙드는 근성.
- * 맞을 때마다 한 칸씩 단단해지고(받는 피해 -5%/칸), 2초간 안 맞으면 식는다. 기열덕의 뇌절(연속 명중)과 거울쌍.
+ * 맞을 때마다 한 칸씩 단단해지고(받는 피해 -5%/칸), 2초간 안 맞으면 식는다. 기열란의 뇌절(연속 명중)과 거울쌍.
  * 투기장(역할 효과가 없는 곳)에서는 구르기 특혜를 뗀 만큼 27% 까지 떨어져, 피해 배율(CHAR_PVP) · 받는 피해로 따로 맞춘다.
  */
 export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.88 }
@@ -50,13 +50,13 @@ export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.8
 /**
  * 캐릭터별 투기장 피해 배율 (`tools/arena.ts` 1:1 리그로 맞춘다 — 목표 45~55%).
  * 무기 계열의 `pvp` 로 맞추면 같은 무기를 쓰는 다른 캐릭터까지 흔들려서, 캐릭터 한 명만 올릴 때 쓴다.
- * 2026-09-20: 우원덕 · 단군덕은 권총(1.12 배율)에서 SMG 로 옮기며 27% 까지 떨어졌다. 풍월덕은 탱커가 되며 구르기 특혜를 뗐다.
+ * 2026-09-20: 우원란 · 단군란은 권총(1.12 배율)에서 SMG 로 옮기며 27% 까지 떨어졌다. 풍월란은 탱커가 되며 구르기 특혜를 뗐다.
  */
 export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.35, uwon: 1.22, dangun: 1.22, giyeol: 1.12 }
 export const UWON = { invulnAfterDash: 24 }
-/** 주펄덕 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
+/** 주펄란 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }
-/** 기열덕 패시브(뇌절): 연속 명중마다 피해 배율이 오른다. 2026-09-19 재장전이 없어져 빗나가는 탄이 늘자(빗나가면 한 칸 식음)
+/** 기열란 패시브(뇌절): 연속 명중마다 피해 배율이 오른다. 2026-09-19 재장전이 없어져 빗나가는 탄이 늘자(빗나가면 한 칸 식음)
  * 투기장 1:1 에서 17% 까지 떨어졌다 → 한 칸 6% → 8%, 최대 6 → 8 칸 (tools/arena.ts) */
 export const GIYEOL = { perHit: 0.08, maxStacks: 8 }
 
@@ -168,9 +168,9 @@ export interface PlayerState {
   vacant: boolean
   /** 덕의 캐릭터 고르기 — RPG 에서는 원정 중에 캐릭터를 바꾸지 않는다(캐릭터 = 세이브 칸). 늘 false */
   choosing: boolean
-  /** 연속 명중 수 (기열덕 패시브) */
+  /** 연속 명중 수 (기열란 패시브) */
   streak: number
-  /** 연속 피격 칸 (풍월덕 패시브 '근성' — 맞을수록 단단해진다) */
+  /** 연속 피격 칸 (풍월란 패시브 '근성' — 맞을수록 단단해진다) */
   grit: number
   stamina: number
   staminaMax: number
@@ -192,9 +192,9 @@ export interface PlayerState {
   fx: number[]
   /** FX_RATE 동안의 연사 배율 (가장 큰 것) */
   rateMul: number
-  /** 관통탄이 남은 발 수 (침착덕 Q) */
+  /** 관통탄이 남은 발 수 (침착란 Q) */
   pierceShots: number
-  /** 다음 발 피해 배율이 남은 발 수 (옥냥덕 Q) */
+  /** 다음 발 피해 배율이 남은 발 수 (옥냥란 Q) */
   empowerShots: number
   /** 돌진 중 한 번씩만 맞히려고 쓰는 효과 번호 */
   chargeTag: number
@@ -524,9 +524,9 @@ export const ZONE_SPOTLIGHT = 0
 export const ZONE_FUSE = 1
 /** 산성 웅덩이(토사꾼): 안에 선 사람이 ACID.every 틱마다 다친다 (몬스터 편) */
 export const ZONE_ACID = 2
-/** 태풍 (풍월덕): 안의 괴물을 가운데로 끌어당기고 30틱마다 친다 (플레이어 편, dmg = 한 번 피해) */
+/** 태풍 (풍월란): 안의 괴물을 가운데로 끌어당기고 30틱마다 친다 (플레이어 편, dmg = 한 번 피해) */
 export const ZONE_VORTEX = 3
-/** 덫 (통천덕): 처음 밟은 괴물 둘레를 치고 사라진다 (플레이어 편) */
+/** 덫 (통천란): 처음 밟은 괴물 둘레를 치고 사라진다 (플레이어 편) */
 export const ZONE_TRAP = 4
 /** 보스 예고만 (피해 없음 — 도살자 돌진 길처럼 몸으로 치는 패턴의 길을 보여 준다) */
 export const ZONE_WARN = 5

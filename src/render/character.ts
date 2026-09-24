@@ -911,7 +911,7 @@ function drawMouth(ctx: CanvasRenderingContext2D, L: Look, R: number, fx: number
       break
     }
     case 'pout': {
-      // 오므려 쭉 내민 입술: 위·아래 입술 두 덩어리 (오리 입), 작고 도톰하게
+      // 오므려 쭉 내민 입술: 위·아래 입술 두 덩어리 (쭉 내민 입), 작고 도톰하게
       const py = my + R * 0.12
       const lip = L.lipColor ?? 0xb9382a
       ctx.lineWidth = 1.5

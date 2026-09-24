@@ -175,8 +175,6 @@ export type CtlMessage =
   | { t: 'donate'; p: number; seq: number; nick: string; amount: number; text: string; ev: number }
   /** 방송 채팅 말풍선: 지역 a 의 괴물 m(없으면 -1 — 채팅 줄로)이 nick 의 글을 말한다. sim 밖 */
   | { t: 'mchat'; a: number; m: number; nick: string; text: string }
-  /** 방송 채팅 말풍선: 말할 괴물이 없을 때 지역 a 의 우리 편 p 머리 위로. sim 밖 */
-  | { t: 'pchat'; a: number; p: number; nick: string; text: string; gold: boolean }
   /** 텍스트 채팅 (Enter). sim 밖 — 받는 쪽이 보낸 사람 자리 · 길이를 다시 본다 */
   | { t: 'chat'; p: number; text: string }
   /**
