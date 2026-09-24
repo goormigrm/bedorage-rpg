@@ -851,7 +851,8 @@ export class Renderer3D {
   // ---------- 이벤트 → 이펙트 ----------
   onEvents(events: SimEvent[], state: GameState, localPlayer: number, names?: string[]): void {
     this.ensureRigs(state)
-    const nm = names ?? state.players.map((p) => CHARACTERS[p.char].name)
+    // 이름이 없는 자리(영상용 손님 등)는 캐릭터 이름으로 — "undefined 레벨 7" 이 떴다
+    const nm = state.players.map((p, i) => names?.[i] ?? CHARACTERS[p.char].name)
     for (const e of events) {
       switch (e.type) {
         case 'bash': {

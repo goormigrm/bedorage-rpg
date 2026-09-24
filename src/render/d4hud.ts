@@ -714,7 +714,7 @@ export class D4Hud {
   drawParty(h: HudCtx, s: GameState, opts: RenderOptions): void {
     const lp = opts.localPlayer
     const me = lp >= 0 ? s.players[lp] : null
-    const mates = s.players.filter((p) => p.id !== lp && !p.vacant && (s.mode === 'dungeon' || (me && p.team === me.team && isTeamMatch(s))))
+    const mates = s.players.filter((p) => p.id !== lp && !p.vacant && !p.cameo && (s.mode === 'dungeon' || (me && p.team === me.team && isTeamMatch(s))))
     if (mates.length === 0) return
     const c = h.ctx
     const x = 16

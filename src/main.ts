@@ -33,6 +33,8 @@ function showLobby(): void {
       startSession(cfg)
     },
   })
+  // 소개 영상은 캐릭터 고르는 화면(모닥불)부터 뜬다 (?shot=1 일 때만 — tools/trailer.js)
+  if (location.search.includes('shot=1')) (window as unknown as { __lobby: Lobby }).__lobby = lobby
 }
 
 /** 게임 세션 열기 — 로비에서, 그리고 "혼자 이어하기"(호스트가 나갔을 때 지금 판 그대로)에서 */

@@ -1342,6 +1342,25 @@ export function warpPlayer(state: GameState, maps: MapSource, idx: number, to: n
   bindPrimary(state)
 }
 
+/**
+ * 영상용: 정원(4) 밖에 AI 동료를 더한다 — 소개 영상 마지막 "크루 12명이 함께 보스를" 장면만 (tools/trailer.js · 2026-09-24 사용자).
+ * 용병처럼 sim 안의 봇이 움직이고 owner 를 따라다닌다. 게임 코드에서는 쓰지 않는다
+ */
+export function addCameo(state: GameState, char: CharacterId, owner: number, x: number, y: number): PlayerState {
+  const o = state.players[owner]
+  const idx = state.players.length
+  const p = makePlayer(idx, char, o.team, { level: o.level, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] })
+  p.merc = owner
+  p.follow = owner
+  p.area = o.area
+  p.x = x
+  p.y = y
+  p.bot = makeBot((state.seed ^ Math.imul(idx + 7, 0x2545f491)) >>> 0)
+  p.cameo = true
+  state.players.push(p)
+  return p
+}
+
 /** 경기 도중 나간 사람 처리 (호스트가 정한 틱에 모두가 같이 호출해야 결정론이 유지된다) */
 export function dropPlayer(state: GameState, idx: number): void {
   const p = state.players[idx]
@@ -3198,7 +3217,8 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
     const tier = tierOf(state.tier)
     const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
-    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, items, src, tier.loot, fountain ? 2 : 0)
+    // 첫 아이템 희귀 이상 확정은 막 보스만 (우두머리 · 보물 고블린은 뺐다 — 2026-09-24 "저렙에서도 희귀 · 전설이 너무 쉽다")
+    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, items, src, tier.loot, boss ? 2 : 0)
   }
 }
 

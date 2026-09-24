@@ -707,14 +707,10 @@ export class Sfx {
         this.noiseBurst(node, t0, 0.06, 'highpass', 3000, 2000, 0.5)
         break
       case 'violin':
-      case 'cello': {
-        // 고기 바이올린: 묵직한 휘두름(바람) + 현이 튕기는 소리 한 번 (첼로는 한 옥타브 낮게)
-        const low = w === 'cello' ? 0.5 : 1
-        this.noiseBurst(node, t0, 0.14, 'bandpass', 500 * low, 900 * low, 0.5, 0.6)
-        this.tone(node, t0 + 0.02, 0.35, 'sawtooth', 392 * low, 386 * low, 0.18, 0.004)
-        this.tone(node, t0 + 0.02, 0.3, 'triangle', 196 * low, 194 * low, 0.22, 0.004)
+      case 'cello':
+        // 고기 바이올린 · 첼로: 휘두를 때마다 현악기 소리 다섯 가지 중 하나 (stringSwing)
+        this.stringSwing(node, t0, w === 'cello' ? 0.5 : 1)
         break
-      }
       case 'rapier':
       case 'katana':
         // 검: 날카로운 바람 가르는 소리 + 짧은 쇳소리
@@ -736,6 +732,84 @@ export class Sfx {
     }
   }
 
+  /**
+   * 현악기 휘두름 (2026-09-24 사용자: "철면수심 공격 소리가 너무 단조롭고 귀에 거슬린다 — 바이올린 · 첼로 소리에 맞게 몇 가지가 랜덤으로").
+   * 예전에는 같은 높이(솔)의 날것 톱니파 한 음이라 귀를 긁었다 → 누그러뜨린 활 소리(stringNote) · 음은 D 단조 5음 중에서,
+   * 휘두를 때마다 다섯 가지 중 하나: 짧은 활 · 피치카토 · 겹음(5도) · 미끄러져 오르기 · 트레몰로. 바람 소리는 아주 작게.
+   * low = 0.5 면 첼로(한 옥타브 아래)
+   */
+  private stringSwing(node: AudioNode, t0: number, low: number): void {
+    const scale = [293.7, 349.2, 392, 440, 523.3, 587.3]
+    const pick = () => scale[Math.floor(Math.random() * scale.length)] * low
+    const f = pick()
+    this.noiseBurst(node, t0, 0.1, 'bandpass', 700 * low, 1100 * low, 0.16, 0.7)
+    const kind = Math.floor(Math.random() * 5)
+    if (kind === 0) {
+      // 짧은 활 (데타셰)
+      this.stringNote(node, t0 + 0.01, 0.26, f, f, 0.2, 0.025)
+    } else if (kind === 1) {
+      // 피치카토: 현을 퉁긴다
+      this.pluck(node, t0 + 0.005, f, 0.34)
+      this.pluck(node, t0 + 0.07, f * 1.5, 0.18)
+    } else if (kind === 2) {
+      // 겹음: 5도 두 줄을 함께 긋는다
+      this.stringNote(node, t0 + 0.01, 0.3, f, f, 0.14, 0.03)
+      this.stringNote(node, t0 + 0.01, 0.3, f * 1.5, f * 1.5, 0.1, 0.035)
+    } else if (kind === 3) {
+      // 미끄러져 오르기 (글리산도)
+      this.stringNote(node, t0 + 0.01, 0.32, f * 0.84, f, 0.18, 0.02)
+    } else {
+      // 트레몰로: 짧게 세 번
+      for (let k = 0; k < 3; k++) this.stringNote(node, t0 + 0.01 + k * 0.06, 0.09, f, f, 0.15, 0.012, 0)
+    }
+  }
+
+  /** 현 한 음: 톱니파를 저역 통과로 누그러뜨리고 · 나무 몸통 울림(피킹) · 비브라토 · 활을 긋는 어택 */
+  private stringNote(bus: AudioNode, t0: number, dur: number, f0: number, f1: number, peak: number, attack: number, vib = 0.006): void {
+    const ctx = this.ctx!
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(f0, t0)
+    if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t0 + dur * 0.55)
+    const lfo = ctx.createOscillator()
+    lfo.frequency.value = 5 + Math.random() * 1.2
+    const depth = ctx.createGain()
+    depth.gain.value = f1 * vib
+    lfo.connect(depth)
+    depth.connect(osc.frequency)
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = Math.min(3400, f1 * 5.5)
+    lp.Q.value = 0.7
+    const body = ctx.createBiquadFilter()
+    body.type = 'peaking'
+    body.frequency.value = 480
+    body.Q.value = 1.1
+    body.gain.value = 5
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + attack)
+    g.gain.exponentialRampToValueAtTime(peak * 0.55, t0 + attack + dur * 0.45)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + dur)
+    osc.connect(lp)
+    lp.connect(body)
+    body.connect(g)
+    g.connect(bus)
+    this.finish(osc, [lp, body, g, depth, lfo], bus, true)
+    const end = t0 + attack + dur + 0.05
+    osc.start(t0)
+    osc.stop(end)
+    lfo.start(t0)
+    lfo.stop(end)
+  }
+
+  /** 피치카토: 세모파의 빠른 어택 · 짧은 울림 + 손끝이 줄을 튕기는 딸깍 */
+  private pluck(bus: AudioNode, t0: number, f: number, peak: number): void {
+    this.tone(bus, t0, 0.32, 'triangle', f, f * 0.995, peak, 0.002)
+    this.tone(bus, t0, 0.18, 'sine', f * 2, f * 2, peak * 0.3, 0.002)
+    this.noiseBurst(bus, t0, 0.02, 'bandpass', 2400, 1800, 0.12, 2)
+  }
+
   private hit(s: Spatial, head: boolean): void {
     const { node, t0 } = this.bus(s, 0.9)
     this.tone(node, t0, 0.06, 'triangle', 900, 300, 0.7)
@@ -751,8 +825,10 @@ export class Sfx {
   private meleeHit(s: Spatial, crit: boolean, fam: string): void {
     const { node, t0 } = this.bus(s, 0.95)
     if (fam === 'violin') {
-      this.tone(node, t0, 0.13, 'sine', 170, 55, 0.85, 0.002)
-      this.noiseBurst(node, t0, 0.09, 'lowpass', 1100, 220, 0.65, 1)
+      // 살을 치는 퍽 — 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게
+      const k = 0.88 + Math.random() * 0.24
+      this.tone(node, t0, 0.13, 'sine', 170 * k, 55 * k, 0.8, 0.002)
+      this.noiseBurst(node, t0, 0.09, 'lowpass', 1100 * k, 220, 0.6, 1)
     } else if (fam === 'rapier') {
       this.noiseBurst(node, t0, 0.06, 'highpass', 3200, 6400, 0.45, 0.8)
       this.tone(node, t0, 0.09, 'triangle', 1900, 900, 0.3, 0.002)

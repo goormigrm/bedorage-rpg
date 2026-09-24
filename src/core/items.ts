@@ -218,21 +218,38 @@ export function affixValue(it: Item, k: number): number {
  *  졸개는 일반·마법만 · 정예부터 희귀·전설 · 신화는 우두머리·보스(와 도박)에서만.
  *  예전: 졸개도 희귀 11% · 전설 2%, 우두머리·보스는 한 개에 전설 27% 였다.
  */
+// 2026-09-24 사용자: "지금도 너무 쉽게 저렙 구간에서도 전설 · 희귀가 나온다 — 드랍 확률을 더 낮게" →
+//  정예 희귀 19 → 10% · 전설 4 → 2% / 보스 분수 희귀 44 → 36% · 전설 12 → 8% / 금빛 상자 희귀 30 → 18% · 전설 5 → 2%,
+//  그리고 **지역(아이템) 레벨이 낮을수록 더 낮게**(lootLevelMul) — 첫 막 초반에는 희귀 이상이 드물다.
 export type LootSource = 'normal' | 'elite' | 'boss' | 'chest' | 'goldchest' | 'gamble' | 'shop' | 'forge'
 export const DROP_TABLE: Record<LootSource, number[]> = {
   normal: [0.7, 0.3, 0, 0, 0],
-  elite: [0.25, 0.52, 0.19, 0.04, 0],
-  boss: [0, 0.43, 0.44, 0.12, 0.01],
+  elite: [0.35, 0.53, 0.1, 0.02, 0],
+  boss: [0, 0.55, 0.36, 0.08, 0.01],
   chest: [0.55, 0.45, 0, 0, 0],
-  goldchest: [0.1, 0.55, 0.3, 0.05, 0],
+  goldchest: [0.2, 0.6, 0.18, 0.02, 0],
   gamble: [0, 0.55, 0.35, 0.095, 0.005],
   shop: [0.25, 0.6, 0.15, 0, 0],
   // 벼리기: 등급은 벼리기 쪽에서 정해 minRarity 로 넘긴다 (forgeOdds) — 표는 쓰지 않는다
   forge: [1, 0, 0, 0, 0],
 }
-/** 등급을 고른다. up = 난이도 전리품 보너스(악몽 0.08 · 지옥 0.16) — 희귀 이상의 몫을 (1 + up × 6) 배 */
-export function pickRarity(rng: Rng, src: LootSource, up = 0): number {
-  const w = DROP_TABLE[src].map((v, i) => (i >= 2 ? v * (1 + up * 6) : v))
+/** 떨어지는 전리품이 레벨로 줄어드는 곳 (도박 · 상점 · 벼리기는 값을 치르므로 그대로) */
+const LEVEL_SCALED: LootSource[] = ['normal', 'elite', 'boss', 'chest', 'goldchest']
+/**
+ * 아이템 레벨이 낮을수록 희귀 이상의 몫을 줄인다: 레벨 1 에서 0.4배 → 13 부터 1배 (전설 · 신화는 이것을 한 번 더 곱한다).
+ * 1막(지역 레벨 1~8)에서는 희귀가 드물고 전설은 아주 드물다 — 좋은 템은 뒤 막 · 악몽 · 벼리기에서
+ */
+export function lootLevelMul(ilvl: number): number {
+  return Math.min(1, Math.max(0.4, 0.35 + ilvl * 0.05))
+}
+
+/**
+ * 등급을 고른다. up = 난이도 전리품 보너스(악몽 0.08 · 지옥 0.16) — 희귀 이상의 몫을 (1 + up × 6) 배.
+ * ilvl = 아이템 레벨 (주면 떨어지는 전리품은 레벨이 낮을수록 희귀 이상이 줄어든다 — lootLevelMul)
+ */
+export function pickRarity(rng: Rng, src: LootSource, up = 0, ilvl = 99): number {
+  const k = LEVEL_SCALED.includes(src) ? lootLevelMul(ilvl) : 1
+  const w = DROP_TABLE[src].map((v, i) => (i >= 2 ? v * (1 + up * 6) * (i >= 3 ? k * k : k) : v))
   let r = rand(rng) * w.reduce((a, b) => a + b, 0)
   for (let i = 0; i < w.length; i++) {
     r -= w[i]
@@ -246,7 +263,7 @@ export function pickRarity(rng: Rng, src: LootSource, up = 0): number {
  */
 export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1): Item {
   const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
-  const rarity = Math.max(minRarity, pickRarity(rng, src, up))
+  const rarity = Math.max(minRarity, pickRarity(rng, src, up, ilvl))
   const leg = rarity >= 3 ? randInt(rng, 0, LEGENDS.length) : undefined
   let wt = -1
   if (slot === SLOT_WEAPON) {

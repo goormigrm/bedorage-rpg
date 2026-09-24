@@ -7,7 +7,7 @@ import { createState, step } from '../src/core/sim'
 import { makeRng } from '../src/core/rng'
 import {
   AUTOPICK_ALL, BAG_SIZE, BASE_TYPES, Item, LootSource, RARITY_MYTHIC, SLOT_ARMOR, SLOT_RING, SLOT_WEAPON, ST_DMG, ST_HP, WEAPON_IDS, computeStats, emptySheet, itemName,
-  pickRarity, rollItem, sanitizeSheet, xpNeed,
+  lootLevelMul, pickRarity, rollItem, sanitizeSheet, xpNeed,
 } from '../src/core/items'
 import { COUNTDOWN_TICKS, MS_CHASE } from '../src/core/state'
 
@@ -261,5 +261,38 @@ describe('전리품 · 성장 (sim)', () => {
     expect(p.alive).toBe(false)
     expect(p.xp).toBe(200 - Math.round(xpNeed(3) * 0.1))
     expect(p.gold).toBe(80)
+  })
+})
+
+// 2026-09-24 사용자: "저렙 구간에서도 전설 · 희귀가 너무 쉽게 나온다 — 드랍 확률을 더 낮게"
+describe('희귀 이상은 낮은 레벨일수록 드물다', () => {
+  it('정예: 아이템 레벨 2 는 희귀 이상 5% 안팎 · 전설 0.5% 안팎 — 레벨 20 은 희귀 이상 12% 안팎', () => {
+    const rng = makeRng(21)
+    const N = 40000
+    const rate = (ilvl: number, min: number) => {
+      let n = 0
+      for (let i = 0; i < N; i++) if (pickRarity(rng, 'elite', 0, ilvl) >= min) n++
+      return n / N
+    }
+    const low = rate(2, 2)
+    const lowLeg = rate(2, 3)
+    const high = rate(20, 2)
+    expect(low).toBeLessThan(0.07)
+    expect(lowLeg).toBeLessThan(0.01)
+    expect(high).toBeGreaterThan(0.09)
+    expect(high).toBeLessThan(0.15)
+    expect(lootLevelMul(1)).toBeCloseTo(0.4)
+    expect(lootLevelMul(13)).toBe(1)
+  })
+
+  it('도박 · 상점은 레벨로 줄지 않는다 (값을 치른다)', () => {
+    const rng = makeRng(22)
+    let a = 0
+    let b = 0
+    for (let i = 0; i < 20000; i++) {
+      if (pickRarity(rng, 'gamble', 0, 1) >= 2) a++
+      if (pickRarity(rng, 'gamble', 0, 30) >= 2) b++
+    }
+    expect(Math.abs(a - b) / 20000).toBeLessThan(0.02)
   })
 })

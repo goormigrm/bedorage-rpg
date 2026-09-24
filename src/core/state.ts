@@ -263,6 +263,8 @@ export interface PlayerState {
   away?: boolean
   /** 후원 효과 남은 틱 (core/donate.ts DON_* 칸 — 손 떨림 · 암흑 · 거꾸로 · 봉인). 처음 걸릴 때 만든다 */
   don?: number[]
+  /** 영상용 손님 (tools/trailer.js 마지막 "12명이 함께" — 정원 밖, sim 안의 봇). 파티 창에 넣지 않는다 */
+  cameo?: boolean
   /** 응원 "공격 강화" 의 공격력: 남은 틱 · 배율 (2026-09-24 — 처음 걸릴 때 만든다) */
   cpow?: number
   cpowMul?: number
