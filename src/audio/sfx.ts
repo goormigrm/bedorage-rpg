@@ -86,6 +86,10 @@ export class Sfx {
   private kindVoice = new Map<number, number>()
   private lastBossRoar = 0
   private nextIdle = 0
+  /** 보스 대사 소리 (public/voice/boss_<종류>.wav) · 받는 중 · 긴 잔향 임펄스 (처음 쓸 때 만든다) */
+  private lineBufs = new Map<number, AudioBuffer | null>()
+  private lineLoading = new Set<number>()
+  private verbIr: AudioBuffer | null = null
   private lastCountdownSec = -1
   private unlockOff: (() => void) | null = null
   private bgmTimer = 0
@@ -270,6 +274,8 @@ export class Sfx {
       for (const m of state.monsters) {
         if (m.hp > 0 && m.st !== 0 && MONSTER_LIST[m.kind].boss) {
           b = m.hp < m.maxHp * 0.3 ? 2 : 1
+          // 깬 보스의 대사 소리를 미리 받는다 (즉사기는 깬 뒤 20초 — 넉넉하다)
+          this.loadLine(m.kind)
           break
         }
       }
@@ -463,7 +469,8 @@ export class Sfx {
         case 'bossUlt': {
           // 보스의 포효 + 대사를 목소리로 (브라우저 음성 합성 — 설정 "보스 목소리") — 2026-09-24 사용자: "즉사기 대사에 TTS 나 특수한 소리"
           this.voice(e.kind, 'ult', sp(e.x, e.y), 1.1)
-          this.speak(BOSS_PATS[e.pat]?.line, e.kind)
+          // 가공한 대사 소리(울림 · 낮은 음) — 아직 못 받았으면 브라우저 음성 합성으로 (가공 없이)
+          if (!this.bossLine(e.kind)) this.speak(BOSS_PATS[e.pat]?.line, e.kind)
           // 막 보스 즉사기 경보: 낮은 뿔피리 둘(어긋난 음) + 떨어지는 종 — 화면 경고와 같이 (2026-09-24)
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 1.0)
           this.tone(b.node, b.t0, 1.4, 'sawtooth', 98, 92, 0.32, 0.05)
@@ -1068,6 +1075,157 @@ export class Sfx {
       this.tone(bus, t0 + (i * dur) / n, 0.07, 'sine', f, f * (0.6 + Math.random() * 0.8), peak, 0.004)
     }
     this.noiseBurst(bus, t0, dur, 'lowpass', 500, 180, peak * 0.4, 0.8)
+  }
+
+  /** 설정 "보스 목소리" (ui/settings.ts — 저장한 값이 없으면 켬) */
+  private bossVoiceOn(): boolean {
+    try {
+      return localStorage.getItem('brpg.bossvoice') !== '0'
+    } catch {
+      return true
+    }
+  }
+
+  /** 보스 대사 소리를 받아 둔다 (한 번만 · 실패하면 다시 받지 않는다 — 그때는 음성 합성으로) */
+  private loadLine(kind: number): void {
+    if (!this.ctx || this.lineBufs.has(kind) || this.lineLoading.has(kind)) return
+    this.lineLoading.add(kind)
+    const ctx = this.ctx
+    void fetch(`${import.meta.env.BASE_URL}voice/boss_${kind}.wav`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+      .then((a) => ctx.decodeAudioData(a))
+      .then((b) => this.lineBufs.set(kind, b))
+      .catch(() => this.lineBufs.set(kind, null))
+      .finally(() => this.lineLoading.delete(kind))
+  }
+
+  /**
+   * 보스 대사 — 웅장하게 가공해서 (2026-09-24 사용자: "여자 음성에 너무 단조로워 임팩트가 없다 — 에코를 많이 넣거나 음을 내려
+   * 울리면서 웅장하게"). 브라우저 음성 합성은 가공할 수 없어 대사 넷을 소리 파일로 싣는다(tools/bossvoice.ps1).
+   *   재생을 늦춰 음을 내린다(군주 0.66배 …) → 살짝 어긋난 둘째 목소리로 두껍게 → 거친 맛(tanh) → 저음 올리고 고음 깎기 →
+   *   마른 소리 + 메아리(되먹임 딜레이 · 되먹일수록 어두워진다) + 긴 잔향(3.2초) · 군주 · 관리인은 낮은 울렁임(링 변조)과
+   *   한 옥타브 아래 목소리를 더 깐다. 영상(tools/trailer.js)도 이 함수를 그대로 쓴다.
+   * 소리 파일이 아직 없으면 false (부른 쪽이 음성 합성으로 대신한다)
+   */
+  bossLine(kind: number): boolean {
+    if (this.mutedFlag || !this.bossVoiceOn() || !this.ctx) return false
+    const buf = this.lineBufs.get(kind)
+    if (!buf) return false
+    const ctx = this.ctx
+    const id = MONSTER_LIST[kind]?.id
+    const P =
+      id === 'lord' ? { rate: 0.66, echo: 0.38, fb: 0.5, ring: 32, sub: true, low: 9, vol: 0.5 }
+      : id === 'warden' ? { rate: 0.74, echo: 0.3, fb: 0.45, ring: 38, sub: true, low: 8, vol: 0.55 }
+      : id === 'queen' ? { rate: 0.92, echo: 0.34, fb: 0.5, ring: 0, sub: false, low: 3, vol: 0.75 }
+      : { rate: 0.8, echo: 0.26, fb: 0.42, ring: 0, sub: false, low: 7, vol: 0.6 }
+    const t0 = ctx.currentTime + 0.05
+    const len = buf.duration / P.rate
+    const parts: AudioNode[] = []
+    const mk = <T extends AudioNode>(n: T): T => (parts.push(n), n)
+    const input = mk(ctx.createGain())
+    const lowS = mk(ctx.createBiquadFilter())
+    lowS.type = 'lowshelf'
+    lowS.frequency.value = 220
+    lowS.gain.value = P.low
+    const highS = mk(ctx.createBiquadFilter())
+    highS.type = 'highshelf'
+    highS.frequency.value = 3800
+    highS.gain.value = -6
+    const shaper = mk(ctx.createWaveShaper())
+    const curve = new Float32Array(1024)
+    for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(2.4 * ((i / (curve.length - 1)) * 2 - 1))
+    shaper.curve = curve
+    shaper.oversample = '2x'
+    const out = mk(ctx.createGain())
+    out.gain.value = P.vol // 넷의 크기를 맞춘다 (낮은 목소리를 깐 군주 · 관리인이 더 크다 — 꼭짓점 0.9 안팎)
+    out.connect(this.master!)
+    input.connect(lowS)
+    lowS.connect(highS)
+    highS.connect(shaper)
+    // 마른 소리
+    const dry = mk(ctx.createGain())
+    dry.gain.value = 0.8
+    shaper.connect(dry)
+    dry.connect(out)
+    // 메아리: 되먹임 딜레이 (고리 안의 저역 통과 — 되먹일수록 어두워진다)
+    const dl = mk(ctx.createDelay(1.5))
+    dl.delayTime.value = P.echo
+    const fbLp = mk(ctx.createBiquadFilter())
+    fbLp.type = 'lowpass'
+    fbLp.frequency.value = 2200
+    const fb = mk(ctx.createGain())
+    fb.gain.value = P.fb
+    const echo = mk(ctx.createGain())
+    echo.gain.value = 0.55
+    shaper.connect(dl)
+    dl.connect(fbLp)
+    fbLp.connect(fb)
+    fb.connect(dl)
+    fbLp.connect(echo)
+    echo.connect(out)
+    // 긴 잔향
+    const conv = mk(ctx.createConvolver())
+    conv.buffer = this.reverbIr()
+    const wet = mk(ctx.createGain())
+    wet.gain.value = 0.8
+    shaper.connect(conv)
+    conv.connect(wet)
+    wet.connect(out)
+    // 목소리들: 본 목소리 · 살짝 어긋난 둘째(두껍게) · (군주 · 관리인) 한 옥타브 아래
+    const src = (rate: number, gain: number, delay: number, dest: AudioNode) => {
+      const s = ctx.createBufferSource()
+      s.buffer = buf
+      s.playbackRate.value = rate
+      const g = ctx.createGain()
+      g.gain.value = gain
+      s.connect(g)
+      g.connect(dest)
+      parts.push(s, g)
+      s.start(t0 + delay)
+      return s
+    }
+    src(P.rate, 1, 0, input)
+    src(P.rate * 1.013, 0.5, 0.022, input)
+    if (P.sub) src(P.rate * 0.5, 0.32, 0, input)
+    // 낮은 울렁임 (링 변조): 목소리에 낮은 사인을 곱한 것을 조금 섞는다
+    let osc: OscillatorNode | null = null
+    if (P.ring > 0) {
+      const rm = mk(ctx.createGain())
+      rm.gain.value = 0
+      osc = ctx.createOscillator()
+      osc.frequency.value = P.ring
+      osc.connect(rm.gain)
+      parts.push(osc)
+      const rmOut = mk(ctx.createGain())
+      rmOut.gain.value = 0.45
+      input.connect(rm)
+      rm.connect(rmOut)
+      rmOut.connect(highS)
+      osc.start(t0)
+      osc.stop(t0 + len * (P.sub ? 2 : 1) + 4)
+    }
+    // 메아리 · 잔향 꼬리까지 끝나면 끊는다 (실시간만 — 영상은 한 번 그리고 끝)
+    const offline = typeof (ctx as unknown as { startRendering?: unknown }).startRendering === 'function'
+    if (!offline) window.setTimeout(() => parts.forEach((n) => n.disconnect()), (len * (P.sub ? 2 : 1) + 5) * 1000)
+    this.intensity = 1
+    return true
+  }
+
+  /** 잔향 임펄스 3.2초 (좌우 따로 흩어지는 잡음이 점점 잦아든다 — 한 번 만들어 둔다) */
+  private reverbIr(): AudioBuffer {
+    const ctx = this.ctx!
+    if (this.verbIr && this.verbIr.sampleRate === ctx.sampleRate) return this.verbIr
+    const n = Math.floor(ctx.sampleRate * 3.2)
+    const ir = ctx.createBuffer(2, n, ctx.sampleRate)
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c)
+      for (let i = 0; i < n; i++) {
+        const t = i / ctx.sampleRate
+        d[i] = (Math.random() * 2 - 1) * Math.exp(-t / 0.85) * (t < 0.012 ? t / 0.012 : 1)
+      }
+    }
+    this.verbIr = ir
+    return ir
   }
 
   /**

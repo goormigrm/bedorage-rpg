@@ -1,6 +1,6 @@
 # 출처 (CREDITS)
 
-배도라지RPG 는 비공식 · 비상업 팬 게임입니다. 캐릭터(계란) · 배경 · 소리는 코드로 만들었고,
+배도라지RPG 는 비공식 · 비상업 팬 게임입니다. 캐릭터(계란) · 배경 · 소리는 코드로 만들었고(보스 대사만 음성 합성 — 아래),
 **괴물 모델**은 아래 작가들이 무료로 공개한 것을 줄여서 씁니다. 고마운 분들입니다.
 
 ## 괴물 모델 (CC BY 4.0 — 출처 표기)
@@ -40,6 +40,10 @@
 - This work is based on "Crawling mutated human" (https://sketchfab.com/3d-models/crawling-mutated-human-a87532a3e89947159cc1303008c06eaf) by Elisey (https://sketchfab.com/dwelfster) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "Terrifying Hooded Horror Woman" (https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd) by PurplePoint (https://sketchfab.com/tyajik) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "PBR Shadowkin Mage (Rigged)" (https://sketchfab.com/3d-models/pbr-shadowkin-mage-rigged-7aab96637055455297d158584b1602cd) by Ferocious Industries (https://sketchfab.com/ferociousindustries.matthias) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+## 보스 대사 목소리 (2026-09-24)
+
+- `public/voice/boss_*.wav` — 윈도에 들어 있는 한국어 음성 합성 **Microsoft Heami**(SAPI)로 읽힌 대사 넷(`tools/bossvoice.ps1`). 게임 안에서 음을 내리고 메아리 · 잔향을 걸어 쓴다(`audio/sfx.ts bossLine`). 사람 목소리를 녹음한 것은 없다.
 
 ## 동작 (CC0 — 표기 의무는 없지만 적어 둔다)
 

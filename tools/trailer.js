@@ -2,6 +2,7 @@
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
+//   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
 //   t.status()  → 진행 상황
 //
 // **오프라인으로 그린다**: 실시간으로 녹화하면 미리보기 창이 가려져 있을 때 페이지가 1초에 한 번꼴로만 돌아 영상이
@@ -24,6 +25,8 @@ const st = () => window.__bd.state()
 let out = null
 let g = null
 let running = false
+/** 보스 목소리 영상인가 (start({ mode: 'ult' })) */
+let ULT = false
 let log = []
 let vt = 0 // 가상 시각 (ms)
 let vid = 0 // 영상에 넣은 장 수
@@ -417,6 +420,74 @@ function finale() {
   })
 }
 
+/** 보스 즉사기를 지금 쓰게 한다 (대사 · 화면 경고 — 봇은 피한다) */
+function bossUlt(kind) {
+  const b = st().monsters.find((m) => m.kind === kind && m.hp > 0)
+  if (!b) return
+  b.kcd = 0
+  b.scd = 0
+  b.st = 1
+  b.mode = 0
+  b.pat = -1
+  b.target = 0
+  b.los = 1
+}
+
+/**
+ * 보스 목소리 영상 (2026-09-24 사용자: "TTS 는 트레일러에 담지 말고 별도의 동영상으로 4개의 보스에 대해서 모두"):
+ * 보스 방 넷을 차례로 — 들어서서 보스를 깨우고 곧장 즉사기(대사 말풍선 · 붉은 경고 · 대사 목소리) → 파티가 피한다 → 다음 보스.
+ * 목소리는 renderAudio 가 즉사기 순간(bossUlt 단서)에 WAV 로 섞는다
+ */
+function ultScenes() {
+  const A = []
+  let t = 0
+  const at = (dt, fn) => {
+    t += dt
+    A.push({ t, fn })
+  }
+  const BOSSES = [
+    [9, 3, '1막 도살자', '도살의 시간 — 멀리 달아나라'],
+    [18, 8, '2막 거미 여왕', '죽음의 거미줄 — 여왕 곁으로'],
+    [27, 12, '3막 관리인', '처형 — 등 뒤로'],
+    [34, 15, '최종 보스 — 심연의 군주', '심연의 심판 — 빛나는 원 안으로'],
+  ]
+  at(0, () => {
+    holding = true
+    S().autopilot = true
+    cue('boss')
+  })
+  BOSSES.forEach(([area, kind, name, sub], i) => {
+    at(i === 0 ? 0.2 : 0, () => {
+      if (i > 0) fadeTo(1, 380)
+    })
+    at(i === 0 ? 0 : 0.42, () => {
+      holding = true
+      ov.cap = null
+      for (const m of st().monsters) m.hp = 0
+      warpParty(area)
+    })
+    at(1.2, () => faceBoss(kind, 170))
+    at(0.35, () => {
+      holding = false
+      fadeTo(0, 520)
+      if (i === 0) ov.title = { text: '막 보스 즉사기', sub: '보스가 대사를 외치면 — 경고를 보고 피하라', at: now() }
+      caption(name, sub)
+      zoomTo(1.0, 1.06, 6500)
+      if (kind === 15) {
+        cue('rage')
+        const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
+        if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
+      }
+    })
+    if (i === 0) A.push({ t: t + 2.2, fn: () => (ov.title.out = now()) })
+    at(i === 0 ? 2.6 : 0.8, () => bossUlt(kind))
+    at(4.6, () => {})
+  })
+  at(0.6, () => fadeTo(1, 1200))
+  at(1.4, null)
+  return A.sort((a, b) => a.t - b.t)
+}
+
 // ---------- 장면 (게임 시각 초 — 준비 중(hold)에는 게임은 흐르고 영상은 멈춘다) ----------
 function scenes() {
   const A = []
@@ -625,7 +696,7 @@ async function renderAudio(durSec) {
   const d = noise.getChannelData(0)
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
   const sx = Object.assign(Object.create(Object.getPrototypeOf(live)), live)
-  Object.assign(sx, { ctx: proxy, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0 })
+  Object.assign(sx, { ctx: proxy, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {} })
 
   // 배경음: 단서 사이마다 이어서 깐다
   const segs = music.map((m, i) => ({ ...m, to: music[i + 1]?.t ?? durSec }))
@@ -653,6 +724,27 @@ async function renderAudio(durSec) {
     }
   }
   performance.now = pn
+  // 보스 목소리 영상: 즉사기 순간에 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
+  // 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1). 게임의 브라우저 음성 합성은 녹음할 수 없다
+  if (ULT) {
+    let n = 0
+    for (const k of [3, 8, 12, 15]) {
+      try {
+        const res = await fetch(`/bedorage-rpg/voice/boss_${k}.wav?${Date.now()}`)
+        if (res.ok) sx.lineBufs.set(k, await off.decodeAudioData(await res.arrayBuffer()))
+      } catch (e) {
+        log.push(`목소리 ${k} ` + e)
+      }
+    }
+    for (const c of sfxCues) {
+      for (const e of c.ev ?? []) {
+        if (e.type !== 'bossUlt') continue
+        fakeT = c.t + 0.1
+        if (sx.bossLine(e.kind)) n++
+      }
+    }
+    log.push(`보스 목소리 ${n}번 (소리 파일 ${sx.lineBufs.size}개)`)
+  }
   // 끝에서 옅어진다
   master.gain.setValueAtTime(0.8, Math.max(0, durSec - 1.8))
   master.gain.linearRampToValueAtTime(0, durSec)
@@ -828,12 +920,15 @@ export async function start(opts = {}) {
   //  trailer_hq.webm — 고화질: 1080 · 가변 16 Mbps · 키 2초 (크기는 상관없다)
   // 같은 장을 인코더 넷에 넣는다 — 게임을 한 번만 돌린다. 소리는 한 번 만들어 모두에 붙인다
   const LOW_MAX = 38_000_000
+  // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
+  ULT = opts.mode === 'ult'
+  const BASE = ULT ? 'boss_voice' : 'trailer'
   const encs = [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
-    { name: 'trailer', w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
-    { name: 'trailer', w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
-    { name: 'trailer', w: 1280, h: 720, bitrate: 1_500_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
-    { name: 'trailer_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 16_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+    { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: BASE, w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: BASE, w: 1280, h: 720, bitrate: 1_500_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    { name: BASE + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 16_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
   ]
   // 720 후보에 넣을 작은 장
   const small = document.createElement('canvas')
@@ -883,7 +978,10 @@ export async function start(opts = {}) {
   // 여는 장면: 캐릭터 고르는 화면 — 로비에서 부르면 모닥불 장면을 담고 방을 만들어 판을 연다
   Object.defineProperty(window, 'devicePixelRatio', { get: () => 1, configurable: true })
   localStorage.setItem('brpg.hud', 'small')
-  if (!S() && (await lobbyPhase(ve))) await startGameFromLobby()
+  if (!S()) {
+    if (ULT) await startGameFromLobby()
+    else if (await lobbyPhase(ve)) await startGameFromLobby()
+  }
   if (!S()) {
     log.push('판이 없다 — 로비나 판 안에서 부를 것')
     running = false
@@ -933,7 +1031,7 @@ export async function start(opts = {}) {
   Object.assign(ov, { title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
-  const acts = scenes()
+  const acts = ULT ? ultScenes() : scenes()
   let ai = 0
   // WebGL 컨텍스트를 잃으면(가려진 창 · GPU 메모리) 그동안은 게임도 녹화도 멈추고 되살아나길 기다린다 — 안 그러면 까만 장면이 들어간다
   const glc = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)[0]
