@@ -94,6 +94,12 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
   const area = (map.w - 2) * (map.h - 2)
   const g = def.gen
   const k = area / 1064 // 40x30 기준 1
+  // 보스 방: 가운데 둥근 결투장 하나뿐 — 나머지는 벽 · 상자 없는 빈 바닥 (2026-09-24 사용자: "보스 맵에서 중앙을 제외한 모든 구역은
+  // 벽이 없도록 해서 움직임이 걸리적거리지 않게, 중앙 벽에 출입구도 여러 개로")
+  if (g.arena) {
+    carveArena(map)
+    return
+  }
   // 1) 뼈대 — 맵 성격을 정하는 부분
   if (g.style === 'rooms') {
     // 넓을수록 더 잘게 나눈다
@@ -117,44 +123,31 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
   openShortcuts(map)
   // 7) 그래도 멀리 돌아가는 구간이 남으면 곧게 이어 준다
   straightenPaths(map)
-  // 8) 보스 방: 둥근 결투장 (지름길 · 곧게 잇기가 둘레 벽을 뚫지 않게 맨 끝에)
-  if (g.arena) carveArena(map)
 }
 
 /**
  * 보스 결투장 (2026-09-23 사용자: "보스가 존재하는 방은 구조물이 보스 주변에 없어서 충분히 싸우기에 넓은 장소를"):
- * 맵 오른쪽에 둥근 방을 판다 — 안은 비어 있고(벽 · 상자 없음) 둘레는 벽, 입구는 왼쪽 가운데 한 곳(세 칸).
- * 입구에서 맵 왼쪽 끝까지 곧은 복도를 내고, 복도에서 걸어서 닿지 않게 된 바닥(둘레 바깥 귀퉁이)은 벽으로 메운다.
- * 거리는 정수 제곱으로 잰다 (브라우저마다 Math.hypot 끝자리가 달라도 모두 같은 맵)
+ * 맵 **가운데**에 둥근 방 — 안은 비어 있고 둘레는 벽(한 칸 반). 둘레 밖도 벽 · 상자가 없는 빈 바닥이다(맵 테두리만 벽).
+ * 출입구 여섯(동 · 서 · 네 대각선 — 2026-09-24 "중앙 벽에 출입구를 여러 개로"): 폭 약 5칸 — 거대한 보스(몸 반지름 2~2.3칸)도 드나든다.
+ * 거리는 정수 제곱으로 잰다 (브라우저마다 Math.hypot · sin 끝자리가 달라도 모두 같은 맵)
  */
 function carveArena(map: GameMap): void {
-  const r = Math.min(14, Math.floor((map.h - 8) / 2))
+  const cx = Math.floor(map.w / 2)
   const cy = Math.floor(map.h / 2)
-  const cx = map.w - 3 - r
+  const r = Math.max(6, Math.min(12, Math.floor((map.h - 10) / 2), Math.floor((map.w - 16) / 2)))
   const ring = (r + 1.5) * (r + 1.5)
   for (let ty = 1; ty < map.h - 1; ty++) {
     for (let tx = 1; tx < map.w - 1; tx++) {
-      const d2 = (tx - cx) * (tx - cx) + (ty - cy) * (ty - cy)
-      const i = ty * map.w + tx
-      if (d2 <= r * r) map.tiles[i] = TILE_FLOOR
-      else if (d2 <= ring) map.tiles[i] = tx < cx && Math.abs(ty - cy) <= 1 ? TILE_FLOOR : TILE_WALL
+      const dx = tx - cx
+      const dy = ty - cy
+      const d2 = dx * dx + dy * dy
+      const gate =
+        (Math.abs(dx) > Math.abs(dy) && dy * dy <= 6) || // 동 · 서 (5칸)
+        (dx * dy > 0 && (dx - dy) * (dx - dy) <= 12) || // 남동 · 북서 대각선
+        (dx * dy < 0 && (dx + dy) * (dx + dy) <= 12) // 북동 · 남서 대각선
+      map.tiles[ty * map.w + tx] = d2 > r * r && d2 <= ring && !gate ? TILE_WALL : TILE_FLOOR
     }
   }
-  for (let tx = 2; tx <= cx - r; tx++) for (let dy = -1; dy <= 1; dy++) map.tiles[(cy + dy) * map.w + tx] = TILE_FLOOR
-  const total = map.w * map.h
-  const seen = new Uint8Array(total)
-  const start = cy * map.w + 2
-  const queue = [start]
-  seen[start] = 1
-  for (let head = 0; head < queue.length; head++) {
-    const cur = queue[head]
-    for (const n of [cur - 1, cur + 1, cur - map.w, cur + map.w]) {
-      if (n < 0 || n >= total || seen[n] || map.tiles[n] !== TILE_FLOOR) continue
-      seen[n] = 1
-      queue.push(n)
-    }
-  }
-  for (let i = 0; i < total; i++) if (map.tiles[i] === TILE_FLOOR && !seen[i]) map.tiles[i] = TILE_WALL
   map.arena = { x: cx * TILE + TILE / 2, y: cy * TILE + TILE / 2, r: r * TILE }
 }
 

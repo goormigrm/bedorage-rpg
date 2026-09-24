@@ -52,7 +52,7 @@ export interface MapGen {
   maxLen: number
   /** 중앙 모래주머니 진지 (기본 true). 던전에는 없다 */
   forts?: boolean
-  /** 보스 방: 오른쪽에 둥근 결투장(안은 비어 있다) + 입구 복도 (map.ts carveArena) */
+  /** 보스 방: 가운데 둥근 결투장(안은 비어 있다 · 출입구 여섯) + 둘레 밖은 빈 바닥 — 뼈대 · 상자 설정은 쓰지 않는다 (map.ts carveArena) */
   arena?: boolean
 }
 

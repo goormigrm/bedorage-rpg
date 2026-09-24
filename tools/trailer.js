@@ -36,6 +36,8 @@ let snap = null
 const saves = []
 const now = () => vt
 const vidSec = () => vid / FPS
+/** 영상의 봇 셋 (나는 철면란) */
+const BOT_CHARS = ['chim', 'dangun', 'magic']
 /** 거대한 보스 장면은 카메라를 뒤로 (온몸이 화면에 들어오게) */
 const GIANT_ZOOM = 1.3
 
@@ -388,6 +390,8 @@ function faceBoss(kind, dist) {
   b.los = 1
   b.scd = 40
   b.kcd = 1e9
+  // 보스는 먼저 맞기 전에는 움직이지 않는다(2026-09-24) — 영상은 곧장 싸움이 되게 맞은 것으로
+  b.hitTick = s.tick
 }
 
 /** 정예 무리: 금빛 이름표 · 접두 능력 (빠름 · 폭발 · 분열 · 흡혈 · 단단함) */
@@ -462,6 +466,7 @@ function bossUlt(kind) {
   b.pat = -1
   b.target = 0
   b.los = 1
+  b.hitTick = st().tick
 }
 
 /**
@@ -908,6 +913,8 @@ async function startGameFromLobby() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   const btn = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
   window.__lobby?.selectChar?.('cheolmyeon')
+  // 파티: 나 철면란(탱커) · 딜러 침착란 · 단군란 · 힐러 매직란 (2026-09-24 사용자)
+  if (window.__lobby) window.__lobby.botChars = BOT_CHARS
   btn('게임 만들기')?.click()
   await sleep(700)
   btn('만들기')?.click()

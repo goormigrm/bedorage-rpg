@@ -403,6 +403,8 @@ describe('2막 안개 숲 (D6)', () => {
     const { s, run } = game(['chim'], 59, { area: 18 })
     const queen = s.monsters.find((m) => MONSTER_LIST[m.kind].special === 'queen')!
     expect(queen).toBeTruthy()
+    // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다 (2026-09-24) — 맞은 것으로
+    queen.hitTick = 0
     const p = s.players[0]
     const spiders0 = s.monsters.filter((m) => m.kind === 6).length
     let fan = 0

@@ -978,12 +978,19 @@ export class Sfx {
         this.vox(node, t0 + 0.02, 0.25, 120, 100, 500, 450, 0.26, 0.02, 6)
         break
       case 'necro':
-      case 'shade':
-        // 강령술사: 속삭임 + 낮은 웅얼 · 그림자: 길게 흐느끼는 울음
-        if (def.id === 'shade') this.vox(node, t0, act === 'death' ? 0.7 : 1.0, r(480, 560), r(280, 330), 900, 700, 0.22, 0.02, 4, 0.25)
-        else this.vox(node, t0, 0.55, 150, 135, 500, 600, 0.18, 0.02, 5)
-        this.noiseBurst(node, t0, def.id === 'shade' ? 0.9 : 0.55, 'bandpass', 2600, 1800, 0.16, 2.5)
+        // 강령술사: 속삭임 + 낮은 웅얼
+        this.vox(node, t0, 0.55, 150, 135, 500, 600, 0.18, 0.02, 5)
+        this.noiseBurst(node, t0, 0.55, 'bandpass', 2600, 1800, 0.16, 2.5)
         break
+      case 'shade': {
+        // 그림자: 찬 바람이 휙 스치는 소리 + 낮게 가라앉는 울림 — 목소리 없이
+        // (2026-09-24 사용자: "여자 신음 소리 같은 건 빼 줘 — 4막 그림자 미궁" — 예전의 길게 흐느끼는 울음(480→280Hz 모음)을 뺐다)
+        const len = act === 'death' ? 0.55 : act === 'attack' ? 0.4 : 0.8
+        this.noiseBurst(node, t0, len, 'lowpass', r(1100, 1400), 260, 0.26, 0.8)
+        this.noiseBurst(node, t0 + len * 0.15, len * 0.7, 'bandpass', 3200, 1400, 0.1, 3)
+        this.tone(node, t0, len * 0.9, 'sine', r(92, 104), 58, 0.14, 0.04)
+        break
+      }
       case 'spitter':
         // 산성 토사꾼: 우웩 (내려가는 음 + 꾸르륵)
         this.vox(node, t0, 0.4, 190, 95, 650, 450, 0.3, 0.05, 5)

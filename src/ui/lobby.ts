@@ -99,6 +99,8 @@ export class Lobby {
   private members: Member[] = []
   /** 호스트: 빈 자리를 봇으로 채운다 (2026-09-05). 게스트는 방 정보로 받아 안내만 본다 */
   private fillBots = false
+  /** 봇 캐릭터를 정해 둔다 (영상용 — 비어 있으면 모자란 역할부터 무작위) */
+  botChars?: CharacterId[]
   private botDiff: Difficulty = 'normal'
   private fillBotsRemote = false
   private hostId: string | null = null
@@ -1205,6 +1207,9 @@ export class Lobby {
    */
   private pickBotChar(players: Member[]): CharacterId {
     const used = new Set(players.map((p) => p.char))
+    // 영상용(tools/trailer.js — ?shot=1 의 __lobby): 정해 둔 봇 캐릭터를 차례로
+    const fixed = this.botChars?.find((id) => !used.has(id))
+    if (fixed) return fixed
     const pool = [...PLAYABLE]
     let rest = pool.filter((id) => !used.has(id))
     if (this.kind !== 'arena') {

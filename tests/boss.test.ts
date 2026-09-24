@@ -19,11 +19,13 @@ const BOSSES: [number, MonsterKindId][] = [
   [34, 'lord'],
 ]
 
-function bossGame(area: number, seed: number, chars: CharacterId[] = ['chim']) {
+/** provoked: 이미 한 대 맞은 보스로 (보스 방의 보스는 먼저 맞기 전에는 움직이지 않는다 — 2026-09-24) */
+function bossGame(area: number, seed: number, chars: CharacterId[] = ['chim'], provoked = true) {
   const map = buildAreaMap(seed, area)
   const s = createState({ area, seed, chars }, map)
   const boss = s.monsters.find((m) => MONSTER_LIST[m.kind].boss)!
   for (const m of s.monsters) if (m !== boss) m.hp = 0
+  if (provoked) boss.hitTick = 0
   const run = () => step(s, map, chars.map(() => idle()))
   return { map, s, boss, run }
 }
@@ -69,6 +71,63 @@ describe('보스 결투장', () => {
       const s2 = createState({ area, seed: 90 + area, chars: ['chim'] }, map)
       for (const m of s2.monsters) if (!MONSTER_LIST[m.kind].boss) expect(Math.hypot(m.x - a.x, m.y - a.y)).toBeGreaterThan(a.r)
       void s
+    })
+  }
+})
+
+describe('보스 방 — 빈 바닥 · 출입구 여섯 · 먼저 맞기 전에는 가만히', () => {
+  for (const [area, id] of BOSSES) {
+    const name = MONSTER_LIST.find((m) => m.id === id)!.name
+    it(`${name}: 결투장 둘레 말고는 벽이 없고 둘레에 출입구가 여섯`, () => {
+      const { map } = bossGame(area, 30 + area)
+      const a = map.arena!
+      const cx = Math.floor(a.x / TILE)
+      const cy = Math.floor(a.y / TILE)
+      const r = a.r / TILE
+      for (let ty = 1; ty < map.h - 1; ty++) {
+        for (let tx = 1; tx < map.w - 1; tx++) {
+          const d2 = (tx - cx) ** 2 + (ty - cy) ** 2
+          if (d2 <= r * r || d2 > (r + 1.5) ** 2) expect(map.tiles[ty * map.w + tx]).toBe(TILE_FLOOR)
+        }
+      }
+      // 둘레를 한 바퀴 돌며 벽이 끊긴 곳(출입구)을 센다
+      let gates = 0
+      let prev = true
+      const N = 720
+      for (let k = 0; k <= N; k++) {
+        const ang = (k / N) * Math.PI * 2
+        const tx = Math.round(cx + Math.cos(ang) * (r + 0.8))
+        const ty = Math.round(cy + Math.sin(ang) * (r + 0.8))
+        const wall = map.tiles[ty * map.w + tx] !== TILE_FLOOR
+        if (!wall && prev && k > 0) gates++
+        prev = wall
+      }
+      expect(gates).toBe(6)
+    })
+    it(`${name}: 깨어나도 먼저 맞기 전에는 제자리 — 맞으면 쫓아온다`, () => {
+      const { map, s, boss, run } = bossGame(area, 50 + area, ['chim'], false)
+      const p = s.players[0]
+      const at = nearBoss(map, boss, 260)
+      const x0 = boss.x
+      const y0 = boss.y
+      for (let t = 0; t < 60 * 25; t++) {
+        p.x = at.x
+        p.y = at.y
+        p.hp = p.maxHp
+        run()
+      }
+      expect(boss.st).not.toBe(0)
+      expect(Math.hypot(boss.x - x0, boss.y - y0)).toBeLessThan(1)
+      expect(s.zones.filter((z) => z.from === boss.id).length).toBe(0)
+      boss.hitTick = s.tick
+      for (let t = 0; t < 60 * 3; t++) {
+        p.x = at.x
+        p.y = at.y
+        p.hp = p.maxHp
+        p.invuln = 99
+        run()
+      }
+      expect(Math.hypot(boss.x - x0, boss.y - y0) > 20 || boss.st !== MS_CHASE).toBe(true)
     })
   }
 })

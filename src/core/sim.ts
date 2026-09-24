@@ -22,7 +22,7 @@ import { makeRng, rand, randInt } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
   BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
-  bodyR, GIANT_HP,
+  bodyR, GIANT_HP, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
@@ -3570,6 +3570,12 @@ function stepMonsters(state: GameState, map: GameMap): void {
     }
     if (m.st === MS_CHASE) {
       m.aim = turnToward(m.aim, face, def.guard ? Math.max(1, Math.round(TURN * GUARD.turn)) : TURN)
+      // 보스 방의 막 보스는 **먼저 맞기 전에는** 움직이지도 · 치지도 · 패턴을 쓰지도 않는다 — 깨어나 바라보기만 (2026-09-24 사용자:
+      // "보스가 먼저 다가와 입구를 막으니 들어가지도 무빙도 못 하고 즉사기를 맞고 죽어야 한다"). 즉사기 시계(kcd)도 첫 패턴 때부터 센다
+      if (isGiant(m) && m.hitTick < 0) {
+        m.moving = 0
+        continue
+      }
       // 막 보스: 정해진 차례로 패턴 (monsters.ts BOSS_PLANS)
       if (def.boss && bossThink(state, map, m, def, tp, d)) continue
       // 그림자: 떨어진 표적의 등 뒤로 순간이동 (mode 2 — 나타날 자리는 예고 때 정한다: 표적 자리에서 등 쪽으로 밀어 벽을 피한다)
