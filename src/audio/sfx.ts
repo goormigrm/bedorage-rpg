@@ -45,6 +45,12 @@ const OTHER_PER_SEC = 36
 const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
 const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop'])
+/**
+ * 괴물 소리(깸 · 공격 준비 · 쓰러짐)는 남의 소리 몫(토큰)을 쓰지 않는다 — 제 되풀이 제한(아무 괴물 90ms · 같은 종류 0.35초 · 쓰러지는 질척임 50ms)만 거친다.
+ * 2026-09-24 사용자: "몬스터 잡는데 몬스터 소리는 안 들린다" — 봇 총소리 · 맞는 소리가 초당 36개 몫을 다 써서, 괴물 단서 922개 중 66개만 소리가 났다.
+ * 동시 음원은 조금 더(+16) 허락한다
+ */
+const MONSTER_VOICE = new Set(['mdeath', 'wake', 'windup'])
 
 function spatial(wdx: number, wdy: number): Spatial {
   if (!Number.isFinite(wdx) || !Number.isFinite(wdy)) return { gain: 1, pan: 0, far: 0 }
@@ -320,7 +326,15 @@ export class Sfx {
     for (const e of events) {
       // 남의 소리는 한 프레임 6개 · 초당 36개 · 동시에 56개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
       const mineEv = 'p' in e && e.p === localPlayer
-      if (!mineEv && !KEEP.has(e.type)) {
+      if (!mineEv && MONSTER_VOICE.has(e.type)) {
+        const ex = (e as { x?: number }).x
+        const ey = (e as { y?: number }).y
+        const far = typeof ex === 'number' && typeof ey === 'number' && Number.isFinite(ex) && Number.isFinite(ey) && Math.hypot(ex - lx, ey - ly) > FAR_CULL
+        if (far || this.live > MAX_LIVE + 16) {
+          this.dropped++
+          continue
+        }
+      } else if (!mineEv && !KEEP.has(e.type)) {
         const ex = (e as { x?: number }).x
         const ey = (e as { y?: number }).y
         const far = typeof ex === 'number' && typeof ey === 'number' && Number.isFinite(ex) && Number.isFinite(ey) && Math.hypot(ex - lx, ey - ly) > FAR_CULL
@@ -422,7 +436,7 @@ export class Sfx {
         }
         case 'mdeath': {
           const now = performance.now()
-          if (now - this.lastMDeath > 30) {
+          if (now - this.lastMDeath > 50) {
             this.lastMDeath = now
             this.squelch(sp(e.x, e.y))
           }
@@ -913,27 +927,35 @@ export class Sfx {
       if (act !== 'ult' && act !== 'death' && now - this.lastBossRoar < 2200) return
       this.lastBossRoar = now
     } else {
-      if (now - this.lastVoice < 90) return
-      if (now - (this.kindVoice.get(kind) ?? -1e9) < (act === 'idle' ? 700 : 350)) return
+      // 90 → 70ms · 같은 종류 350 → 250ms (2026-09-24 — 떼로 몰리면 괴물 소리가 초당 셋 남짓이라 총소리에 묻혔다)
+      if (now - this.lastVoice < 70) return
+      if (now - (this.kindVoice.get(kind) ?? -1e9) < (act === 'idle' ? 700 : 250)) return
       this.lastVoice = now
       this.kindVoice.set(kind, now)
     }
-    const { node, t0 } = this.bus(s, vol)
+    // 괴물 소리를 1.5배(+3.5dB) — 봇 총소리 · 타격음 사이에서도 들리게 (보스는 그대로)
+    const { node, t0 } = this.bus(s, def.boss ? vol : vol * 1.5)
     const r = (a: number, b: number) => a + Math.random() * (b - a)
     const big = act === 'wake' || act === 'ult'
     switch (def.id) {
-      case 'ghoul':
-        // 좀비: 목구멍으로 그르릉 — 낮은 톱니 + "우어" 모음이 천천히 바뀐다
-        this.vox(node, t0, act === 'death' ? 0.45 : r(0.55, 0.95), r(80, 115), r(70, 95), 420, 650, big ? 0.5 : 0.36, 0.05, 6)
-        this.noiseBurst(node, t0, 0.35, 'lowpass', 700, 260, 0.12, 0.8)
+      case 'ghoul': {
+        // 좀비: 목이 떨리는 그르릉 (growl — 예전 낮은 톱니 하나는 "방귀 새는 소리 같다"는 말을 들었다, 2026-09-24)
+        const len = act === 'death' ? 0.7 : act === 'attack' ? 0.6 : act === 'idle' ? r(0.9, 1.3) : r(1.1, 1.5)
+        this.throatGrowl(node, t0, len, act === 'attack' ? r(108, 126) : r(82, 98), big ? 0.6 : act === 'idle' ? 0.36 : 0.48, {
+          fry: r(26, 36),
+          breath: act === 'attack' ? 0.75 : 0.5,
+          fall: act === 'death' ? 0.6 : 0.85,
+        })
         break
+      }
       case 'archer':
         // 해골: 뼈가 달그락 (쓰러지면 와르르)
         this.clatter(node, t0, act === 'death' ? 9 : act === 'attack' ? 3 : 4, 0.3)
         break
       case 'bloater':
-        // 부푼 시체: 뱃속이 꾸르륵
-        this.gurgle(node, t0, act === 'death' ? 0.7 : 0.45, 0.32)
+        // 부푼 시체: 젖은 그르릉 + 목에서 꾸르륵 (낮은 거품 소리만 내면 방귀처럼 들렸다)
+        this.throatGrowl(node, t0, act === 'death' ? 0.8 : r(0.8, 1.1), r(74, 86), 0.42, { fry: r(20, 26), breath: 0.35, f1: [430, 520], f2: [950, 780], fall: 0.8 })
+        this.gurgle(node, t0 + 0.15, act === 'death' ? 0.5 : 0.3, 0.12)
         break
       case 'goblin':
         // 보물 고블린: 킥킥 (높은 소리가 내려간다)
@@ -950,8 +972,7 @@ export class Sfx {
           this.tone(node, t0 + 0.16, 0.12, 'triangle', 820, 520, 0.2, 0.003)
         } else {
           // 으르렁 (이를 드러낸 떨림)
-          this.vox(node, t0, act === 'idle' ? 0.35 : 0.45, r(120, 150), r(105, 125), 800, 600, 0.34, 0.12, 5)
-          this.noiseBurst(node, t0, 0.3, 'bandpass', 1100, 700, 0.18, 1.5)
+          this.throatGrowl(node, t0, act === 'idle' ? 0.6 : 0.7, r(125, 145), 0.42, { fry: r(42, 52), breath: 0.7, f1: [760, 680], f2: [1600, 1350], fall: 0.9 })
         }
         break
       case 'spider':
@@ -992,9 +1013,9 @@ export class Sfx {
         break
       }
       case 'spitter':
-        // 산성 토사꾼: 우웩 (내려가는 음 + 꾸르륵)
-        this.vox(node, t0, 0.4, 190, 95, 650, 450, 0.3, 0.05, 5)
-        this.gurgle(node, t0 + 0.1, 0.3, 0.2)
+        // 산성 토사꾼: 우웩 — 치솟았다 꺾이는 거친 목소리 + 목에서 꾸르륵
+        this.throatGrowl(node, t0, 0.55, r(150, 170), 0.44, { fry: r(38, 46), breath: 0.8, f1: [700, 520], f2: [1500, 1000], fall: 0.55 })
+        this.gurgle(node, t0 + 0.2, 0.25, 0.1)
         break
       case 'demon':
         // 포격 악마: 불길이 치솟는 포효 (낮은 톱니 + 타닥 불똥)
@@ -1075,6 +1096,101 @@ export class Sfx {
   }
 
   /** 꾸르륵: 낮은 음이 이리저리 튀는 거품 몇 개 */
+  /**
+   * 그르릉 (좀비 · 늑대 으르렁 · 토하는 소리): 성대 떨림(목 튀김 — 소리를 초당 fry 번 끊었다 이었다) · 거친 톱니 둘 · 숨 잡음 →
+   * 살짝 찌그러뜨려(tanh) "우어" 두 모음 울림(F1 · F2)으로. 110Hz 아래는 깎는다 — 낮은 톱니만 내면 방귀 소리처럼 들렸다(2026-09-24 사용자)
+   */
+  private throatGrowl(bus: AudioNode, t0: number, dur: number, f0: number, peak: number, o: { fry?: number; breath?: number; f1?: [number, number]; f2?: [number, number]; fall?: number } = {}): void {
+    const ctx = this.ctx!
+    const end = t0 + dur + 0.05
+    const fall = o.fall ?? 0.85
+    const [f1a, f1b] = o.f1 ?? [520, 640]
+    const [f2a, f2b] = o.f2 ?? [1150, 900]
+    // 소리 몸: 살짝 어긋난 톱니 둘 (거칠게)
+    const a = ctx.createOscillator()
+    a.type = 'sawtooth'
+    a.frequency.setValueAtTime(f0, t0)
+    a.frequency.linearRampToValueAtTime(f0 * fall, t0 + dur)
+    const b = ctx.createOscillator()
+    b.type = 'sawtooth'
+    b.frequency.setValueAtTime(f0 * 1.013, t0)
+    b.frequency.linearRampToValueAtTime(f0 * fall * 0.99, t0 + dur)
+    // 숨 잡음
+    const n = ctx.createBufferSource()
+    n.buffer = this.noise
+    n.loop = true
+    const nbp = ctx.createBiquadFilter()
+    nbp.type = 'bandpass'
+    nbp.frequency.value = 1400
+    nbp.Q.value = 0.8
+    const ng = ctx.createGain()
+    ng.gain.value = o.breath ?? 0.5
+    n.connect(nbp)
+    nbp.connect(ng)
+    const mix = ctx.createGain()
+    mix.gain.value = 0.5
+    a.connect(mix)
+    b.connect(mix)
+    ng.connect(mix)
+    // 찌그러뜨리기
+    const sh = ctx.createWaveShaper()
+    sh.curve = this.growlCurve()
+    mix.connect(sh)
+    // 목 떨림: 네모파로 소리를 끊었다 이었다 (초당 fry 번 — 조금씩 흔들려 기계 같지 않게)
+    const am = ctx.createGain()
+    am.gain.value = 0.5
+    const fry = ctx.createOscillator()
+    fry.type = 'square'
+    const fr = o.fry ?? 32
+    fry.frequency.setValueAtTime(fr, t0)
+    fry.frequency.linearRampToValueAtTime(fr * (0.8 + Math.random() * 0.4), t0 + dur)
+    const fd = ctx.createGain()
+    fd.gain.value = 0.45
+    fry.connect(fd)
+    fd.connect(am.gain)
+    sh.connect(am)
+    // 낮은 쪽을 깎고 두 모음 울림
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 110
+    am.connect(hp)
+    const b1 = ctx.createBiquadFilter()
+    b1.type = 'bandpass'
+    b1.Q.value = 4
+    b1.frequency.setValueAtTime(f1a, t0)
+    b1.frequency.linearRampToValueAtTime(f1b, t0 + dur)
+    const b2 = ctx.createBiquadFilter()
+    b2.type = 'bandpass'
+    b2.Q.value = 5
+    b2.frequency.setValueAtTime(f2a, t0)
+    b2.frequency.linearRampToValueAtTime(f2b, t0 + dur)
+    const env = ctx.createGain()
+    const atk = Math.min(0.14, dur * 0.3)
+    env.gain.setValueAtTime(0.0001, t0)
+    env.gain.linearRampToValueAtTime(peak * 1.7, t0 + atk)
+    env.gain.setValueAtTime(peak * 1.7, t0 + dur * 0.55)
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    hp.connect(b1)
+    hp.connect(b2)
+    b1.connect(env)
+    b2.connect(env)
+    env.connect(bus)
+    this.finish(a, [b, n, nbp, ng, mix, sh, am, fry, fd, hp, b1, b2, env], bus, true)
+    for (const s of [a, b, n, fry]) {
+      s.start(t0)
+      s.stop(end)
+    }
+  }
+
+  private growlC: Float32Array<ArrayBuffer> | null = null
+  private growlCurve(): Float32Array<ArrayBuffer> {
+    if (this.growlC) return this.growlC
+    const c = new Float32Array(512)
+    for (let i = 0; i < c.length; i++) c[i] = Math.tanh(3 * ((i / (c.length - 1)) * 2 - 1))
+    this.growlC = c
+    return c
+  }
+
   private gurgle(bus: AudioNode, t0: number, dur: number, peak: number): void {
     const n = Math.max(3, Math.round(dur / 0.08))
     for (let i = 0; i < n; i++) {
@@ -1268,12 +1384,10 @@ export class Sfx {
     this.tone(b.node, b.t0, 0.22, 'sawtooth', 130, 55, 0.22, 0.004)
   }
 
-  /** 으르렁: 톱니파 두 겹을 살짝 어긋나게 + 흔들림 */
+  /** 으르렁 (종류를 모를 때): 목 떨리는 그르릉 — 예전 낮은 톱니 둘은 방귀 소리처럼 들렸다 */
   private growl(s: Spatial, vol: number): void {
     const b = this.bus(s, vol * 0.5)
-    this.tone(b.node, b.t0, 0.45, 'sawtooth', 78, 62, 0.35, 0.05)
-    this.tone(b.node, b.t0, 0.45, 'sawtooth', 83, 60, 0.3, 0.05)
-    this.noiseBurst(b.node, b.t0, 0.4, 'bandpass', 420, 260, 0.25, 3)
+    this.throatGrowl(b.node, b.t0, 0.55, 88 + Math.random() * 14, 0.5, { fry: 30 + Math.random() * 8 })
   }
 
   private death(s: Spatial): void {

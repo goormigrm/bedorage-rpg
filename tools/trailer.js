@@ -738,6 +738,35 @@ async function renderAudio(durSec) {
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
   const sx = Object.assign(Object.create(Object.getPrototypeOf(live)), live)
   Object.assign(sx, { ctx: proxy, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {} })
+  // 되풀이 제한의 시각(last… · kindVoice · nextIdle)을 비운다 — 살아 있는 게임에서 복사한 **실제 시각**(수십만 ms)이 그대로면
+  // 가상 시각(0 부터)과 비교해 늘 "방금 냈다"가 되어 괴물 소리 · 맞는 소리 · 폭발 … 이 영상 내내 하나도 나지 않았다 (2026-09-24 사용자:
+  // "trailer_hq 에서는 왜 몬스터 잡는데 몬스터 소리가 안 들려?")
+  for (const k of Object.keys(sx)) if (/^last[A-Z]/.test(k) && k !== 'lastCountdownSec' && typeof sx[k] === 'number') sx[k] = -1e9
+  sx.kindVoice = new Map()
+  sx.nextIdle = 0
+  sx.dropped = 0
+  // 동시에 울리는 소리 수(live): 오프라인에서는 끝났다는 알림(onended)이 렌더링 때에야 와서 **줄지 않고 쌓이기만** 했다 —
+  // 56 을 넘은 뒤로는 남(봇 · 괴물)의 소리가 모두 빠졌다. 소리마다 가상 시각으로 끝(0.45초 뒤)을 적어 두고 단서마다 센다
+  const ends = []
+  const fin0 = sx.finish
+  sx.finish = function (src, chain, bus, counted) {
+    fin0.call(this, src, chain, bus, false)
+    if (counted) {
+      ends.push(fakeT + 0.45)
+      this.live = ends.length
+    }
+  }
+  // 계측: 괴물 소리가 실제로 몇 번 났나
+  let voiced = 0
+  let asked = 0
+  const voice0 = sx.voice
+  sx.voice = function (...a) {
+    asked++
+    const lv = this.lastVoice
+    const lb = this.lastBossRoar
+    voice0.apply(this, a)
+    if (this.lastVoice !== lv || this.lastBossRoar !== lb) voiced++
+  }
 
   // 배경음: 단서 사이마다 이어서 깐다
   const segs = music.map((m, i) => ({ ...m, to: music[i + 1]?.t ?? durSec }))
@@ -753,10 +782,15 @@ async function renderAudio(durSec) {
     else sx.scheduleDark(proxy)
   }
   // 효과음: 모은 이벤트를 그 시각에 (소리 되풀이 제한도 가상 시각으로)
+  // 배경음 음표는 구간 끝 시각으로 미리 깔려 끝 목록의 차례를 흐트러뜨렸다(앞이 늦은 시각이라 하나도 안 빠져 live 가 수백) — 비우고 센다
+  ends.length = 0
+  sx.live = 0
   const pn = performance.now
   for (const c of sfxCues) {
     fakeT = c.t
     performance.now = () => c.t * 1000
+    while (ends.length && ends[0] <= c.t) ends.shift()
+    sx.live = ends.length
     try {
       if (c.donate !== undefined) sx.donate(c.donate)
       else if (c.line === undefined) sx.onEvents(c.ev, c.st, c.lp)
@@ -765,6 +799,8 @@ async function renderAudio(durSec) {
     }
   }
   performance.now = pn
+  const monEv = sfxCues.reduce((n, c) => n + (c.ev ?? []).filter((e) => e.type === 'mdeath' || e.type === 'wake' || e.type === 'windup').length, 0)
+  log.push(`괴물 소리 ${voiced}번 / 부름 ${asked} (괴물 깸 · 공격 · 쓰러짐 단서 ${monEv}) · 빠진 소리 ${sx.dropped ?? 0}`)
   // 보스 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
   // 보스 목소리 영상은 즉사기 순간에, 소개 영상은 보스가 나올 때(2026-09-24 사용자: "즉사기는 쓰지 않지만 보스 나왔을 때 각 보스의
   // 대사 일부분이 들리도록" — lineCue). 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1)
@@ -1209,6 +1245,14 @@ export async function start(opts = {}) {
 }
 
 export const status = () => ({ running, vid, sec: +vidSec().toFixed(1), log })
+
+/** 확인용: 방금 뜬 영상의 소리 단서로 소리만 다시 그려 괴물 소리 계측을 본다 (영상은 다시 뜨지 않는다) */
+export async function audioCheck() {
+  const n0 = log.length
+  const dur = sfxCues.length ? sfxCues[sfxCues.length - 1].t + 2 : 5
+  const buf = await renderAudio(dur)
+  return { dur: +buf.duration.toFixed(1), log: log.slice(n0), cues: sfxCues.length }
+}
 
 /** 배경음만 그려 초마다 크기(RMS · 최고)를 잰다 — 소리를 내지 않고 섞음 비율을 맞출 때 (2026-09-24) */
 export async function musicTest(plan = [[0, 'calm'], [18, 'hot'], [30, 'boss'], [40, 'rage']], sec = 48) {

@@ -200,7 +200,8 @@ export const MONSTER_LIST: MonsterDef[] = [
     // 최종 보스 — 심연의 군주: 휘두르기. 패턴 불꽃 고리 · 불비 · 심연 광선 → 그림자 · 지옥불 — BOSS_PLANS.
     // 체력 2/3 · 1/3 에서 분노 — 그림자를 부르고, 마지막 단계는 빨라지고 더 자주 쓴다
     id: 'lord', idx: 15, name: '심연의 군주',
-    hp: 24000, speed: 2.1, r: 30,
+    // 체력 24000 → 16800 (2026-09-24 사용자: "마지막 보스 피통은 지금의 70% 정도면 된다")
+    hp: 16800, speed: 2.1, r: 30,
     attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
     shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
     knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
@@ -320,7 +321,8 @@ export const BOSS_PATS: BossPatDef[] = [
   { id: 'slaughter', name: '도살의 시간', windup: 150, kill: true, line: '신선한 고기다…!', hint: '도살자에게서 멀리 달아나라' },
   { id: 'webdoom', name: '죽음의 거미줄', windup: 150, kill: true, line: '내 곁으로 오너라, 아이들아…', hint: '여왕 곁으로 파고들어라' },
   { id: 'execute', name: '처형', windup: 150, kill: true, line: '내 앞에 선 자, 목을 내놓아라!', hint: '관리인의 등 뒤로 돌아가라' },
-  { id: 'abyss', name: '심연의 심판', windup: 160, kill: true, line: '심연이 모두를 삼키리라.', hint: '빛나는 원 안으로 들어가라' },
+  // 군주: 예고 3.7초 · 빛 원을 넓게 (2026-09-24 사용자: "즉사기를 피할 시간을 확보할 수 있게 시전을 길게, 원 범위도 조금 넓혀 난이도를 낮춰")
+  { id: 'abyss', name: '심연의 심판', windup: 220, kill: true, line: '심연이 모두를 삼키리라.', hint: '빛나는 원 안으로 들어가라' },
 ]
 export const PAT: Record<BossPatId, number> = Object.fromEntries(BOSS_PATS.map((p, i) => [p.id, i])) as Record<BossPatId, number>
 
@@ -352,7 +354,7 @@ export const BP = {
   slaughter: { r: 330 },
   webdoom: { r2: 165, r: 1600 },
   execute: { r: 1100, arc: 300 },
-  abyss: { r2: 105, r: 1800, dist: 250 },
+  abyss: { r2: 150, r: 1800, dist: 250 },
 }
 
 /** 막 보스마다 즉사기 */
