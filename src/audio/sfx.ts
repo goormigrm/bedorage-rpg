@@ -449,6 +449,16 @@ export class Sfx {
           this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 1400, 600, 0.3)
           break
         }
+        case 'bossUlt': {
+          // 막 보스 즉사기 경보: 낮은 뿔피리 둘(어긋난 음) + 떨어지는 종 — 화면 경고와 같이 (2026-09-24)
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 1.0)
+          this.tone(b.node, b.t0, 1.4, 'sawtooth', 98, 92, 0.32, 0.05)
+          this.tone(b.node, b.t0, 1.4, 'sawtooth', 104, 97, 0.26, 0.05)
+          this.tone(b.node, b.t0 + 0.05, 1.8, 'sine', 660, 330, 0.35, 0.004)
+          this.tone(b.node, b.t0 + 0.7, 1.2, 'sine', 494, 247, 0.3, 0.004)
+          this.intensity = 1
+          break
+        }
         case 'boom':
         case 'bzone': {
           // 부푼 시체 여럿이 한꺼번에 터지면 한 번의 큰 소리로 충분하다 (보스 광선 여러 갈래도 한 번)

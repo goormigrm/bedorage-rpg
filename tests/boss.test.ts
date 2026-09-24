@@ -3,10 +3,11 @@
 import { describe, expect, it } from 'vitest'
 import { Input } from '../src/core/input'
 import { GameMap, TILE, TILE_FLOOR, walkField } from '../src/core/map'
-import { BOSS_PATS, BOSS_PLANS, BOSS_SWIPE_PM, BossPatId, MONSTER_LIST, MonsterKindId } from '../src/core/monsters'
+import { BOSS_PATS, BOSS_PLANS, BOSS_SWIPE_PM, BOSS_ULT, BOSS_ULT_CD, BossPatId, MONSTER_LIST, MonsterKindId } from '../src/core/monsters'
 import { CharacterId } from '../src/core/characters'
 import { createState, step } from '../src/core/sim'
-import { GameState, MS_CHASE, MS_WINDUP, Monster, ZONE_FUSE } from '../src/core/state'
+import { GameState, MS_CHASE, MS_WINDUP, Monster, ZONE_FUSE, ZS_CONE, ZS_RING } from '../src/core/state'
+import { cosA, sinA } from '../src/core/fixedmath'
 import { areaLayout, buildAreaMap } from '../src/core/world'
 import { inZone } from '../src/core/bosszone'
 
@@ -200,4 +201,109 @@ describe('예고 범위 모양', () => {
     expect(inZone({ x: 0, y: 0, r: 200, shape: 3, a: 0, arc: 128 }, 100, 30, 0)).toBe(true)
     expect(inZone({ x: 0, y: 0, r: 200, shape: 3, a: 0, arc: 128 }, -100, 0, 0)).toBe(false)
   })
+})
+
+// 즉사기 (2026-09-24 사용자: "보스들은 모두 가끔 쓰는 패턴에 맞으면 레벨 · 탱에 상관없이 무조건 한 방에 죽는 스킬 — 쓸 때는 특정 대사 ·
+// 화면 경고" · "즉사기여도 무적 상태는 적용되게")
+describe('막 보스 즉사기', () => {
+  it('막 보스 넷 모두 즉사기 하나씩 — 대사 · 피하는 법 · 긴 예고', () => {
+    for (const [, id] of BOSSES) {
+      const ult = BOSS_ULT[id]!
+      const d = BOSS_PATS.find((p) => p.id === ult)!
+      expect(d.kill).toBe(true)
+      expect(d.line?.length).toBeGreaterThan(3)
+      expect(d.hint?.length).toBeGreaterThan(3)
+      expect(d.windup).toBeGreaterThanOrEqual(120)
+    }
+    expect(BOSS_ULT_CD.first).toBeGreaterThan(10 * 60)
+  })
+
+  for (const [area, id] of BOSSES) {
+    it(`${MONSTER_LIST.find((m) => m.id === id)!.name}: 범위 안의 탱커는 체력이 가득이어도 쓰러지고 · 무적은 버티고 · 안전한 곳은 멀쩡하다`, () => {
+      const { map, s, boss, run } = bossGame(area, 50 + area, ['cheolmyeon', 'chim', 'magic'])
+      const [tank, inv, safe] = s.players
+      boss.st = MS_CHASE
+      boss.target = 0
+      boss.kcd = 0
+      boss.scd = 0
+      boss.los = 1
+      let z: (typeof s.zones)[number] | undefined
+      let ult = false
+      for (let t = 0; t < 120 && !z; t++) {
+        for (const p of s.players) {
+          const at = nearBoss(map, boss, 140)
+          p.x = at.x
+          p.y = at.y
+        }
+        run()
+        ult ||= s.events.some((e) => e.type === 'bossUlt')
+        z = s.zones.find((q) => q.kill)
+      }
+      expect(ult).toBe(true)
+      expect(z).toBeTruthy()
+      expect(BOSS_PATS[boss.pat ?? 0].id).toBe(BOSS_ULT[id])
+      const zone = z!
+      const shape = zone.shape ?? 0
+      // 위험한 자리 · 안전한 자리 (모양마다)
+      const danger =
+        shape === ZS_RING ? { x: zone.x + (zone.r2 ?? 0) + 150, y: zone.y }
+        : shape === ZS_CONE ? { x: zone.x + cosA(zone.a ?? 0) * 200, y: zone.y + sinA(zone.a ?? 0) * 200 }
+        : { x: zone.x + 100, y: zone.y }
+      const safeAt =
+        shape === ZS_RING ? { x: zone.x, y: zone.y }
+        : shape === ZS_CONE ? { x: zone.x + cosA(((zone.a ?? 0) + 512) & 1023) * 150, y: zone.y + sinA(((zone.a ?? 0) + 512) & 1023) * 150 }
+        : { x: zone.x + zone.r + 120, y: zone.y }
+      expect(inZone(zone, danger.x, danger.y, 0)).toBe(true)
+      expect(inZone(zone, safeAt.x, safeAt.y, 20)).toBe(false)
+      let hit = false
+      const ticks = zone.t + 5
+      for (let t = 0; t < ticks; t++) {
+        tank.x = danger.x
+        tank.y = danger.y
+        tank.hp = tank.maxHp
+        tank.invuln = 0
+        tank.bossCd = 999 // 보스 공격 쿨다운도 무시한다
+        inv.x = danger.x
+        inv.y = danger.y + 20
+        inv.invuln = 99
+        safe.x = safeAt.x
+        safe.y = safeAt.y
+        safe.invuln = 0
+        safe.hp = safe.maxHp
+        if (tank.downed) break
+        run()
+        hit ||= s.events.some((e) => e.type === 'ultHit' && e.p === tank.id)
+      }
+      expect(tank.downed).toBe(true)
+      expect(hit).toBe(true)
+      expect(inv.downed).toBe(false)
+      expect(safe.downed).toBe(false)
+    })
+  }
+})
+
+// 2026-09-24 사용자: "보스는 자기가 공격하거나 스킬을 쓰려고 움직이는 게 아니면 밀려서 움직이는 일이 없게"
+describe('막 보스는 밀리지 않는다', () => {
+  for (const [area, id] of BOSSES) {
+    it(`${MONSTER_LIST.find((m) => m.id === id)!.name}: 사람이 몸으로 밀고 들어가도 보스는 그대로 · 사람이 비킨다`, () => {
+      const { s, boss, run } = bossGame(area, 30 + area)
+      const p = s.players[0]
+      // 깨어 있지만 예고 중(제자리) — 스스로는 움직이지 않는다
+      boss.st = MS_WINDUP
+      boss.t = 9999
+      boss.pat = -1
+      boss.mode = 0
+      const bx = boss.x
+      const by = boss.y
+      const r = MONSTER_LIST[boss.kind].r
+      for (let t = 0; t < 30; t++) {
+        p.x = boss.x - r * 0.5
+        p.y = boss.y
+        p.invuln = 99
+        run()
+      }
+      expect(Math.hypot(boss.x - bx, boss.y - by)).toBeLessThan(0.5)
+      expect(Math.hypot(p.x - boss.x, p.y - boss.y)).toBeGreaterThan(r * 0.5 + 1)
+    })
+  }
 })

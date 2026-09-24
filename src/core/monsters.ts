@@ -258,6 +258,7 @@ export type BossPatId =
   | 'fan' | 'leap' | 'brood' | 'venom'
   | 'sweep' | 'slam' | 'cross' | 'guards' | 'quake'
   | 'nova' | 'meteor' | 'spokes' | 'hellfire' | 'shades'
+  | 'slaughter' | 'webdoom' | 'execute' | 'abyss'
 
 export interface BossPatDef {
   id: BossPatId
@@ -265,6 +266,13 @@ export interface BossPatDef {
   name: string
   /** 예고 틱 */
   windup: number
+  /**
+   * 즉사기 (BOSS_ULT): 맞으면 레벨 · 역할 · 방어 · 피해 감소와 상관없이 쓰러진다(무적 · 구르기 무적만 막는다). line = 쓰기 시작할 때 보스가 외치는 대사,
+   * hint = 화면 가운데 경고 아래 줄(어떻게 피하나)
+   */
+  kill?: boolean
+  line?: string
+  hint?: string
 }
 
 /** 패턴 목록 — 배열 순서 = Monster.pat 번호 (스냅샷에 번호로 들어간다 — 끝에만 더할 것) */
@@ -287,6 +295,12 @@ export const BOSS_PATS: BossPatDef[] = [
   { id: 'spokes', name: '심연 광선', windup: 56 },
   { id: 'hellfire', name: '지옥불', windup: 50 },
   { id: 'shades', name: '그림자 부르기', windup: 34 },
+  // 즉사기 넷 (2026-09-24 사용자: "보스들은 모두 가끔 쓰는 패턴에 맞으면 레벨 · 탱에 상관없이 무조건 한 방에 죽는 스킬 —
+  // 쓸 때는 보스가 특정 대사를 하고 화면에서도 주의하라는 게 잘 보이게"). 예고가 길다(2.5초) — 대사 · 경고를 읽고 피할 시간
+  { id: 'slaughter', name: '도살의 시간', windup: 150, kill: true, line: '신선한 고기다…!', hint: '도살자에게서 멀리 달아나라' },
+  { id: 'webdoom', name: '죽음의 거미줄', windup: 150, kill: true, line: '내 곁으로 오너라, 아이들아…', hint: '여왕 곁으로 파고들어라' },
+  { id: 'execute', name: '처형', windup: 150, kill: true, line: '내 앞에 선 자, 목을 내놓아라!', hint: '관리인의 등 뒤로 돌아가라' },
+  { id: 'abyss', name: '심연의 심판', windup: 160, kill: true, line: '심연이 모두를 삼키리라.', hint: '빛나는 원 안으로 들어가라' },
 ]
 export const PAT: Record<BossPatId, number> = Object.fromEntries(BOSS_PATS.map((p, i) => [p.id, i])) as Record<BossPatId, number>
 
@@ -314,7 +328,17 @@ export const BP = {
   meteor: { r: 70, pm: 400 },
   spokes: { n: 6, len: 600, w: 28, second: 50, pm: 450 },
   hellfire: { r: 190, outer: 520, second: 50, pm: 500 },
+  // 즉사기: 도살자 둘레 원 · 여왕 곁만 안전한 고리 · 관리인 앞 210° 부채 · 군주에게서 떨어진 빛 원 하나만 안전 (고리의 가운데)
+  slaughter: { r: 300 },
+  webdoom: { r2: 125, r: 1600 },
+  execute: { r: 1100, arc: 300 },
+  abyss: { r2: 105, r: 1800, dist: 250 },
 }
+
+/** 막 보스마다 즉사기 */
+export const BOSS_ULT: Partial<Record<MonsterKindId, BossPatId>> = { butcher: 'slaughter', queen: 'webdoom', warden: 'execute', lord: 'abyss' }
+/** 즉사기 간격 (틱): 깬 뒤 처음 · 그다음 (단계마다 — 분노하면 더 자주). 다른 패턴 차례와 따로 센다 */
+export const BOSS_ULT_CD = { first: 20 * 60, every: [40 * 60, 30 * 60, 25 * 60] }
 
 export interface BossPlan {
   /** 단계마다 패턴 차례 (stage 0 · 1 · 2) */
@@ -430,6 +454,19 @@ export const levelPow = (level: number) => Math.round(100 * (1 + LEVEL_POW * (le
 export function xpFor(m: { kind: number; elite: number; lvl: number }): number {
   const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1
   return MONSTER_LIST[m.kind].xp * k * (1 + XP_PER_MLEVEL * (Math.max(1, m.lvl) - 1))
+}
+
+/**
+ * 레벨 차이 경험치 (2026-09-24 사용자: "어느 정도 몬스터가 레벨 차이가 나면 경험치도 거의 안 받게"): 내가 괴물보다
+ * XP_GAP_FREE(5) 레벨 위까지는 그대로, 그 위로 한 레벨마다 15% 씩 줄어 12 레벨 위부터는 5% (디아블로 2 처럼).
+ * 괴물이 더 높으면 그대로 (1 배).
+ */
+export const XP_GAP_FREE = 5
+export const XP_GAP_STEP = 0.15
+export const XP_GAP_MIN = 0.05
+export function xpGapMul(playerLevel: number, monsterLevel: number): number {
+  const over = playerLevel - monsterLevel - XP_GAP_FREE
+  return over <= 0 ? 1 : Math.max(XP_GAP_MIN, 1 - XP_GAP_STEP * over)
 }
 
 /** 보스처럼 다룬다 (큰 체력 막대 · 쓰러뜨리면 원정 완료) */

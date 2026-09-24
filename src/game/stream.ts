@@ -197,10 +197,11 @@ class StreamHub {
   private samples = ['ㅋㅋㅋㅋㅋ', '뒤에 뒤에!!', '철면님 그거 아니에요', '보스 언제 나옴?', '와 방금 컨트롤 미쳤다', '살려주세요ㅠㅠ', '가즈아아아', '이거 무슨 게임이에요?', '방금 그거 맞음?', '후원 한 번 가겠습니다']
   private nicks = ['배도라지팬', '침착한시청자', '고기바이올린', '철면수심짱', '지나가던계란', '구울사냥꾼']
 
-  fakeChat(): void {
+  /** test = 설정 창의 채팅 시험 (소개 영상은 false — "채팅 시험" 안내가 화면에 뜨지 않게) */
+  fakeChat(test = true): void {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    this.chat({ nick: r(this.nicks), text: r(this.samples), test: true })
+    this.chat({ nick: r(this.nicks), text: r(this.samples), test })
   }
 
   /** 응원 시험: 그 단계 금액 + "!응원" */

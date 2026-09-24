@@ -103,6 +103,8 @@ interface Anim {
   unique?: boolean
   /** 응원 아군 (초록으로 빛난다 — renderer3d allyLook) */
   ally?: boolean
+  /** 막 보스 — 맞아도 그림이 밀려 보이지 않는다 (보스는 밀리지 않는다 — 2026-09-24) */
+  boss?: boolean
 }
 
 interface Part {
@@ -1042,6 +1044,7 @@ export class MonsterView {
     v.flash = 1
     v.crit = crit
     v.squashV += crit ? 7 : 4
+    if (v.boss) return
     const push = crit ? 0.3 : 0.14
     v.kx += dx * push
     v.kz += dz * push
@@ -1124,6 +1127,7 @@ export class MonsterView {
       v.elite = m.elite > 0
       v.unique = (m.elite & 64) !== 0
       v.ally = (m as { ally?: number }).ally === 1
+      v.boss = !!def.boss
       this.want(m.kind)
       if (hidden(m)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)

@@ -1,7 +1,7 @@
 // 난이도 (D7 — GUIDE 5장): 보통 · 악몽 · 지옥. 같은 세계, 지역 레벨 +10/+20 · 체력 · 정예 능력 · 전리품 · 난이도별 퀘스트 · 열림 조건.
 import { describe, expect, it } from 'vitest'
 import { emptySheet, sanitizeSheet } from '../src/core/items'
-import { EA_UNIQUE, ELITE_AFFIXES, TIERS, levelPow, tierOf } from '../src/core/monsters'
+import { EA_UNIQUE, ELITE_AFFIXES, TIERS, levelPow, tierOf, xpGapMul } from '../src/core/monsters'
 import { createState } from '../src/core/sim'
 import { ACTS, QUESTS, actBossQuest, areaLevel, buildAreaMap, tierOpen, tierQuests } from '../src/core/world'
 
@@ -14,10 +14,10 @@ describe('난이도', () => {
     const hp = [0, 1, 2].map((tier) => {
       const s = createState({ seed, chars: ['chim'], area: 4, tier }, map)
       expect(s.tier).toBe(tier)
-      expect(s.monsters.every((m) => m.lvl === areaLevel(4, 1, tier))).toBe(true)
+      expect(s.monsters.every((m) => m.lvl === areaLevel(4, tier))).toBe(true)
       return s.monsters.reduce((a, m) => a + m.maxHp, 0)
     })
-    expect(areaLevel(4, 1, 1)).toBe(areaLevel(4, 1, 0) + TIERS[1].lvl)
+    expect(areaLevel(4, 1)).toBe(areaLevel(4, 0) + TIERS[1].lvl)
     expect(hp[1]).toBeGreaterThan(hp[0] * 1.5)
     expect(hp[2]).toBeGreaterThan(hp[1] * 1.3)
   })
@@ -29,9 +29,9 @@ describe('난이도', () => {
       const ms = createState({ seed, chars: ['chim'], area: 4, tier }, map).monsters.filter((m) => !m.elite)
       return ms.reduce((a, m) => a + m.pow, 0) / ms.length
     }
-    const lv = areaLevel(4, 1, 0)
+    const lv = areaLevel(4, 0)
     expect(avgPow(0)).toBeCloseTo(Math.round(levelPow(lv) * 0.75), 0)
-    expect(avgPow(1)).toBeCloseTo(levelPow(areaLevel(4, 1, 1)), 0)
+    expect(avgPow(1)).toBeCloseTo(levelPow(areaLevel(4, 1)), 0)
     expect(TIERS[0].pow).toBeLessThan(TIERS[1].pow)
   })
 
@@ -59,5 +59,29 @@ describe('난이도', () => {
     // 세이브 검사를 지나도 남는다
     const back = sanitizeSheet(JSON.parse(JSON.stringify(sh)))
     expect(back.tq?.[1]?.[last]).toBe(2)
+  })
+})
+
+// 2026-09-24 사용자: "30 레벨인데 1 레벨 던전으로 갔는데 피가 많이 닳는다 · 레벨 차이가 나면 경험치도 거의 안 받게"
+describe('지역 레벨 고정 · 레벨 차이 경험치', () => {
+  it('높은 레벨이 낮은 지역에 가도 괴물은 지역 레벨 그대로 (파티 레벨을 따라 오르지 않는다)', () => {
+    const seed = 94
+    const map = buildAreaMap(seed, 1)
+    const hi = { ...emptySheet(), level: 30 }
+    const s = createState({ seed, chars: ['chim', 'cheolmyeon'], area: 1, sheets: [hi, hi] }, map)
+    expect(s.players[0].level).toBe(30)
+    expect(s.monsters.length).toBeGreaterThan(0)
+    expect(s.monsters.every((m) => m.lvl === areaLevel(1, 0))).toBe(true)
+    expect(areaLevel(1, 0)).toBe(1)
+  })
+
+  it('괴물보다 5 레벨 위까지는 그대로 · 그 위로 한 레벨마다 15% 씩 줄어 12 위부터 5%', () => {
+    expect(xpGapMul(10, 10)).toBe(1)
+    expect(xpGapMul(5, 20)).toBe(1)
+    expect(xpGapMul(15, 10)).toBe(1)
+    expect(xpGapMul(16, 10)).toBeCloseTo(0.85)
+    expect(xpGapMul(20, 10)).toBeCloseTo(0.25)
+    expect(xpGapMul(22, 10)).toBeCloseTo(0.05)
+    expect(xpGapMul(30, 1)).toBeCloseTo(0.05)
   })
 })

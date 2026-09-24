@@ -247,9 +247,13 @@ export function wpBit(area: number): number {
   return i < 0 ? 0 : 1 << i
 }
 
-/** 이 지역의 몬스터 레벨: 지역 레벨 (파티가 훨씬 높으면 (파티 − 3) 까지 따라 올라온다 — 다시 와도 너무 쉽지 않게) */
-export function areaLevel(area: number, partyLevel: number, tier = 0): number {
-  return Math.max(areaDef(area).level + tierOf(tier).lvl, partyLevel - 3)
+/**
+ * 이 지역의 몬스터 레벨 = **지역 레벨 고정** (+ 난이도). 아이템 레벨도 이것 (GUIDE 5장 — 디아블로 2).
+ * 예전(~v0.53.0)에는 파티가 훨씬 높으면 (파티 평균 − 3) 까지 따라 올라왔다 → 2026-09-24 사용자: "30 레벨인데 1 레벨 던전으로
+ * 갔는데 피가 많이 닳는다" (1 레벨 들판의 괴물이 27 레벨이었다). 이제 낮은 곳은 쉽고, 대신 경험치가 거의 없다(monsters.ts xpGapMul).
+ */
+export function areaLevel(area: number, tier = 0): number {
+  return areaDef(area).level + tierOf(tier).lvl
 }
 
 /** 지역 맵의 시드: 게임마다 다른 세계, 같은 게임이면 모든 브라우저에서 같은 맵 */

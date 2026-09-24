@@ -65,6 +65,11 @@ export class LocalInput {
     if (this.cmds.length < 8) this.cmds.push({ cmd, arg })
   }
 
+  /** 대기열의 명령 하나 (자동 조종 — 봇이 움직여도 후원 · 가방 명령은 판에 들어가야 한다) */
+  takeCmd(): { cmd: number; arg: number } | undefined {
+    return this.cmds.shift()
+  }
+
   attach(stage: HTMLElement, touch: TouchControls | null = null): void {
     this.touch = touch
     const onKey = (e: KeyboardEvent, down: boolean) => {

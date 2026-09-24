@@ -21,7 +21,7 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
@@ -121,6 +121,14 @@ function findArea(state: GameState, id: number): AreaState | undefined {
   return state.areas.find((a) => a.id === id)
 }
 
+/** withArea 가 잠깐 가린(다른 지역에 있는) 사람들 — 파티 전체에 거는 후원 효과가 본다 (partyOf) */
+let hiddenNow: PlayerState[] = []
+
+/** p 의 파티 전체 (다른 지역에 있는 사람도 — 묶인 지역 밖이라 잠깐 left 로 가려져 있어도). 빈 자리 · 탈락은 빼고 */
+function partyOf(state: GameState, p: PlayerState): PlayerState[] {
+  return state.players.filter((q) => (!q.left || hiddenNow.includes(q)) && !q.vacant && !q.out && q.team === p.team)
+}
+
 /** step 이 도는 중인가 (도는 동안에는 지역을 하나씩 묶고, 끝나면 "기본 지역" 을 다시 묶는다) */
 let stepping = false
 
@@ -196,20 +204,17 @@ function withArea<T>(state: GameState, a: AreaState, fn: () => T): T {
     }
   }
   bind(state, a)
+  const prevHidden = hiddenNow
+  hiddenNow = hidden
   try {
     return fn()
   } finally {
+    hiddenNow = prevHidden
     // 전투 코드가 배열을 새로 만들어 끼우기도 한다(쓰러진 몬스터 걸러 내기) → 칸에 걸린 것을 도로 가져온다
     unbind(state)
     for (const p of hidden) p.left = false
     if (!stepping) bindPrimary(state)
   }
-}
-
-/** 판에 앉은 사람들의 평균 레벨 (몬스터 레벨의 바닥) */
-function partyLevel(state: GameState): number {
-  const seated = state.players.filter((p) => !p.vacant)
-  return seated.length ? Math.round(seated.reduce((a, p) => a + p.level, 0) / seated.length) : 1
 }
 
 /**
@@ -220,7 +225,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   const def = areaDef(id)
   if (def.kind === 'town') return
   const l = areaLayout(id, map)
-  const lvl = areaLevel(id, partyLevel(state), state.tier)
+  const lvl = areaLevel(id, state.tier)
   const seats = state.players.length
   // 보스 결투장에는 무리를 두지 않는다 (보스와 그 졸개만 — 2026-09-23)
   populate(state, map, areaSeed(seed, id), seats, lvl, (def.density ?? 1) * ACTS[def.act].density, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l), map.arena)
@@ -690,7 +695,7 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
   if (state.mode !== 'dungeon') return
   for (const q of state.players) {
     if (!q.alive || q.left || q.out || len(q.x - o.x, q.y - o.y) > SHARE_RANGE) continue
-    const lvl = Math.max(1, areaLevel(state.curArea, q.level, state.tier))
+    const lvl = Math.max(1, areaLevel(state.curArea, state.tier))
     // 상자는 일반·마법 · 금빛 상자는 희귀 이상 하나 확정("비워라" 던전 · 보스 방 앞의 보상) · 항아리는 드물게 하나
     const up = tierOf(state.tier).loot
     if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 'goldchest', up, 2)
@@ -1323,6 +1328,20 @@ export function joinPlayer(state: GameState, maps: MapSource, idx: number, char:
   state.events.push({ type: 'join', p: idx, char })
 }
 
+/**
+ * 영상 · 계측 도구용: 사람을 다른 지역의 자리로 곧장 옮긴다(출구를 걸어가지 않고 — 소개 영상이 보스 방마다 들른다, tools/trailer.js).
+ * step 사이에만 부른다. 여럿이 함께 쓰면 판이 어긋나므로 게임 코드에서는 쓰지 않는다
+ */
+export function warpPlayer(state: GameState, maps: MapSource, idx: number, to: number, x?: number, y?: number): void {
+  const mapOf = mapFn(maps)
+  const p = state.players[idx]
+  if (!p || p.left) return
+  const map = mapOf(to)
+  const l = areaLayout(to, map)
+  placeIn(state, map, p, to, x ?? l.spawn.x, y ?? l.spawn.y, 'wp')
+  bindPrimary(state)
+}
+
 /** 경기 도중 나간 사람 처리 (호스트가 정한 틱에 모두가 같이 호출해야 결정론이 유지된다) */
 export function dropPlayer(state: GameState, idx: number): void {
   const p = state.players[idx]
@@ -1712,20 +1731,37 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
     const m = state.monsters.find((q) => q.id === by)
     if (m && m.hp > 0 && m.elite & EA_VAMP) m.hp = Math.min(m.maxHp, m.hp + Math.round(dmg * AFFIX_TUNE.vamp))
   }
-  if (p.hp <= 0) {
-    p.hp = 0
-    p.downed = true
-    p.revive = 0
-    p.downTimer = BLEED_TICKS
-    p.ads = false
-    p.dashTimer = 0
-    p.sprinting = false
-    p.killStreak = 0
-    p.fx.fill(0)
-    p.rateMul = 1
-    state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y })
-  }
+  if (p.hp <= 0) downPlayer(state, p)
   return true
+}
+
+/** 체력 0 → 쓰러짐 (동료가 일으킨다 · 죽음 규칙은 쓰러진 채 시간이 다 됐을 때) */
+function downPlayer(state: GameState, p: PlayerState): void {
+  p.hp = 0
+  p.downed = true
+  p.revive = 0
+  p.downTimer = BLEED_TICKS
+  p.ads = false
+  p.dashTimer = 0
+  p.sprinting = false
+  p.killStreak = 0
+  p.fx.fill(0)
+  p.rateMul = 1
+  state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y })
+}
+
+/**
+ * 막 보스 즉사기에 맞았다: 레벨 · 역할 · 방어 · 피해 감소 · 켠왕 · 불굴(체력 1 로 버티기) · 보스 공격 쿨다운을 **무시**하고 쓰러진다
+ * (2026-09-24 사용자: "레벨 · 탱에 상관없이 무조건 한 방에"). 단 **무적은 그대로 막는다** — 스킬 무적 · 돌진/도약 · 구르기 무적 틱
+ * (같은 날 사용자: "즉사기여도 무적 상태는 적용되게 — 무적인데 죽는다는 건 말이 안 된다"). 피하는 길은 범위 밖 · 무적
+ */
+function killOutright(state: GameState, p: PlayerState, by: number): void {
+  if (!isActive(p) || state.phase !== 'playing') return
+  if (p.invuln > 0 || p.dashTimer > 0) return
+  p.dmgTaken += p.hp
+  state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg: p.hp })
+  state.events.push({ type: 'ultHit', p: p.id, x: p.x, y: p.y })
+  downPlayer(state, p)
 }
 
 /**
@@ -2441,7 +2477,7 @@ function stepZones(state: GameState, map: GameMap): void {
     z.t--
     if (z.t <= 0) {
       // 보스 범위(‰ · 모양) — 여기서 바로 친다
-      if (z.kind === ZONE_FUSE && z.pm) bossBlast(state, map, z)
+      if (z.kind === ZONE_FUSE && (z.pm || z.kill)) bossBlast(state, map, z)
       // 몬스터 편 폭발: 대기열에 넣으면 이번 틱 runBooms 가 터뜨린다 (by -2 = 몬스터는 안 다친다)
       else if (z.kind === ZONE_FUSE) booms.push({ x: z.x, y: z.y, r: z.r, dmg: z.dmg, by: -2 })
       continue
@@ -2829,9 +2865,14 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
   const ev = donateEvent(arg & 15)
   const seq = arg >> 4
   if (!ev || state.mode !== 'dungeon' || isTown(p.area) || !p.alive || p.out) return
+  // 사람에게 거는 효과(손 떨림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
+  // 같이 하는 사람들은 후원받지 못하니 효과는 모두에게"). 다른 지역에 있는 파티원도 받는다
+  const party = partyOf(state, p)
   const addDon = (slot: number, ticks: number) => {
-    p.don ??= new Array(DON_SLOTS).fill(0)
-    p.don[slot] = Math.min(slot === DON_SHAKE ? SHAKE_MAX : DON_MAX, p.don[slot] + ticks)
+    for (const q of party) {
+      q.don ??= new Array(DON_SLOTS).fill(0)
+      q.don[slot] = Math.min(slot === DON_SHAKE ? SHAKE_MAX : DON_MAX, q.don[slot] + ticks)
+    }
   }
   let lead: Monster | null = null
   switch (ev.key) {
@@ -2870,9 +2911,10 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
       const c = cheerEvent(ev.id)
       if (!c) break
       state.events.push({ type: 'allyfx', p: p.id, x: p.x, y: p.y, r: 12 * TILE })
+      // 공격 강화는 파티 모두 (다른 지역에 있어도) — 구슬 · 아군 괴물은 부른 사람 곁
       if (c.ticks > 0) {
-        for (const q of state.players) {
-          if (!isActive(q) || q.team !== p.team) continue
+        for (const q of party) {
+          if (!q.alive) continue
           if (c.rate > 1) buffRate(q, c.ticks, c.rate)
           if (c.pow > 1) buffPow(q, c.ticks, c.pow)
         }
@@ -2916,7 +2958,7 @@ export const ALLY_CAP = 12
 function spawnAllies(state: GameState, map: GameMap, p: PlayerState, c: CheerDef, seq: number): void {
   state.allies ??= []
   const act = areaDef(p.area).act
-  const lvl = areaLevel(p.area, partyLevel(state), state.tier)
+  const lvl = areaLevel(p.area, state.tier)
   const seats = state.players.length
   const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp
   const melee = summonPool(act).filter((k) => MONSTER_LIST[k].attack === 'melee')
@@ -3038,7 +3080,7 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   const alive = state.monsters.filter((m) => m.hp > 0 && m.sum !== undefined).length
   if (alive >= SUMMON_CAP) return null
   const act = areaDef(p.area).act
-  const lvl = areaLevel(p.area, partyLevel(state), state.tier) + (tier === SUM_BOSS ? 2 : 1)
+  const lvl = areaLevel(p.area, state.tier) + (tier === SUM_BOSS ? 2 : 1)
   const tr = tierOf(state.tier)
   const seats = state.players.length
   const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp
@@ -3144,11 +3186,12 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     if (!p.alive || p.left || p.out) continue
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
     const unique = (m.elite & EA_UNIQUE) !== 0
-    gainXp(state, p, Math.round(xpFor(m) * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
+    // 레벨 차이: 괴물보다 5 레벨 넘게 높으면 경험치가 확 준다 (xpGapMul — 낮은 곳에서 오래 잡아 올리지 못하게)
+    gainXp(state, p, Math.round(xpFor(m) * xpGapMul(p.level, m.lvl) * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
     // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 아이템 10~16%(일반·마법만) / 정예는 골드 둘 · 아이템 1~2(희귀·전설도) /
     // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상, 신화가 드물게 (items.ts DROP_TABLE).
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
-    const lvl = Math.max(1, areaLevel(state.curArea, p.level, state.tier))
+    const lvl = Math.max(1, areaLevel(state.curArea, state.tier))
     const boss = !!def.boss
     const fountain = boss || unique || m.kind === GOBLIN_KIND
     const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
@@ -3455,6 +3498,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
     }
     if (m.cd > 0) m.cd--
     if (m.scd > 0) m.scd--
+    if (m.kcd !== undefined && m.kcd > 0) m.kcd--
     // 표적: 가장 가까운 움직일 수 있는 사람. 30틱마다 다시 고른다 (쓰러지면 바로). 도발 중이면 그대로
     const tauntOk = m.taunt > 0 && m.target >= 0 && isActive(state.players[m.target])
     if (!tauntOk && (m.target < 0 || !isActive(state.players[m.target]) || (tick + m.id) % 30 === 0)) m.target = nearestActive(state, m.x, m.y, !!def.boss)
@@ -3689,6 +3733,15 @@ function bossStage(state: GameState, m: Monster, def: MonsterDef): void {
 function bossThink(state: GameState, map: GameMap, m: Monster, def: MonsterDef, tp: PlayerState, d: number): boolean {
   const plan = BOSS_PLANS[def.id]
   if (!plan || m.scd > 0 || m.los !== 1 || d > 620) return false
+  // 즉사기: 차례와 따로 센다 (처음 깨어 패턴을 쓸 때부터 BOSS_ULT_CD.first 뒤 · 그다음은 단계마다 every)
+  const ult = BOSS_ULT[def.id]
+  if (ult) {
+    if (m.kcd === undefined) m.kcd = BOSS_ULT_CD.first
+    else if (m.kcd <= 0 && bossStart(state, map, m, def, ult, tp)) {
+      m.kcd = BOSS_ULT_CD.every[Math.min(m.stage, BOSS_ULT_CD.every.length - 1)]
+      return true
+    }
+  }
   const order = plan.order[Math.min(m.stage, plan.order.length - 1)]
   for (let k = 0; k < order.length; k++) {
     if (!bossStart(state, map, m, def, order[(m.phase + k) % order.length], tp)) continue
@@ -3835,7 +3888,25 @@ function bossStart(state: GameState, map: GameMap, m: Monster, def: MonsterDef, 
     case 'shades':
       if (packAlive(state, m) >= LORD.shadeMax) return false
       break
+    // ---- 즉사기 (kill: 맞으면 무조건 쓰러진다)
+    case 'slaughter':
+      bossZone(state, m, { x: m.x, y: m.y, r: BP.slaughter.r, t: W, kill: true })
+      break
+    case 'webdoom':
+      bossZone(state, m, { x: m.x, y: m.y, shape: ZS_RING, r2: BP.webdoom.r2, r: BP.webdoom.r, t: W, kill: true })
+      break
+    case 'execute':
+      bossZone(state, m, { x: m.x, y: m.y, shape: ZS_CONE, a: aim, arc: BP.execute.arc, r: BP.execute.r, t: W, kill: true })
+      break
+    case 'abyss': {
+      // 빛 원: 군주에게서 dist 떨어진 곳 (벽을 넘지 않게) — 그 원 안만 안전
+      const a = randInt(state.rng, 0, 1024)
+      const s = moveCircle(map, m.x, m.y, BP.abyss.r2, cosA(a) * BP.abyss.dist, sinA(a) * BP.abyss.dist)
+      bossZone(state, m, { x: s.x, y: s.y, shape: ZS_RING, r2: BP.abyss.r2, r: BP.abyss.r, t: W, kill: true })
+      break
+    }
   }
+  if (BOSS_PATS[PAT[id]].kill) state.events.push({ type: 'bossUlt', m: m.id, kind: m.kind, pat: PAT[id], x: m.x, y: m.y, t: W })
   m.st = MS_WINDUP
   m.mode = 2
   m.pat = PAT[id]
@@ -3885,7 +3956,15 @@ function bossDone(state: GameState, m: Monster, def: MonsterDef, rec: number): v
 
 /** 보스 범위가 터진다: 모양 안의 사람만 (몬스터는 안 다친다). 줄(광선)은 벽을 뚫고, 나머지는 벽 뒤가 안전하다 */
 function bossBlast(state: GameState, map: GameMap, z: Zone): void {
-  state.events.push({ type: 'bzone', x: z.x, y: z.y, shape: z.shape ?? ZS_CIRCLE, r: z.r, r2: z.r2 ?? 0, a: z.a ?? 0, len: z.len ?? 0, arc: z.arc ?? 0 })
+  state.events.push({ type: 'bzone', x: z.x, y: z.y, shape: z.shape ?? ZS_CIRCLE, r: z.r, r2: z.r2 ?? 0, a: z.a ?? 0, len: z.len ?? 0, arc: z.arc ?? 0, kill: z.kill })
+  if (z.kill) {
+    for (const p of state.players) {
+      if (!isActive(p) || !inZone(z, p.x, p.y, PLAYER_RADIUS * 0.6)) continue
+      if ((z.shape ?? ZS_CIRCLE) !== ZS_LINE && rayBlocked(map, z.x, z.y, p.x, p.y) && (z.shape ?? ZS_CIRCLE) !== ZS_RING) continue
+      killOutright(state, p, z.from ?? -1)
+    }
+    return
+  }
   const puller = z.pull !== undefined ? state.monsters.find((q) => q.id === z.pull && q.hp > 0) : undefined
   for (const p of state.players) {
     if (!isActive(p) || !inZone(z, p.x, p.y, PLAYER_RADIUS * 0.6)) continue
@@ -4017,11 +4096,15 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
 function separate(state: GameState, map: GameMap, grid: Grid): void {
   const ms = state.monsters
   if (ms.length === 0) return
+  // 막 보스는 **밀리지 않는다** (2026-09-24 사용자: "보스는 상태 이상을 받지 않는다고 했는데 캐릭터가 밀면 보스가 밀린다 —
+  // 자기가 공격하거나 스킬을 쓰려고 움직이는 게 아니면 밀려서 움직이는 일이 없게"). 겹치면 상대(사람 · 졸개)가 비킨다
+  const big = (m: Monster) => !!MONSTER_LIST[m.kind].boss
   for (let i = 0; i < ms.length; i++) {
     const a = ms[i]
     if (a.hp <= 0 || a.st === MS_SLEEP) continue
     const ra = MONSTER_LIST[a.kind].r
-    grid.query(a.x - 40, a.y - 40, a.x + 40, a.y + 40, (j) => {
+    const q = big(a) ? ra + 40 : 40
+    grid.query(a.x - q, a.y - q, a.x + q, a.y + q, (j) => {
       if (j <= i) return
       const b = ms[j]
       if (b.hp <= 0) return
@@ -4035,12 +4118,18 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
       // 완전히 겹치면 id 로 정한 방향으로 민다
       const nx = d > 0.001 ? dx / d : (a.id + b.id) % 2 === 0 ? 1 : -1
       const ny = d > 0.001 ? dy / d : 0
-      const push = (rr - d) * 0.5
-      const ra2 = moveCircle(map, a.x, a.y, ra, -nx * push, -ny * push)
-      a.x = ra2.x
-      a.y = ra2.y
-      if (b.st !== MS_SLEEP) {
-        const rb2 = moveCircle(map, b.x, b.y, rb, nx * push, ny * push)
+      // 보스와 겹치면 보스는 그대로 · 상대가 다 비킨다 (둘 다 보스면 반씩)
+      const aFix = big(a) && !big(b)
+      const bFix = (big(b) && !big(a)) || b.st === MS_SLEEP
+      const pa = aFix ? 0 : bFix ? rr - d : (rr - d) * 0.5
+      const pb = bFix ? 0 : aFix ? rr - d : (rr - d) * 0.5
+      if (pa > 0) {
+        const ra2 = moveCircle(map, a.x, a.y, ra, -nx * pa, -ny * pa)
+        a.x = ra2.x
+        a.y = ra2.y
+      }
+      if (pb > 0) {
+        const rb2 = moveCircle(map, b.x, b.y, rb, nx * pb, ny * pb)
         b.x = rb2.x
         b.y = rb2.y
       }
@@ -4048,7 +4137,7 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
   }
   for (const p of state.players) {
     if (!p.alive || p.left) continue
-    grid.query(p.x - 40, p.y - 40, p.x + 40, p.y + 40, (j) => {
+    grid.query(p.x - 80, p.y - 80, p.x + 80, p.y + 80, (j) => {
       const m = ms[j]
       if (m.hp <= 0) return
       const r = MONSTER_LIST[m.kind].r
@@ -4059,6 +4148,13 @@ function separate(state: GameState, map: GameMap, grid: Grid): void {
       if (d >= rr) return
       const nx = d > 0.001 ? dx / d : 1
       const ny = d > 0.001 ? dy / d : 0
+      if (big(m)) {
+        // 보스는 그대로 — 사람이 밀려난다
+        const rp = moveCircle(map, p.x, p.y, PLAYER_RADIUS, -nx * (rr - d), -ny * (rr - d))
+        p.x = rp.x
+        p.y = rp.y
+        return
+      }
       const rm = moveCircle(map, m.x, m.y, r, nx * (rr - d), ny * (rr - d))
       m.x = rm.x
       m.y = rm.y

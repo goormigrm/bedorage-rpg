@@ -56,10 +56,11 @@ describe('정예 접두 능력', () => {
     const e1 = low.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
     expect(e1.length).toBeGreaterThan(2)
     for (const m of e1) expect(bits(m.elite)).toBe(1)
-    // 레벨 15 파티는 1막에서도 지역 레벨이 12 로 따라 올라온다 → 둘
+    // 지역 레벨은 고정 (2026-09-24 — 예전에는 레벨 15 파티면 1막에서도 12 로 따라 올라와 둘이었다) → 레벨 15 파티도 하나
     const high = createState({ area: 4, seed, chars: ['chim'], sheets: [{ ...emptySheet(), level: 15 }] }, map)
     const e2 = high.monsters.filter((m) => m.elite && !(m.elite & EA_UNIQUE))
-    for (const m of e2) expect(bits(m.elite)).toBe(2)
+    expect(e2.length).toBeGreaterThan(2)
+    for (const m of e2) expect(bits(m.elite)).toBe(1)
   })
 
   it('단단함: 같은 한 발에 받는 피해가 0.6배', () => {

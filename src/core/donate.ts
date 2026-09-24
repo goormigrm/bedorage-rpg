@@ -43,7 +43,7 @@ export const DONATE_EVENTS: DonateEvent[] = [
 export interface CheerDef extends DonateEvent {
   /** 부른 사람 둘레에 떨어뜨리는 회복 구슬 수 */
   globes: number
-  /** 같은 지역 우리 편: 공격 속도 배율 · 공격력 배율 (1 이면 없음) · 길이(틱) */
+  /** 파티 모두(다른 지역에 있어도): 공격 속도 배율 · 공격력 배율 (1 이면 없음) · 길이(틱) */
   rate: number
   pow: number
   ticks: number

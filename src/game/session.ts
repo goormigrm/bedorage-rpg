@@ -1537,8 +1537,10 @@ export class Session {
     const catchUp = () => this.joiningIn && this.lockstep !== null && this.lockstep.hasAll(this.state.tick)
     while ((this.acc >= TICK_MS || catchUp()) && steps < maxSteps) {
       const t = this.state.tick
+      // 자동 조종이어도 대기열의 명령(치지직 후원 · 가방)은 싣는다 — 전에는 봇 입력만 보내 후원이 판에 닿지 않았다(2026-09-24 소개 영상에서 확인)
+      const autoCmd = this.autopilot ? this.input.takeCmd() : undefined
       const localIn = this.autopilot
-        ? this.botFor(lp, 'normal')
+        ? { ...this.botFor(lp, 'normal'), ...(autoCmd ? { cmd: autoCmd.cmd, arg: autoCmd.arg } : {}) }
         : this.input.sample(
             this.renderer,
             me.x,

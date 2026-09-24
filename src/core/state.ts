@@ -415,12 +415,14 @@ export interface Monster {
   taunt: number
   /** 마지막으로 맞은 효과 번호 (돌진처럼 한 번만 맞아야 하는 효과) */
   tag: number
-  /** 공격력 배율 ×100 (파티 레벨로 세진다) */
+  /** 공격력 배율 ×100 (지역 레벨 · 난이도로 세진다) */
   pow: number
   /** 몬스터 레벨 (지역 레벨) — 경험치가 이것으로 오른다 */
   lvl: number
   /** 보스 특수 패턴 재사용 대기 (틱) — 보통 공격(cd)과 따로 센다 */
   scd: number
+  /** 막 보스 즉사기까지 남은 틱 (처음 깨어 패턴을 쓸 때 정한다 — monsters.ts BOSS_ULT_CD) */
+  kcd?: number
   /** 보스가 특수 패턴을 몇 번 썼나 (번갈아 쓰기 · 단계) */
   phase: number
   /** 정예 (무리의 우두머리) */
@@ -551,6 +553,8 @@ export interface Zone {
   from?: number
   /** 맞으면 느려진다(틱) */
   slow?: number
+  /** 즉사기 범위: 맞으면 무엇과도 상관없이 쓰러진다 (그리기도 검붉게 다르다) */
+  kill?: boolean
 }
 export const ZONE_SPOTLIGHT = 0
 /** 폭발 정예가 죽은 자리: t 가 0 이 되면 터진다 (몬스터 편 — 플레이어만 다친다) */
@@ -675,7 +679,11 @@ export type SimEvent =
   /** 보스가 분노했다 (단계가 올랐다 — 도살자 · 여왕 · 관리인 체력 절반, 심연의 군주 2/3 · 1/3) */
   | { type: 'bossRage'; m: number; kind: number; stage: number; x: number; y: number }
   /** 보스 범위 패턴이 터졌다 (모양 그대로 번쩍 — Zone 의 모양 칸과 같다) */
-  | { type: 'bzone'; x: number; y: number; shape: number; r: number; r2: number; a: number; len: number; arc: number }
+  | { type: 'bzone'; x: number; y: number; shape: number; r: number; r2: number; a: number; len: number; arc: number; kill?: boolean }
+  /** 막 보스가 즉사기를 쓰기 시작했다 (대사 · 화면 경고 · 경보음). t = 예고 틱 */
+  | { type: 'bossUlt'; m: number; kind: number; pat: number; x: number; y: number; t: number }
+  /** 즉사기에 맞아 쓰러졌다 */
+  | { type: 'ultHit'; p: number; x: number; y: number }
   /** 도살자 갈고리가 사람을 끌어왔다 (x, y → x2, y2) */
   | { type: 'hook'; x: number; y: number; x2: number; y2: number }
   | { type: 'drop'; x: number; y: number }

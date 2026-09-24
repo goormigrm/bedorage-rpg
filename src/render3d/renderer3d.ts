@@ -34,6 +34,7 @@ import { CharacterRig, buildCharacter, setRigOpacity, makeShield } from './chara
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView } from './monsters3d'
+import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
 
@@ -64,8 +65,6 @@ const NPC_DOT: Record<string, string> = {
 }
 
 const MINIMAP_SIZE = 190
-/** 바닥 핏자국 수 · 남는 시간(초) — 손맛 (2026-09-19) */
-const DECAL_MAX = 160
 /**
  * 이펙트 상한 · 재사용 (2026-09-23 최적화 — "4명이 해도 렉이 없게"). 전에는 고리 · 총구 섬광 구를 만들 때마다 도형 · 재질을 새로 만들고
  * **지울 때 해제하지 않아** GPU 메모리가 계속 샜다(SMG 한 사람이 초당 10개 — 세 시간이면 10만 개). 파편은 한 알이 그리기 한 번이라
@@ -76,7 +75,6 @@ const RING_MAX = 80
 const IMPACT_MAX = 80
 /** 동시에 켜 둘 점광원 (넘치면 카메라에서 먼 것부터 잠깐 끈다 — 빛 수가 늘면 셰이더를 다시 컴파일해 화면이 멈춘다) */
 const LIGHT_BUDGET = 16
-const DECAL_LIFE = 30
 const MINIMAP_PX_PER_TILE = 7
 
 /** 파편 한 알 (그리기는 인스턴스 하나로 모아서 — partMesh) */
@@ -302,7 +300,9 @@ export class Renderer3D {
    * 괴물 말풍선 (방송 채팅 · 후원 글 — 2026-09-23). 괴물 id → 누가 · 무엇을 · 언제까지 · 마지막으로 그린 자리.
    * 괴물이 죽어도 말풍선은 제 시간까지 그 자리(시체 위)에 남는다 — 사용자: "죽어도 일정 시간은 떠 있도록"
    */
-  private says = new Map<number, { nick: string; text: string; until: number; gold: boolean; x?: number; z?: number; top?: number }>()
+  private says = new Map<number, { nick: string; text: string; until: number; gold: boolean; warn?: boolean; x?: number; z?: number; top?: number }>()
+  /** 막 보스 즉사기 경고 (화면 가장자리 붉게 · 가운데 큰 글 — 예고가 끝날 때까지) */
+  private ultWarn: { name: string; hint: string; t0: number; until: number } | null = null
   /** 후원 소환 괴물의 이름표: (부른 사람, 후원 번호) → "○○님의" (세션이 넣는다 — 이름은 sim 밖) */
   private summonLabel: ((by: number, seq: number) => string | undefined) | null = null
 
@@ -348,9 +348,7 @@ export class Renderer3D {
   private prefetchedAct = -1
   private punch = 0
   /** 바닥 핏자국 (인스턴스 — 오래된 것부터 덮어쓴다) */
-  private decals!: THREE.InstancedMesh
-  private decalData: { x: number; z: number; s: number; r: number; life: number }[] = []
-  private decalNext = 0
+  private blood: BloodDecals | null = null
   /** 저격 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위) */
   private kick = 0
   private kickDir = 0
@@ -507,9 +505,9 @@ export class Renderer3D {
    * 괴물이 말한다 (방송 채팅 · 후원 글): 머리 위 말풍선에 닉네임과 글. 길면 줄인다. 글 길이만큼 3.5~7초.
    * gold = 후원 글 (금빛 테두리)
    */
-  monsterSay(id: number, nick: string, text: string, gold = false): void {
+  monsterSay(id: number, nick: string, text: string, gold = false, warn = false, ms = 0): void {
     const t = text.length > 30 ? `${text.slice(0, 29)}…` : text
-    this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + Math.min(8000, 4500 + text.length * 90), gold })
+    this.says.set(id, { nick: nick.slice(0, 12), text: t, until: performance.now() + (ms || Math.min(8000, 4500 + text.length * 90)), gold, warn })
   }
 
   /**
@@ -547,6 +545,8 @@ export class Renderer3D {
   setMap(map: GameMap): void {
     this.emotes.clear()
     this.says.clear()
+    // 핏자국은 떠나온 지역 것 — 새 지역 바닥에 남지 않게
+    this.blood?.clear()
     this.hud.clearNotices()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
     this.portalMeshes.clear()
@@ -1130,7 +1130,7 @@ export class Renderer3D {
               this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
             }
             // 바닥 핏자국: 내 치명타는 늘, 내 명중은 가끔 (쏜 방향 뒤쪽에)
-            if (mine && (head || Math.random() < 0.25)) this.addDecal(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.4 : 0.24)
+            if (mine && (head || Math.random() < 0.25)) this.addBlood(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.36 : 0.22, head ? SPLAT_SPRAY : SPLAT_DROPS, dir)
             this.spawnImpact(e.x * U, 0.8, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.2 : 1.1)
             if (head) this.spawnRing(e.x * U, e.y * U, 0.3, 1.4, 0.35, 0xffd84a)
           }
@@ -1157,7 +1157,11 @@ export class Renderer3D {
             if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
           }
           if (this.hiddenM.has(e.m)) break
-          if (e.kind !== 1) this.addDecal(e.x * U + dir.x * 0.7, e.y * U + dir.z * 0.7, rank >= 1 ? 0.85 : 0.5)
+          // 핏자국 (2026-09-24 — 동그라미 대신 미리 그린 모양 여덟 · blood.ts): 쓰러진 자리의 웅덩이 + 쏜 방향 뒤로 튄 자국
+          if (e.kind !== 1) {
+            this.addBlood(e.x * U + dir.x * 0.25, e.y * U + dir.z * 0.25, rank >= 1 ? 0.8 : 0.48, SPLAT_POOL)
+            this.addBlood(e.x * U + dir.x * 0.85, e.y * U + dir.z * 0.85, rank >= 1 ? 0.7 : 0.42, SPLAT_SPRAY, dir)
+          }
           // 검붉은 피 · 뼛조각이 튀고 바닥에 얼룩 링
           const bone = e.kind === 1
           for (let k = 0; k < 10; k++) {
@@ -1166,7 +1170,8 @@ export class Renderer3D {
             const col = bone ? (k % 2 === 0 ? 0xd9d1bb : 0x8a8270) : k % 3 === 0 ? 0x2a0808 : k % 3 === 1 ? 0x6a1212 : 0x8a9478
             this.spawnParticle(e.x * U, 0.6, e.y * U, Math.cos(a) * sp, 0.08 + Math.random() * 0.1, Math.sin(a) * sp, 0.9, col, bone ? 0.8 : 0.7)
           }
-          this.spawnRing(e.x * U, e.y * U, 0.2, 1.1, 0.4, bone ? 0xd9d1bb : 0x7a1414)
+          // 뼈 괴물만 먼지 고리 (피는 바닥 핏자국이 대신한다 — 붉은 동그라미가 어색했다)
+          if (bone) this.spawnRing(e.x * U, e.y * U, 0.2, 1.1, 0.4, 0xd9d1bb)
           break
         }
         case 'swipe':
@@ -1308,6 +1313,22 @@ export class Renderer3D {
         }
         case 'bzone':
           this.onBossBlast(e, state, localPlayer)
+          // 즉사기가 터졌다: 크게 흔들린다
+          if (e.kill) this.shake = Math.max(this.shake, 0.7)
+          break
+        case 'bossUlt': {
+          // 막 보스 즉사기: 보스가 대사를 외치고(검붉은 큰 말풍선) · 화면 경고 · 흔들림 (경보음은 sfx)
+          const pd = BOSS_PATS[e.pat]
+          const ms = (e.t / 60) * 1000
+          this.monsterSay(e.m, MONSTER_LIST[e.kind].name, pd?.line ?? '…', false, true, ms + 900)
+          this.ultWarn = { name: pd?.name ?? '즉사기', hint: pd?.hint ?? '범위 밖으로', t0: performance.now(), until: performance.now() + ms }
+          this.shake = Math.max(this.shake, 0.35)
+          break
+        }
+        case 'ultHit':
+          this.spawnRing(e.x * U, e.y * U, 0.2, 2.2, 0.6, 0xff2a1a)
+          this.spawnImpact(e.x * U, 1, e.y * U, 0xff2a1a, 3)
+          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.9)
           break
         case 'hook': {
           // 도살자 갈고리: 끌려온 길을 따라 핏빛 사슬
@@ -1584,6 +1605,7 @@ export class Renderer3D {
     })
     this.drawMonsterBars(curr)
     this.drawAllyTags(curr)
+    this.drawUltWarn()
     this.drawOrphanSays(curr)
     this.drawDropLabels(curr, opts.localPlayer)
     this.drawPlaceLabels(curr, opts.localPlayer)
@@ -2881,7 +2903,7 @@ export class Renderer3D {
     for (const zn of curr.zones) {
       live.add(zn.id)
       // 보스 패턴 범위 (‰ 피해 · 모양 · 예고만) — 따로 그린다
-      if (zn.pm || zn.kind === ZONE_WARN) {
+      if (zn.pm || zn.kill || zn.kind === ZONE_WARN) {
         this.updateBossZone(zn)
         continue
       }
@@ -2972,10 +2994,15 @@ export class Renderer3D {
     let g = this.zoneMeshes.get(zn.id)
     const shape = zn.shape ?? ZS_CIRCLE
     const warn = zn.kind === ZONE_WARN
+    // 즉사기: 검붉게 덮는다(더하기가 아니라 덮기 — 바닥이 어두워진다) · 테두리는 새빨갛게 · 고리의 안쪽(안전한 곳) 테두리는 금빛
+    const kill = !!zn.kill
     if (!g) {
       g = new THREE.Group()
-      const fillMat = new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-      const rimMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
+      const fillMat = kill
+        ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
+        : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
+      const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
       let fill: THREE.Object3D
       let rim: THREE.Object3D
       if (shape === ZS_LINE) {
@@ -2985,7 +3012,7 @@ export class Renderer3D {
         const k = Math.max(0.02, Math.min(0.98, (zn.r2 ?? 0) / zn.r))
         fill = new THREE.Mesh(new THREE.RingGeometry(k, 1, 64), fillMat)
         const rims = new THREE.Group()
-        rims.add(new THREE.Mesh(this.zoneRim, rimMat), new THREE.Mesh(new THREE.RingGeometry(k, k + 0.025, 64), rimMat))
+        rims.add(new THREE.Mesh(this.zoneRim, rimMat), new THREE.Mesh(new THREE.RingGeometry(k, k + (kill ? Math.max(0.004, 0.08 * k) : 0.025), 64), kill ? safeMat : rimMat))
         rim = rims
       } else if (shape === ZS_CONE) {
         const arc = ((zn.arc ?? 0) / 1024) * Math.PI * 2
@@ -3014,7 +3041,7 @@ export class Renderer3D {
     // 차오르기: 줄은 길이 쪽으로, 원 · 부채는 가운데서 밖으로, 고리는 진해지기만 (예고만인 것은 옅게)
     if (shape === ZS_LINE) fill.scale.set(Math.max(0.02, k), 1, 1)
     else if (shape !== ZS_RING) fill.scale.setScalar(Math.max(0.05, k))
-    mat.opacity = warn ? 0.12 + 0.18 * k : 0.18 + 0.32 * k
+    mat.opacity = kill ? 0.3 + 0.4 * k : warn ? 0.12 + 0.18 * k : 0.18 + 0.32 * k
     const blink = zn.t < 14 ? 0.55 + 0.45 * Math.sin(this.t * 40) : 0.75 + 0.25 * Math.sin(this.t * 12)
     g.children[1].traverse((o) => {
       const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined
@@ -3484,25 +3511,27 @@ export class Renderer3D {
     }
   }
 
-  private drawBubble(ctx: CanvasRenderingContext2D, head: { x: number; y: number }, say: { nick: string; text: string; until: number; gold: boolean }): void {
+  private drawBubble(ctx: CanvasRenderingContext2D, head: { x: number; y: number }, say: { nick: string; text: string; until: number; gold: boolean; warn?: boolean }): void {
     const left = say.until - performance.now()
     if (left <= 0) return
     ctx.save()
     ctx.globalAlpha = Math.min(1, left / 350)
-    ctx.font = `700 14px ${SAY_FONT}`
+    // 보스 즉사기 대사(warn): 크고 검붉게 — 무엇이 오는지 한눈에
+    const warn = !!say.warn
+    ctx.font = warn ? `800 19px ${SAY_FONT}` : `700 14px ${SAY_FONT}`
     const tw = ctx.measureText(say.text).width
-    ctx.font = `800 11px ${SAY_FONT}`
+    ctx.font = `800 ${warn ? 13 : 11}px ${SAY_FONT}`
     const nw = ctx.measureText(say.nick).width
-    const w = Math.max(tw, nw) + 22
-    const h = 40
+    const w = Math.max(tw, nw) + (warn ? 30 : 22)
+    const h = warn ? 52 : 40
     const bx = head.x - w / 2
     const by = head.y - 26 - h
-    ctx.fillStyle = say.gold ? '#fff4d0' : '#ffffff'
+    ctx.fillStyle = warn ? '#2a0406' : say.gold ? '#fff4d0' : '#ffffff'
     roundRect(ctx, bx, by, w, h, 10)
     ctx.fill()
-    if (say.gold) {
-      ctx.strokeStyle = '#d8a83a'
-      ctx.lineWidth = 2
+    if (say.gold || warn) {
+      ctx.strokeStyle = warn ? `rgba(255,60,40,${0.6 + 0.4 * Math.sin(performance.now() / 70)})` : '#d8a83a'
+      ctx.lineWidth = warn ? 3 : 2
       ctx.stroke()
     }
     ctx.beginPath()
@@ -3513,12 +3542,59 @@ export class Renderer3D {
     ctx.fill()
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = `800 11px ${SAY_FONT}`
-    ctx.fillStyle = say.gold ? '#9a6a10' : '#12a86a'
-    ctx.fillText(say.nick, head.x, by + 12)
-    ctx.font = `700 14px ${SAY_FONT}`
-    ctx.fillStyle = '#1a1f26'
-    ctx.fillText(say.text, head.x, by + 28)
+    ctx.font = `800 ${warn ? 13 : 11}px ${SAY_FONT}`
+    ctx.fillStyle = warn ? '#ff8a6a' : say.gold ? '#9a6a10' : '#12a86a'
+    ctx.fillText(say.nick, head.x, by + (warn ? 15 : 12))
+    ctx.font = warn ? `800 19px ${SAY_FONT}` : `700 14px ${SAY_FONT}`
+    ctx.fillStyle = warn ? '#ffffff' : '#1a1f26'
+    ctx.fillText(say.text, head.x, by + (warn ? 36 : 28))
+    ctx.restore()
+  }
+
+  /**
+   * 막 보스 즉사기 경고 (2026-09-24 사용자: "화면에서도 주의하라는 게 잘 보이도록"): 예고 동안 화면 가장자리가 붉게 맥박치고,
+   * 가운데 위에 "⚠ 즉사기 — 이름" 과 피하는 법 한 줄 · 남은 시간 막대. 끝나 갈수록 빨리 깜빡인다
+   */
+  private drawUltWarn(): void {
+    const w = this.ultWarn
+    if (!w) return
+    const now = performance.now()
+    if (now > w.until + 400) {
+      this.ultWarn = null
+      return
+    }
+    const left = Math.max(0, (w.until - now) / Math.max(1, w.until - w.t0))
+    const fade = Math.min(1, (now - w.t0) / 200) * Math.min(1, (w.until + 400 - now) / 400)
+    const pulse = 0.5 + 0.5 * Math.sin((now - w.t0) / (left < 0.3 ? 45 : 110))
+    const ctx = this.hud.ctx
+    ctx.save()
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.32, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.62)
+    g.addColorStop(0, 'rgba(160,0,0,0)')
+    g.addColorStop(1, `rgba(170,0,0,${(0.3 + 0.35 * pulse) * fade})`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    ctx.globalAlpha = fade
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    const y = VIEW_H * 0.3
+    ctx.font = `900 ${Math.round(38 * VIEW_K)}px ${SAY_FONT}`
+    ctx.lineWidth = 6
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+    const title = `⚠ 즉사기 — ${w.name}`
+    ctx.strokeText(title, VIEW_W / 2, y)
+    ctx.fillStyle = `rgb(255,${Math.round(70 + 90 * pulse)},${Math.round(50 + 40 * pulse)})`
+    ctx.fillText(title, VIEW_W / 2, y)
+    ctx.font = `800 ${Math.round(20 * VIEW_K)}px ${SAY_FONT}`
+    ctx.lineWidth = 4
+    ctx.strokeText(w.hint, VIEW_W / 2, y + 34 * VIEW_K)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(w.hint, VIEW_W / 2, y + 34 * VIEW_K)
+    // 남은 시간 막대
+    const bw = 360 * VIEW_K
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'
+    ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw, 6 * VIEW_K)
+    ctx.fillStyle = '#ff3a2a'
+    ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw * left, 6 * VIEW_K)
     ctx.restore()
   }
 
@@ -3706,7 +3782,7 @@ export class Renderer3D {
     this.shake = Math.max(0, this.shake - dt * 1.4)
     this.kick = Math.max(0, this.kick - dt * 5)
     this.punch = Math.max(0, this.punch - dt * 4.5)
-    this.updateDecals(dt)
+    this.blood?.update(dt)
     this.scopeFlash = Math.max(0, this.scopeFlash - dt * 3.2)
   }
 
@@ -3807,45 +3883,13 @@ export class Renderer3D {
     return d < 1 ? { x: 0, z: 0 } : { x: dx / d, z: dy / d }
   }
 
-  /** 바닥 핏자국 하나 (오래된 것부터 덮어쓴다 · 30초 뒤 사라진다) */
-  private addDecal(x: number, z: number, s: number): void {
-    if (!this.decals) {
-      const geo = new THREE.CircleGeometry(0.5, 14)
-      geo.rotateX(-Math.PI / 2)
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })
-      this.decals = new THREE.InstancedMesh(geo, mat, DECAL_MAX)
-      this.decals.count = 0
-      this.decals.frustumCulled = false
-      this.decals.renderOrder = 1
-      this.scene.add(this.decals)
+  /** 바닥 핏자국 하나 (처음 쓸 때 만든다). dir = 튄 방향(월드 x · z) — 튄 자국 모양을 그쪽으로 눕힌다 */
+  private addBlood(x: number, z: number, size: number, kinds: number[], dir?: { x: number; z: number }): void {
+    if (!this.blood) {
+      this.blood = new BloodDecals()
+      this.scene.add(this.blood.mesh)
     }
-    const i = this.decalNext
-    this.decalNext = (this.decalNext + 1) % DECAL_MAX
-    this.decalData[i] = { x, z, s: s * (0.8 + Math.random() * 0.5), r: Math.random() * Math.PI, life: DECAL_LIFE }
-    // 조명을 받지 않는 재질이라 어두운 던전에서 튀지 않게 검붉게 (밝으면 분홍빛으로 떴다)
-    // 2026-09-19 떼를 쓸면 바닥이 붉은 물감처럼 덮였다 → 더 작고 검붉게 (등불 아래서도 튀지 않게)
-    const shade = 0.15 + Math.random() * 0.12
-    this.decals.setColorAt(i, new THREE.Color(shade * 1.1, shade * 0.07, shade * 0.06))
-    if (this.decals.instanceColor) this.decals.instanceColor.needsUpdate = true
-    this.decals.count = Math.max(this.decals.count, i + 1)
-  }
-
-  private updateDecals(dt: number): void {
-    if (!this.decals) return
-    const o = new THREE.Object3D()
-    for (let i = 0; i < this.decals.count; i++) {
-      const d = this.decalData[i]
-      if (!d) continue
-      d.life -= dt
-      // 끝 3초 동안 줄어들며 사라진다
-      const k = d.life <= 0 ? 0 : Math.min(1, d.life / 3)
-      o.position.set(d.x, 0.02, d.z)
-      o.rotation.set(0, d.r, 0)
-      o.scale.set(d.s * 1.6 * k, 1, d.s * k)
-      o.updateMatrix()
-      this.decals.setMatrixAt(i, o.matrix)
-    }
-    this.decals.instanceMatrix.needsUpdate = true
+    this.blood.add(x, z, size, kinds, dir && (dir.x !== 0 || dir.z !== 0) ? Math.atan2(dir.z, dir.x) : undefined)
   }
 
   /** 관전 시트용: 캐릭터를 특정 위치·회전으로 직접 배치하고 렌더 */

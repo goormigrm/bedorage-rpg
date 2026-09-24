@@ -48,6 +48,11 @@ export function zoneEscape(z: ZoneShape, px: number, py: number): { x: number; y
     return inward ? { x: -dx / d, y: -dy / d } : { x: dx / d, y: dy / d }
   }
   if (shape === ZS_CONE) {
+    // 반 바퀴가 넘는 부채(관리인 처형): 등 뒤로
+    if ((z.arc ?? 0) >= 256) {
+      const a = ((z.a ?? 0) + 512) & 1023
+      return { x: cosA(a), y: sinA(a) }
+    }
     // 부채: 끝이 가까우면 밖으로, 아니면 옆으로 (가까운 옆)
     if (d > z.r * 0.6) return { x: dx / d, y: dy / d }
     const side = angleDiff(atan2A(dy, dx), z.a ?? 0) >= 0 ? 1 : -1

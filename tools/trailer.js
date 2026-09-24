@@ -1,4 +1,5 @@
 // 소개 영상 (2026-09-23 사용자: "공지글에 들어갈 webm — 1분 정도 주요 장면, 자막 · 효과를 넣은 게임 소개 영상").
+// 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버에서 방을 만들고(봇 채우기 켬) 판을 시작해 마을에 선 뒤:
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (POST /__save)
 //   t.status()  → 진행 상황
@@ -65,7 +66,8 @@ function drawGame() {
   const dw = cw * s
   const dh = ch * s
   // 3D 는 조금 밝게 (밤 들판 · 던전이 영상으로는 너무 어두웠다) · 천천히 다가가기는 3D 만 (HUD 가 잘리지 않게)
-  g.filter = 'brightness(1.35) contrast(1.06)'
+  // 2026-09-24 사용자: "트레일러가 실제로 플레이하는 것보다 어둡다" → 1.35 → 1.6 · 가장자리 어둡게 0.55 → 0.32
+  g.filter = 'brightness(1.6) contrast(1.04)'
   g.drawImage(cvs[0], (W - dw) / 2, (H - dh) / 2, dw, dh)
   g.filter = 'none'
   for (const c of cvs.slice(1)) {
@@ -78,7 +80,7 @@ function drawOverlay() {
   const t = now()
   const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.72)
   vg.addColorStop(0, 'rgba(0,0,0,0)')
-  vg.addColorStop(1, 'rgba(0,0,0,0.55)')
+  vg.addColorStop(1, 'rgba(0,0,0,0.32)')
   g.fillStyle = vg
   g.fillRect(0, 0, W, H)
 
@@ -289,6 +291,83 @@ function dropLoot() {
   }
 }
 
+/** 장면 넘김: 검게 닫고(0.35초) → 바꾸고 → 검은 데서 연다 (2026-09-24 사용자: "설명이 넘어갈 때 fade in/out 을 섞어서 장면 전환") */
+function cut(at, fn, dur = 0.4) {
+  at(0, () => fadeTo(1, dur * 900))
+  at(dur, () => {
+    fn()
+    fadeTo(0, 520)
+  })
+}
+
+/** 파티 넷을 한 지역으로 옮긴다 (보스 방 — 걸어가지 않고) */
+function warpParty(area) {
+  const s = st()
+  for (let i = 0; i < s.players.length; i++) M.sim.warpPlayer(s, S().mapOf, i, area)
+}
+
+/**
+ * 보스 결투장에 파티를 세우고 보스를 깨운다: 보스에게서 dist 떨어진 결투장 안쪽 (입구 쪽).
+ * 부하 · 떼는 치운다 (보스만 보이게)
+ */
+function faceBoss(kind, dist) {
+  const s = st()
+  const a = window.__bd.map().arena
+  const b = s.monsters.find((m) => m.kind === kind && m.hp > 0)
+  if (!b || !a) return
+  for (const m of s.monsters) if (m !== b) m.hp = 0
+  const l = M.world.areaLayout(s.curArea, window.__bd.map())
+  const ex = l.exits[0]
+  const d = Math.hypot(ex.x - b.x, ex.y - b.y) || 1
+  const p = s.players[0]
+  p.x = b.x + ((ex.x - b.x) / d) * dist
+  p.y = b.y + ((ex.y - b.y) / d) * dist
+  gatherBots()
+  b.st = 1
+  b.target = 0
+  b.los = 1
+  b.scd = 40
+  b.kcd = 99999
+}
+
+/** 보스 즉사기를 지금 쓰게 한다 (대사 · 화면 경고 — 봇은 피한다) */
+function bossUlt(kind) {
+  const b = st().monsters.find((m) => m.kind === kind && m.hp > 0)
+  if (!b) return
+  b.kcd = 0
+  b.scd = 0
+  b.st = 1
+  b.mode = 0
+  b.pat = -1
+  b.target = 0
+  b.los = 1
+}
+
+/** 정예 무리: 금빛 이름표 · 접두 능력 (빠름 · 폭발 · 분열 · 흡혈 · 단단함) */
+function elites() {
+  const s = st()
+  const map = window.__bd.map()
+  const p = s.players[0]
+  const bits = [2 | 8, 4 | 32, 16 | 2]
+  for (let k = 0; k < 3; k++) {
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2
+      const d = (6 + Math.random() * 3) * T
+      const x = p.x + Math.cos(a) * d
+      const y = p.y + Math.sin(a) * d
+      const tx = Math.floor(x / T)
+      const ty = Math.floor(y / T)
+      if (tx < 1 || ty < 1 || tx >= map.w - 1 || ty >= map.h - 1 || map.tiles[ty * map.w + tx] !== 0) continue
+      const m = M.dungeon.makeMonster(s, [0, 2, 1][k], x, y, 50 + k, 4, 60, 3)
+      m.elite = 1 | bits[k]
+      m.st = 1
+      m.target = 0
+      s.monsters.push(m)
+      break
+    }
+  }
+}
+
 // ---------- 장면 (게임 시각 초 — 준비 중(hold)에는 게임은 흐르고 영상은 멈춘다) ----------
 function scenes() {
   const A = []
@@ -305,29 +384,29 @@ function scenes() {
     cue('calm')
     zoomTo(1.12, 1.0, 6000)
     fadeTo(0, 1200)
-    ov.title = { text: '배도라지RPG', sub: 'MT 공포체험에서 길을 잃고 계란이 된 크루의 쿼터뷰 슈팅 RPG', at: now() }
+    ov.title = { text: '배도라지RPG', sub: '계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', at: now() }
     key('KeyD', true)
   })
   at(2.3, () => {
     key('KeyD', false)
     key('KeyS', true)
   })
-  at(1.5, () => {
+  at(1.7, () => {
     key('KeyS', false)
     ov.title.out = now()
   })
   // 마을
-  at(0.4, () => {
-    caption('마을에서 시작하는 이어진 세계', '촌장의 퀘스트 · 상인 · 대장장이 벼리기 · 보관함 — 성문을 나서면 들판')
-    zoomTo(1.0, 1.06, 5000)
+  at(0.5, () => {
+    caption('마을에서 시작하는 이어진 세계', '촌장 퀘스트 · 상인 · 대장장이 · 도박꾼 · 보관함 · 용병')
+    zoomTo(1.0, 1.06, 5500)
     key('KeyA', true)
   })
-  at(2.0, () => {
+  at(2.2, () => {
     key('KeyA', false)
     key('KeyW', true)
     snap = 'shot_town'
   })
-  at(1.6, () => {
+  at(1.8, () => {
     key('KeyW', false)
     fadeTo(1, 350)
   })
@@ -361,83 +440,107 @@ function scenes() {
     holding = false
     cue('hot')
     fadeTo(0, 450)
-    zoomTo(1.0, 1.08, 11000)
-    caption('몰려드는 실사 괴물 떼', '구울 · 해골 궁수 · 부푼 시체 … 막마다 다른 괴물과 정예 · 우두머리')
+    zoomTo(1.0, 1.08, 10000)
+    caption('몰려드는 실사 괴물 떼', '막마다 다른 괴물 16종 — 잠든 무리는 총소리에 깬다')
   })
   const horde = t
-  every(horde + 1.4, horde + 11, 1.4, () => alive() < 26 && spawn([0, 1, 0, 2], 14, 7, 12))
+  every(horde + 1.4, horde + 10, 1.4, () => alive() < 26 && spawn([0, 1, 0, 2], 14, 7, 12))
   A.push({ t: horde + 4.2, fn: () => (snap = 'shot_fight') })
-  at(11, () => {
-    caption('캐릭터마다 스킬 · 궁극기', '배도라지 크루 12명 — 탱커 · 딜러 · 힐러, 최대 4명이 함께')
-    flash(0.35)
-  })
+  // 스킬
+  at(9.6, () => {})
+  cut(at, () => caption('캐릭터 12명 · 스킬 둘 · 궁극기', '탱커 · 딜러 · 힐러 — 스킬을 쓰면 이름을 외치고, 초록 말풍선은 "이쪽으로 모여"'))
   const skills = t
-  every(skills + 1.2, skills + 8, 1.2, () => alive() < 22 && spawn([0, 1, 2], 14, 6, 11))
-  // 치지직 — 채팅 말풍선 · 응원 후원 · 후원으로 막 보스 (시청자 투표는 2026-09-23 뺐다)
-  at(8, () => {
-    caption('치지직 방송 연동', '채팅은 괴물 말풍선으로 · 후원은 게임 속 이벤트로 · "!응원" 후원은 우리 편을 돕는다')
-    for (let i = 0; i < 4; i++) M.stream.fakeChat()
+  every(skills + 0.6, skills + 8, 1.2, () => alive() < 22 && spawn([0, 1, 2], 14, 6, 11))
+  // 정예
+  at(8.2, () => {})
+  cut(at, () => {
+    caption('정예 · 접두 능력', '금빛 이름표 — 빠름 · 단단함 · 폭발 · 분열 · 흡혈')
+    elites()
+    spawn([0, 0], 8, 6, 10)
   })
-  every(t + 0.3, t + 6.5, 0.35, () => M.stream.fakeChat())
-  // 1만 원 !응원 = 아군 괴물 넷 + 공격 강화 (v0.53.0 — 아군 괴물 넷이 10초 싸운다 · 공격력 · 공격 속도)
-  at(1.6, () => M.stream.fakeCheer(10000))
-  // 5만 원 = 막 보스 (1막 들판이라 도살자)
-  at(3.2, () => M.stream.fakeDonation(50000))
-  every(t + 0.6, t + 4, 0.9, () => M.stream.fakeChat())
-  at(1.8, () => cue('boss'))
-  // 막 보스 — 정해진 패턴 (2026-09-23 보스 패턴: 예고 범위가 차오르면 터진다 · 최대 체력 % 피해)
-  at(1.0, () => {
-    caption('막 보스는 정해진 패턴으로', '빨간 예고 범위를 피하라 — 보스 공격은 최대 체력의 %, 탱커도 똑같이 아프다')
-    zoomTo(1.0, 1.06, 6500)
-    // 도살자를 카메라 앞에 새로 세우는 순간을 섬광으로 가린다 (불쑥 나타나 보이지 않게)
-    flash(0.55)
-    // 후원으로 불린 도살자는 화면 밖에 나타날 수 있다 — 카메라 앞(4~6칸)에 다시 세운다
-    for (const m of st().monsters) if (m.kind === 3) m.hp = 0
-    spawn([3], 1, 4, 6)
-    bossPat(3, 1) // 회전 베기
+  at(6.5, () => {})
+  // 치지직 — 채팅 말풍선 · !응원(아군 괴물) · 후원 이벤트(좀비 떼 · 정예 무리)
+  cut(at, () => {
+    caption('치지직 방송 연동', '시청자 채팅은 괴물 머리 위 말풍선으로')
+    for (let i = 0; i < 4; i++) M.stream.fakeChat(false)
+    spawn([0, 1, 2], 16, 6, 11)
   })
-  at(1.7, () => bossPat(3, 0)) // 돌진
-  at(2.0, () => bossPat(3, 2)) // 갈고리
-  at(2.2, () => {
-    holding = true
-    for (const m of st().monsters) m.hp = 0
-    spawn([15], 1, 4, 5)
-    spawn([14, 14], 2, 6, 9)
-    // 체력 60% — 첫 틱에 분노(그림자 · 지옥불이 차례에 들어온다)
+  every(t + 0.3, t + 16, 0.4, () => M.stream.fakeChat(false))
+  every(t + 1, t + 16, 1.4, () => alive() < 22 && spawn([0, 1, 2], 10, 6, 11))
+  at(3.2, () => {
+    caption('후원 글에 !응원 입력', '괴롭히는 대신 돕는다 — 아군 괴물 · 회복 구슬 · 공격 강화')
+    M.stream.fakeCheer(10000)
+  })
+  at(5.5, () => {
+    caption('후원 금액마다 이벤트', '좀비 떼 · 암흑 · 정예 무리 · 중간보스 · 막 보스 — 보낸 사람 이름표')
+    M.stream.fakeDonation(1000)
+  })
+  at(1.6, () => M.stream.fakeDonation(5000))
+  at(4.6, () => {})
+  // ---- 막 보스 넷 — 저마다의 보스 방으로 (2026-09-24 사용자: "보스는 보스 맵으로 이동한 뒤에 — 모든 보스가 잠깐씩")
+  const boss = (area, kind, dist, capText, capSub, pats, stay, extra) => {
+    at(0, () => fadeTo(1, 380))
+    at(0.42, () => {
+      holding = true
+      ov.cap = null
+      for (const m of st().monsters) m.hp = 0
+      warpParty(area)
+    })
+    at(1.2, () => faceBoss(kind, dist))
+    at(0.35, () => {
+      holding = false
+      fadeTo(0, 520)
+      caption(capText, capSub)
+      zoomTo(1.0, 1.05, stay * 1000)
+      if (extra) extra()
+    })
+    for (const [dt, ph] of pats) A.push({ t: t + dt, fn: () => (ph === 'ult' ? bossUlt(kind) : bossPat(kind, ph)) })
+    at(stay, () => {})
+  }
+  at(0, () => cue('boss'))
+  boss(9, 3, 180, '막 보스 넷 — 저마다의 보스 방', '1막 도살자 — 돌진 · 회전 베기 · 갈고리', [[0.3, 1], [2.1, 2]], 4.2)
+  // 도살자 즉사기 — 멀리 달아나라
+  at(0, () => {
+    bossUlt(3)
+    caption('즉사기 — 보스가 외치면', '범위 안이면 레벨 · 탱커 상관없이 한 방 — 대사와 경고를 보고 피하라')
+  })
+  at(3.6, () => {})
+  boss(18, 8, 200, '2막 거미 여왕', '거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', [[0.3, 0], [1.9, 1], [3.6, 3]], 5.4)
+  boss(27, 12, 200, '3막 관리인', '충격파 십자 · 내려찍기 · 방패병 · 여진', [[0.3, 2], [2.3, 1]], 4.6)
+  boss(34, 15, 190, '최종 보스 — 심연의 군주', '체력이 줄면 분노 — 광선 · 지옥불 · 그림자', [[0.3, 4], [2.4, 3]], 4.6, () => {
+    cue('rage')
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
     if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
   })
-  at(1.2, () => {
-    holding = false
-    cue('rage')
-    flash(0.9)
-    caption('최종 보스 — 심연의 군주', '심연 광선 · 지옥불 · 불비 — 체력이 줄면 분노해 패턴이 늘어난다')
-    zoomTo(1.0, 1.1, 6000)
-    bossPat(15, 4) // 심연 광선
+  // 군주 즉사기 — 빛나는 원 안으로
+  at(0, () => {
+    bossUlt(15)
+    caption('심연의 심판', '방 전체가 즉사 — 금빛 테두리 원 안만 산다')
   })
-  at(1.8, () => bossPat(15, 3)) // 지옥불 (가까이 → 곧 멀리)
-  A.push({ t: t + 0.9, fn: () => (snap = 'shot_boss') })
-  at(2.1, () => bossPat(15, 1)) // 불비
+  A.push({ t: t + 1.1, fn: () => (snap = 'shot_boss') })
+  at(3.6, () => {})
   // 전리품
-  at(2.0, () => {
+  cut(at, () => {
     holding = true
     for (const m of st().monsters) m.hp = 0
     dropLoot()
   })
-  at(0.5, () => {
+  at(0.1, () => {
     holding = false
     cue('win')
-    flash(0.6)
-    caption('나만의 전리품', '마법 · 희귀 · 전설 · 신화 — 강화하고, 모아서 벼리고, 창고에 쌓는다')
-    zoomTo(1.05, 1.12, 8000)
+    caption('나만의 전리품', '마법 · 희귀 · 전설 · 신화 — 강화 · 벼리기 · 보관함 · 사람마다 따로')
+    zoomTo(1.05, 1.12, 6000)
+  })
+  // 같이 하기
+  at(5.6, () => {
+    caption('혼자부터 최대 4명', '서버 없는 P2P · 빈 자리는 봇 · 게임 중 난입 · 음성 대화')
   })
   // 끝
-  at(7.5, () => {
+  at(4.4, () => {
     ov.cap = null
-    spawn([0, 1], 10, 7, 11)
     ov.end = { at: now() }
   })
-  at(6.2, () => fadeTo(1, 1400))
+  at(5.8, () => fadeTo(1, 1400))
   at(1.6, null)
   return A.sort((a, b) => a.t - b.t)
 }
@@ -549,6 +652,12 @@ async function encodeAudio(buf) {
 // ---------- 녹화 ----------
 /** 진단: 영상 없이 첫 sec 초를 돌며 장면별 상태를 모은다 (까만 장면 찾기) */
 let diag = null
+/** 개발 서버는 고친 파일을 ?t= 꼬리표가 붙은 주소로 준다 — 게임이 쓰는 그 사본을 불러야 판에 닿는다 */
+async function sameModule(path) {
+  const url = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes(path)).sort((a, b) => b.length - a.length)[0]
+  return import(url ?? '/bedorage-rpg' + path)
+}
+
 export async function start(opts = {}) {
   if (running) return 'already'
   running = true
@@ -565,7 +674,9 @@ export async function start(opts = {}) {
     items: await import('/bedorage-rpg/src/core/items.ts'),
     rng: await import('/bedorage-rpg/src/core/rng.ts'),
     // 개발 서버는 고친 파일을 ?t= 꼬리표가 붙은 주소로 준다 — 게임이 쓰는 그 사본을 불러야 시험 후원이 판에 닿는다
-    stream: (await import(performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('/src/game/stream.ts')).sort((a, b) => b.length - a.length)[0] ?? '/bedorage-rpg/src/game/stream.ts')).stream,
+    stream: (await sameModule('/src/game/stream.ts')).stream,
+    // 보스 방으로 옮기기(warpPlayer)는 게임이 쓰는 sim 사본이어야 한다 (모듈 안 상태 — 묶인 지역 · 소환 대기열)
+    sim: await sameModule('/src/core/sim.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -584,9 +695,21 @@ export async function start(opts = {}) {
   // 게시판 파일당 40 MB (공지글-모음 0장) — 1분 · 1080p 가 약 35 MB 가 되게 (전에는 14 Mbps · 99 MB)
   ve.configure({ codec: 'vp8', width: W, height: H, bitrate: opts.bitrate ?? 4_400_000, framerate: FPS })
 
-  // 영상에 나오는 괴물의 실사 모델을 먼저 받아 굽는다 — 녹화 도중 처음 나오면 도형 모습에서 실사로 한순간 바뀌어 튀어 보였다
   const sess = S()
-  const kinds = [0, 1, 2, 3, 14, 15]
+  // 1080 게임 화면 · HUD 작게 (2026-09-24 사용자: "소개 영상에서 HUD 크기를 작게, 1080 해상도로 된 게임 화면을 캡쳐") —
+  // 전에는 미리보기 창 크기(1280 안팎)로 그린 화면을 1920×1080 으로 늘려 HUD 가 크고 3D 가 흐릿했다.
+  // 창(미리보기의 크기 흉내)을 1920×1080 으로 두고 · 화면 배율 1 · HUD '작게'(논리 2258×1270 을 0.85 배로 보임) · 화질 높게
+  // → 3D · HUD 캔버스가 1920×1080 그대로 = 늘리지 않고 담는다
+  if (innerWidth !== W || innerHeight !== H) log.push(`⚠ 창 ${innerWidth}×${innerHeight} — ${W}×${H} 여야 1080 으로 뜬다 (미리보기 창 크기를 맞출 것)`)
+  Object.defineProperty(window, 'devicePixelRatio', { get: () => 1, configurable: true })
+  localStorage.setItem('brpg.hud', 'small')
+  sess.applyGfx('high')
+  sess.fit()
+  const glc0 = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)
+  log.push('캔버스 ' + glc0.map((c) => `${c.width}×${c.height}`).join(' · '))
+  // 영상에 나오는 괴물의 실사 모델을 먼저 받아 굽는다 — 녹화 도중 처음 나오면 도형 모습에서 실사로 한순간 바뀌어 튀어 보였다
+  // 들판 떼 · 막 보스 넷과 그 부하(새끼 거미 · 방패병 · 그림자) · 포격 악마
+  const kinds = [0, 1, 2, 3, 6, 8, 9, 12, 13, 14, 15]
   sess.renderer.monsterView.prefetch(kinds)
   for (let k = 0; k < 120; k++) {
     const r = window.__bd.models()
@@ -602,6 +725,8 @@ export async function start(opts = {}) {
   sess.ticker.stop()
   sess.lastTick = vt
   sess.last = vt
+  // 자동 줍기를 끈다 — 가방이 찬 캐릭터로 뜨면 "가방이 가득 찼습니다" 가 영상 내내 떴다 · 전리품 기둥도 바닥에 남는다
+  for (const q of st().players) q.autoPick = 0
   // 영상용: 카메라를 가깝게 (캐릭터가 크게 보이게)
   sess.renderer.setDebugZoom(0.74)
   // 소리는 모아 두었다가 따로 그린다 (라이브 소리는 내지 않는다)

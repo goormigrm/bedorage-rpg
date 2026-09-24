@@ -309,3 +309,24 @@ describe('후원 이벤트 — 응원', () => {
     expect(run()).toBe(run())
   })
 })
+
+// 2026-09-24 사용자: "후원은 스트리머 한 명에게만 온다 — 소환 말고 다른 효과는 파티원 모두에게"
+describe('후원 효과는 파티 모두에게', () => {
+  it('손 떨림 · 암흑은 곁의 동료도 · 다른 지역(마을)에 있는 동료도 받는다 · 공격 강화도 모두', () => {
+    const g = game(88)
+    toField(g)
+    const [a, b] = g.s.players
+    expect(b.area).not.toBe(a.area)
+    g.donate(ev('shake'))
+    g.donate(ev('dark', 1))
+    for (const q of [a, b]) {
+      expect(q.don?.[DON_SHAKE] ?? 0).toBeGreaterThan(0)
+      expect(q.don?.[DON_DARK] ?? 0).toBeGreaterThan(0)
+    }
+    g.donate(CHEER_EVENTS[2].id | (2 << 4))
+    for (const q of [a, b]) expect(q.cpowMul).toBeCloseTo(1.4)
+    // 아군 괴물 · 구슬은 부른 사람 곁에만
+    expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
+    expect(areaView(g.s, b.area).allies ?? []).toEqual([])
+  })
+})
