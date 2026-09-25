@@ -449,6 +449,52 @@ export function actReached(q: number[]): number {
   return act
 }
 
+/** 지역 사이 가장 짧은 길 (출구 links — 양쪽으로). from 부터 to 까지 지역 번호들, 없으면 null */
+export function areaPath(from: number, to: number): number[] | null {
+  if (from === to) return [from]
+  const prev = new Map<number, number>([[from, -1]])
+  const queue = [from]
+  const nbr = (id: number): number[] => {
+    const out = new Set(AREAS[id]?.links ?? [])
+    for (const a of AREAS) if (a.links.includes(id)) out.add(a.id)
+    return [...out]
+  }
+  for (let h = 0; h < queue.length; h++) {
+    const cur = queue[h]
+    for (const n of nbr(cur)) {
+      if (prev.has(n)) continue
+      prev.set(n, cur)
+      if (n === to) {
+        const path = [to]
+        let k = cur
+        while (k !== -1) {
+          path.unshift(k)
+          k = prev.get(k) ?? -1
+        }
+        return path
+      }
+      queue.push(n)
+    }
+  }
+  return null
+}
+
+/**
+ * 퀘스트 길 안내 (2026-09-25 사용자 고른 개선 4 — "막 안에서 어디로 가야 할지 헤매지 않게"): 지금 가야 할 곳.
+ * ① 보고할 것이 있으면 이 막 야영지의 촌장(어느 촌장이든 받는다) ② 이 막에서 진행 중인 퀘스트의 지역
+ * ③ 이 막에서 아직 안 맡은 퀘스트가 있으면 촌장. 다른 막의 지역은 가리키지 않는다(웨이포인트 · 촌장으로 건너간다)
+ */
+export function questGuide(q: number[], cur: number): { area: number; npc?: NpcId; quest?: number; label: string } | null {
+  const act = areaDef(cur).act
+  const reach = actReached(q)
+  const town = ACTS[act].town
+  if (QUESTS.some((d, i) => d.act <= reach && (q[i] ?? 0) === 2)) return { area: town, npc: 'elder', label: '촌장에게 보고' }
+  const doing = QUESTS.findIndex((d, i) => d.act === act && (q[i] ?? 0) === 1)
+  if (doing >= 0) return { area: QUESTS[doing].area, quest: doing, label: QUESTS[doing].name }
+  if (QUESTS.some((d, i) => d.act === act && (q[i] ?? 0) === 0)) return { area: town, npc: 'elder', label: '촌장에게 퀘스트 받기' }
+  return null
+}
+
 /**
  * 촌장이 줄 · 받을 일이 있나 — **어느 야영지의 촌장이든 모든 막의 퀘스트를 맡고 보상한다** (2026-09-25 사용자:
  * "1막을 끝내고 2막 야영지로 가면 1막 퀘스트 보상을 받으러 1막 야영지로 다시 가야 한다 — 촌장의 퀘스트는 모든 야영지에서 공유").

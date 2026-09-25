@@ -171,7 +171,7 @@ export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; se
     playSec[k] = (playSec[k] ?? 0) + Math.round(x.sec)
   }
   for (let i = 0; i < playSec.length; i++) playSec[i] = playSec[i] ?? 0
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, gpity: p.gpity, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, gpity: p.gpity, stats: p.stats, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
   delete d.chars[p.char]!.stash
   delete d.chars[p.char]!.stashMax
   const shared = sanitizeSheet({ stash: p.stash, stashMax: p.stashMax })

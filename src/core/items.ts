@@ -5,6 +5,7 @@
 //  ③ **주운 뒤 버리면 모두에게 보인다** — 친구에게 주는 방법
 // 아이템은 숫자만으로 된 작은 객체다(상태·해시·세이브가 가볍게). 생성은 sim 의 rng 로만(결정론).
 
+import { Stats, sanitizeStats } from './stats'
 import { Rng, rand, randInt } from './rng'
 import { WEAPONS, WeaponId, familyOf } from './weapons'
 
@@ -535,6 +536,8 @@ export type Sheet = {
   bagMax?: number
   /** 도박 천장: 전설 이상 없이 뽑은 수 (GAMBLE_PITY) */
   gpity?: number
+  /** 통계 · 업적 (core/stats.ts) */
+  stats?: Stats
   /** 보관함 칸 수 (캐릭터 공유 — 세이브도 보관함과 같이 캐릭터 밖에 둔다) */
   stashMax?: number
   /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) */
@@ -594,6 +597,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   if (Array.isArray(o.tq)) e.tq = o.tq.slice(0, 3).map((q) => (Array.isArray(q) ? q.slice(0, 32).map((v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0)))) : []))
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
   e.gpity = Math.max(0, Math.min(GAMBLE_PITY, Math.floor(Number(o.gpity) || 0)))
+  e.stats = sanitizeStats(o.stats)
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, e.stashMax) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build

@@ -2,6 +2,7 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
+import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
@@ -49,16 +50,35 @@ export class QuestLog {
   }
   refresh(): void {
     if (!this.open) return
-    const q = this.me().quests
-    if (q.join('') === this.sig) return
-    this.sig = q.join('')
+    const me = this.me()
+    const q = me.quests
+    const sig = q.join('') + JSON.stringify(me.stats) + me.level
+    if (sig === this.sig) return
+    this.sig = sig
     // 연 막까지, 막마다 묶어서 (뒤 막이 위)
     const reach = actReached(q)
     let body = ''
     for (let act = reach; act >= 0; act--) body += `<p class="tp-line">${act + 1}막 · ${ACTS[act].name}</p>` + questList(q.map((v, i) => (QUESTS[i]?.act === act ? v : -1)), false)
-    this.el.innerHTML = `<div class="tp-head"><b>퀘스트</b><button class="inv-x" data-x>✕</button></div>${body}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
+    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 기록</b><button class="inv-x" data-x>✕</button></div>${body}${recordHtml(me)}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
   }
+}
+
+/** 기록 · 업적 (2026-09-25 사용자 고른 개선 9) — 퀘스트 기록(J) 아래 */
+function recordHtml(me: PlayerState): string {
+  const s = me.stats
+  const n = (v: number) => v.toLocaleString('ko-KR')
+  const line = `<p class="rec-line">괴물 <b>${n(s.kills)}</b> · 정예 <b>${n(s.elites)}</b> · 보물 고블린 <b>${n(s.goblins)}</b> · 전설 <b>${n(s.legends)}</b> · 신화 <b>${n(s.mythics)}</b> · 주운 골드 <b>${goldText(s.gold)}</b> · 죽음 <b>${n(s.deaths)}</b></p>`
+  const done = ACHIEVEMENTS.filter((a) => achieved(a, s, me.level)).length
+  const rows = ACHIEVEMENTS.map((a) => {
+    const [cur, goal] = a.goal(s, me.level)
+    const ok = cur >= goal
+    const pct = Math.min(100, Math.round((cur / goal) * 100))
+    return `<div class="ach${ok ? ' ok' : ''}"><b>${ok ? '★' : '☆'} ${a.name}</b><span>${a.desc}</span>${
+      ok || goal <= 1 ? '' : `<i style="--p:${pct}%"></i><small>${n(Math.min(cur, goal))} / ${n(goal)}</small>`
+    }</div>`
+  }).join('')
+  return `<p class="tp-line">기록 · 업적 ${done} / ${ACHIEVEMENTS.length}</p>${line}<div class="ach-grid">${rows}</div>`
 }
 
 function esc(t: string): string {

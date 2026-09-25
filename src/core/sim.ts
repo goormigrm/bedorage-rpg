@@ -4,6 +4,7 @@
 // 둘 다 덕의 이동·사격·구르기·기력 위에 **스킬(Q·E·R)** 이 얹힌다. 스킬은 몬스터와 적 플레이어를 똑같이 친다.
 // 규칙은 DESIGN 2장 — Math.random/삼각함수/시간 금지, 모든 기억은 GameState 안.
 
+import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
@@ -1105,6 +1106,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     bag,
     bagMax: sh.bagMax ?? BAG_SIZE,
     gpity: sh.gpity ?? 0,
+    stats: sanitizeStats(sh.stats),
     st,
     magSize,
     xpGain: 0,
@@ -1693,6 +1695,7 @@ function die(state: GameState, p: PlayerState, by: number): void {
   p.downed = false
   p.revive = 0
   p.deaths++
+  if (state.mode === 'dungeon') p.stats.deaths++
   p.killStreak = 0
   p.respawnTimer = p.char === 'seungwoo' && state.mode === 'arena' ? 120 : RESPAWN_TICKS
   p.fx.fill(0)
@@ -2926,8 +2929,18 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
     state.events.push({ type: 'bossDown', area: state.curArea, kind: m.kind })
   }
   if (state.mode === 'dungeon' && isBossLike(m) && !summoned) questGoal(state, 'kill', state.curArea)
+  // 통계: 막 보스는 그 지역에 있던 파티 모두 · 괴물 · 정예 · 고블린은 잡은 사람 (2026-09-25 업적)
+  if (state.mode === 'dungeon' && def.boss && !summoned) {
+    const bit = bossBit(areaDef(state.curArea).act, state.tier ?? 0)
+    for (const q of state.players) if (!q.vacant && !q.left && q.area === state.curArea) q.stats.bosses |= bit
+  }
   if (!suicide) {
     const killer = by >= 0 ? state.players[by] : null
+    if (killer && state.mode === 'dungeon') {
+      killer.stats.kills++
+      if (m.elite > 0) killer.stats.elites++
+      if (m.kind === GOBLIN_KIND) killer.stats.goblins++
+    }
     if (killer) {
       killer.kills++
       killer.killStreak++
@@ -3368,6 +3381,7 @@ function pickUp(state: GameState, p: PlayerState): void {
       const g = hasLeg(p, LEG_GOLD) ? Math.round(d.gold * 1.5) : d.gold
       p.gold += g
       p.goldGain += g
+      p.stats.gold += g
       if (hasLeg(p, LEG_GOLD)) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.02)
       state.events.push({ type: 'gold', p: p.id, n: g, x: d.x, y: d.y })
     } else if (d.pot > 0) {
@@ -3392,6 +3406,8 @@ function takeItem(state: GameState, p: PlayerState, i: number): void {
   p.bag.push(it)
   p.found++
   if (it.rarity > p.bestFound) p.bestFound = it.rarity
+  if (it.rarity === 3) p.stats.legends++
+  else if (it.rarity >= 4) p.stats.mythics++
   state.drops.splice(i, 1)
   state.events.push({ type: 'pickup', p: p.id, rarity: it.rarity, uid: it.uid })
 }

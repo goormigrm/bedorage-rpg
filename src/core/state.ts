@@ -1,3 +1,4 @@
+import type { Stats } from './stats'
 import type { BotMemory } from './bot'
 import { CharacterId } from './characters'
 import type { Item, Sheet } from './items'
@@ -209,6 +210,8 @@ export interface PlayerState {
   bagMax: number
   /** 도박 천장: 전설 이상 없이 뽑은 수 (items.ts GAMBLE_PITY — 2026-09-25) */
   gpity: number
+  /** 통계 (core/stats.ts — 업적의 바탕 · 세이브에 남는다. 2026-09-25) */
+  stats: Stats
   /** 장비 + 레벨로 낸 능력치 (items.ts ST_*) */
   st: number[]
   /** 탄창 크기 (탄창 옵션 반영) */

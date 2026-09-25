@@ -23,7 +23,7 @@ const BOSS_INTRO: Record<string, string> = {
   warden: '지하 감옥의 열쇠를 쥔 자 — 이 문으로 나간 죄수는 없다',
   lord: '옥좌에서 심연이 일어선다 — 마지막 싸움이다',
 }
-import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, elderMarks, isTown, townNpcs } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
@@ -2052,6 +2052,106 @@ export class Renderer3D {
     ctx.stroke()
     ctx.restore()
     this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
+    this.drawMiniGoal(curr, opts, x, y, S, mx, my, rot)
+  }
+
+  /**
+   * 퀘스트 길 안내 (2026-09-25 사용자 고른 개선 4): 가야 할 곳을 금빛으로 — 다른 지역이면 그리로 가는 **출구**, 이 지역이면
+   * 촌장 · 우두머리 · 보스 자리(잡기) · 가장 가까운 괴물(비우기). 창 안이면 깜빡이는 금테, 창 밖이면 가장자리 화살표 + 글.
+   */
+  private questTarget(curr: GameState, lp: number): { x: number; y: number; label: string } | null {
+    if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return null
+    const me = curr.players[lp]
+    if (!me) return null
+    const g = questGuide(me.quests ?? [], curr.curArea)
+    if (!g) return null
+    const l = areaLayout(curr.curArea, this.map)
+    if (g.area !== curr.curArea) {
+      const path = areaPath(curr.curArea, g.area)
+      const hop = path?.[1]
+      const e = hop === undefined ? null : l.exits.find((q) => q.to === hop)
+      return e ? { x: e.x, y: e.y, label: `${g.label} → ${AREAS[hop!].name}` } : null
+    }
+    if (g.npc) {
+      const n = townNpcs(curr.curArea).find((q) => q.id === g.npc)
+      return n ? { x: n.x, y: n.y, label: g.label } : null
+    }
+    const qd = g.quest !== undefined ? QUESTS[g.quest] : null
+    if (qd?.goal === 'kill' && l.special) return { x: l.special.x, y: l.special.y, label: qd.name }
+    // 비우기: 가장 가까운 괴물 (보물 고블린 빼고)
+    let best: { x: number; y: number } | null = null
+    let bd = Infinity
+    for (const m of curr.monsters) {
+      if (m.hp <= 0 || MONSTER_LIST[m.kind].attack === 'flee') continue
+      const d = (m.x - me.x) ** 2 + (m.y - me.y) ** 2
+      if (d < bd) {
+        bd = d
+        best = m
+      }
+    }
+    return best ? { x: best.x, y: best.y, label: qd ? `${qd.name} · 남은 괴물` : '남은 괴물' } : null
+  }
+
+  private drawMiniGoal(curr: GameState, opts: RenderOptions, x: number, y: number, S: number, mx: number, my: number, rot: number): void {
+    const t = this.questTarget(curr, opts.localPlayer)
+    if (!t) return
+    const ctx = this.hud.ctx
+    const cx = x + S / 2
+    const cy = y + S / 2
+    const dx = (t.x / TILE - mx) * MINIMAP_PX_PER_TILE
+    const dy = (t.y / TILE - my) * MINIMAP_PX_PER_TILE
+    const px = cx + dx * Math.cos(rot) - dy * Math.sin(rot)
+    const py = cy + dx * Math.sin(rot) + dy * Math.cos(rot)
+    const pulse = 0.6 + 0.4 * Math.sin(this.t * 5)
+    const inside = px > x + 6 && px < x + S - 6 && py > y + 6 && py < y + S - 6
+    ctx.save()
+    ctx.font = '700 9px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.lineWidth = 3
+    const GOLD = '#ffd84a'
+    if (inside) {
+      ctx.globalAlpha = pulse
+      ctx.strokeStyle = GOLD
+      ctx.lineWidth = 1.8
+      ctx.beginPath()
+      ctx.arc(px, py, 6 + pulse * 2, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      ctx.restore()
+      return
+    }
+    const a = Math.atan2(py - cy, px - cx)
+    const half = S / 2 - 8
+    const k = Math.min(half / Math.max(1e-6, Math.abs(Math.cos(a))), half / Math.max(1e-6, Math.abs(Math.sin(a))))
+    const ex = cx + Math.cos(a) * k
+    const ey = cy + Math.sin(a) * k
+    ctx.save()
+    ctx.translate(ex, ey)
+    ctx.rotate(a)
+    ctx.globalAlpha = 0.75 + 0.25 * pulse
+    ctx.fillStyle = GOLD
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(8, 0)
+    ctx.lineTo(-5, -7)
+    ctx.lineTo(-2, 0)
+    ctx.lineTo(-5, 7)
+    ctx.closePath()
+    ctx.stroke()
+    ctx.fill()
+    ctx.restore()
+    // 글: 화살표 안쪽으로 (창 밖으로 안 나가게)
+    const label = `퀘스트 · ${t.label}`
+    const hw = ctx.measureText(label).width / 2 + 4
+    const lx = Math.max(x + hw, Math.min(x + S - hw, ex - Math.cos(a) * 16))
+    const ly = Math.max(y + 12, Math.min(y + S - 4, ey - Math.sin(a) * 14 + 3))
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+    ctx.strokeText(label, lx, ly)
+    ctx.fillStyle = GOLD
+    ctx.fillText(label, lx, ly)
+    ctx.restore()
   }
 
   /**

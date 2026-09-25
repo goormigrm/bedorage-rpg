@@ -1,6 +1,7 @@
 // 게임 세션: 혼자 하기(동료 봇) 와 협동(락스텝) 을 같은 루프로 돌린다. 렌더는 Three.js. 인원 1~4명.
 // 협동: 플레이어 0 = 호스트. 호스트가 해시 비교·리싱크·이탈자 드롭 틱·난입을 정한다.
 
+import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
@@ -119,6 +120,8 @@ export class Session {
   private lastWpHint = 0
   /** 방금 밟아서 연 웨이포인트 시각 — 그 뒤 잠깐은 F 로 창을 띄우지 않는다(줍기 · 일으키기로 흘려보낸다) */
   private wpFoundAt = -1e9
+  /** 이미 이룬 업적 (새로 이루면 알린다 — 판에 들어올 때 이미 이룬 것은 알리지 않는다) */
+  private achSeen: Set<string> | null = null
   private town!: TownPanel
   private skills!: SkillPanel
   private chars!: CharSheet
@@ -1634,6 +1637,20 @@ export class Session {
           this.town.gambleResult(got, e.gold)
           const best = got.reduce((a, b) => (b.rarity > a.rarity ? b : a))
           if (best.rarity >= 3) showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, best, true)
+        }
+      }
+      // 업적: 새로 이룬 것을 알린다 (30틱마다 — 통계는 판이 센다)
+      if (this.state.tick % 30 === 0 && this.state.mode === 'dungeon') {
+        const me = this.state.players[this.cfg.localPlayer]
+        if (me) {
+          const now = achievedIds(me.stats, me.level)
+          if (this.achSeen) {
+            // 한꺼번에 여럿이면 한 배너에 (배너는 한 칸뿐이라 따로 띄우면 마지막 것만 보인다)
+            const fresh = ACHIEVEMENTS.filter((a) => now.has(a.id) && !this.achSeen!.has(a.id))
+            if (fresh.length === 1) this.renderer.hud.banner(`업적 — ${fresh[0].name}`, fresh[0].desc, '#ffd84a')
+            else if (fresh.length > 1) this.renderer.hud.banner(`업적 ${fresh.length}개`, fresh.map((a) => a.name).join(' · '), '#ffd84a')
+          }
+          this.achSeen = now
         }
       }
       // 웨이포인트 창은 곁을 떠나거나 괴물이 다가오면 저절로 닫는다 — ✕ 를 따로 누르지 않게 (2026-09-25 사용자: "전투 중에 방해된다")
