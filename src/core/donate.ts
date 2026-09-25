@@ -19,7 +19,7 @@ export interface DonateEvent {
 
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
-  { id: 2, key: 'shake', name: '화면 흔들림', desc: '10초 동안 화면이 크게 출렁인다', amount: 2000 },
+  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 2000 },
   { id: 3, key: 'dark', name: '암흑', desc: '30초 동안 코앞만 보인다', amount: 3000 },
   { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 5000 },
   { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 7000 },
@@ -85,7 +85,8 @@ export const DON_SLOTS = 4
 /** 효과 길이 (틱). 같은 것이 또 오면 이어 붙이되 DON_MAX 까지 (화면 흔들림은 SHAKE_MAX) */
 export const DON_TICKS: Record<number, number> = {
   // 손 떨림 30 → 10초 (2026-09-24 사용자: "2000원으로 저렴한 거에 비해 너무 길고 방해 효과가 너무 크다")
-  [DON_SHAKE]: 10 * TICK_RATE,
+  // 10 → 5초 (2026-09-26 사용자: 화면 흔들림이 "너무 멀미 난다 — 작게 · 시간도 줄여")
+  [DON_SHAKE]: 5 * TICK_RATE,
   [DON_DARK]: 30 * TICK_RATE,
   [DON_INVERT]: 20 * TICK_RATE,
   [DON_SEAL]: 30 * TICK_RATE,
@@ -108,7 +109,7 @@ export const RAGE_SPEED = 1.3
  * 전에는 sim 이 조준을 ±7° 흔들었다 — 넓게 휘두르는 근접(후라이팬 · 검)에는 거의 상관이 없었다. 이제 **화면(카메라)만** 출렁인다
  * (render3d/renderer3d.ts updateCamera). 판은 그대로이고, 마우스 조준점이 화면을 따라 움직여 총은 겨누기도 어렵다
  */
-/** 화면 흔들림이 몰려도 이어 붙는 끝 (30초) */
-export const SHAKE_MAX = 30 * TICK_RATE
+/** 화면 흔들림이 몰려도 이어 붙는 끝 (30 → 15초 — 2026-09-26 멀미) */
+export const SHAKE_MAX = 15 * TICK_RATE
 /** 암흑일 때 시야 (타일 — 보통 13) */
 export const DARK_VIEW_TILES = 2.6

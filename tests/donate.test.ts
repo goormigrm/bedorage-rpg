@@ -151,12 +151,12 @@ describe('후원 이벤트 — 소환', () => {
 })
 
 describe('후원 이벤트 — 효과', () => {
-  it('화면 흔들림: 화면만 흔든다 — 판의 조준은 그대로 · 10초가 지나면 끝난다 (2026-09-26 — 조준 흔들기는 근접에 안 느껴졌다)', () => {
+  it('화면 흔들림: 화면만 흔든다 — 판의 조준은 그대로 · 5초가 지나면 끝난다 (2026-09-26 — 조준 흔들기는 근접에 안 느껴졌다 · 10초는 멀미)', () => {
     const g = game()
     toField(g)
     g.donate(ev('shake'))
     const p = g.s.players[0]
-    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(10)
+    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(5)
     for (let t = 0; t < 20; t++) {
       g.run((i) => (i === 0 ? { ...idle(), aim: 300 } : idle()))
       expect(p.aim).toBe(300)
@@ -359,13 +359,13 @@ describe('같은 방해 효과가 이어 붙는 한도', () => {
     expect(darkFor(70)[0]).toBe(60)
   })
 
-  it('손 떨림은 한도가 커도 30초를 넘지 않는다 · 한도보다 이미 길게 걸려 있으면 줄이지 않는다', () => {
+  it('화면 흔들림은 한도가 커도 15초를 넘지 않는다 · 한도보다 이미 길게 걸려 있으면 줄이지 않는다', () => {
     const g = game(92)
     toField(g)
     g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONCAP, arg: 12 } : idle()))
     for (let k = 0; k < 6; k++) g.donate(ev('shake', k))
     const p = g.s.players[0]
-    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(30)
+    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(15)
     // 다른 방송인의 한도로 90초가 걸려 있는데 한도 30초인 사람의 후원이 와도 90초 그대로(늘지도 줄지도 않는다)
     p.don![DON_DARK] = 90 * 60
     g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONCAP, arg: 3 } : idle()))
