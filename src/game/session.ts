@@ -7,7 +7,7 @@ import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
-import { JOIN_RE, StreamChat, StreamDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { JOIN_RE, Joiner, StreamChat, StreamDonation, addJoiner, drawJoiner, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -180,13 +180,14 @@ export class Session {
   /** 도배 거르기 (2026-09-25 방송 개선 3 — game/chatfilter.ts) */
   private spam = new SpamGuard()
   /**
-   * 시청자 이름 괴물 (2026-09-25 방송 개선 7): 채팅 "!참여" 한 시청자(먼저 온 차례) · 이름 붙은 괴물(번호 → 닉네임 · 지역 · 붙인 때).
-   * 차례는 방송하는 사람 화면에서만 돌고, 이름은 방 사람들에게 mname 으로 보낸다. 괴물 번호는 판 전체에서 하나뿐이다
+   * 시청자 이름 괴물 (2026-09-25 방송 개선 7): 채팅 "!참여" 한 시청자(추첨 후보 — stream.ts drawJoiner) · 최근 당첨 ·
+   * 이름 붙은 괴물(번호 → 닉네임 · 지역 · 붙인 때). 추첨은 방송하는 사람 화면에서만 하고, 이름은 방 사람들에게 mname 으로 보낸다.
+   * 괴물 번호는 판 전체에서 하나뿐이다
    */
-  private joinPool: { nick: string; at: number }[] = []
+  private joinPool: Joiner[] = []
+  private joinWins = new Map<string, number>()
   private vnames = new Map<number, { nick: string; area: number; at: number }>()
   private nameNextAt = 0
-  private static readonly JOIN_MAX = 60
   /** 한 지역에 이름 붙은 괴물이 동시에 이만큼까지 */
   private static readonly NAMED_MAX = 3
   /** 0.4초 넘는 멈춤 횟수·누적 시간 (운영 로그용) */
@@ -2042,12 +2043,10 @@ export class Session {
     }
   }
 
-  /** 채팅 "!참여": 차례에 선다 (이미 섰거나 이름 붙은 괴물이 살아 있으면 그대로) */
+  /** 채팅 "!참여": 추첨 후보가 된다 (이미 후보면 시간만 새로 · 이름 붙은 괴물이 살아 있으면 그대로) */
   private joinViewer(nick: string, test?: boolean): void {
-    if (this.joinPool.some((j) => j.nick === nick)) return
     for (const v of this.vnames.values()) if (v.nick === nick) return
-    this.joinPool.push({ nick, at: performance.now() })
-    if (this.joinPool.length > Session.JOIN_MAX) this.joinPool.shift()
+    addJoiner(this.joinPool, nick, performance.now())
     if (test) {
       this.message = '참여 시험 — 화면에 정예 · 우두머리가 보이면 그 머리 위에 이름이 붙습니다'
       setTimeout(() => {
@@ -2056,10 +2055,9 @@ export class Session {
     }
   }
 
-  /** 차례의 맨 앞 시청자를 화면의 정예 · 우두머리(가장 가까운 것)에 붙인다 — 한 지역에 NAMED_MAX 까지 · 붙이면 3초 쉰다 */
+  /** 추첨으로 한 명을 뽑아 화면의 정예 · 우두머리(가장 가까운 것)에 붙인다 — 한 지역에 NAMED_MAX 까지 · 붙이면 3초 쉰다 */
   private assignViewerName(now: number): void {
-    // 오래된 것 치우기: 차례 15분 · 이름표 20분(괴물이 다른 지역에 남아 잊힌 것)
-    if (this.joinPool.length > 0) this.joinPool = this.joinPool.filter((j) => now - j.at < 15 * 60_000)
+    // 오래된 이름표 치우기: 20분(괴물이 다른 지역에 남아 잊힌 것). 오래된 후보는 drawJoiner 가 치운다
     for (const [id, v] of this.vnames) if (now - v.at > 20 * 60_000) this.vnames.delete(id)
     if (this.joinPool.length === 0 || this.arena || isTown(this.viewArea) || !loadStreamCfg().named) return
     const view = this.view()
@@ -2084,9 +2082,10 @@ export class Session {
       }
     }
     if (best < 0 || named >= Session.NAMED_MAX) return
-    const j = this.joinPool.shift()!
-    this.nameMonster(best, j.nick, this.viewArea, now)
-    this.cfg.link?.sendCtl({ t: 'mname', a: this.viewArea, m: best, nick: j.nick })
+    const nick = drawJoiner(this.joinPool, this.joinWins, now)
+    if (!nick) return
+    this.nameMonster(best, nick, this.viewArea, now)
+    this.cfg.link?.sendCtl({ t: 'mname', a: this.viewArea, m: best, nick })
     this.nameNextAt = now + 3000
   }
 
@@ -2266,7 +2265,7 @@ export class Session {
       ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt"></span></div>`).join('')
       : ''
     // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7)
-    const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 괴물에 내 이름</div>` : ''
+    const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름</div>` : ''
     const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${join}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
     if (el.dataset.h !== html) {

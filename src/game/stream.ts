@@ -164,8 +164,50 @@ export function eventRows(cfg = loadStreamCfg()): { e: DonateEvent; amount: numb
 
 export const won = (n: number): string => `${n.toLocaleString('ko-KR')}원`
 
-/** 채팅 "!참여" — 시청자 이름 괴물 차례에 선다 (말풍선으로는 띄우지 않는다) */
+/** 채팅 "!참여" — 시청자 이름 괴물 추첨 후보가 된다 (말풍선으로는 띄우지 않는다) */
 export const JOIN_RE = /^!\s*(참여|참가|join)$/i
+
+/**
+ * 시청자 이름 괴물 추첨 (2026-09-26 사용자: "참여는 무료인데 100명이 참여하면 선착순이야 추첨이야?" → 추첨으로).
+ * 후보 = 최근 JOIN_TTL 안에 "!참여" 한 사람 모두(한 사람 한 번 — 다시 쓰면 시간만 새로). 이름 붙일 때마다 **무작위로 한 명**.
+ * 최근 WIN_COOL 안에 당첨된 사람은 다른 후보가 있으면 뒤로 미룬다(한 사람만 거듭 뽑히지 않게). 뽑힌 사람은 후보에서 빠진다
+ */
+export const JOIN_TTL = 15 * 60_000
+export const JOIN_MAX = 500
+export const WIN_COOL = 10 * 60_000
+
+export interface Joiner {
+  nick: string
+  at: number
+}
+
+/** 후보에 넣는다 (이미 있으면 시간만 새로 · 넘치면 가장 오래된 사람부터 뺀다) */
+export function addJoiner(pool: Joiner[], nick: string, now: number): void {
+  const had = pool.find((j) => j.nick === nick)
+  if (had) {
+    had.at = now
+    return
+  }
+  pool.push({ nick, at: now })
+  if (pool.length > JOIN_MAX) {
+    let old = 0
+    for (let i = 1; i < pool.length; i++) if (pool[i].at < pool[old].at) old = i
+    pool.splice(old, 1)
+  }
+}
+
+/** 한 명을 뽑아 후보에서 뺀다 (없으면 undefined). 오래된 후보 · 오래된 당첨 기록은 여기서 치운다 */
+export function drawJoiner(pool: Joiner[], winners: Map<string, number>, now: number, rand: () => number = Math.random): string | undefined {
+  for (let i = pool.length - 1; i >= 0; i--) if (now - pool[i].at >= JOIN_TTL) pool.splice(i, 1)
+  for (const [nick, t] of winners) if (now - t >= WIN_COOL) winners.delete(nick)
+  if (pool.length === 0) return undefined
+  const fresh = pool.filter((j) => !winners.has(j.nick))
+  const from = fresh.length > 0 ? fresh : pool
+  const pick = from[Math.min(from.length - 1, Math.floor(rand() * from.length))]
+  pool.splice(pool.indexOf(pick), 1)
+  winners.set(pick.nick, now)
+  return pick.nick
+}
 
 type Fn<T> = (v: T) => void
 
