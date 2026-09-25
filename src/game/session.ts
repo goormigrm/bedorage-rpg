@@ -5,7 +5,7 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
+import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
 import { JOIN_RE, StreamChat, StreamDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
@@ -1368,6 +1368,21 @@ export class Session {
     return `<div class="partykick"><div class="pkh">파티 — 방장</div>${rows.join('')}<p class="pkn">내보낸 사람은 이 방에 다시 들어올 수 없습니다 · 한 번 더 눌러야 내보냅니다.</p></div>`
   }
 
+  /** 스킬 봉인 중에 스킬 키(Q · E · 1 · 2)를 누르면 화면 위 가운데에 알린다 — 새로 누를 때 · 1.5초에 한 번 (2026-09-26 사용자: "버그 같아 보인다") */
+  private sealKeysPrev = 0
+  private sealHintAt = 0
+  private sealHint(inp: Input): void {
+    const keys = inp.buttons & (BTN_SKILL1 | BTN_SKILL2 | BTN_SKILL3 | BTN_SKILL4)
+    const fresh = keys & ~this.sealKeysPrev
+    this.sealKeysPrev = keys
+    if (!fresh) return
+    const seal = this.state.players[this.cfg.localPlayer]?.don?.[DON_SEAL] ?? 0
+    const now = performance.now()
+    if (seal <= 0 || now < this.sealHintAt) return
+    this.sealHintAt = now + 1500
+    this.renderer.notice(`⛓ 스킬 봉인 중 — ${Math.ceil(seal / 60)}초 남음 · 궁극기 · 구르기는 됩니다`, '#ff9d8a', 1.6)
+  }
+
   /** 혼자 이어하기가 되는가: 던전 · 판이 끝나지 않음 · 내가 자리에 앉아 있음 */
   private canContinueSolo(): boolean {
     const me = this.state.players[this.cfg.localPlayer]
@@ -1664,6 +1679,7 @@ export class Session {
             // 터치 조작이면 조준을 대신 해 준다 (스틱 두 개는 폰에서 무리)
             this.touch ? { state: this.view(), map: this.map, me: this.cfg.localPlayer } : undefined,
           )
+      if (!this.autopilot) this.sealHint(localIn)
       let inputs: Input[]
       if (this.lockstep) {
         this.lockstep.pushLocal(t, localIn)

@@ -17,6 +17,7 @@ import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core
 import { AREAS, QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
 import { myGoldText, xpNeed } from '../core/items'
+import { DON_SEAL } from '../core/donate'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
@@ -305,6 +306,32 @@ function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: numb
   c.restore()
 }
 
+/** 봉인된 스킬 칸: 붉게 덮고 가운데에 "봉인" · 쇠사슬 두 줄 (2026-09-26 — 봉인 중에 스킬이 안 나가는 까닭을 칸에서 보이게) */
+function sealMark(c: CanvasRenderingContext2D, x: number, y: number, s: number, t: number): void {
+  c.save()
+  c.fillStyle = `rgba(120,14,10,${0.55 + 0.1 * Math.sin(t * 5)})`
+  rr(c, x + 2, y + 2, s - 4, s - 4, 3)
+  c.fill()
+  // 쇠사슬(대각선 두 줄)
+  c.strokeStyle = 'rgba(255,170,150,0.55)'
+  c.lineWidth = 2
+  c.beginPath()
+  c.moveTo(x + 6, y + 6)
+  c.lineTo(x + s - 6, y + s - 6)
+  c.moveTo(x + s - 6, y + 6)
+  c.lineTo(x + 6, y + s - 6)
+  c.stroke()
+  c.font = `900 13px ${SANS}`
+  c.textAlign = 'center'
+  c.textBaseline = 'middle'
+  c.lineWidth = 3
+  c.strokeStyle = 'rgba(0,0,0,0.85)'
+  c.strokeText('봉인', x + s / 2, y + s / 2)
+  c.fillStyle = '#ffb4a8'
+  c.fillText('봉인', x + s / 2, y + s / 2)
+  c.restore()
+}
+
 export class D4Hud {
   private portraits = new Map<string, HTMLCanvasElement>()
   /** 마우스를 올린 스킬 칸 (툴팁) 과 올려 둔 시간 */
@@ -356,6 +383,8 @@ export class D4Hud {
     const rects: { x: number; y: number; id?: SkillId; i: number }[] = []
     // 칸 순서: Q · E · 1 · 2 · R (스킬 칸 번호 0 · 1 · 3 · 4 · 2) — 궁극기는 오른쪽 끝
     const order = [0, 1, 3, 4, 2]
+    // 후원 "스킬 봉인" 남은 틱 (궁극기 · 구르기는 된다 — 스킬 칸만 막는다)
+    const seal = me.don?.[DON_SEAL] ?? 0
     order.forEach((k, pos) => {
       const node = slotNode(me, k)
       if (node < 0) {
@@ -390,8 +419,30 @@ export class D4Hud {
       const poor = !def.ult && me.focus < cost
       const active = this.activeFor(id, me)
       slot(h, slotX(pos), by, S, skillKeyLabel(k), poor && cdK <= 0 ? 1 : cdK, (me.cd[k] ?? 0) / 60, (dim) => drawSkillIcon(c, id, slotX(pos) + S / 2, by + S / 2, S * 0.62, dim || poor), def.ult === true, active)
+      if (seal > 0 && !def.ult) sealMark(c, slotX(pos), by, S, h.t)
       rects.push({ x: slotX(pos), y: by, id, i: k })
     })
+    // 봉인 중: 바 위에 붉은 띠 "스킬 봉인 12초 · 궁극기 · 구르기는 됩니다" (2026-09-26 사용자: "눌렀는데 안 나가니까 버그 같아 보인다")
+    if (seal > 0) {
+      const text = `⛓ 스킬 봉인 ${Math.ceil(seal / 60)}초 · 궁극기 · 구르기는 됩니다`
+      c.save()
+      c.font = `800 12.5px ${SANS}`
+      c.textAlign = 'center'
+      c.textBaseline = 'middle'
+      const tw = c.measureText(text).width + 24
+      const ty = by - 46
+      const pulse = 0.75 + 0.25 * Math.sin(h.t * 5)
+      c.fillStyle = `rgba(90,12,10,${0.82 * pulse + 0.1})`
+      rr(c, cx - tw / 2, ty - 11, tw, 22, 4)
+      c.fill()
+      c.strokeStyle = '#d8554a'
+      c.lineWidth = 1.2
+      rr(c, cx - tw / 2, ty - 11, tw, 22, 4)
+      c.stroke()
+      c.fillStyle = '#ffd0c8'
+      c.fillText(text, cx, ty + 0.5)
+      c.restore()
+    }
     // 구르기: 던전은 충전 2 (작은 점), 투기장은 기력
     const dashCd = me.dashCooldown / Math.max(1, CHARACTERS[me.char].dashCooldown * 1.6)
     const dungeon = me.dashCharges !== undefined && this.dungeon
