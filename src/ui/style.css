@@ -223,7 +223,9 @@ input.code:focus { outline: 2px solid var(--duck); border-color: transparent; }
   transform: translate(-50%, -50%); transform-origin: center; }
 .game-stage > canvas { position: absolute; left: 0; top: 0; display: block; width: 100%; height: 100%; }
 .game-stage > canvas.hud { pointer-events: none; }
-.game-ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.game-ui { position: absolute; inset: 0; pointer-events: none; z-index: 5; -webkit-user-select: none; user-select: none; }
+/* 게임 위 창을 끌어도 글자가 칠해지지 않게 — 입력 칸만 고를 수 있다 */
+.game-ui input, .game-ui textarea { -webkit-user-select: text; user-select: text; }
 .game-ui .top-right { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; pointer-events: auto; cursor: default; }
 .game-ui .btn { padding: 6px 12px; font-size: 13px; }
 .overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; background: rgba(4,7,11,.45); }

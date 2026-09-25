@@ -40,6 +40,12 @@ const TURN_EASE = 0.25
 export const AUTO_AIM_BIAS = Math.round((9 / 360) * 1024)
 export const AUTO_AIM_SWAY = Math.round((3 / 360) * 1024)
 
+/** 이 누름이 게임이 아니라 UI(게임 위 창 · 단추 · 입력 칸)에 간 것인가 */
+export function isUiTarget(t: EventTarget | null): boolean {
+  const el = t as Element | null
+  return !!el && typeof el.closest === 'function' && el.closest('.game-ui, input, select, textarea, button, label, a') !== null
+}
+
 export class LocalInput {
   private keys = new Set<string>()
   mouse = { x: VIEW_W / 2, y: VIEW_H / 2 }
@@ -98,6 +104,10 @@ export class LocalInput {
       this.mouse.y = ((e.clientY - r.top) / r.height) * VIEW_H
     }
     const md = (e: MouseEvent) => {
+      // 게임 위 UI(메뉴의 소리 막대 · 단추 · 창)를 누른 것은 사격이 아니다 — 기본 동작(막대 끌기 · 입력 칸)도 막지 않는다
+      // (2026-09-26 사용자: "소리 조절이 안 되고 그냥 캐릭터 평타 공격이 나간다" — 창 전체의 누름을 받아 막대를 못 끌었다).
+      // .game-ui 는 빈 곳이 마우스를 통과시키므로(pointer-events: none) 그 안에서 눌린 것은 모두 UI 다
+      if (isUiTarget(e.target)) return
       this.mouseDown.add(e.button)
       e.preventDefault()
     }
