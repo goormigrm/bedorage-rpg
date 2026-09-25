@@ -4,7 +4,7 @@
 // **DOM 으로 띄운다** — 대장장이 창(.tp) 위에 보여야 하기 때문이다. HUD 캔버스는 창 아래에 깔려 가려진다.
 // 성공하면 등급 색 고리 둘이 퍼지고 불티가 튄다. 실패하면 흐린 고리 하나만 가라앉는다.
 
-import { Item, RARITY_COLORS, RARITY_NAMES, SLOT_NAMES, SLOT_WEAPON, WEAPON_IDS, itemName } from '../core/items'
+import { Item, RARITY_NAMES, SLOT_NAMES, SLOT_WEAPON, WEAPON_IDS, itemColor, itemName } from '../core/items'
 import { WEAPONS } from '../core/weapons'
 
 function esc(t: string): string {
@@ -15,7 +15,7 @@ export function showForgeFx(parent: HTMLElement, it: Item, up: boolean): void {
   parent.querySelector('.forge-fx')?.remove()
   const el = document.createElement('div')
   el.className = `forge-fx ${up ? 'win' : 'lose'}`
-  el.style.setProperty('--rc', RARITY_COLORS[it.rarity] ?? '#d8cfbf')
+  el.style.setProperty('--rc', itemColor(it))
   const kind = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]]?.name ?? '무기' : SLOT_NAMES[it.slot]
   // 불티: 열두 방향
   const sparks = up

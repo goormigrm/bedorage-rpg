@@ -7,7 +7,7 @@ import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, GAMBLE_PITY, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, itemColor, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -105,7 +105,7 @@ function row(it: Item, right: string, data: string, disabled = false, short = fa
   }
   const up = it.up ? `<b class="tp-up">+${it.up}</b>` : ''
   return `<button class="tp-row${short ? ' short' : ''}" ${data} ${disabled ? 'disabled' : ''}>
-    <span class="tp-n" style="color:${RARITY_COLORS[it.rarity]}">${esc(itemName(it))}${up}<small>${RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
+    <span class="tp-n" style="color:${itemColor(it)}">${esc(itemName(it))}${up}<small>${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
     <span class="tp-a">${text}</span>
     <span class="tp-g">${right}</span></button>`
 }
@@ -262,7 +262,7 @@ export class TownPanel {
           `<button data-frar="${r}" class="${r === rar ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${forgeNeed(r)}개<small>→ ${RARITY_NAMES[r + 1]} ${Math.round(forgeOdds(r) * 100)}%</small></button>`
         const lf = this.lastForge
         const card = lf
-          ? `<div class="forge-out ${lf.up ? 'win' : 'lose'}" style="--rc:${RARITY_COLORS[lf.it.rarity]}">
+          ? `<div class="forge-out ${lf.up ? 'win' : 'lose'}" style="--rc:${itemColor(lf.it)}">
               <div class="fo-h"><b>${lf.up ? '한 단계 올랐다' : '등급 그대로'}</b><span>방금 벼린 것 — 가방에 들어갔다</span></div>
               ${itemHtml(lf.it)}
             </div>`
@@ -317,7 +317,7 @@ export class TownPanel {
         const counts = [0, 0, 0, 0, 0]
         for (const it of g.items) counts[it.rarity]++
         const tally = counts.map((n, r) => (n > 0 ? `<span style="color:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${n}</span>` : '')).filter(Boolean).join(' · ')
-        card = `<div class="forge-out ${best.rarity >= 3 ? 'win' : ''}" style="--rc:${RARITY_COLORS[best.rarity]}">
+        card = `<div class="forge-out ${best.rarity >= 3 ? 'win' : ''}" style="--rc:${itemColor(best)}">
           <div class="fo-h"><b>${g.items.length}번 뽑았다</b><span>${goldText(g.gold)} · 가방에 들어갔다</span></div>
           <div class="gb-out">${g.items.map((it, i) => cellHtml(it, `data-gb="${i}"`, me)).join('')}</div>
           <p class="gb-tally">${tally}</p>

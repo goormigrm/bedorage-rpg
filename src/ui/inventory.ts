@@ -6,8 +6,8 @@
 import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
 import {
-  AFFIXES, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, computeStats, hasImplicit, itemName, myGoldText, weaponBaseDmg, xpNeed,
+  AFFIXES, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
+  affixText, affixValue, armorBase, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -23,7 +23,7 @@ export function canWield(me: PlayerState, it: Item): boolean {
 
 /** 아이템 줄 요약 (툴팁 본문) */
 export function itemHtml(it: Item, me?: PlayerState): string {
-  const color = RARITY_COLORS[it.rarity]
+  const color = itemColor(it)
   const kind = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]]?.name ?? '무기' : SLOT_NAMES[it.slot]
   const lines: string[] = []
   const base = weaponBaseDmg(it)
@@ -34,12 +34,21 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   for (let k = 0; k < it.aff.length; k += 2) lines.push(`<div class="aff">${k === 0 && hasImplicit(it) ? '◇ 기본 ' : '◆ '}${affixText(it.aff[k], affixValue(it, k))}</div>`)
   if (it.up) lines.push(`<div class="base">강화 +${it.up} — 옵션 · 기본 +${it.up * 10}%</div>`)
   if (it.rarity >= 3 && it.leg !== undefined && LEGENDS[it.leg]) lines.push(`<div class="leg">✦ ${LEGENDS[it.leg].name} — ${LEGENDS[it.leg].desc}</div>`)
+  // 세트: 부위 셋 중 낀 것 · 2부위 · 3부위 효과 (켜진 것은 밝게)
+  const sd = it.set !== undefined ? SETS[it.set] : undefined
+  if (sd) {
+    const have = me ? setCounts(me.equip)[it.set!] : 0
+    const parts = sd.slots.map((sl) => `<span class="${me?.equip[sl]?.set === it.set ? 'on' : ''}">${SLOT_NAMES[sl]}</span>`).join(' · ')
+    const bonus = (need: number, list: [number, number][]) =>
+      `<div class="set-b${have >= need ? ' on' : ''}">${need}부위 — ${list.map(([k, v]) => affixText(k, v)).join(' · ')}</div>`
+    lines.push(`<div class="set"><b>세트 〔${sd.name}〕 ${have} / ${sd.slots.length}</b><div class="set-p">${parts}</div>${bonus(2, sd.two)}${bonus(3, sd.three)}</div>`)
+  }
   let warn = ''
   if (me && it.slot === SLOT_WEAPON && !canWield(me, it)) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
   const wd = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]] : undefined
   if (wd) lines.unshift(`<div class="base">${wd.desc} · 초당 피해 약 ${Math.round(weaponDps(wd) * 60)}</div>`)
   return `<div class="it-name" style="color:${color}">${esc(itemName(it))}</div>
-    <div class="it-kind">${RARITY_NAMES[it.rarity]} ${kind} · 아이템 레벨 ${it.ilvl}</div>
+    <div class="it-kind">${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${kind} · 아이템 레벨 ${it.ilvl}</div>
     ${lines.join('')}${warn}`
 }
 
@@ -49,12 +58,11 @@ export function itemHtml(it: Item, me?: PlayerState): string {
  */
 export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): string {
   if (!it) return `<div class="cell empty" ${attr}></div>`
-  const col = RARITY_COLORS[it.rarity]
+  const col = itemColor(it)
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
-  return `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}" ${attr} style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(
-    itemName(it).split(' ')[1] ?? '',
-  )}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
+  const tag = it.set !== undefined ? SETS[it.set]?.tag ?? '' : itemName(it).split(' ')[1] ?? ''
+  return `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
 }
 
 /** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */
@@ -71,7 +79,7 @@ export class ItemTip {
   show(anchor: HTMLElement, it: Item | undefined, me: PlayerState, compare: boolean): void {
     if (!it) return
     const eq = me.equip[it.slot]
-    this.el.innerHTML = `<div class="tip-main" style="--rc:${RARITY_COLORS[it.rarity]}">${itemHtml(it, me)}${compare ? compareHtml(it, me) : ''}</div>
+    this.el.innerHTML = `<div class="tip-main" style="--rc:${itemColor(it)}">${itemHtml(it, me)}${compare ? compareHtml(it, me) : ''}</div>
       ${compare && eq && eq !== it ? `<div class="tip-eq"><div class="tip-t">끼고 있는 것</div>${itemHtml(eq)}</div>` : ''}`
     this.el.hidden = false
     const r = anchor.getBoundingClientRect()
@@ -152,7 +160,7 @@ export class Inventory {
     const need = xpNeed(me.level)
     const slot = (i: number) => {
       const it = me.equip[i]
-      const col = it ? RARITY_COLORS[it.rarity] : 'rgba(201,162,74,0.3)'
+      const col = it ? itemColor(it) : 'rgba(201,162,74,0.3)'
       return `<div class="eq" data-eq="${i}" style="--rc:${col}"><small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
     }
     const stats = [0, 1, 2, 3, 4, 5, 6, 7, 9].map((i) => {

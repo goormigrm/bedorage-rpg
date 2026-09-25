@@ -36,7 +36,7 @@ import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
-import { RARITY_COLORS, RARITY_NAMES, itemName } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
 export type { RenderOptions }
@@ -972,7 +972,7 @@ export class Renderer3D {
         case 'pickup': {
           if (e.p !== localPlayer) break
           const it = state.players[e.p].bag.find((b) => b.uid === e.uid)
-          if (it) this.hud.notice(`${it.rarity > 0 ? RARITY_NAMES[it.rarity] + ' ' : ''}${itemName(it)} 획득`, RARITY_COLORS[it.rarity])
+          if (it) this.hud.notice(`${it.set !== undefined ? '세트 ' : it.rarity > 0 ? RARITY_NAMES[it.rarity] + ' ' : ''}${itemName(it)} 획득`, itemColor(it))
           break
         }
         case 'chain': {
@@ -3058,7 +3058,7 @@ export class Renderer3D {
         g = new THREE.Group()
         const r = d.item.rarity
         const R = this.dropRes
-        const col = new THREE.Color(RARITY_COLORS[r])
+        const col = new THREE.Color(itemColor(d.item))
         const h = 0.8 + r * 0.7
         // 등급마다 하나씩 만들어 같이 쓴다 (빛기둥의 깜빡임도 등급마다 같이)
         R.beams[r] ??= new THREE.CylinderGeometry(0.04 + r * 0.02, 0.1 + r * 0.03, h, 8, 1, true)
@@ -3105,11 +3105,11 @@ export class Renderer3D {
       const w = ctx.measureText(name).width + 12
       ctx.fillStyle = 'rgba(8,7,6,0.78)'
       ctx.fillRect(s.x - w / 2, s.y - 9, w, 18)
-      ctx.strokeStyle = RARITY_COLORS[d.item.rarity]
+      ctx.strokeStyle = itemColor(d.item)
       ctx.globalAlpha = 0.6
       ctx.strokeRect(s.x - w / 2 + 0.5, s.y - 8.5, w - 1, 17)
       ctx.globalAlpha = 1
-      ctx.fillStyle = RARITY_COLORS[d.item.rarity]
+      ctx.fillStyle = itemColor(d.item)
       ctx.fillText(name, s.x, s.y + 0.5)
       n++
     }

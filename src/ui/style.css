@@ -1187,3 +1187,12 @@ body { background: var(--bg); }
 .ach.ok b { color: #ffd84a; }
 .ach i { display: block; height: 3px; margin-top: 4px; background: linear-gradient(90deg, #c9a24a var(--p), rgba(255,255,255,.08) var(--p)); }
 .ach small { display: block; margin-top: 2px; color: #7e7260; font-size: 10.5px; }
+
+/* 세트 아이템 (2026-09-25) — 이름은 초록, 설명 풍선에 부위 · 2부위 · 3부위 효과 */
+.set { margin-top: 6px; padding: 5px 8px; border: 1px solid rgba(92,224,122,.35); background: rgba(16,52,26,.3); font-size: 12px; line-height: 1.5; }
+.set b { color: #5ce07a; }
+.set-p { color: #62725f; }
+.set-p span.on { color: #5ce07a; font-weight: 700; }
+.set-b { color: #6f7f6c; }
+.set-b.on { color: #b8ffc8; }
+.cell.setp::after { content: '세트'; position: absolute; right: 2px; bottom: 1px; font-size: 9px; color: #5ce07a; }

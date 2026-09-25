@@ -116,7 +116,11 @@ describe('벼리기', () => {
       const rng = makeRng(200 + t)
       p.bag.length = 0
       for (let i = 0; i < 3; i++) p.bag.push(rollItem(rng, 92000 + t * 10 + i, 24, p.weapon, 'boss', 0, 3))
-      p.bag.forEach((it) => (it.rarity = 3))
+      // 세트 조각은 재료로 쓰지 않는다(2026-09-25) — 이 시험은 보통 전설 셋으로
+      p.bag.forEach((it) => {
+        it.rarity = 3
+        delete it.set
+      })
       atSmith(s)
       p.gold = 99999
       step(s, (id) => buildAreaMap(64, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 3 * 16 + 1 }])

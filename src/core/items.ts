@@ -67,6 +67,8 @@ export type Item = {
   aff: number[]
   /** 전설 고유 효과 번호 (LEGENDS · 전설 · 신화) */
   leg?: number
+  /** 세트 번호 (SETS — 전설 등급 · 고유 효과 대신 세트 효과. 2026-09-25) */
+  set?: number
   /** 방어구·장신구의 바탕 종류 (BASE_TYPES[칸] 번호 — 기본 옵션 하나가 정해진다). 무기 · 옛 아이템은 없음 */
   bt?: number
   /** 강화 단계 0~5 (대장장이 — 같은 부위 · 같은 등급을 녹여서) */
@@ -169,6 +171,29 @@ export const LEG_FOCUS = 8
 export const LEG_GOLD = 9
 
 /** 낀 장비의 전설 효과 비트 묶음 */
+/**
+ * **세트 아이템** (2026-09-25 사용자 고른 개선 7 — "두세 부위를 맞추면 추가 효과"). 전설 등급으로 떨어지되 고유 효과 대신 세트 효과:
+ * 같은 세트 **2부위**면 하나, **3부위**면 둘을 더 얹는다. 전설이 떨어질 자리(무기 빼고)의 SET_CHANCE 가 세트 조각이 된다.
+ * 순서가 세이브에 들어간다 — 새 세트는 끝에 붙인다.
+ */
+export const SET_COLOR = '#5ce07a'
+export const SET_CHANCE = 0.3
+export type SetDef = { name: string; tag: string; slots: number[]; two: [number, number][]; three: [number, number][] }
+export const SETS: SetDef[] = [
+  { name: '순례자의 맹세', tag: '순례자', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_AMULET], two: [[ST_DR, 8]], three: [[ST_HP, 180], [ST_LIFEKILL, 15]] },
+  { name: '도살자의 칼날', tag: '도살자', slots: [SLOT_HELM, SLOT_RING, SLOT_AMULET], two: [[ST_DMG, 15]], three: [[ST_CRIT, 60], [ST_ELITEDMG, 30]] },
+  { name: '거미 여왕의 비단', tag: '거미 비단', slots: [SLOT_ARMOR, SLOT_RING, SLOT_AMULET], two: [[ST_SPEED, 8]], three: [[ST_RATE, 15], [ST_STAMINA, 30]] },
+  { name: '심연의 계약', tag: '심연', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_RING], two: [[ST_SKILLPOW, 15]], three: [[ST_CDR, 12], [ST_DMG, 20]] },
+]
+/** 아이템 이름 색 (세트는 초록) */
+export const itemColor = (it: Item): string => (it.set !== undefined ? SET_COLOR : RARITY_COLORS[it.rarity] ?? '#d8d8d8')
+/** 낀 장비에서 세트마다 몇 부위 */
+export function setCounts(equip: (Item | null)[]): number[] {
+  const n = SETS.map(() => 0)
+  for (const it of equip) if (it && it.set !== undefined && SETS[it.set]?.slots.includes(it.slot)) n[it.set]++
+  return n
+}
+
 export function legMask(equip: (Item | null)[]): number {
   let m = 0
   for (const it of equip) if (it && it.rarity >= 3 && it.leg !== undefined && it.leg >= 0) m |= 1 << it.leg
@@ -193,6 +218,7 @@ export function baseName(it: Item): string {
 export function itemName(it: Item): string {
   const base = baseName(it)
   const up = it.up ? `+${it.up} ` : ''
+  if (it.set !== undefined && SETS[it.set]) return `${up}〔${SETS[it.set].name}〕 ${base}`
   if (it.rarity >= 3 && it.leg !== undefined && LEGENDS[it.leg]) return `${up}「${LEGENDS[it.leg].name}」 ${base}`
   const rolled: number[] = []
   for (let k = hasImplicit(it) ? 2 : 0; k < it.aff.length; k += 2) rolled.push(it.aff[k])
@@ -313,6 +339,14 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
   const it: Item = { uid, slot, wt, rarity, ilvl, aff }
   if (leg !== undefined) it.leg = leg
   if (bt !== undefined) it.bt = bt
+  // 세트 조각: 전설(신화는 아니다) · 무기가 아닌 칸의 SET_CHANCE — 그 칸이 들어가는 세트 중 하나. 고유 효과 대신이다
+  if (rarity === 3 && slot !== SLOT_WEAPON && src !== 'shop' && src !== 'forge') {
+    const fits = SETS.map((s, i) => (s.slots.includes(slot) ? i : -1)).filter((i) => i >= 0)
+    if (fits.length > 0 && rand(rng) < SET_CHANCE) {
+      it.set = fits[randInt(rng, 0, fits.length)]
+      delete it.leg
+    }
+  }
   return it
 }
 
@@ -400,7 +434,7 @@ export const STASH_AT = 1000
 /** 재료가 될 칸 (가방 + 보관함에서 그 등급만, 싼 것부터 — 결정론) */
 export function forgeMaterials(bag: Item[], stash: Item[] = [], rarity = 2): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it.rarity === rarity && !it.lk)
+    .filter(({ it }) => it.rarity === rarity && !it.lk && it.set === undefined)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -430,7 +464,7 @@ export const isJunk = (it: Item) => it.rarity <= 1
  */
 export function upgradeMaterials(bag: Item[], stash: Item[], target: Item): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it !== target && !it.lk && it.slot === target.slot && it.rarity === target.rarity)
+    .filter(({ it }) => it !== target && !it.lk && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -517,6 +551,11 @@ export function computeStats(level: number, equip: (Item | null)[], attr: number
     st[ST_DMG] += weaponBaseDmg(it)
     st[ST_DR] += armorBase(it)
   }
+  // 세트 효과: 2부위 · 3부위
+  setCounts(equip).forEach((n, i) => {
+    if (n >= 2) for (const [k, v] of SETS[i].two) st[k] += v
+    if (n >= 3) for (const [k, v] of SETS[i].three) st[k] += v
+  })
   st[ST_DMG] += (level - 1) * DMG_PER_LEVEL
   st[ST_HP] += (level - 1) * HP_PER_LEVEL
   addAttr(st, attr)
@@ -580,6 +619,7 @@ export function sanitizeSheet(s: unknown): Sheet {
     const x = it as Item
     if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
     if (x && x.lk !== undefined && x.lk !== 1) return false
+    if (x && x.set !== undefined && !(Number.isInteger(x.set) && x.set >= 0 && x.set < SETS.length)) return false
     return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && x.aff.every((v) => Number.isFinite(v))
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))
