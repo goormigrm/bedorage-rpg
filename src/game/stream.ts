@@ -3,7 +3,7 @@
 // 세션이 없을 때(로비) 온 후원은 버리지 않고 들고 있다가 다음 판이 가져간다 — 돈을 낸 후원이 사라지면 안 된다.
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
-import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DonateEvent } from '../core/donate'
+import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent } from '../core/donate'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 
@@ -30,18 +30,45 @@ export interface StreamCfg {
   auto: boolean
   /** 응원 단계마다 금액(원) — CHEER_EVENTS 순서. 0 = 끔 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") */
   cheers: number[]
+  /** 같은 방해 효과가 이어 붙는 한도(초 — DON_CAP_CHOICES). 2026-09-25 방송 개선 5 */
+  stackMax: number
+  /** 말풍선 · 후원 글 · 닉네임에서 가릴 말 (방송인이 정한다 — game/chatfilter.ts). 2026-09-25 방송 개선 3 */
+  banned: string[]
+  /** 주소(링크)를 [링크] 로 */
+  maskLinks: boolean
+  /** 같은 사람의 같은 말 · 몰아 쓰기를 말풍선에서 거른다 (후원은 거르지 않는다 — 글만 가린다) */
+  antiSpam: boolean
+  /** 채팅 "!참여" 한 시청자의 이름을 정예 · 우두머리 머리 위에 (2026-09-25 방송 개선 7) */
+  named: boolean
 }
+
+/**
+ * 처음 가릴 말 — 방송 화면에 그대로 뜨면 곤란한 센 욕만 (방송인이 치지직 창에서 더하고 뺀다).
+ * 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸린다 (chatfilter.ts)
+ */
+export const DEFAULT_BANNED = ['시발', '씨발', 'ㅅㅂ', 'ㅆㅂ', '병신', 'ㅄ', 'ㅂㅅ', '개새끼', '좆', '니애미', '느금마', '애미뒤진']
 
 const CFG_KEY = 'brpg.chzzk.cfg'
 /** 예전 처음 금액 (v0.44.0 — 1만 5천이 있던 것). 저장된 금액이 이것 그대로면 손대지 않은 것이라 새 처음 금액으로 바꾼다 */
 const OLD_DEFAULTS = [1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000]
 
-function defaults(): StreamCfg {
-  return { bubbles: true, table: true, amounts: DONATE_EVENTS.map((e) => e.amount), auto: false, cheers: CHEER_EVENTS.map((e) => e.amount) }
+export function defaultStreamCfg(): StreamCfg {
+  return {
+    bubbles: true,
+    table: true,
+    amounts: DONATE_EVENTS.map((e) => e.amount),
+    auto: false,
+    cheers: CHEER_EVENTS.map((e) => e.amount),
+    stackMax: DON_CAP_DEFAULT,
+    banned: [...DEFAULT_BANNED],
+    maskLinks: true,
+    antiSpam: true,
+    named: true,
+  }
 }
 
 export function loadStreamCfg(): StreamCfg {
-  const d = defaults()
+  const d = defaultStreamCfg()
   try {
     const v = JSON.parse(localStorage.getItem(CFG_KEY) ?? 'null') as Partial<StreamCfg> | null
     if (!v) return d
@@ -54,10 +81,35 @@ export function loadStreamCfg(): StreamCfg {
       const a = Number(v.cheers?.[i])
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
     })
-    return { bubbles: v.bubbles ?? d.bubbles, table: v.table ?? d.table, amounts, auto: v.auto ?? d.auto, cheers }
+    const stackMax = DON_CAP_CHOICES.includes(Number(v.stackMax)) ? Number(v.stackMax) : d.stackMax
+    const banned = Array.isArray(v.banned) ? cleanBanned(v.banned) : d.banned
+    return {
+      bubbles: v.bubbles ?? d.bubbles,
+      table: v.table ?? d.table,
+      amounts,
+      auto: v.auto ?? d.auto,
+      cheers,
+      stackMax,
+      banned,
+      maskLinks: v.maskLinks ?? d.maskLinks,
+      antiSpam: v.antiSpam ?? d.antiSpam,
+      named: v.named ?? d.named,
+    }
   } catch {
     return d
   }
+}
+
+/** 가릴 말 목록 다듬기: 문자열만 · 앞뒤 공백 없이 · 같은 것 하나 · 한 말 20자 · 200개까지 */
+export function cleanBanned(list: unknown[]): string[] {
+  const out: string[] = []
+  for (const w of list) {
+    if (typeof w !== 'string') continue
+    const t = w.trim().slice(0, 20)
+    if (t && !out.includes(t)) out.push(t)
+    if (out.length >= 200) break
+  }
+  return out
 }
 
 export function saveStreamCfg(c: StreamCfg): void {
@@ -111,6 +163,9 @@ export function eventRows(cfg = loadStreamCfg()): { e: DonateEvent; amount: numb
 }
 
 export const won = (n: number): string => `${n.toLocaleString('ko-KR')}원`
+
+/** 채팅 "!참여" — 시청자 이름 괴물 차례에 선다 (말풍선으로는 띄우지 않는다) */
+export const JOIN_RE = /^!\s*(참여|참가|join)$/i
 
 type Fn<T> = (v: T) => void
 
@@ -202,6 +257,13 @@ class StreamHub {
     this.tried = true
     const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
     this.chat({ nick: r(this.nicks), text: r(this.samples), test })
+  }
+
+  /** 참여 시험: 가짜 시청자가 "!참여" (이름이 겹치지 않게 번호를 붙인다) */
+  fakeJoin(): void {
+    this.tried = true
+    const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
+    this.chat({ nick: `${r(this.nicks)}${Math.floor(Math.random() * 90) + 10}`, text: '!참여', test: true })
   }
 
   /** 응원 시험: 그 단계 금액 + "!응원" */

@@ -314,6 +314,26 @@ export class Renderer3D {
     this.summonLabel = fn
     this.hud.d4.summonLabel = fn
   }
+  /** 시청자 이름 괴물(2026-09-25 방송 개선 7 — 채팅 "!참여"): 괴물 번호 → 시청자 닉네임 (세션이 넣는다 — 이름은 sim 밖) */
+  private viewerLabel: ((id: number) => string | undefined) | null = null
+
+  setViewerLabel(fn: (id: number) => string | undefined): void {
+    this.viewerLabel = fn
+  }
+
+  /** 이 괴물이 지금 화면 안(가장자리 · 아래 HUD 빼고)에 그려지고 있나 */
+  isOnScreen(id: number): boolean {
+    if (this.hiddenM.has(id)) return false
+    const at = this.monsterView.shown.get(id)
+    if (!at) return false
+    const p = this.worldToScreen(at.x, 1.2, at.z)
+    return p.x >= 60 && p.x <= VIEW_W - 60 && p.y >= 80 && p.y <= VIEW_H - 170
+  }
+
+  /** 화면 가운데 아래 짧은 알림 (가방이 가득 · 획득 …) */
+  notice(text: string, color: string, life?: number): void {
+    this.hud.notice(text, color, life)
+  }
   private shake = 0
   /** 손맛 (2026-09-19): 역경직(연출 시간을 잠깐 거의 멈춤) · 카메라 펀치(잠깐 당겨짐) */
   private hitStop = 0
@@ -3827,6 +3847,21 @@ export class Renderer3D {
         head = { x: head.x, y: head.y - 16 }
       }
     }
+    // 시청자 이름 괴물: 머리 위에 하늘빛 닉네임 (말풍선은 그 위)
+    const viewer = m.sum === undefined ? this.viewerLabel?.(m.id) : undefined
+    if (viewer) {
+      ctx.save()
+      ctx.font = `800 14px ${SAY_FONT}`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.lineWidth = 3.5
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+      ctx.strokeText(viewer, head.x, head.y - 14)
+      ctx.fillStyle = VIEWER_TAG
+      ctx.fillText(viewer, head.x, head.y - 14)
+      ctx.restore()
+      head = { x: head.x, y: head.y - 18 }
+    }
     const say = this.says.get(m.id)
     if (!say) return
     say.x = at.x
@@ -4304,6 +4339,8 @@ export { hex, PLAYER_RADIUS }
  */
 /** 응원 아군 이름표 색 */
 const ALLY_TAG = '#8dffb0'
+/** 시청자 이름 괴물의 닉네임 (하늘빛 — 후원 소환의 초록 · 응원 아군의 연두와 다르게) */
+export const VIEWER_TAG = '#8fd8ff'
 
 /** 아군을 괴물 모습으로 (monsterView 는 괴물만 그린다 — 보간 스냅샷은 id · x · y 만 있다) */
 function allyLook(a: Ally): Monster {

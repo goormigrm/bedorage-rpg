@@ -91,6 +91,12 @@ export const DON_TICKS: Record<number, number> = {
   [DON_SEAL]: 30 * TICK_RATE,
 }
 export const DON_MAX = 120 * TICK_RATE
+/**
+ * 같은 방해 효과가 이어 붙는 한도(초) — **방송인이 정한다** (2026-09-25 사용자 고른 방송 개선 5: 암흑 · 거꾸로 · 봉인이 몰리면 2분까지 이어 붙었다).
+ * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 손 떨림은 SHAKE_MAX(30초)를 넘지 않는다
+ */
+export const DON_CAP_CHOICES = [30, 60, 90, 120]
+export const DON_CAP_DEFAULT = 60
 /** 지옥문의 암흑 */
 export const HELL_DARK_TICKS = 20 * TICK_RATE
 /** 광폭화: 길이 · 공격력 · 이동 배율 */

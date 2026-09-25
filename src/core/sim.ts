@@ -9,7 +9,7 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
@@ -27,7 +27,7 @@ import {
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, SHAKE_JITTER, SHAKE_MAX, donateEvent } from './donate'
+import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, SHAKE_JITTER, SHAKE_MAX, donateEvent } from './donate'
 import { botInput, makeBot } from './bot'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
@@ -41,7 +41,7 @@ import {
   COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, Ally, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
-  REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
+  REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL, TICK_RATE,
   STAMINA_MAX, STAMINA_REGEN, UWON, DASH_GRACE, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, isHumanSeat, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
@@ -2990,10 +2990,13 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
   // 사람에게 거는 효과(손 떨림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
   // 같이 하는 사람들은 후원받지 못하니 효과는 모두에게"). 다른 지역에 있는 파티원도 받는다
   const party = partyOf(state, p)
+  // 이어 붙는 한도는 후원을 받은 사람(방송인)이 정한 값 (CMD_DONCAP) — 이미 더 길게 걸려 있으면(다른 방송인의 한도) 줄이지 않는다
+  const cap = Math.min(DON_MAX, (p.donCap ?? DON_CAP_DEFAULT) * TICK_RATE)
   const addDon = (slot: number, ticks: number) => {
+    const max = slot === DON_SHAKE ? Math.min(SHAKE_MAX, cap) : cap
     for (const q of party) {
       q.don ??= new Array(DON_SLOTS).fill(0)
-      q.don[slot] = Math.min(slot === DON_SHAKE ? SHAKE_MAX : DON_MAX, q.don[slot] + ticks)
+      q.don[slot] = Math.max(q.don[slot], Math.min(max, q.don[slot] + ticks))
     }
   }
   let lead: Monster | null = null
@@ -3469,6 +3472,11 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_AUTOPICK) {
     p.autoPick = arg & AUTOPICK_ALL
+    return
+  }
+  if (cmd === CMD_DONCAP) {
+    const s = arg * 10
+    if (DON_CAP_CHOICES.includes(s)) p.donCap = s
     return
   }
   if (cmd === CMD_ATTR) {

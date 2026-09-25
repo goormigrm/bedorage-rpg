@@ -3,8 +3,8 @@
 // - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태만 — 받은 채팅 · 후원의 개수 · 합계는 보이지 않는다(2026-09-23).
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
-import { CHEER_EVENTS, DONATE_EVENTS } from '../core/donate'
-import { StreamStatus, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
+import { DEFAULT_BANNED, StreamStatus, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -96,7 +96,7 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
     box.innerHTML = panelHtml()
     bindPanel(box, draw, close)
   }
-  const busy = () => box.contains(document.activeElement) && (document.activeElement as HTMLElement).tagName === 'INPUT'
+  const busy = () => box.contains(document.activeElement) && ['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement).tagName)
   const offStatus = stream.onStatus(() => {
     if (!busy()) draw()
   })
@@ -130,6 +130,39 @@ const toggle = (key: string, name: string, on: boolean, yes = '켜기', no = '�
   `<div class="cztg"><b>${name}</b><div class="seg small" data-tg="${key}">` +
   `<button type="button" data-on="1" class="${on ? 'on' : ''}">${yes}</button>` +
   `<button type="button" data-on="0" class="${on ? '' : 'on'}">${no}</button></div></div>`
+
+/**
+ * 가릴 말 목록을 펼쳐 두었나 — 처음에는 접어 둔다: 창을 방송 화면에 띄운 채 열면 욕 목록이 그대로 보인다 (2026-09-25 방송 개선 3)
+ */
+let banOpen = false
+
+/** 방송 안전 · 참여 (2026-09-25 사용자 고른 방송 개선 3 · 5 · 7) */
+function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
+  const caps = DON_CAP_CHOICES.map((s) => `<button type="button" data-cap="${s}" class="${c.stackMax === s ? 'on' : ''}">${s}초</button>`).join('')
+  const ban = banOpen
+    ? `<textarea class="czban" data-banned rows="3" spellcheck="false" placeholder="쉼표나 줄바꿈으로 나눕니다">${esc(c.banned.join(', '))}</textarea>` +
+      `<div class="czh sm"><button type="button" class="lnk" data-cz="banhide">목록 접기</button><button type="button" class="lnk" data-cz="banreset">처음 목록으로</button></div>` +
+      `<p class="czn">⚠ 이 창을 방송 화면에 띄운 채 펼치면 목록이 그대로 보입니다.</p>`
+    : `<div class="cztg"><b>가릴 말 ${c.banned.length}개</b><button type="button" class="lnk" data-cz="banshow">목록 보기 · 고치기</button></div>`
+  return (
+    `<div class="czcols czsafe">` +
+    `<div class="czcol">` +
+    `<div class="czh"><b>🛡 방송 화면 거르기</b></div>` +
+    ban +
+    toggle('maskLinks', '주소(링크)는 [링크] 로', c.maskLinks) +
+    toggle('antiSpam', '도배 거르기 (같은 말 · 몰아 쓰기)', c.antiSpam) +
+    `<p class="czn">괴물 말풍선 · 후원 글 · 닉네임에서 가릴 말은 <b>○○</b> 로 — 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸립니다. 후원은 거르지 않고 글만 가립니다.</p>` +
+    `</div>` +
+    `<div class="czcol">` +
+    `<div class="czh"><b>방해 효과 · 시청자 참여</b></div>` +
+    `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
+    `<p class="czn">손 떨림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 이 시간을 넘게 이어 붙지 않습니다 (손 떨림은 30초까지).</p>` +
+    toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
+    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` +
+    `<p class="czn">채팅에 <b>!참여</b> → 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고, 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +
+    `</div></div>`
+  )
+}
 
 function panelHtml(): string {
   const c = loadStreamCfg()
@@ -173,6 +206,7 @@ function panelHtml(): string {
     `<div class="czt">${rows}</div>` +
     `<p class="czn">금액이 넘는 것 중 가장 비싼 이벤트가 일어납니다 · 0 원이면 끔 · 마을에서 받은 후원은 던전에 나가면 일어납니다.</p>` +
     `</div></div>` +
+    safetyHtml(c) +
     (st === 'error' || !login ? `<p class="czn">로그인이 안 되면 치지직 개발자센터 앱의 로그인 리디렉션 URL 이 <code>${esc(redirectUri())}</code> 인지 확인하세요.</p>` : '')
   )
 }
@@ -222,7 +256,25 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         close()
         return
       }
-      else if (a === 'reset') {
+      else if (a === 'join') {
+        if (!stream.inGame) {
+          flashBtn(b, '게임 안에서 됩니다')
+          return
+        }
+        if (!loadStreamCfg().named) {
+          flashBtn(b, '이름 괴물이 꺼져 있습니다')
+          return
+        }
+        stream.fakeJoin()
+        close()
+        return
+      } else if (a === 'banshow') banOpen = true
+      else if (a === 'banhide') banOpen = false
+      else if (a === 'banreset') {
+        const c = loadStreamCfg()
+        c.banned = [...DEFAULT_BANNED]
+        saveStreamCfg(c)
+      } else if (a === 'reset') {
         const c = loadStreamCfg()
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
         c.cheers = CHEER_EVENTS.map((e) => e.amount)
@@ -237,11 +289,30 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       const on = b.dataset.on === '1'
       const tg = (b.parentElement as HTMLElement).dataset.tg
       if (tg === 'bubbles') c.bubbles = on
+      else if (tg === 'maskLinks') c.maskLinks = on
+      else if (tg === 'antiSpam') c.antiSpam = on
+      else if (tg === 'named') c.named = on
       else c.table = on
       saveStreamCfg(c)
       redraw()
     }
   })
+  box.querySelectorAll<HTMLButtonElement>('[data-cap]').forEach((b) => {
+    b.onclick = () => {
+      const c = loadStreamCfg()
+      c.stackMax = Number(b.dataset.cap)
+      saveStreamCfg(c)
+      redraw()
+    }
+  })
+  const ban = box.querySelector<HTMLTextAreaElement>('textarea[data-banned]')
+  if (ban) {
+    ban.onchange = () => {
+      const c = loadStreamCfg()
+      c.banned = cleanBanned(ban.value.split(/[,\n]/))
+      saveStreamCfg(c)
+    }
+  }
   box.querySelectorAll<HTMLInputElement>('input[data-amt]').forEach((inp) => {
     inp.onchange = () => {
       const c = loadStreamCfg()

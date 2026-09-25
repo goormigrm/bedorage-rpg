@@ -185,6 +185,17 @@ input.code:focus { outline: 2px solid var(--duck); border-color: transparent; }
 .slot.ready { border-color: #3fb95088; box-shadow: 0 0 0 1px #3fb95044 inset, 0 6px 18px rgba(63,185,80,.14); }
 .slot.ready::before { background: linear-gradient(90deg, var(--ok), transparent); }
 .slot.empty { opacity: .45; border-style: dashed; background: transparent; box-shadow: none; }
+/* 방장 "내보내기" — 대기실 칸 · 게임 메뉴의 파티 칸 (2026-09-25 방송 개선 2) */
+.kickbtn { padding: 1px 8px; cursor: pointer; font: 700 10.5px "IBM Plex Sans KR", sans-serif; color: #ff9d95;
+  background: rgba(60,10,8,.5); border: 1px solid #6a2a24; border-radius: 3px; letter-spacing: 0; white-space: nowrap; }
+.kickbtn:hover, .kickbtn.sure { color: #fff; background: #a8342a; border-color: #d8554a; }
+.slot .kickbtn { margin-left: auto; }
+.partykick { margin: 4px 0 12px; padding: 8px 12px; border: 1px solid #3a3024; border-radius: 4px; background: rgba(0,0,0,.35); text-align: left; }
+.partykick .pkh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 4px; }
+.partykick .pk { display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+.partykick .pk b { color: #f4ead2; }
+.partykick .pk span { color: #8a9a90; font-size: 12px; margin-right: auto; }
+.partykick .pkn { margin: 4px 0 0; font-size: 11px; color: #7a8a80; }
 .slot .who { font: 700 11px "IBM Plex Mono", monospace; color: var(--ink-2); letter-spacing: .06em; display: flex; align-items: center; gap: 6px; }
 .slot .cname { font-family: "Black Han Sans", sans-serif; font-size: 25px; line-height: 1.25; margin: 6px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f0f6fc; text-shadow: 0 2px 10px rgba(0,0,0,.4); }
 .slot .rd { font-size: 13px; line-height: 1.5; color: var(--ink-2); }
@@ -1040,6 +1051,7 @@ body { background: var(--bg); }
   box-shadow: 0 6px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,140,.08); font: 500 12px "IBM Plex Sans KR", sans-serif; color: #d8c79a; }
 .dontable[hidden] { display: none; }
 .dontable .dh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
+.dontable .dh.join { margin-top: 5px; color: #8fd8ff; }
 /* 금액 · 이름 · (걸려 있으면) 남은 초 — 줄바꿈 없이 */
 .dontable .dr { display: grid; grid-template-columns: 82px auto 34px; gap: 8px; align-items: baseline; line-height: 1.5; padding: 0 4px; border-radius: 2px; white-space: nowrap; }
 .dontable .da { font: 700 12px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; white-space: nowrap; }
@@ -1131,6 +1143,12 @@ body { background: var(--bg); }
 .czn { margin: 8px 0 0; font-size: 11.5px; color: #7a9a8c; line-height: 1.5; }
 .czpanel code { font: 500 11px "IBM Plex Mono", monospace; color: #c8dcd4; word-break: break-all; }
 @media (max-width: 760px) { .czcols { grid-template-columns: 1fr; } }
+/* 방송 화면 거르기 · 방해 효과 한도 · 시청자 참여 (2026-09-25 방송 개선 3 · 5 · 7) */
+.czsafe { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(0,255,163,.14); grid-template-columns: 1fr 1fr; }
+.czpanel .czh.sm { margin: 4px 0 0; justify-content: flex-end; }
+.czban { width: 100%; box-sizing: border-box; resize: vertical; padding: 6px 8px; font: 500 12.5px "IBM Plex Sans KR", sans-serif; color: #f4ead2;
+  background: rgba(0,0,0,.45); border: 1px solid #3a3424; border-radius: 4px; }
+.czban:focus { outline: none; border-color: #ffc94a; }
 
 /* 키 설정 (2026-09-23) */
 .settings .keybind { margin-top: 10px; }

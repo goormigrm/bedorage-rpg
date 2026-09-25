@@ -5,9 +5,10 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, Input } from '../core/input'
+import { CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
-import { StreamChat, StreamDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { JOIN_RE, StreamChat, StreamDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
@@ -36,10 +37,11 @@ import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
 import { CtlMessage, LobbyLink, RoomLink } from '../net/room'
+import { banPeer, isBanned } from '../net/bans'
 import { VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
 import { worldDirToScreen } from '../render3d/camera'
 import { U } from '../render3d/world3d'
-import { Renderer3D } from '../render3d/renderer3d'
+import { Renderer3D, VIEWER_TAG } from '../render3d/renderer3d'
 import { Sfx } from '../audio/sfx'
 import { LocalInput } from './localInput'
 import { TouchControls, enterLandscape, isTouchDevice } from './touch'
@@ -173,6 +175,20 @@ export class Session {
   private czBadge: StreamBadge | null = null
   private czClose: (() => void) | null = null
   private donTableAt = 0
+  /** 판에 알린 "같은 방해 효과 한도"(초 — CMD_DONCAP). 치지직 창에서 바꾸면 다시 알린다 */
+  private sentCap = -1
+  /** 도배 거르기 (2026-09-25 방송 개선 3 — game/chatfilter.ts) */
+  private spam = new SpamGuard()
+  /**
+   * 시청자 이름 괴물 (2026-09-25 방송 개선 7): 채팅 "!참여" 한 시청자(먼저 온 차례) · 이름 붙은 괴물(번호 → 닉네임 · 지역 · 붙인 때).
+   * 차례는 방송하는 사람 화면에서만 돌고, 이름은 방 사람들에게 mname 으로 보낸다. 괴물 번호는 판 전체에서 하나뿐이다
+   */
+  private joinPool: { nick: string; at: number }[] = []
+  private vnames = new Map<number, { nick: string; area: number; at: number }>()
+  private nameNextAt = 0
+  private static readonly JOIN_MAX = 60
+  /** 한 지역에 이름 붙은 괴물이 동시에 이만큼까지 */
+  private static readonly NAMED_MAX = 3
   /** 0.4초 넘는 멈춤 횟수·누적 시간 (운영 로그용) */
   private stallCount = 0
   private stallMs = 0
@@ -320,6 +336,7 @@ export class Session {
       const i = this.donNames.get(`${by}:${seq}`)
       return i ? `${i.nick}님의` : undefined
     })
+    this.renderer.setViewerLabel((id) => this.vnames.get(id)?.nick)
     this.areaBanner()
     // 캔버스가 UI 아래에 오도록 UI 를 맨 뒤로
     const ui = this.stage.querySelector('.game-ui') as HTMLElement
@@ -1123,8 +1140,26 @@ export class Session {
         { label: '로비로', primary: false, onClick: () => this.confirmExit() },
       ],
       // 감싸는 칸에 잇는다 — .settings 자체에 이으면 다시 그릴 때 그 안에 .settings 가 또 들어갔다(키 설정 넓게 펴기가 안 먹던 원인)
-      `<div class="sethost">${settingsHtml({ keys: !this.touch })}</div>`,
+      `${this.partyHtml()}<div class="sethost">${settingsHtml({ keys: !this.touch })}</div>`,
     )
+    this.overlay.querySelectorAll<HTMLButtonElement>('[data-kickseat]').forEach((b) => {
+      b.onclick = () => {
+        if (b.dataset.sure !== '1') {
+          b.dataset.sure = '1'
+          b.textContent = '한 번 더 누르면 내보냄'
+          b.classList.add('sure')
+          window.setTimeout(() => {
+            if (!b.isConnected) return
+            delete b.dataset.sure
+            b.textContent = '내보내기'
+            b.classList.remove('sure')
+          }, 3000)
+          return
+        }
+        this.kickSeat(Number(b.dataset.kickseat))
+        ;(b.closest('.pk') as HTMLElement | null)?.remove()
+      }
+    })
     const box = this.overlay.querySelector('.sethost') as HTMLElement | null
     if (box)
       bindSettings(box, {
@@ -1299,6 +1334,38 @@ export class Session {
         if (this.message.startsWith(this.names[idx])) this.message = ''
       }, 4000)
     }
+  }
+
+  /**
+   * 방장: 이 자리의 사람을 내보낸다 (2026-09-25 방송 개선 2 — 방송을 보고 찾아와 방해하는 사람).
+   * 그 사람에게 알리고, 나간 것과 같은 길(onPeerGone → drop)로 자리를 비운다. 이 방에는 다시 못 들어온다(난입 거절)
+   */
+  private kickSeat(idx: number): void {
+    if (!this.isHost || idx === this.cfg.localPlayer || this.dropped.has(idx)) return
+    let id: string | undefined
+    for (const [pid, i] of this.peerIndex) if (i === idx) id = pid
+    const name = this.names[idx] ?? `${idx + 1}번`
+    banPeer(this.cfg.link?.code ?? '', id, this.cfg.names?.[idx])
+    this.cfg.link?.sendCtl({ t: 'kick', p: idx })
+    if (id) this.onPeerGone(id)
+    else this.dropSeat(idx)
+    this.message = `${name} 님을 내보냈습니다`
+    setTimeout(() => {
+      if (this.message.startsWith(name)) this.message = ''
+    }, 4000)
+  }
+
+  /** 메뉴의 파티 칸 (방장 · 여럿이 할 때): 사람 자리마다 "내보내기" */
+  private partyHtml(): string {
+    if (!this.isHost || this.cfg.mode === 'solo' || !this.cfg.link) return ''
+    const rows: string[] = []
+    this.state.players.forEach((p, i) => {
+      if (i === this.cfg.localPlayer || p.left || this.dropped.has(i) || this.cfg.bots?.[i] || this.lockstep?.isBot(i) || p.merc >= 0 || p.cameo) return
+      const c = CHARACTERS[p.char]
+      rows.push(`<div class="pk"><b>${escName(this.names[i] ?? `${i + 1}번`)}</b><span>${c?.name ?? ''} · Lv ${p.level}</span><button type="button" class="kickbtn" data-kickseat="${i}">내보내기</button></div>`)
+    })
+    if (rows.length === 0) return ''
+    return `<div class="partykick"><div class="pkh">파티 — 방장</div>${rows.join('')}<p class="pkn">내보낸 사람은 이 방에 다시 들어올 수 없습니다 · 한 번 더 눌러야 내보냅니다.</p></div>`
   }
 
   /** 혼자 이어하기가 되는가: 던전 · 판이 끝나지 않음 · 내가 자리에 앉아 있음 */
@@ -1476,13 +1543,29 @@ export class Session {
         // 방송하는 사람이 보낸 이름표 — 보낸 사람 자리가 맞는 것만
         if (this.peerIndex.get(from) !== m.p || m.p === this.cfg.localPlayer) break
         // 금액은 받아도 버린다 (옛 판이 보냈더라도 — 2026-09-23)
-        this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: cleanChat(m.nick).slice(0, 20) || '후원자', amount: 0, text: cleanChat(m.text), ev: m.ev })
+        // 내 방송 화면에도 뜨므로 **내 가릴 말**로 한 번 더 거른다 (방송인마다 목록이 다르다)
+        const fc = loadStreamCfg()
+        this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: maskText(cleanChat(m.nick).slice(0, 20), fc) || '후원자', amount: 0, text: maskText(cleanChat(m.text), fc), ev: m.ev })
+        break
+      }
+      case 'kick': {
+        // 방장(0번 자리)이 보낸 것만. 나를 내보냈으면 안내하고 로비로 — 자리는 방장이 이어 보내는 drop 으로 비워진다
+        if (this.peerIndex.get(from) !== 0 || m.p !== this.cfg.localPlayer || this.isHost) break
+        this.showOverlay('방장이 내보냈습니다', '이 방에는 다시 들어갈 수 없습니다.', [{ label: '로비로', primary: true, onClick: () => this.exit() }])
+        this.paused = true
+        break
+      }
+      case 'mname': {
+        if (!this.peerIndex.has(from)) break
+        const nick = maskText(cleanChat(m.nick).slice(0, 20), loadStreamCfg())
+        if (nick && m.m >= 0) this.nameMonster(m.m, nick, m.a, performance.now())
         break
       }
       case 'mchat': {
         if (!this.peerIndex.has(from)) break
-        const nick = cleanChat(m.nick).slice(0, 20)
-        const text = cleanChat(m.text)
+        const fc = loadStreamCfg()
+        const nick = maskText(cleanChat(m.nick).slice(0, 20), fc)
+        const text = maskText(cleanChat(m.text), fc)
         if (!nick || !text) break
         // 괴물 말풍선으로만 (다른 지역에 있으면 보이지 않는다 — 게임 채팅 칸에는 올리지 않는다)
         if (m.m >= 0 && m.a === this.viewArea) this.renderer.monsterSay(m.m, nick, text)
@@ -1666,7 +1749,10 @@ export class Session {
       }
       this.applyJoins()
       if (this.isHost) this.serveJoin()
-      for (const e of this.state.events) if (e.type === 'donate') this.onDonateEvent(e)
+      for (const e of this.state.events) {
+        if (e.type === 'donate') this.onDonateEvent(e)
+        else if (e.type === 'mdeath' && this.vnames.size > 0) this.onNamedDeath(e.m)
+      }
       for (const e of this.state.events) {
         if (e.type === 'over') {
           this.saveMine(true)
@@ -1865,8 +1951,21 @@ export class Session {
    * 방송 채팅은 **괴물 말풍선으로만** 보인다 — 게임 채팅 칸에는 올리지 않는다(2026-09-23 사용자: "방송 채팅이 엄청 많을 텐데 게임 채팅창에도 올리면 게임 정보가 다 안 보인다")
    */
   private onStreamChat(c: StreamChat): void {
-    if (!loadStreamCfg().bubbles || this.arena) return
-    this.chatQueue.push({ ...c, at: performance.now() })
+    if (this.arena) return
+    const cfg = loadStreamCfg()
+    const now = performance.now()
+    // 가릴 말 · 주소 · 도배 (2026-09-25 방송 개선 3 — 방송 화면에 그대로 뜨므로)
+    const nick = maskText(cleanChat(c.nick).slice(0, 20), cfg) || '시청자'
+    const raw = squeezeRepeats(cleanChat(c.text))
+    if (!raw) return
+    // "!참여" — 말풍선 대신 시청자 이름 괴물 차례에 선다 (방송 개선 7)
+    if (JOIN_RE.test(raw)) {
+      if (cfg.named) this.joinViewer(nick, c.test)
+      return
+    }
+    if (!cfg.bubbles) return
+    if (cfg.antiSpam && !c.test && !this.spam.allow(nick, raw, now)) return
+    this.chatQueue.push({ ...c, nick, text: maskText(raw, cfg), at: now })
     if (this.chatQueue.length > 12) this.chatQueue.shift()
     // 시험인데 지금 화면에 괴물이 없으면 알린다 (나타나면 30초 안에 그 머리 위에 뜬다)
     if (c.test && this.renderer.pickSpeaker(this.view()) < 0) {
@@ -1890,10 +1989,13 @@ export class Session {
    * 가장 싼 이벤트보다 적으면 괴물 말풍선(금빛)으로 감사만.
    */
   private onStreamDonation(d: StreamDonation): void {
-    const nick = cleanChat(d.nick).slice(0, 20) || '익명의 후원자'
-    const text = cleanChat(d.text)
+    // 후원은 거르지 않는다(돈을 냈다) — 닉네임 · 글의 가릴 말 · 주소만 가린다 (2026-09-25 방송 개선 3)
+    const fc = loadStreamCfg()
+    const nick = maskText(cleanChat(d.nick).slice(0, 20), fc) || '익명의 후원자'
+    const raw = squeezeRepeats(cleanChat(d.text))
+    const text = maskText(raw, fc)
     // 후원 글에 "!응원" — 괴롭히는 대신 돕는다. 금액마다 단계가 다르다 (응원 금액표 — 넘는 것 중 가장 비싼 단계)
-    const e = (CHEER_RE.test(text) ? cheerForAmount(d.amount) : undefined) ?? eventForAmount(d.amount)
+    const e = (CHEER_RE.test(raw) ? cheerForAmount(d.amount) : undefined) ?? eventForAmount(d.amount)
     // 후원이 한꺼번에 몰려도 소리는 0.25초에 하나 (큰 것은 늘)
     const big = !!e && e.id >= 6 && !cheerEvent(e.id)
     const now = performance.now()
@@ -1924,6 +2026,67 @@ export class Session {
     }
   }
 
+  /** 채팅 "!참여": 차례에 선다 (이미 섰거나 이름 붙은 괴물이 살아 있으면 그대로) */
+  private joinViewer(nick: string, test?: boolean): void {
+    if (this.joinPool.some((j) => j.nick === nick)) return
+    for (const v of this.vnames.values()) if (v.nick === nick) return
+    this.joinPool.push({ nick, at: performance.now() })
+    if (this.joinPool.length > Session.JOIN_MAX) this.joinPool.shift()
+    if (test) {
+      this.message = '참여 시험 — 화면에 정예 · 우두머리가 보이면 그 머리 위에 이름이 붙습니다'
+      setTimeout(() => {
+        if (this.message.startsWith('참여 시험')) this.message = ''
+      }, 4000)
+    }
+  }
+
+  /** 차례의 맨 앞 시청자를 화면의 정예 · 우두머리(가장 가까운 것)에 붙인다 — 한 지역에 NAMED_MAX 까지 · 붙이면 3초 쉰다 */
+  private assignViewerName(now: number): void {
+    // 오래된 것 치우기: 차례 15분 · 이름표 20분(괴물이 다른 지역에 남아 잊힌 것)
+    if (this.joinPool.length > 0) this.joinPool = this.joinPool.filter((j) => now - j.at < 15 * 60_000)
+    for (const [id, v] of this.vnames) if (now - v.at > 20 * 60_000) this.vnames.delete(id)
+    if (this.joinPool.length === 0 || this.arena || isTown(this.viewArea) || !loadStreamCfg().named) return
+    const view = this.view()
+    const me = view.players[this.cfg.localPlayer]
+    if (!me) return
+    let named = 0
+    let best = -1
+    let bestD = Infinity
+    for (const m of view.monsters) {
+      if (m.hp <= 0) continue
+      if (this.vnames.has(m.id)) {
+        named++
+        continue
+      }
+      const def = MONSTER_LIST[m.kind]
+      // 정예 · 우두머리만 (막 보스는 제 이름 · 후원 소환은 후원자 이름 · 보물 고블린은 달아난다)
+      if (!m.elite || m.sum !== undefined || def.boss || def.attack === 'flee' || !this.renderer.isOnScreen(m.id)) continue
+      const d = Math.hypot(m.x - me.x, m.y - me.y)
+      if (d < bestD) {
+        bestD = d
+        best = m.id
+      }
+    }
+    if (best < 0 || named >= Session.NAMED_MAX) return
+    const j = this.joinPool.shift()!
+    this.nameMonster(best, j.nick, this.viewArea, now)
+    this.cfg.link?.sendCtl({ t: 'mname', a: this.viewArea, m: best, nick: j.nick })
+    this.nameNextAt = now + 3000
+  }
+
+  private nameMonster(id: number, nick: string, area: number, now: number): void {
+    this.vnames.set(id, { nick, area, at: now })
+    if (area === this.viewArea) this.renderer.notice(`${nick} 등장! — 시청자 이름 괴물`, VIEWER_TAG, 2.6)
+  }
+
+  /** 이름 붙은 괴물이 쓰러졌다 (모두의 화면 — 그 지역에 있으면 알린다) */
+  private onNamedDeath(id: number): void {
+    const v = this.vnames.get(id)
+    if (!v) return
+    this.vnames.delete(id)
+    if (v.area === this.viewArea) this.renderer.notice(`${v.nick} 처치!`, VIEWER_TAG, 3)
+  }
+
   private thankBubble(nick: string, line: string): void {
     this.viewerSay(nick, line, true)
   }
@@ -1934,7 +2097,15 @@ export class Session {
    * 방 사람들에게도 보낸다. 띄웠으면 true
    */
   private viewerSay(nick: string, text: string, gold = false): boolean {
-    const id = this.renderer.pickSpeaker(this.view())
+    let id = -1
+    // 이름 붙은 괴물이 화면에 있으면 그 시청자의 말은 그 괴물이 한다 (방송 개선 7)
+    for (const [mid, v] of this.vnames) {
+      if (v.nick === nick && v.area === this.viewArea && this.renderer.isOnScreen(mid)) {
+        id = mid
+        break
+      }
+    }
+    if (id < 0) id = this.renderer.pickSpeaker(this.view())
     if (id < 0) return false
     this.renderer.monsterSay(id, nick, text, gold)
     this.cfg.link?.sendCtl({ t: 'mchat', a: this.viewArea, m: id, nick, text })
@@ -1994,6 +2165,11 @@ export class Session {
         this.donNextAt = now + 1500
       }
     }
+    // 시청자 이름 괴물: 1초마다 차례를 보고, 화면의 정예 · 우두머리에 붙인다
+    if (now >= this.nameNextAt) {
+      this.nameNextAt = now + 1000
+      this.assignViewerName(now)
+    }
     // 괴물 머리 위에만. 말할 괴물이 없으면(마을 · 빈 방) 기다리고, 8초(시험은 30초) 넘게 못 한 말은 버린다 — 채팅 칸으로도 캐릭터 머리 위로도 돌리지 않는다
     while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > (this.chatQueue[0].test ? 30000 : 8000)) this.chatQueue.shift()
     if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
@@ -2005,6 +2181,12 @@ export class Session {
     }
     if (now >= this.donTableAt) {
       this.donTableAt = now + 250
+      // 같은 방해 효과가 이어 붙는 한도는 sim 이 쓴다 → 판에 들어오면 · 바꾸면 명령으로 모두에게 (자동 줍기와 같은 길)
+      const cap = loadStreamCfg().stackMax
+      if (cap !== this.sentCap && !this.joiningIn) {
+        this.sentCap = cap
+        this.input.queueCmd(CMD_DONCAP, cap / 10)
+      }
       this.drawDonTable()
     }
   }
@@ -2067,7 +2249,9 @@ export class Session {
     const cheer = cr.length
       ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt"></span></div>`).join('')
       : ''
-    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${wait}`
+    // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7)
+    const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 괴물에 내 이름</div>` : ''
+    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${join}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
     if (el.dataset.h !== html) {
       el.dataset.h = html
@@ -2121,6 +2305,11 @@ export class Session {
    * 그 사람에게는 T 시점의 판 전체를 보내 준다(재입장과 같은 길).
    */
   private onJoinAsk(char: CharacterId, name: string, peerId: string, sheet?: Sheet): void {
+    // 방장이 내보낸 사람 (2026-09-25 방송 개선 2)
+    if (isBanned(this.cfg.link?.code ?? '', peerId, name)) {
+      this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '방장이 내보낸 사람은 이 방에 다시 들어올 수 없습니다' }, peerId)
+      return
+    }
     if (this.state.phase === 'over') {
       this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '이미 끝난 판입니다' }, peerId)
       return
@@ -2413,4 +2602,9 @@ export class Session {
     const link = this.cfg.link
     if (link) setTimeout(() => link.leave(), 300)
   }
+}
+
+/** 메뉴 칸에 넣는 이름 (태그가 되지 않게) */
+function escName(t: string): string {
+  return t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
 }

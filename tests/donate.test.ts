@@ -1,15 +1,15 @@
 // 후원 이벤트 (2026-09-23 — 치지직 후원 · core/donate.ts): 입력 명령으로 모두의 판에 같게 · 마을에서는 없음 ·
 // 소환한 보스는 막 보스 처치로 치지 않는다 · 손 떨림 · 거꾸로 · 봉인 · 광폭화 · 암흑
 import { describe, expect, it } from 'vitest'
-import { BTN_FIRE, BTN_SKILL1, BTN_USE, CMD_DONATE, Input } from '../src/core/input'
+import { BTN_FIRE, BTN_SKILL1, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
 import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
-import { cheerForAmount, eventForAmount } from '../src/game/stream'
+import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
+import { cheerForAmount, defaultStreamCfg, eventForAmount } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -53,7 +53,7 @@ describe('후원 이벤트 — 소환', () => {
 
   it('금액표: 1만 5천 칸이 없고 2만 · 3만 · 5만 · 10만 (2026-09-23 요청) · 넘는 것 중 가장 비싼 이벤트', () => {
     expect(DONATE_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000])
-    const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
+    const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
     expect(eventForAmount(1000, cfg)?.key).toBe('horde')
     expect(eventForAmount(15000, cfg)?.key).toBe('unique')
@@ -209,7 +209,7 @@ describe('후원 이벤트 — 효과', () => {
 
 // 응원 (2026-09-23 — 치지직 "!응원" 후원, 금액마다 단계가 다르다): 괴롭히는 대신 돕는다
 describe('후원 이벤트 — 응원', () => {
-  const cfg = { bubbles: true, table: true, auto: false, amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
+  const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
 
   it('응원은 금액표 밖의 네 단계(번호 11~14 — 명령 네 비트 안) · 후원 글 "!응원" 을 알아본다', () => {
     expect(DONATE_EVENTS.some((e) => e.key === 'cheer')).toBe(false)
@@ -328,5 +328,43 @@ describe('후원 효과는 파티 모두에게', () => {
     // 아군 괴물 · 구슬은 부른 사람 곁에만
     expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
     expect(areaView(g.s, b.area).allies ?? []).toEqual([])
+  })
+})
+
+// 2026-09-25 방송 개선 5: 같은 방해 효과가 이어 붙는 한도는 방송인이 정한다 (CMD_DONCAP — 후원을 받은 사람의 값)
+describe('같은 방해 효과가 이어 붙는 한도', () => {
+  const darkFor = (cap?: number) => {
+    const g = game(91)
+    toField(g)
+    if (cap !== undefined) g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONCAP, arg: cap / 10 } : idle()))
+    for (let k = 0; k < 6; k++) g.donate(ev('dark', k))
+    return g.s.players.map((q) => Math.round((q.don?.[DON_DARK] ?? 0) / 60))
+  }
+
+  it('처음은 60초 — 암흑(30초)이 여섯 번 와도 60초 · 동료도 같다', () => {
+    expect(DON_CAP_DEFAULT).toBe(60)
+    expect(darkFor()).toEqual([60, 60])
+  })
+
+  it('30 · 90 · 120초로 바꿀 수 있고, 고를 수 없는 값은 무시한다', () => {
+    expect(darkFor(30)[0]).toBe(30)
+    expect(darkFor(90)[0]).toBe(90)
+    expect(darkFor(120)[0]).toBe(120)
+    expect(darkFor(70)[0]).toBe(60)
+  })
+
+  it('손 떨림은 한도가 커도 30초를 넘지 않는다 · 한도보다 이미 길게 걸려 있으면 줄이지 않는다', () => {
+    const g = game(92)
+    toField(g)
+    g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONCAP, arg: 12 } : idle()))
+    for (let k = 0; k < 6; k++) g.donate(ev('shake', k))
+    const p = g.s.players[0]
+    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(30)
+    // 다른 방송인의 한도로 90초가 걸려 있는데 한도 30초인 사람의 후원이 와도 90초 그대로(늘지도 줄지도 않는다)
+    p.don![DON_DARK] = 90 * 60
+    g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONCAP, arg: 3 } : idle()))
+    g.donate(ev('dark', 7))
+    expect(Math.round(p.don![DON_DARK] / 60)).toBeGreaterThanOrEqual(89)
+    expect(Math.round(p.don![DON_DARK] / 60)).toBeLessThanOrEqual(90)
   })
 })

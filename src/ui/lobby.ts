@@ -28,6 +28,7 @@ import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
   makeRoomCode, openLobby, openRoom,
 } from '../net/room'
+import { banPeer, isBanned } from '../net/bans'
 import { drawPortrait } from '../render/character'
 import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
@@ -1061,6 +1062,13 @@ export class Lobby {
         this.bindCancel()
         this.closeLink()
         break
+      case 'kick':
+        // 방장이 보낸 것만 (대기실 방장 — 아직 방 정보를 못 받았으면 누가 방장인지 모르니 게스트 자리에서만)
+        if (this.role !== 'guest' || (this.hostId !== null && from !== this.hostId)) break
+        this.status('방장이 이 방에서 내보냈습니다.', 'bad', `<div class="row"><button class="btn secondary" id="btn-cancel">닫기</button></div>`)
+        this.bindCancel()
+        this.closeLink()
+        break
       case 'start':
         if (this.role === 'guest' && from === this.hostId) {
           this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
@@ -1077,11 +1085,31 @@ export class Lobby {
     }
   }
 
+  /** 방장: 이 사람을 내보낸다 — 그 사람에게 알리고 칸에서 빼며, 이 방에는 다시 받지 않는다(net/room.ts banPeer) */
+  private kick(id: string): void {
+    if (this.role !== 'host' || !this.link || id === this.link.selfId) return
+    const m = this.members.find((x) => x.id === id)
+    if (!m || m.bot) return
+    const who = this.memberName(id)
+    banPeer(this.link.code, id, m.name)
+    this.link.sendCtl({ t: 'kick' }, id)
+    this.members = this.members.filter((x) => x.id !== id)
+    this.roomChat?.add('알림', `${who} 님을 내보냈습니다 — 이 방에는 다시 들어올 수 없습니다`, 'sys')
+    this.broadcastRoom()
+    this.announce()
+    this.renderRoom()
+  }
+
   /** 호스트: 멤버 추가/갱신 */
   private onHello(m: Extract<CtlMessage, { t: 'hello' }>, from: string): void {
     if (this.role !== 'host' || !this.link) return
     const existing = this.members.find((x) => x.id === from)
     const name = (m.name ?? '').slice(0, 8)
+    // 내보낸 사람 (페이지를 새로 열어 id 가 바뀌어도 닉네임으로)
+    if (!existing && isBanned(this.link.code, from, name)) {
+      this.link.sendCtl({ t: 'kick' }, from)
+      return
+    }
     if (existing) {
       existing.char = m.char
       existing.ready = m.ready
@@ -1311,8 +1339,10 @@ export class Lobby {
       const nick = (m.name ?? '').trim()
       // 레벨 · 템 수준 (2026-09-20 요청): 누가 얼마나 키웠는지 보고 자리를 고르라고
       const power = m.sheet ? `<span class="pw">Lv ${m.sheet.level ?? 1} · 템 ${gearScore(m.sheet.equip)}</span>` : ''
+      // 방장만: 다른 사람 칸에 "내보내기" (2026-09-25 방송 개선 2 — 한 번 더 눌러야 내보낸다)
+      const kick = this.role === 'host' && !mine && !m.bot ? `<button type="button" class="kickbtn" data-kick="${esc(m.id)}" title="이 방에서 내보냅니다 (이 방에는 다시 못 들어옵니다)">내보내기</button>` : ''
       slots.push(`<div class="slot ${m.ready ? 'ready' : ''} ${mine ? 'mine' : ''}">
-        <div class="who">${who}${badge}</div>
+        <div class="who">${who}${badge}${kick}</div>
         <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}${power}</div>
         <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}${roleChip}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
       </div>`)
@@ -1367,6 +1397,24 @@ export class Lobby {
     this.bindCancel()
     const setBtn = this.host.querySelector('#btn-settings-room') as HTMLButtonElement | null
     if (setBtn) setBtn.onclick = () => this.openSettings()
+    this.host.querySelectorAll<HTMLButtonElement>('[data-kick]').forEach((b) => {
+      b.onclick = () => {
+        // 잘못 누르지 않게 두 번 (3초 안에)
+        if (b.dataset.sure !== '1') {
+          b.dataset.sure = '1'
+          b.textContent = '한 번 더 누르면 내보냄'
+          b.classList.add('sure')
+          window.setTimeout(() => {
+            if (!b.isConnected) return
+            delete b.dataset.sure
+            b.textContent = '내보내기'
+            b.classList.remove('sure')
+          }, 3000)
+          return
+        }
+        this.kick(b.dataset.kick ?? '')
+      }
+    })
     const chk = this.host.querySelector('#chk-bots') as HTMLInputElement | null
     if (chk) {
       chk.onchange = () => {

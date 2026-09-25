@@ -98,6 +98,8 @@ export const CMD_DONATE = 25
 export const CMD_BAGUP = 26
 export const CMD_STASHUP = 27
 export const CMD_SHOPNEW = 28
+/** 같은 방해 효과가 이어 붙는 한도: arg = 초 / 10 (3 · 6 · 9 · 12 — core/donate.ts DON_CAP_CHOICES). 각자의 방송 설정이라 명령으로 모두에게 알린다 */
+export const CMD_DONCAP = 29
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

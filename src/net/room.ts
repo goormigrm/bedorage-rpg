@@ -227,6 +227,13 @@ export type CtlMessage =
   | { t: 'donate'; p: number; seq: number; nick: string; amount: number; text: string; ev: number }
   /** 방송 채팅 말풍선: 지역 a 의 괴물 m(없으면 -1 — 채팅 줄로)이 nick 의 글을 말한다. sim 밖 */
   | { t: 'mchat'; a: number; m: number; nick: string; text: string }
+  /** 시청자 이름 괴물 (2026-09-25 방송 개선 7): 지역 a 의 괴물 m 에 채팅 "!참여" 한 시청자 nick 의 이름이 붙었다. sim 밖 */
+  | { t: 'mname'; a: number; m: number; nick: string }
+  /**
+   * 방장이 내보냈다 (2026-09-25 방송 개선 2). 대기실: 그 사람에게만 · 게임: 모두에게(p = 그 자리 — 나머지는 이어 오는 drop 으로 자리를 비운다).
+   * 방장(대기실 호스트 · 게임 0번 자리)이 보낸 것만 듣는다
+   */
+  | { t: 'kick'; p?: number }
   /** 텍스트 채팅 (Enter). sim 밖 — 받는 쪽이 보낸 사람 자리 · 길이를 다시 본다 */
   | { t: 'chat'; p: number; text: string }
   /**
