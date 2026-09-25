@@ -42,7 +42,7 @@ import {
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, Ally, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL,
-  STAMINA_MAX, STAMINA_REGEN, UWON, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, teamKills, MoveHow, SimEvent,
+  STAMINA_MAX, STAMINA_REGEN, UWON, DASH_GRACE, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, isHumanSeat, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -1610,6 +1610,8 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     p.dashCooldown = dungeon ? (p.dashCooldown > 0 ? p.dashCooldown : dashRecharge(p)) : c.dashCooldown
     p.ads = false
     if (c.id === 'uwon') p.invuln = Math.max(p.invuln, p.dashTimer + UWON.invulnAfterDash)
+    // 던전: 구르기 끝에 무적 유예 (DASH_GRACE — 합쳐 0.25초 · 승빠란 빼고)
+    else if (dungeon && c.id !== 'seungwoo') p.invuln = Math.max(p.invuln, p.dashTimer + DASH_GRACE)
     // 레드카펫: 구르기가 줄지 않고, 구를 때마다 주변을 친다
     if (p.fx[FX_CARPET] > 0) {
       if (dungeon) p.dashCharges = Math.min(DASH_MAX, p.dashCharges + 1)
@@ -3910,10 +3912,8 @@ function bossPick(state: GameState, map: GameMap, m: Monster, min: number, max: 
   return best
 }
 
-/** 사람이 조작하는 자리인가 — 봇(대장을 따라다닌다 · follow ≥ 0) · 용병(merc ≥ 0) · 영상의 크루(cameo)가 아니면 */
-export function isHumanSeat(p: PlayerState | undefined): boolean {
-  return !!p && p.follow < 0 && p.merc < 0 && !p.cameo
-}
+/** 사람이 조작하는 자리인가 (state.ts 로 옮겼다 — bot.ts 도 쓴다) */
+export { isHumanSeat }
 
 /** 잡은 막 보스(막 보스 퀘스트를 마친 막)의 보스 방 웨이포인트 비트 */
 function bossRoomWps(quests: number[] | undefined): number {

@@ -102,7 +102,7 @@
 - 스킬 칸: `cd[0..4]` = Q · E · R · 1 · 2 (`SKILL_BTNS` 같은 순서). `slotNode(p, 칸)` → 트리 칸, `nodeSkill` → 스킬. 캐스팅 때 `skillPow = nodePow` 를 걸어 `aoe` 피해에 곱한다(투척·장판처럼 나중에 터지는 것에는 아직 안 곱한다).
 - 빌드 `Build {r, m3, m5, s}`: 랭크 · 3랭크 변형 · 5랭크 변형 · 칸에 건 트리 칸. 명령 CMD_SKILL_UP/MOD/SLOT · CMD_RESPEC(마을). 포인트 = 레벨 − 1 + `spBonus`(퀘스트) − (랭크 합 − 3).
   패시브: 총기 숙련 ST_DMG +4 · 강인함 체력 +6% · 민첩 이동 +2% · 구르기 충전 −6% · 정신 집중 집중 +10% · CDR +2 (랭크마다, `recalc`).
-- 구르기(던전): `dashCharges` 최대 2, `dashCooldown` 이 하나 다시 차는 시간(캐릭터 값 × 1.6 × 민첩).
+- 구르기(던전): `dashCharges` 최대 2, `dashCooldown` 이 하나 다시 차는 시간(캐릭터 값 × 1.6 × 민첩). 무적은 구르기 10틱 + 유예 `DASH_GRACE` 5틱 = 0.25초(v0.67.2 — 투기장 · 승빠란은 10틱, 우원란은 패시브 24).
 - 용병: `CMD_HIRE` → 빈 자리(`vacant`)에 `makePlayer` + `merc = 고용인` · `follow` · `bot = makeBot(…)`. `stepAll` 이 지역마다 돌기 전에 용병 입력을 `botInput(areaView(…), …)` 로 만든다 — 봇 기억이 상태에 있어 결정론이고 해시·스냅샷에 들어간다. 난입자는 용병 자리를 차지하지 않는다(left 가 아니므로).
 
 ## 3.9 퀘스트 (D5)

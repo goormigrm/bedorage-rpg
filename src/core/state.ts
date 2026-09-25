@@ -55,6 +55,15 @@ export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.8
  */
 export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.35, uwon: 1.22, dangun: 1.22, giyeol: 1.12 }
 export const UWON = { invulnAfterDash: 24 }
+/**
+ * 던전 구르기 끝의 무적 유예 틱 (2026-09-25 사용자: "구르는 시간이 0.3초쯤 되나? 늘리면 너무 쉬워지지 않나 — 수치로 정해 줘").
+ * 구르기 10틱(0.167초) + 5 = 0.25초. 사람 수준 계측(tools/bossfight.ts dodge=2 · 판 6개): 보스에게 받는 피해 15~22% ↓ ·
+ * 3막 5/6 → 6/6 · 4막 3/6 → 4/6 (쓰러짐 3.3 → 2.0 — 여전히 가장 어렵다). +8(0.3초)은 +5 와 같은 결과인데 연타 무적만 늘어 5.
+ * 사람 타이밍(오차 σ 90ms)으로 맞출 확률 65% → 84%, 계속 구를 때 무적인 시간 11% → 17%.
+ * 투기장은 그대로(스태미나 · 1:1 판이 이미 맞춰져 있다). 승빠란은 구르기가 세 배 빨리 차서(대기 20) 늘리면
+ * 계속 구를 때 무적이 47~68% 로 우원란(구른 뒤 무적이 패시브)보다 높아져 뺀다. 우원란은 이미 24 라 그대로
+ */
+export const DASH_GRACE = 5
 /** 주펄란 패시브(빛남): 이 거리(px) 안의 상대에게 피해 배율 */
 export const JUPEOL = { range: 200, mult: 1.35 }
 /** 기열란 패시브(뇌절): 연속 명중마다 피해 배율이 오른다. 2026-09-19 재장전이 없어져 빗나가는 탄이 늘자(빗나가면 한 칸 식음)
@@ -799,6 +808,11 @@ export interface GameState {
 /** 판에서 움직일 수 있는 사람 (쓰러지지 않고 살아 있음) */
 export function isActive(p: PlayerState): boolean {
   return p.alive && !p.downed && !p.left
+}
+
+/** 사람이 조작하는 자리인가 — 봇(대장을 따라다닌다 · follow ≥ 0) · 용병(merc ≥ 0) · 영상의 크루(cameo)가 아니면 */
+export function isHumanSeat(p: PlayerState | undefined): boolean {
+  return !!p && p.follow < 0 && p.merc < 0 && !p.cameo
 }
 
 /** 서로 적인가 (던전은 모두 0팀이라 언제나 false) */

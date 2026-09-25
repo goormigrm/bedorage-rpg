@@ -1,5 +1,6 @@
 // 보스는 사람이 먼저 · 보물 고블린은 사람이 보아야 (2026-09-25 사용자)
 import { describe, expect, it } from 'vitest'
+import { botInput, makeBot } from '../src/core/bot'
 import { Input } from '../src/core/input'
 import { GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
 import { createState, isHumanSeat, step } from '../src/core/sim'
@@ -37,6 +38,32 @@ describe('보스 방의 보스는 사람이 먼저', () => {
     for (let t = 0; t < 60 && boss.hp === hp0; t++) step(s, () => map, [{ ...idle(), buttons: 1, aimDist: 150 }, idle()])
     expect(boss.hp).toBeLessThan(hp0)
     expect(boss.hitTick).toBeGreaterThanOrEqual(0)
+  })
+
+  it('봇 동료는 안 맞은 보스를 노리지 않고 · 봇이 사람 자리를 몰 때(계측 도구 · 영상 자동 조종)는 사람처럼 먼저 친다', () => {
+    const area = 9
+    const map = buildAreaMap(6, area)
+    const run = (follow: number): number => {
+      const s = createState({ area, seed: 6, chars: ['chim', 'dangun'], follow: [-1, follow] }, () => map)
+      const boss = s.monsters.find((m) => m.kind === 3)!
+      for (const m of s.monsters) if (m !== boss) m.hp = 0
+      const [me, bot] = s.players
+      bot.x = boss.x - 200
+      bot.y = boss.y
+      me.x = boss.x - 380
+      me.y = boss.y + 200
+      const mem = makeBot(9)
+      for (let t = 0; t < 240 && boss.hitTick < 0; t++) {
+        me.hp = me.maxHp
+        bot.hp = bot.maxHp
+        step(s, () => map, [idle(), botInput(s, map, 1, mem, 'normal')])
+      }
+      return boss.hitTick
+    }
+    // 봇 동료 (follow = 0) — 4초를 곁에 두어도 보스는 그대로
+    expect(run(0)).toBeLessThan(0)
+    // 사람 자리를 모는 봇 (follow = -1) — 보스를 친다
+    expect(run(-1)).toBeGreaterThanOrEqual(0)
   })
 })
 

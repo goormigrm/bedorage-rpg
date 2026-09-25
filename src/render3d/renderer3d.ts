@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { Ally, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
+import { Ally, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant } from '../core/monsters'
 
@@ -2751,8 +2751,9 @@ export class Renderer3D {
     if (p.fx[FX_WHIRL] > 0) root.rotation.y = this.t * 18
     root.scale.set(v.sx, v.sy, v.sx)
     // 무적(스폰 보호 · 우원란이 구른 뒤): **황금 보호막**. 전에는 몸을 반투명하게 깜빡였는데
-    // 눈에 띄지 않아 우원란 패시브가 있는지도 몰랐다(2026-09-06 제보). 구르는 동안은 구르기 연출이 이미 말해 준다
-    const guarded = p.invuln > 0 && p.dashTimer === 0
+    // 눈에 띄지 않아 우원란 패시브가 있는지도 몰랐다(2026-09-06 제보). 구르는 동안은 구르기 연출이 이미 말해 준다.
+    // 던전 구르기 끝의 짧은 유예(DASH_GRACE · 0.08초)에는 띄우지 않는다 — 구를 때마다 번쩍이면 우원란 보호막과 헷갈린다
+    const guarded = p.invuln > DASH_GRACE && p.dashTimer === 0
     if (guarded && !rig.shield) {
       rig.shield = makeShield(rig.centerY * 1.45)
       rig.shield.position.y = rig.centerY
