@@ -341,7 +341,18 @@ export class TownPanel {
       const reach = actReached(me.quests)
       const here = areaDef(me.area).act
       const travel = ACTS.map((a, i) => (i <= reach && i !== here ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${100 + i}">${i + 1}막 ${a.name}으로 — ${AREAS[a.town].name}</button>` : '')).join('')
-      body = questList(me.quests.map((v, i) => (QUESTS[i]?.act === here ? v : -1)), true) + (travel ? `<div class="tp-slots">${travel}</div>` : '')
+      // 이 막의 퀘스트가 먼저, 그 아래 **다른 막**의 맡을 · 진행 중 · 보고할 일 (끝낸 것은 뺀다) — 어느 야영지 촌장이든 받는다 (2026-09-25)
+      const other = questList(
+        me.quests.map((v, i) => {
+          const a = QUESTS[i]?.act
+          return a !== undefined && a !== here && a <= reach && v !== 3 ? v : -1
+        }),
+        true,
+      )
+      body =
+        questList(me.quests.map((v, i) => (QUESTS[i]?.act === here ? v : -1)), true) +
+        (other ? `<div class="tp-sub">다른 막의 일 — 여기서도 맡고 보고할 수 있다</div>${other}` : '') +
+        (travel ? `<div class="tp-slots">${travel}</div>` : '')
     } else if (npc === 'captain') {
       const mine = s.players.find((q) => q.merc === me.id && !q.left)
       const price = mercPrice(me.level)

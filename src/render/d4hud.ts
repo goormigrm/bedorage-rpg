@@ -539,7 +539,8 @@ export class D4Hud {
       c.textAlign = 'left'
       c.font = `600 12px ${SANS}`
       c.fillStyle = color
-      c.fillText(fitText(c, `${mark} ${d.name}`, W - 24 - rw - 8), x + 12, ly)
+      const other = d.act !== areaDef(s.curArea).act ? `${d.act + 1}막 ` : ''
+      c.fillText(fitText(c, `${mark} ${other}${d.name}`, W - 24 - rw - 8), x + 12, ly)
     })
     c.textAlign = 'left'
   }
@@ -558,14 +559,15 @@ export class D4Hud {
       const left = s.monsters.filter((m) => m.hp > 0 && MONSTER_LIST[m.kind].attack !== 'flee').length
       const total = Math.max(1, s.monstersTotal)
       const inner = W - 24
-      // 이 막의 퀘스트 넷을 아래에 늘어놓는다 (2026-09-19 요청 "퀘스트 진행 사항을 맵 아래에서 확인")
-      const actQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act)
+      const me = opts.localPlayer >= 0 ? s.players[opts.localPlayer] : null
+      const q = me?.quests ?? []
+      // 이 막의 퀘스트 넷을 아래에 늘어놓는다 (2026-09-19 요청 "퀘스트 진행 사항을 맵 아래에서 확인").
+      // 다른 막에서 **보고할 것**도 끝에 붙인다 — 어느 야영지 촌장에게든 받을 수 있다 (2026-09-25)
+      const actQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act || q[o.i] === 2)
       const a = areaDef(s.curArea)
       const town = isTown(s.curArea)
       const bossHere = s.monsters.some((m) => m.hp > 0 && isBossLike(m))
       // 퀘스트가 먼저 (GUIDE 10장 — "퀘스트가 길을 이끈다")
-      const me = opts.localPlayer >= 0 ? s.players[opts.localPlayer] : null
-      const q = me?.quests ?? []
       const report = QUESTS.findIndex((_, i) => q[i] === 2)
       const here = QUESTS.findIndex((d, i) => (q[i] ?? 0) < 2 && d.area === s.curArea)
       const next = QUESTS.findIndex((_, i) => (q[i] ?? 0) < 2)

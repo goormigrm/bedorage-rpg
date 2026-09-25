@@ -717,6 +717,8 @@ body { background: var(--bg); }
 /* 오른쪽 칸(값 · 재료)은 <br> 로만 나눈다 — 한 줄씩은 붙여 두되 칸 폭은 그만큼만 차지한다 */
 .tp-g { color: #e8c46a; font-weight: 700; white-space: nowrap; text-align: right; }
 .tp-note, .tp-empty { color: #8d8170; margin: 6px 0; }
+/* 촌장 창: 다른 막의 일 (어느 야영지 촌장이든 맡고 보고한다 — 2026-09-25) */
+.tp-sub { margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid rgba(201,162,74,.25); color: #c9a24a; font-weight: 700; font-size: 12.5px; }
 .tp-pot { width: 100%; margin-top: 10px; }
 .tp-slots { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 /* 보관함: 두 칸을 확실히 갈라 놓는다 — 상자 · 머리줄 · 칸마다 따로 구르기 (2026-09-20 제보) */

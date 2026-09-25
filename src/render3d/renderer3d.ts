@@ -23,7 +23,7 @@ const BOSS_INTRO: Record<string, string> = {
   warden: '지하 감옥의 열쇠를 쥔 자 — 이 문으로 나간 죄수는 없다',
   lord: '옥좌에서 심연이 일어선다 — 마지막 싸움이다',
 }
-import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, isTown, townNpcs } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, elderMarks, isTown, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
@@ -2000,9 +2000,9 @@ export class Renderer3D {
         ctx.stroke()
       }
       // 마을 NPC (2026-09-20 요청): 종류마다 다른 색 점. 촌장은 맡거나 보고할 것이 있으면 노란 테가 깜빡인다
-      const meQ = lp >= 0 ? curr.players[lp]?.quests ?? [] : []
+      const meQ = elderMarks(lp >= 0 ? curr.players[lp]?.quests ?? [] : [])
       for (const n of townNpcs(curr.curArea)) {
-        const busy = n.id === 'elder' && meQ.some((v) => v === 0 || v === 2)
+        const busy = n.id === 'elder' && (meQ.offer || meQ.report)
         const r = (busy ? 4 : 3.2) * rp
         ctx.beginPath()
         ctx.arc(n.x / TILE, n.y / TILE, r, 0, Math.PI * 2)
@@ -2891,10 +2891,10 @@ export class Renderer3D {
     if (gdef.gate !== undefined && l.special && gateOpen(gdef, me)) {
       label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · ${F}`, '#e0a8ff')
     }
+    const em = elderMarks(me.quests ?? [])
     for (const n of townNpcs(curr.curArea)) {
-      // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로)
-      const q = me.quests ?? []
-      const mark = n.id === 'elder' ? (q.some((v) => v === 2) ? '? ' : q.some((v) => v === 0) ? '! ' : '') : ''
+      // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로) — 모든 막 공유 · 아직 못 간 막은 빼고
+      const mark = n.id === 'elder' ? (em.report ? '? ' : em.offer ? '! ' : '') : ''
       label(n.x, n.y - 44, `${mark}${NPC_NAMES[n.id]} · ${F}`, mark ? '#ffd84a' : '#e8d6a8')
     }
     for (const o of curr.objects ?? []) {

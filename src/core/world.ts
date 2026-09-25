@@ -449,6 +449,24 @@ export function actReached(q: number[]): number {
   return act
 }
 
+/**
+ * 촌장이 줄 · 받을 일이 있나 — **어느 야영지의 촌장이든 모든 막의 퀘스트를 맡고 보상한다** (2026-09-25 사용자:
+ * "1막을 끝내고 2막 야영지로 가면 1막 퀘스트 보상을 받으러 1막 야영지로 다시 가야 한다 — 촌장의 퀘스트는 모든 야영지에서 공유").
+ * 아직 못 간 막의 퀘스트는 세지 않는다 (예전에는 1막에서도 4막 퀘스트 때문에 늘 "!" 가 떴다)
+ */
+export function elderMarks(q: number[]): { report: boolean; offer: boolean } {
+  const reach = actReached(q)
+  let report = false
+  let offer = false
+  QUESTS.forEach((d, i) => {
+    if (d.act > reach) return
+    const st = q[i] ?? 0
+    if (st === 2) report = true
+    else if (st === 0) offer = true
+  })
+  return { report, offer }
+}
+
 // ---------------------------------------------------------------- 마을 배치 (손으로 짠 자리, 타일 단위)
 
 interface TownSpots {
