@@ -8,7 +8,7 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
@@ -27,7 +27,7 @@ import {
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_AIM, SHAKE_JITTER, SHAKE_MAX, donateEvent } from './donate'
+import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent } from './donate'
 import { botInput, makeBot } from './bot'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
@@ -1539,12 +1539,8 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 풍월란 궁극기(켠왕): 켜져 있는 동안 8칸 안 괴물이 계속 나만 노린다 (0.5초마다 다시 건다)
   if (p.fx[FX_KENWANG] > 0 && isActive(p) && state.tick % 30 === 0) tauntNear(state, p, 8 * TILE, 60)
 
+  // 후원 "화면 흔들림"(DON_SHAKE)은 화면만 흔든다 — 판(조준)은 건드리지 않는다 (2026-09-26 — donate.ts)
   p.aim = input.aim & 1023
-  // 후원 "손 떨림": 조준이 좌우로 흔들린다 (쏘는 · 휘두르는 방향 모두) — 느린 흔들림 + 작은 잔떨림
-  if (don && don[DON_SHAKE] > 0) {
-    const sway = Math.round(SHAKE_AIM * sinA(((state.tick + p.id * 37) * 21) & 1023))
-    p.aim = (p.aim + sway + randInt(state.rng, -SHAKE_JITTER, SHAKE_JITTER + 1)) & 1023
-  }
   p.aimDist = (input.aimDist ?? 0) * 4
   p.ads = playing && (input.buttons & BTN_ADS) !== 0 && p.dashTimer === 0
 
@@ -1598,9 +1594,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   const dashCost = DASH_COST
   const dungeon = state.mode === 'dungeon'
   const canDash = dungeon ? p.dashCharges > 0 && p.dashCooldown < dashRecharge(p) - 20 : p.dashCooldown === 0 && p.stamina >= dashCost
-  // 후원 "스킬 봉인": 스킬 · 궁극기 · 구르기 금지
+  // 후원 "스킬 봉인": 스킬(Q · E · 1 · 2)만 금지 — 궁극기 · 구르기는 된다 (2026-09-26 사용자: "말 그대로 스킬만 봉인")
   const sealed = !!don && don[DON_SEAL] > 0
-  if (playing && !sealed && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
+  if (playing && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
     if (dungeon) p.dashCharges--
     else p.stamina -= dashCost
     const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
@@ -1621,9 +1617,10 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   }
 
   // 스킬 Q · E · R · 1 · 2 (누르고 있으면 준비되는 대로 쓴다 — 디아블로처럼). 궁극기 빼고는 집중이 든다
-  if (playing && p.dashTimer === 0 && !sealed) {
+  if (playing && p.dashTimer === 0) {
     for (let k = 0; k < SKILL_BTNS.length; k++) {
       if ((input.buttons & SKILL_BTNS[k]) === 0 || (p.cd[k] ?? 0) > 0) continue
+      if (sealed && SKILL_BTNS[k] !== BTN_ULT) continue
       const node = slotNode(p, k)
       if (node < 0) continue
       const id = nodeSkill(p, node)
@@ -2987,7 +2984,7 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
   const ev = donateEvent(arg & 15)
   const seq = arg >> 4
   if (!ev || state.mode !== 'dungeon' || isTown(p.area) || !p.alive || p.out) return
-  // 사람에게 거는 효과(손 떨림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
+  // 사람에게 거는 효과(화면 흔들림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
   // 같이 하는 사람들은 후원받지 못하니 효과는 모두에게"). 다른 지역에 있는 파티원도 받는다
   const party = partyOf(state, p)
   // 이어 붙는 한도는 후원을 받은 사람(방송인)이 정한 값 (CMD_DONCAP) — 이미 더 길게 걸려 있으면(다른 방송인의 한도) 줄이지 않는다

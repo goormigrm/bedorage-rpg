@@ -156,7 +156,7 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     `<div class="czcol">` +
     `<div class="czh"><b>방해 효과 · 시청자 참여</b></div>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
-    `<p class="czn">손 떨림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 이 시간을 넘게 이어 붙지 않습니다 (손 떨림은 30초까지).</p>` +
+    `<p class="czn">화면 흔들림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 이 시간을 넘게 이어 붙지 않습니다 — 넘는 만큼은 버려집니다 (화면 흔들림은 30초까지).</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` +
     `<p class="czn">채팅에 <b>!참여</b> → 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고, 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +

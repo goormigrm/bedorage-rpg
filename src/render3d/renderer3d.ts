@@ -335,6 +335,8 @@ export class Renderer3D {
     this.hud.notice(text, color, life)
   }
   private shake = 0
+  /** 후원 "화면 흔들림"의 세기 0~1 (걸리면 차오르고 끝나면 빠진다 — updateCamera) */
+  private donShake = 0
   /** 손맛 (2026-09-19): 역경직(연출 시간을 잠깐 거의 멈춤) · 카메라 펀치(잠깐 당겨짐) */
   private hitStop = 0
   /**
@@ -4230,8 +4232,8 @@ export class Renderer3D {
       const me = curr.players[lp]
       tx = pos[lp].x
       tz = pos[lp].z
-      // 정조준이면 조준 쪽을 더 보여 준다. 단 후원 "손 떨림" 중에는 하지 않는다 — 조준이 좌우로 흔들려
-      // 카메라가 따라 흔들리면 화면 전체가 정신없이 떨렸다 (2026-09-23 사용자: "화면 흔들림은 없도록"). 조준만 흔들린다
+      // 정조준이면 조준 쪽을 더 보여 준다. 단 후원 "화면 흔들림" 중에는 하지 않는다 — 조준점이 화면을 따라 움직이는데
+      // 카메라가 그 조준을 또 따라가면 제멋대로 떨렸다 (2026-09-23 사용자: "화면 흔들림은 없도록" — 이제 흔들림은 정해진 출렁임 하나)
       if (me.alive && me.ads && !((me.don?.[DON_SHAKE] ?? 0) > 0)) {
         const r = angleToRad(me.aim)
         // 조준경은 앞을 더 보여 주되, 너무 멀리 밀면 조준선이 화면에서 빨리 움직여 맞히기 어렵다
@@ -4261,8 +4263,20 @@ export class Renderer3D {
       this.camTarget.z += (tz - this.camTarget.z) * s
       this.camDist += (dist - this.camDist) * s * 0.7
     }
-    const shx = (Math.random() - 0.5) * this.shake
-    const shz = (Math.random() - 0.5) * this.shake
+    let shx = (Math.random() - 0.5) * this.shake
+    let shz = (Math.random() - 0.5) * this.shake
+    // 후원 "화면 흔들림" (2026-09-26 — core/donate.ts): 들고 찍는 카메라처럼 크게 출렁인다. 폭발의 순간 흔들림(제멋대로 튐)과 달리
+    // 사인 두 겹이라 어지럽지 않게 · 0.3초쯤에 걸쳐 들어오고 빠진다 · 살짝 기울기도 한다. 마우스 조준점도 화면을 따라 움직인다
+    const donSh = opts.localPlayer >= 0 ? (curr.players[opts.localPlayer]?.don?.[DON_SHAKE] ?? 0) : 0
+    this.donShake += ((donSh > 0 ? 1 : 0) - this.donShake) * Math.min(1, dt * 3.5)
+    let roll = 0
+    if (this.donShake > 0.01) {
+      const t = this.t
+      const a = DON_SHAKE_AMP * this.donShake
+      shx += a * (Math.sin(t * 7.1) + 0.45 * Math.sin(t * 17.3 + 1.3))
+      shz += a * (Math.cos(t * 6.3 + 0.7) + 0.45 * Math.sin(t * 15.1 + 2.1))
+      roll = DON_SHAKE_ROLL * this.donShake * Math.sin(t * 4.7 + 0.4)
+    }
     const cx = this.camTarget.x + shx
     const cz = this.camTarget.z + shz
     // 카메라 펀치: 잠깐 당겨졌다 돌아온다 (최대 7%)
@@ -4270,6 +4284,7 @@ export class Renderer3D {
     const flat = Math.cos(PITCH) * cd
     this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * cd, cz + Math.cos(YAW) * flat)
     this.camera.lookAt(cx, 0.6, cz)
+    if (roll !== 0) this.camera.rotateZ(roll)
     // 그림자 카메라가 시점을 따라오도록
     this.world.sun.position.set(this.camTarget.x + 8, 18, this.camTarget.z + 10)
     this.world.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z)
@@ -4339,6 +4354,9 @@ export { hex, PLAYER_RADIUS }
  */
 /** 응원 아군 이름표 색 */
 const ALLY_TAG = '#8dffb0'
+/** 후원 "화면 흔들림": 카메라가 출렁이는 폭(월드 칸 — 화면 높이의 약 3%) · 기울기(라디안 — 약 1.4°) */
+const DON_SHAKE_AMP = 0.42
+const DON_SHAKE_ROLL = 0.025
 /** 시청자 이름 괴물의 닉네임 (하늘빛 — 후원 소환의 초록 · 응원 아군의 연두와 다르게) */
 export const VIEWER_TAG = '#8fd8ff'
 

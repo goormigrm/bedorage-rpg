@@ -19,12 +19,12 @@ export interface DonateEvent {
 
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
-  { id: 2, key: 'shake', name: '손 떨림', desc: '10초 동안 조준이 좌우로 흔들린다', amount: 2000 },
+  { id: 2, key: 'shake', name: '화면 흔들림', desc: '10초 동안 화면이 크게 출렁인다', amount: 2000 },
   { id: 3, key: 'dark', name: '암흑', desc: '30초 동안 코앞만 보인다', amount: 3000 },
   { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 5000 },
   { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 7000 },
   { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 10000 },
-  { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 · 궁극기 · 구르기 금지', amount: 20000 },
+  { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 20000 },
   { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 30000 },
   { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스가 나타난다', amount: 50000 },
   { id: 10, key: 'hell', name: '지옥문', desc: '막 보스 + 중간보스 둘 + 암흑', amount: 100000 },
@@ -82,7 +82,7 @@ export const DON_INVERT = 2
 export const DON_SEAL = 3
 export const DON_SLOTS = 4
 
-/** 효과 길이 (틱). 같은 것이 또 오면 이어 붙이되 DON_MAX 까지 (손 떨림은 SHAKE_MAX) */
+/** 효과 길이 (틱). 같은 것이 또 오면 이어 붙이되 DON_MAX 까지 (화면 흔들림은 SHAKE_MAX) */
 export const DON_TICKS: Record<number, number> = {
   // 손 떨림 30 → 10초 (2026-09-24 사용자: "2000원으로 저렴한 거에 비해 너무 길고 방해 효과가 너무 크다")
   [DON_SHAKE]: 10 * TICK_RATE,
@@ -93,7 +93,7 @@ export const DON_TICKS: Record<number, number> = {
 export const DON_MAX = 120 * TICK_RATE
 /**
  * 같은 방해 효과가 이어 붙는 한도(초) — **방송인이 정한다** (2026-09-25 사용자 고른 방송 개선 5: 암흑 · 거꾸로 · 봉인이 몰리면 2분까지 이어 붙었다).
- * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 손 떨림은 SHAKE_MAX(30초)를 넘지 않는다
+ * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 화면 흔들림은 SHAKE_MAX(30초)를 넘지 않는다
  */
 export const DON_CAP_CHOICES = [30, 60, 90, 120]
 export const DON_CAP_DEFAULT = 60
@@ -104,12 +104,11 @@ export const RAGE_TICKS = 60 * TICK_RATE
 export const RAGE_POW = 1.5
 export const RAGE_SPEED = 1.3
 /**
- * 손 떨림: 조준이 좌우로 천천히 흔들린다 — 약 ±7°(1024 단계 20), 0.8초에 한 번 오간다 + 틱마다 ±1.4° 잔떨림.
- * 예전(v0.50)에는 틱마다 ±20° 를 아무렇게나 튀어 30초 동안 거의 맞힐 수 없었다 (2026-09-24 사용자 — 싼 것에 비해 너무 세다)
+ * 화면 흔들림 (2026-09-26 사용자: "승빠란으로 손 떨림을 받아도 안 느껴진다 — 캐릭터만 약간 좌우로 움직인다 · 화면 떨림으로"):
+ * 전에는 sim 이 조준을 ±7° 흔들었다 — 넓게 휘두르는 근접(후라이팬 · 검)에는 거의 상관이 없었다. 이제 **화면(카메라)만** 출렁인다
+ * (render3d/renderer3d.ts updateCamera). 판은 그대로이고, 마우스 조준점이 화면을 따라 움직여 총은 겨누기도 어렵다
  */
-export const SHAKE_AIM = 20
-export const SHAKE_JITTER = 4
-/** 손 떨림이 몰려도 이어 붙는 끝 (30초) */
+/** 화면 흔들림이 몰려도 이어 붙는 끝 (30초) */
 export const SHAKE_MAX = 30 * TICK_RATE
 /** 암흑일 때 시야 (타일 — 보통 13) */
 export const DARK_VIEW_TILES = 2.6

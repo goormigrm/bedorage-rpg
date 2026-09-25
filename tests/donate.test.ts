@@ -1,7 +1,7 @@
 // 후원 이벤트 (2026-09-23 — 치지직 후원 · core/donate.ts): 입력 명령으로 모두의 판에 같게 · 마을에서는 없음 ·
 // 소환한 보스는 막 보스 처치로 치지 않는다 · 손 떨림 · 거꾸로 · 봉인 · 광폭화 · 암흑
 import { describe, expect, it } from 'vitest'
-import { BTN_FIRE, BTN_SKILL1, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
+import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
 import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
@@ -151,21 +151,18 @@ describe('후원 이벤트 — 소환', () => {
 })
 
 describe('후원 이벤트 — 효과', () => {
-  it('손 떨림: 조준이 흔들린다 · 시간이 지나면 멈춘다', () => {
+  it('화면 흔들림: 화면만 흔든다 — 판의 조준은 그대로 · 10초가 지나면 끝난다 (2026-09-26 — 조준 흔들기는 근접에 안 느껴졌다)', () => {
     const g = game()
     toField(g)
     g.donate(ev('shake'))
     const p = g.s.players[0]
-    const aims = new Set<number>()
+    expect(Math.round(p.don![DON_SHAKE] / 60)).toBe(10)
     for (let t = 0; t < 20; t++) {
       g.run((i) => (i === 0 ? { ...idle(), aim: 300 } : idle()))
-      aims.add(p.aim)
+      expect(p.aim).toBe(300)
     }
-    expect(aims.size).toBeGreaterThan(5)
-    p.don![DON_SHAKE] = 1
-    g.run((i) => (i === 0 ? { ...idle(), aim: 300 } : idle()))
-    g.run((i) => (i === 0 ? { ...idle(), aim: 300 } : idle()))
-    expect(p.aim).toBe(300)
+    for (let t = 0; t < 600; t++) g.run(() => idle())
+    expect(p.don![DON_SHAKE]).toBe(0)
   })
 
   it('거꾸로 걷기: 누른 쪽의 반대로 간다', () => {
@@ -179,7 +176,7 @@ describe('후원 이벤트 — 효과', () => {
     expect(p.x).toBeLessThan(x0)
   })
 
-  it('스킬 봉인: Q 를 눌러도 스킬이 나가지 않는다', () => {
+  it('스킬 봉인: 스킬(Q)은 안 나가고 궁극기 · 구르기는 된다 (2026-09-26 사용자: "말 그대로 스킬만")', () => {
     const g = game()
     toField(g)
     const p = g.s.players[0]
@@ -188,6 +185,15 @@ describe('후원 이벤트 — 효과', () => {
     expect(p.don![DON_SEAL]).toBeGreaterThan(0)
     for (let t = 0; t < 5; t++) g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_SKILL1 } : idle()))
     expect(p.cd[0] ?? 0).toBe(0)
+    // 구르기
+    g.run((i) => (i === 0 ? { ...idle(), mx: 1, buttons: BTN_DASH } : idle()))
+    expect(p.dashTimer).toBeGreaterThan(0)
+    for (let t = 0; t < 30; t++) g.run(() => idle())
+    // 궁극기 (궁극기 칸 = 2)
+    p.cd[2] = 0
+    for (let t = 0; t < 5 && (p.cd[2] ?? 0) === 0; t++) g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_ULT } : idle()))
+    expect(p.cd[2] ?? 0).toBeGreaterThan(0)
+    expect(p.don![DON_SEAL]).toBeGreaterThan(0)
   })
 
   it('광폭화: 괴물 공격력이 오르고, 끝나면 되돌아온다', () => {

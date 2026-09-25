@@ -279,7 +279,7 @@ export interface PlayerState {
   bot?: BotMemory
   /** 화면용 사본에서만: 다른 지역에 있다 (sim 은 쓰지 않는다) */
   away?: boolean
-  /** 후원 효과 남은 틱 (core/donate.ts DON_* 칸 — 손 떨림 · 암흑 · 거꾸로 · 봉인). 처음 걸릴 때 만든다 */
+  /** 후원 효과 남은 틱 (core/donate.ts DON_* 칸 — 화면 흔들림 · 암흑 · 거꾸로 · 봉인). 처음 걸릴 때 만든다 */
   don?: number[]
   /** 이 사람이 받은 후원의 방해 효과가 이어 붙는 한도(초 — CMD_DONCAP). 없으면 DON_CAP_DEFAULT */
   donCap?: number
