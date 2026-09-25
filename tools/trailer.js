@@ -2,6 +2,7 @@
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
+//   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
 //   t.status()  → 진행 상황
 //
@@ -707,38 +708,36 @@ function liteState(s) {
   }
 }
 
-async function renderAudio(durSec) {
-  const live = S().sfx
-  const rate = 48000
-  const off = new OfflineAudioContext(2, Math.ceil(rate * durSec), rate)
-  let fakeT = 0
-  const proxy = new Proxy(off, {
-    get(tg, k) {
-      if (k === 'currentTime') return fakeT
-      if (k === 'state') return 'running'
-      const v = Reflect.get(tg, k)
-      return typeof v === 'function' ? v.bind(tg) : v
+/**
+ * 소리 없이 부르기만 받는 가짜 소리판 — 조각 앞의 몇 초를 "되풀이 제한 · 동시 음원 · 토큰"만 맞추려고 흘려 보낼 때 (소리는 안 만든다)
+ */
+function dummyAudio(getT) {
+  const noop = new Proxy(function () {}, {
+    get(_t, k) {
+      if (k === 'value' || k === 'length' || k === 'duration' || k === 'numberOfChannels') return 0
+      if (k === Symbol.toPrimitive) return () => 0
+      return noop
     },
+    apply: () => noop,
+    set: () => true,
   })
-  const master = off.createGain()
-  master.gain.value = 0.8
-  const comp = off.createDynamicsCompressor()
-  comp.threshold.value = -14
-  comp.knee.value = 18
-  comp.ratio.value = 6
-  comp.attack.value = 0.003
-  comp.release.value = 0.16
-  master.connect(comp)
-  comp.connect(off.destination)
-  const bgm = off.createGain()
-  // 배경음 (2026-09-24 사용자: "효과음만 있으니 허전하다 — 어둡고 무서운 배경음"): 효과음 1,500여 개 사이에서 들리게 0.2 → 0.5 (약 +8dB)
-  bgm.gain.value = 0.5
-  bgm.connect(master)
-  const noise = off.createBuffer(1, rate, rate)
-  const d = noise.getChannelData(0)
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+  return new Proxy(
+    {},
+    {
+      get(_t, k) {
+        if (k === 'currentTime') return getT()
+        if (k === 'state') return 'running'
+        if (k === 'sampleRate') return 0
+        return noop
+      },
+    },
+  )
+}
+
+/** 게임의 소리판(sfx)을 오프라인 소리판에 옮긴 사본 — 되풀이 제한 시각 · 동시 음원 수를 가상 시각에 맞춘다 */
+function cloneSfx(live, ctx, master, bgm, noise, clock) {
   const sx = Object.assign(Object.create(Object.getPrototypeOf(live)), live)
-  Object.assign(sx, { ctx: proxy, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {} })
+  Object.assign(sx, { ctx, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {} })
   // 되풀이 제한의 시각(last… · kindVoice · nextIdle)을 비운다 — 살아 있는 게임에서 복사한 **실제 시각**(수십만 ms)이 그대로면
   // 가상 시각(0 부터)과 비교해 늘 "방금 냈다"가 되어 괴물 소리 · 맞는 소리 · 폭발 … 이 영상 내내 하나도 나지 않았다 (2026-09-24 사용자:
   // "trailer_hq 에서는 왜 몬스터 잡는데 몬스터 소리가 안 들려?")
@@ -753,22 +752,119 @@ async function renderAudio(durSec) {
   sx.finish = function (src, chain, bus, counted) {
     fin0.call(this, src, chain, bus, false)
     if (counted) {
-      ends.push(fakeT + 0.45)
+      ends.push(clock() + 0.45)
       this.live = ends.length
     }
   }
   // 계측: 괴물 소리가 실제로 몇 번 났나
-  let voiced = 0
-  let asked = 0
+  const meter = { voiced: 0, asked: 0 }
   const voice0 = sx.voice
   sx.voice = function (...a) {
-    asked++
+    meter.asked++
     const lv = this.lastVoice
     const lb = this.lastBossRoar
     voice0.apply(this, a)
-    if (this.lastVoice !== lv || this.lastBossRoar !== lb) voiced++
+    if (this.lastVoice !== lv || this.lastBossRoar !== lb) meter.voiced++
   }
+  return { sx, ends, meter }
+}
 
+/**
+ * 영상 소리 (2026-09-25 사용자 고른 개선 13 — "영상 한 편의 소리만 10분쯤 걸린다"): 효과음을 **CPU 수만큼 시간 조각으로 나눠 동시에** 그린다.
+ * 조각마다 앞 2.5초를 가짜 소리판으로 흘려 되풀이 제한 · 동시 음원 · 토큰을 한 번에 그릴 때와 같게 맞춘 뒤 제 몫만 그린다.
+ * 조각을 더한 뒤 마지막 한 번에 배경음 · 보스 대사를 얹고 압축기(게임과 같은 값)를 지난다 — 섞은 뒤 압축하므로 한 번에 그린 것과 같은 소리.
+ */
+async function renderAudio(durSec) {
+  const live = S().sfx
+  const rate = 48000
+  const len = Math.ceil(rate * durSec)
+  const t0 = performance.now()
+  const noise = new AudioBuffer({ length: rate, sampleRate: rate, numberOfChannels: 1 })
+  {
+    const d = noise.getChannelData(0)
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+  }
+  const pn = performance.now
+  let fakeT = 0
+  // ---- 효과음 조각들
+  const K = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 1))
+  const WARM = 2.5
+  const TAIL = 4
+  const cues = sfxCues.filter((c) => c.line === undefined)
+  const chunks = []
+  let voiced = 0
+  let asked = 0
+  let dropped = 0
+  for (let k = 0; k < K; k++) {
+    const a = (durSec * k) / K
+    const b = (durSec * (k + 1)) / K
+    const off = new OfflineAudioContext(2, Math.ceil(rate * (b - a + TAIL)), rate)
+    const proxy = new Proxy(off, {
+      get(tg, key) {
+        if (key === 'currentTime') return fakeT - a
+        if (key === 'state') return 'running'
+        const v = Reflect.get(tg, key)
+        return typeof v === 'function' ? v.bind(tg) : v
+      },
+    })
+    const master = off.createGain()
+    master.gain.value = 0.8
+    master.connect(off.destination)
+    // 보스를 잡을 때의 승리음(bossWin)은 효과음 흐름에서 배경음 줄로 나간다 — 조각에도 진짜 줄이 있어야 한다
+    const cbgm = off.createGain()
+    cbgm.gain.value = 0.5
+    cbgm.connect(master)
+    const dummy = dummyAudio(() => fakeT - a)
+    const { sx, ends, meter } = cloneSfx(live, dummy, dummy.createGain(), dummy.createGain(), noise, () => fakeT)
+    for (const c of cues) {
+      if (c.t < a - WARM) continue
+      if (c.t >= b) break
+      // 앞 몇 초는 가짜로 (제한만 맞춘다) · 제 몫은 진짜 소리판에
+      const real = c.t >= a
+      sx.ctx = real ? proxy : dummy
+      sx.master = real ? master : dummy.createGain()
+      sx.bgmGain = real ? cbgm : dummy.createGain()
+      fakeT = c.t
+      performance.now = () => c.t * 1000
+      while (ends.length && ends[0] <= c.t) ends.shift()
+      sx.live = ends.length
+      try {
+        if (c.donate !== undefined) sx.donate(c.donate)
+        else sx.onEvents(c.ev, c.st, c.lp)
+      } catch (e) {
+        log.push('소리 ' + e)
+      }
+      if (!real) {
+        // 가짜 구간의 계측은 세지 않는다 (앞 조각이 이미 셌다)
+        meter.voiced = 0
+        meter.asked = 0
+        sx.dropped = 0
+      }
+    }
+    performance.now = pn
+    voiced += meter.voiced
+    asked += meter.asked
+    dropped += sx.dropped ?? 0
+    chunks.push({ a, off })
+  }
+  // ---- 배경음 · 보스 대사: 조각들과 **같이** 그린다 (따로 한 판 — 압축은 마지막에 한 번)
+  const mctx = new OfflineAudioContext(2, len, rate)
+  const master = mctx.createGain()
+  master.gain.value = 0.8
+  master.connect(mctx.destination)
+  const bgm = mctx.createGain()
+  // 배경음 (2026-09-24 사용자: "효과음만 있으니 허전하다 — 어둡고 무서운 배경음"): 효과음 1,500여 개 사이에서 들리게 0.2 → 0.5 (약 +8dB)
+  bgm.gain.value = 0.5
+  bgm.connect(master)
+  const fproxy = new Proxy(mctx, {
+    get(tg, key) {
+      if (key === 'currentTime') return fakeT
+      if (key === 'state') return 'running'
+      const v = Reflect.get(tg, key)
+      return typeof v === 'function' ? v.bind(tg) : v
+    },
+  })
+  const { sx } = cloneSfx(live, fproxy, master, bgm, noise, () => fakeT)
   // 배경음: 단서 사이마다 이어서 깐다
   const segs = music.map((m, i) => ({ ...m, to: music[i + 1]?.t ?? durSec }))
   for (const s of segs) {
@@ -779,29 +875,11 @@ async function renderAudio(durSec) {
     sx.boss = s.kind === 'boss' ? 1 : s.kind === 'rage' ? 2 : 0
     sx.intensity = s.kind === 'hot' || s.kind === 'boss' || s.kind === 'rage' ? 1 : s.kind === 'win' ? 0.4 : 0
     fakeT = Math.max(0, s.to - 0.4)
-    if (sx.boss) sx.scheduleBoss(proxy)
-    else sx.scheduleDark(proxy)
+    if (sx.boss) sx.scheduleBoss(fproxy)
+    else sx.scheduleDark(fproxy)
   }
-  // 효과음: 모은 이벤트를 그 시각에 (소리 되풀이 제한도 가상 시각으로)
-  // 배경음 음표는 구간 끝 시각으로 미리 깔려 끝 목록의 차례를 흐트러뜨렸다(앞이 늦은 시각이라 하나도 안 빠져 live 가 수백) — 비우고 센다
-  ends.length = 0
-  sx.live = 0
-  const pn = performance.now
-  for (const c of sfxCues) {
-    fakeT = c.t
-    performance.now = () => c.t * 1000
-    while (ends.length && ends[0] <= c.t) ends.shift()
-    sx.live = ends.length
-    try {
-      if (c.donate !== undefined) sx.donate(c.donate)
-      else if (c.line === undefined) sx.onEvents(c.ev, c.st, c.lp)
-    } catch (e) {
-      log.push('소리 ' + e)
-    }
-  }
-  performance.now = pn
   const monEv = sfxCues.reduce((n, c) => n + (c.ev ?? []).filter((e) => e.type === 'mdeath' || e.type === 'wake' || e.type === 'windup').length, 0)
-  log.push(`괴물 소리 ${voiced}번 / 부름 ${asked} (괴물 깸 · 공격 · 쓰러짐 단서 ${monEv}) · 빠진 소리 ${sx.dropped ?? 0}`)
+  log.push(`괴물 소리 ${voiced}번 / 부름 ${asked} (괴물 깸 · 공격 · 쓰러짐 단서 ${monEv}) · 빠진 소리 ${dropped}`)
   // 보스 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
   // 보스 목소리 영상은 즉사기 순간에, 소개 영상은 보스가 나올 때(2026-09-24 사용자: "즉사기는 쓰지 않지만 보스 나왔을 때 각 보스의
   // 대사 일부분이 들리도록" — lineCue). 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1)
@@ -810,7 +888,7 @@ async function renderAudio(durSec) {
     for (const k of [3, 8, 12, 15]) {
       try {
         const res = await fetch(`/bedorage-rpg/voice/boss_${k}.wav?${Date.now()}`)
-        if (res.ok) sx.lineBufs.set(k, await off.decodeAudioData(await res.arrayBuffer()))
+        if (res.ok) sx.lineBufs.set(k, await mctx.decodeAudioData(await res.arrayBuffer()))
       } catch (e) {
         log.push(`목소리 ${k} ` + e)
       }
@@ -828,10 +906,53 @@ async function renderAudio(durSec) {
     }
     log.push(`보스 목소리 ${n}번 (소리 파일 ${sx.lineBufs.size}개)`)
   }
-  // 끝에서 옅어진다
-  master.gain.setValueAtTime(0.8, Math.max(0, durSec - 1.8))
-  master.gain.linearRampToValueAtTime(0, durSec)
-  return off.startRendering()
+  const bufs = await Promise.all([...chunks.map((c) => c.off.startRendering()), mctx.startRendering()])
+  const t1 = performance.now()
+  // ---- 더하기 (조각은 제 자리에 · 배경음은 처음부터)
+  const mix = new OfflineAudioContext(2, len, rate)
+  const sum = mix.createBuffer(2, len, rate)
+  bufs.forEach((buf, k) => {
+    const at = k < chunks.length ? Math.round(chunks[k].a * rate) : 0
+    for (let ch = 0; ch < 2; ch++) {
+      const dst = sum.getChannelData(ch)
+      const src = buf.getChannelData(ch)
+      const n = Math.min(src.length, len - at)
+      for (let i = 0; i < n; i++) dst[at + i] += src[i]
+    }
+  })
+  // 조각 경계 확인: 경계 앞뒤 0.25초의 소리 크기가 전체 평균에 견주어 비지 않았나 (이어 붙인 자리가 뚝 끊기면 여기서 드러난다)
+  {
+    const d = sum.getChannelData(0)
+    const rms = (from, to) => {
+      let q = 0
+      const i0 = Math.max(0, Math.floor(from * rate))
+      const i1 = Math.min(d.length, Math.floor(to * rate))
+      for (let i = i0; i < i1; i++) q += d[i] * d[i]
+      return Math.sqrt(q / Math.max(1, i1 - i0))
+    }
+    const all = rms(0, durSec)
+    const at = chunks.slice(1).map((c) => rms(c.a - 0.25, c.a + 0.25) / (all || 1))
+    log.push(`조각 경계 소리 크기(평균 대비) ${at.map((v) => v.toFixed(2)).join(' · ')}`)
+  }
+  // ---- 마지막 한 번: 더한 것 → 압축기(게임과 같은 값) → 끝에서 옅어진다
+  const comp = mix.createDynamicsCompressor()
+  comp.threshold.value = -14
+  comp.knee.value = 18
+  comp.ratio.value = 6
+  comp.attack.value = 0.003
+  comp.release.value = 0.16
+  const out = mix.createGain()
+  comp.connect(out)
+  out.connect(mix.destination)
+  const fx = mix.createBufferSource()
+  fx.buffer = sum
+  fx.connect(comp)
+  fx.start(0)
+  out.gain.setValueAtTime(1, Math.max(0, durSec - 1.8))
+  out.gain.linearRampToValueAtTime(0, durSec)
+  const res = await mix.startRendering()
+  log.push(`소리 그리기 ${((performance.now() - t0) / 1000).toFixed(1)}초 (효과음 조각 ${K}개 + 배경음 동시에 ${((t1 - t0) / 1000).toFixed(1)}초)`)
+  return res
 }
 
 async function encodeAudio(buf) {
@@ -1197,7 +1318,7 @@ export async function start(opts = {}) {
         if (snap) {
           const name = snap
           snap = null
-          saves.push(fetch('/__shot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, dir: 'img', data: out.toDataURL('image/jpeg', 0.92) }) }).then((r) => r.text()))
+          if (!opts.noSave) saves.push(fetch('/__shot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, dir: 'img', data: out.toDataURL('image/jpeg', 0.92) }) }).then((r) => r.text()))
         }
         drawOverlay()
         const vf = new VideoFrame(out, { timestamp: Math.round((vid * 1e6) / FPS), duration: Math.round(1e6 / FPS) })
@@ -1230,6 +1351,11 @@ export async function start(opts = {}) {
   const dur = vidSec()
   const abuf = await renderAudio(dur)
   log.push(`소리 ${abuf.duration.toFixed(1)}초 · 효과음 단서 ${sfxCues.length}`)
+  // 확인만 (영상 · 사진을 저장하지 않는다 — 소리 그리기 시간 · 계측을 볼 때: start({ noSave: true }))
+  if (opts.noSave) {
+    running = false
+    return log
+  }
   const au = await encodeAudio(abuf)
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)

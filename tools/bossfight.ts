@@ -4,6 +4,8 @@
 //   npx vite-node tools/bossfight.ts -- party=4 seeds=3                (탱 · 딜 · 딜 · 힐 — 철면 · 침착 · 옥냥 · 매직)
 //   npx vite-node tools/bossfight.ts -- party=1 seeds=3 char=chim      (혼자)
 //   npx vite-node tools/bossfight.ts -- dodge=0                        (봇이 전혀 안 피한다 — "안 피하면 어려운가")
+//   npx vite-node tools/bossfight.ts -- dodge=2                        (사람 수준 — 0.4초 늦게 · 예고 넷에 하나는 놓친다)
+//   npx vite-node tools/bossfight.ts -- table=1 seeds=4                (잘 피함 · 사람 수준 · 안 피함을 보스마다 표로)
 import { botInput, makeBot } from '../src/core/bot'
 import { CHARACTERS, CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
@@ -19,8 +21,14 @@ const arg = (k: string, d: number) => Number(process.argv.find((a) => a.startsWi
 const PARTY = arg('party', 4)
 const SEEDS = Array.from({ length: arg('seeds', 3) }, (_, i) => 301 + i * 13)
 const CAP_MIN = arg('cap', 10)
-/** 0 이면 봇이 땅 범위를 전혀 안 피한다 (예고를 무시하는 사람 흉내) */
+/** 0 이면 봇이 땅 범위를 전혀 안 피한다 (예고를 무시하는 사람 흉내) · 2 = 사람 수준(아래 HUMAN) */
 const DODGE = arg('dodge', 1)
+/**
+ * table=1: 잘 피함 · 사람 수준 · 안 피함 셋을 보스마다 표로 (2026-09-25 사용자 고른 개선 12 — "봇 계측은 쉬운데 사람은 어렵다"는 차이가 되풀이됐다).
+ * 사람 수준 = 예고를 **0.4초 늦게** 알아채고(반응), **넷에 하나는 놓친다**(예고 번호로 정해 같은 판은 같다)
+ */
+const TABLE = arg('table', 0)
+const HUMAN = { react: 24, miss: 0.25 }
 const CHAR_ARG = process.argv.find((a) => a.startsWith('char='))?.split('=')[1]
 const CHARS: CharacterId[] = CHAR_ARG ? (CHAR_ARG.split(',') as CharacterId[]) : (['cheolmyeon', 'chim', 'oknyang', 'magic'] as CharacterId[]).slice(0, PARTY)
 const ONLY = arg('area', -1)
@@ -46,8 +54,17 @@ function build(level: number, bonus: number) {
   return b
 }
 
-console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇${DODGE ? '' : ' (안 피함)'} · 시드 ${SEEDS.length}개 · 상한 ${CAP_MIN}분`)
-for (const a of AREAS.filter((x) => x.kind === 'boss' && (ONLY < 0 || x.id === ONLY))) {
+type Area = (typeof AREAS)[number]
+type Result = { secs: number; won: number; n: number; downs: number; deaths: number; taken: number; casts: Record<string, number> }
+
+/** 봇에게 보이는 예고: 1 = 다 · 0 = 없음 · 2 = 사람 수준(늦게 · 가끔 놓침) */
+function visibleZones<T extends { id: number; t: number; max?: number }>(zones: T[], dodge: number): T[] {
+  if (dodge === 1) return zones
+  if (dodge === 0) return []
+  return zones.filter((z) => (z.max ?? z.t) - z.t >= HUMAN.react && ((z.id * 2654435761) >>> 0) / 2 ** 32 >= HUMAN.miss)
+}
+
+function runArea(a: Area, dodge: number): Result {
   let secs = 0
   let downs = 0
   let deaths = 0
@@ -86,9 +103,11 @@ for (const a of AREAS.filter((x) => x.kind === 'boss' && (ONLY < 0 || x.id === O
     let lastPat = -1
     let t = 0
     for (; t < CAP_MIN * 3600; t++) {
-      const saved = DODGE ? null : s.zones.splice(0)
+      // 봇이 못 본 예고는 잠깐 치워 두었다가 되돌린다 (판은 그대로 — 봇의 눈만 가린다)
+      const all = s.zones
+      if (dodge !== 1) s.zones = visibleZones(all, dodge)
       const inputs: Input[] = CHARS.map((_, i) => botInput(s, map, i, bots[i], 'normal'))
-      if (saved) s.zones.push(...saved)
+      s.zones = all
       step(s, map, inputs)
       for (const e of s.events) {
         if (e.type === 'down') downs++
@@ -110,12 +129,36 @@ for (const a of AREAS.filter((x) => x.kind === 'boss' && (ONLY < 0 || x.id === O
     secs += t / 60
     maxHpSum += maxSum
   }
-  const n = SEEDS.length
-  const cs = Object.entries(casts)
-    .map(([k, v]) => `${k} ${(v / n).toFixed(1)}`)
-    .join(' · ')
-  console.log(
-    `${a.act + 1}막 ${a.name.padEnd(8)} Lv${a.level}  ${Math.round(secs / n)}초  잡음 ${won}/${n}  쓰러짐 ${(downs / n).toFixed(1)}  죽음 ${(deaths / n).toFixed(1)}  보스 피해 = 파티 체력 × ${(taken / maxHpSum).toFixed(2)}`,
-  )
-  console.log(`   패턴: ${cs}`)
+  return { secs, won, n: SEEDS.length, downs, deaths, taken: taken / maxHpSum, casts }
+}
+
+const bosses = AREAS.filter((x) => x.kind === 'boss' && (ONLY < 0 || x.id === ONLY))
+if (TABLE) {
+  const PROFILES: [string, number][] = [
+    ['잘 피함', 1],
+    ['사람 수준', 2],
+    ['안 피함', 0],
+  ]
+  console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 상한 ${CAP_MIN}분 · 사람 수준 = 반응 ${(HUMAN.react / 60).toFixed(1)}초 · 예고 ${Math.round(HUMAN.miss * 100)}% 놓침`)
+  console.log(`| 보스 | ${PROFILES.map(([n]) => n).join(' | ')} |`)
+  console.log(`|---|${PROFILES.map(() => '---').join('|')}|`)
+  for (const a of bosses) {
+    const cells = PROFILES.map(([, d]) => {
+      const r = runArea(a, d)
+      return `잡음 ${r.won}/${r.n} · ${Math.round(r.secs / r.n)}초 · 쓰러짐 ${(r.downs / r.n).toFixed(1)} · 죽음 ${(r.deaths / r.n).toFixed(1)}`
+    })
+    console.log(`| ${a.act + 1}막 ${a.name} (Lv${a.level}) | ${cells.join(' | ')} |`)
+  }
+} else {
+  console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇${DODGE === 0 ? ' (안 피함)' : DODGE === 2 ? ' (사람 수준)' : ''} · 시드 ${SEEDS.length}개 · 상한 ${CAP_MIN}분`)
+  for (const a of bosses) {
+    const r = runArea(a, DODGE)
+    const cs = Object.entries(r.casts)
+      .map(([k, v]) => `${k} ${(v / r.n).toFixed(1)}`)
+      .join(' · ')
+    console.log(
+      `${a.act + 1}막 ${a.name.padEnd(8)} Lv${a.level}  ${Math.round(r.secs / r.n)}초  잡음 ${r.won}/${r.n}  쓰러짐 ${(r.downs / r.n).toFixed(1)}  죽음 ${(r.deaths / r.n).toFixed(1)}  보스 피해 = 파티 체력 × ${r.taken.toFixed(2)}`,
+    )
+    console.log(`   패턴: ${cs}`)
+  }
 }

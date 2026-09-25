@@ -118,6 +118,34 @@ export class Sfx {
 
   /** 설정의 소리 크기가 바뀌면 곧장 반영 (audio/volume.ts) */
   private volOff: (() => void) | null = null
+  /**
+   * 가벼운 소리 (2026-09-25 사용자 고른 개선 11 — "느린 PC 에서 소리가 끊길 수 있다"): 동시 음원 · 초당 개수를 줄이고,
+   * 괴물 소리 간격을 늘리고 옆 소리(가만히 있는 괴물의 그르릉)를 끄고, 그르릉을 한 겹으로. 자동 화질이 가장 낮은 단계로 내려가거나
+   * 브라우저가 소리 끊김(underrun)을 자꾸 알리면 켜진다(그 판 동안).
+   */
+  private lite = false
+  private underrunAt = -1
+  private underrunPrev = 0
+  setLite(on: boolean): void {
+    if (this.lite === on) return
+    this.lite = on
+    if (on) console.info('[소리] 가벼운 소리로 — 동시 음원 · 괴물 소리를 줄입니다')
+  }
+  get liteOn(): boolean {
+    return this.lite
+  }
+  /** 소리 끊김 알림(크롬 playbackStats.underrunEvents)이 2초에 3번 넘게 늘면 가벼운 소리로 */
+  private watchUnderrun(): void {
+    const ps = (this.ctx as unknown as { playbackStats?: { underrunEvents?: number } } | null)?.playbackStats
+    const n = ps?.underrunEvents
+    if (typeof n !== 'number') return
+    const now = performance.now()
+    if (this.underrunAt < 0 || now - this.underrunAt > 2000) {
+      if (this.underrunAt >= 0 && n - this.underrunPrev >= 3) this.setLite(true)
+      this.underrunAt = now
+      this.underrunPrev = n
+    }
+  }
 
   constructor() {
     this.volOff = onVolume(() => this.applyVolumes())
@@ -302,13 +330,16 @@ export class Sfx {
       if (b === 0 && this.boss > 0 && this.ready() && events.some((e) => e.type === 'mdeath' && MONSTER_LIST[e.kind]?.boss)) this.bossWin()
       this.boss = b
     }
-    // 곁의 괴물 옆 소리 (좀비의 그르릉 · 늑대의 으르렁 …) — 1초에 하나 안팎
-    if (state.mode === 'dungeon' && !this.mutedFlag && this.ready()) this.ambientVoice(state, localPlayer)
+    // 곁의 괴물 옆 소리 (좀비의 그르릉 · 늑대의 으르렁 …) — 1초에 하나 안팎 · 가벼운 소리면 끈다
+    if (state.mode === 'dungeon' && !this.mutedFlag && this.ready() && !this.lite) this.ambientVoice(state, localPlayer)
+    if (this.ctx && !this.lite) this.watchUnderrun()
     if (events.length === 0) return
     // 멈춰 있으면 되살린다 (onstatechange 를 놓친 경우)
     if (this.ctx && this.ctx.state === 'suspended' && !this.mutedFlag) void this.ctx.resume().catch(() => {})
     if (!this.ready()) return
-    let budget = FRAME_BUDGET
+    let budget = this.lite ? 4 : FRAME_BUDGET
+    const maxLive = this.lite ? 32 : MAX_LIVE
+    const perSec = this.lite ? 20 : OTHER_PER_SEC
     // 듣는 위치: 나, 관전이면 산 사람들의 중심
     let lx = 0
     let ly = 0
@@ -335,7 +366,7 @@ export class Sfx {
     }
     // 토큰 채우기
     const tnow = performance.now()
-    if (this.tokenAt > 0) this.tokens = Math.min(OTHER_PER_SEC, this.tokens + ((tnow - this.tokenAt) / 1000) * OTHER_PER_SEC)
+    if (this.tokenAt > 0) this.tokens = Math.min(perSec, this.tokens + ((tnow - this.tokenAt) / 1000) * perSec)
     this.tokenAt = tnow
     for (const e of events) {
       // 남의 소리는 한 프레임 6개 · 초당 36개 · 동시에 56개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
@@ -344,7 +375,7 @@ export class Sfx {
         const ex = (e as { x?: number }).x
         const ey = (e as { y?: number }).y
         const far = typeof ex === 'number' && typeof ey === 'number' && Number.isFinite(ex) && Number.isFinite(ey) && Math.hypot(ex - lx, ey - ly) > FAR_CULL
-        if (far || this.live > MAX_LIVE + 16) {
+        if (far || this.live > maxLive + 16) {
           this.dropped++
           continue
         }
@@ -352,7 +383,7 @@ export class Sfx {
         const ex = (e as { x?: number }).x
         const ey = (e as { y?: number }).y
         const far = typeof ex === 'number' && typeof ey === 'number' && Number.isFinite(ex) && Number.isFinite(ey) && Math.hypot(ex - lx, ey - ly) > FAR_CULL
-        if (far || this.live > MAX_LIVE || budget <= 0 || this.tokens < 1) {
+        if (far || this.live > maxLive || budget <= 0 || this.tokens < 1) {
           this.dropped++
           continue
         }
@@ -685,8 +716,8 @@ export class Sfx {
   }
 
   /** 진단: AudioContext 상태 · 지금 울리는 음원 · 버린 소리 · 멈췄던 횟수 */
-  stats(): { state: string; live: number; dropped: number; stalls: number; muted: boolean } {
-    return { state: this.ctx?.state ?? 'none', live: this.live, dropped: this.dropped, stalls: this.stalls, muted: this.mutedFlag }
+  stats(): { state: string; live: number; dropped: number; stalls: number; muted: boolean; lite?: boolean } {
+    return { state: this.ctx?.state ?? 'none', live: this.live, dropped: this.dropped, stalls: this.stalls, muted: this.mutedFlag, lite: this.lite }
   }
 
   // ---------- 소리들 ----------
@@ -943,8 +974,8 @@ export class Sfx {
       this.lastBossRoar = now
     } else {
       // 90 → 70ms · 같은 종류 350 → 250ms (2026-09-24 — 떼로 몰리면 괴물 소리가 초당 셋 남짓이라 총소리에 묻혔다)
-      if (now - this.lastVoice < 70) return
-      if (now - (this.kindVoice.get(kind) ?? -1e9) < (act === 'idle' ? 700 : 250)) return
+      if (now - this.lastVoice < (this.lite ? 140 : 70)) return
+      if (now - (this.kindVoice.get(kind) ?? -1e9) < (act === 'idle' ? 700 : this.lite ? 450 : 250)) return
       this.lastVoice = now
       this.kindVoice.set(kind, now)
     }
@@ -1126,10 +1157,13 @@ export class Sfx {
     a.type = 'sawtooth'
     a.frequency.setValueAtTime(f0, t0)
     a.frequency.linearRampToValueAtTime(f0 * fall, t0 + dur)
-    const b = ctx.createOscillator()
-    b.type = 'sawtooth'
-    b.frequency.setValueAtTime(f0 * 1.013, t0)
-    b.frequency.linearRampToValueAtTime(f0 * fall * 0.99, t0 + dur)
+    // 둘째 톱니는 가벼운 소리면 만들지 않는다 (노드 하나 덜)
+    const b = this.lite ? null : ctx.createOscillator()
+    if (b) {
+      b.type = 'sawtooth'
+      b.frequency.setValueAtTime(f0 * 1.013, t0)
+      b.frequency.linearRampToValueAtTime(f0 * fall * 0.99, t0 + dur)
+    }
     // 숨 잡음
     const n = ctx.createBufferSource()
     n.buffer = this.noise
@@ -1145,7 +1179,7 @@ export class Sfx {
     const mix = ctx.createGain()
     mix.gain.value = 0.5
     a.connect(mix)
-    b.connect(mix)
+    b?.connect(mix)
     ng.connect(mix)
     // 찌그러뜨리기
     const sh = ctx.createWaveShaper()
@@ -1190,8 +1224,8 @@ export class Sfx {
     b1.connect(env)
     b2.connect(env)
     env.connect(bus)
-    this.finish(a, [b, n, nbp, ng, mix, sh, am, fry, fd, hp, b1, b2, env], bus, true)
-    for (const s of [a, b, n, fry]) {
+    this.finish(a, [...(b ? [b] : []), n, nbp, ng, mix, sh, am, fry, fd, hp, b1, b2, env], bus, true)
+    for (const s of [a, ...(b ? [b] : []), n, fry]) {
       s.start(t0)
       s.stop(end)
     }

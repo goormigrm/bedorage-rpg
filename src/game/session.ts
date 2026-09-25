@@ -854,6 +854,8 @@ export class Session {
     this.renderer.setRenderScale(steps[lv])
     // 그림자: 낮게 고정이거나 자동으로 두 단계 내려가면(0.72) 끈다 — 느린 기기(내장 그래픽)는 해상도보다 그림자 맵이 더 무겁다 (2026-09-24)
     this.renderer.setShadows(!(this.gfx.mode === 'low' || lv >= 2))
+    // 소리도 가볍게: 가장 낮은 단계까지 내려간 기기 · 낮게 고정 (2026-09-25 개선 11 — 소리가 늘어 느린 PC 에서 끊길 수 있다)
+    if (this.gfx.mode === 'low' || lv >= steps.length - 1) this.sfx.setLite(true)
   }
 
   private autoQuality(ms: number): void {
