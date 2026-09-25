@@ -741,6 +741,43 @@ body { background: var(--bg); }
 .tp-up { color: #8aff9a; margin-left: 4px; }
 .tp-hint { margin: 10px 0 0; font-size: 11px; color: #6a6050; }
 
+/* 보관함 · 도박꾼 (2026-09-25): 보관함을 **가방처럼 칸으로** 보고, 돈 쓸 곳(칸 늘리기 · 진열 새로 받기)을 창 안에 둔다 */
+.tp.stashp { width: min(1020px, calc(100vw - 40px)); }
+/* 칸 격자: 보관함 칸은 좁으니 다섯 줄 · 칸이 많아지므로 여기서만 구른다 (창 전체가 구르면 머리줄이 사라진다) */
+.st-grid { grid-template-columns: repeat(5, 1fr); max-height: 42vh; overflow-y: auto; padding-right: 3px; }
+.tp-btns { display: flex; gap: 6px; margin-bottom: 7px; }
+.tp-btns .btn { flex: 1; padding: 5px 8px; font-size: 12px; border-radius: 5px; }
+/* 돈 쓸 곳 단추: 값은 위, 무엇이 달라지는지는 아래 작은 글씨 */
+.tp-svc { display: flex; gap: 8px; margin: 10px 0 2px; flex-wrap: wrap; }
+.tp-svc .btn { flex: 1 1 240px; white-space: normal; text-align: left; line-height: 1.35; padding: 8px 12px; }
+.tp-svc .btn small { display: block; font-weight: 500; font-size: 10.5px; opacity: .8; margin-top: 2px; }
+.tp-svc .btn.secondary small { color: #8d8170; }
+.tp-hint2 { margin: 8px 0 0; font-size: 11px; color: #8d8170; }
+.tp-hint2 b.bad, .tp-h span.bad { color: #ff9a6a; }
+/* 칸 안의 강화 단계 · 자물쇠 */
+.cell u { position: absolute; right: 3px; bottom: 2px; font-size: 10px; font-weight: 800; color: #8aff9a; text-decoration: none; }
+.cell .lk { position: absolute; right: 2px; top: 2px; font-size: 9px; font-style: normal; }
+.cell.locked { border-style: dashed; }
+/* 도박꾼: 칸마다 한 번 · 10연 */
+.gb-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+.gb-slot { display: flex; flex-direction: column; gap: 5px; align-items: stretch; text-align: center; }
+.gb-slot b { font: 700 12px "Nanum Myeongjo", serif; color: #f1d58a; }
+.gb-slot .btn { padding: 6px 4px; font-size: 12px; border-radius: 5px; }
+/* 뽑은 것: 칸으로 늘어놓고(마우스를 올리면 설명) 가장 좋은 것만 펼쳐 보여 준다 */
+.gb-out { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; margin-bottom: 6px; }
+.gb-out .cell { height: 44px; }
+.gb-tally { margin: 0 0 6px; font-size: 11px; color: #8d8170; }
+.gb-best { border-top: 1px solid rgba(201,162,74,.25); padding-top: 6px; }
+.gb-best .tip-t { font-size: 10px; color: #8d8170; margin-bottom: 3px; }
+.gb-best .it-name { font: 800 14px "Nanum Myeongjo", serif; }
+.gb-best .it-kind { font-size: 11px; color: #8d8170; margin-bottom: 3px; }
+.gb-best .aff, .gb-best .base { font-size: 11.5px; color: #a89878; line-height: 1.6; }
+.gb-best .leg { color: #ff9a3a; font-weight: 700; margin-top: 4px; }
+@media (max-width: 900px) {
+  .gb-out { grid-template-columns: repeat(5, 1fr); }
+  .st-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
 /* 전설 고유 효과 줄 (툴팁) */
 .inv-tip .leg { color: #ff9a3a; margin-top: 6px; font-weight: 700; line-height: 1.45; }
 

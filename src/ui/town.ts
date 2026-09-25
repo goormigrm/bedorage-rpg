@@ -2,15 +2,15 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
-import { CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SORT, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
+import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_SIZE, FORGE_MAX, FORGE_MIN, STASH_AT, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, isJunk, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, STASH_SIZE, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
-import { itemHtml } from './inventory'
+import { ItemTip, cellHtml, itemHtml } from './inventory'
 import { keyLabel } from '../game/keymap'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
 import { CMD_QUEST } from '../core/input'
@@ -111,7 +111,11 @@ export class TownPanel {
   private forgeRarity = 2
   /** 마지막 벼리기 결과 (창 위에 카드로 — 2026-09-20 "뭐가 나왔는지 확실하게") */
   private lastForge: { it: Item; up: boolean } | null = null
+  /** 마지막 도박 결과 (2026-09-25 "뽑았을 때 어떤 아이템을 뽑았는지 알려 줘") */
+  private lastGamble: { items: Item[]; gold: number } | null = null
   private lastSig = ''
+  /** 아이템 설명 풍선 — 보관함 · 도박 결과의 칸에 마우스를 올리면 (가방 창과 같은 것) */
+  private tip: ItemTip
 
   constructor(
     parent: HTMLElement,
@@ -124,6 +128,7 @@ export class TownPanel {
     this.el.className = 'tp'
     this.el.hidden = true
     parent.appendChild(this.el)
+    this.tip = new ItemTip(parent)
   }
 
   /** 세션이 벼리기 결과를 알려 준다 (sim 이벤트) */
@@ -133,9 +138,18 @@ export class TownPanel {
     if (this.open === 'smith') this.render()
   }
 
+  /** 세션이 도박 결과를 알려 준다 (sim 이벤트 — 뽑은 것 전부) */
+  gambleResult(items: Item[], gold: number): void {
+    this.lastGamble = { items, gold }
+    this.lastSig = ''
+    if (this.open === 'gambler') this.render()
+  }
+
   show(npc: NpcId | null): void {
     this.sellArmed = false
     this.lastForge = null
+    this.lastGamble = null
+    this.tip.hide()
     this.open = npc
     this.el.hidden = !npc
     this.lastSig = ''
@@ -158,7 +172,9 @@ export class TownPanel {
    */
   private sigOf(me: PlayerState, s: GameState): string {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
-    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${items(me.bag)}|${me.equip.map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-')).join(';')}|${items(me.stash)}|${s.shop.length}`
+    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
+      .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
+      .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}`
   }
 
   private render(): void {
@@ -192,9 +208,22 @@ export class TownPanel {
           <p class="tp-hint">잠근 것 ${locked}개는 팔지 않습니다 — 가방(I) 에서 <b>Shift+클릭</b>으로 잠급니다.</p>
         </div>`
       }
-      const pot = ''
+      // 돈 쓸 곳 (2026-09-25 요청): 가방 칸 늘리기 · 진열 새로 받기. 사는 탭에만 둔다
+      let shopSvc = ''
+      if (this.tab === 'buy') {
+        const bu = bagUpPrice(me.bagMax)
+        const nw = shopNewPrice(me.level)
+        const bagBtn =
+          me.bagMax >= BAG_MAX
+            ? `<button class="btn secondary" disabled>가방을 끝까지 늘렸다<small>${BAG_MAX}칸</small></button>`
+            : `<button class="btn" data-cmd="${CMD_BAGUP}" data-arg="0" ${me.gold >= bu ? '' : 'disabled'}>가방 ${BAG_STEP}칸 늘리기 — ${goldText(bu)}<small>${me.bagMax} → ${
+                me.bagMax + BAG_STEP
+              }칸 · 이 캐릭터만</small></button>`
+        shopSvc = `<div class="tp-svc">${bagBtn}
+          <button class="btn secondary" data-cmd="${CMD_SHOPNEW}" data-arg="0" ${me.gold >= nw ? '' : 'disabled'}>진열 새로 받기 — ${goldText(nw)}<small>열 가지를 새로 깐다 · 파티 모두에게</small></button></div>`
+      }
       // 한꺼번에 팔기는 **목록 위**에 — 아래 두면 물건이 많을 때 스크롤해야 보인다
-      body = tabs + bulk + `<div class="tp-list">${list}</div>` + pot
+      body = tabs + shopSvc + bulk + `<div class="tp-list">${list}</div>`
     } else if (npc === 'smith') {
       // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **벼리기**(같은 등급 여럿 → 윗 등급을 노린다)
       const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">벼리기</button></div>`
@@ -207,7 +236,7 @@ export class TownPanel {
         const use = mats.slice(0, need)
         const ilvl = forgeIlvl(me.bag, me.stash, use)
         const price = forgePrice(ilvl, rar)
-        const ok = have >= need && me.gold >= price && me.bag.length < BAG_SIZE
+        const ok = have >= need && me.gold >= price && me.bag.length < me.bagMax
         const fromStash = use.filter((k) => k >= STASH_AT).length
         const tier = (r: number) =>
           `<button data-frar="${r}" class="${r === rar ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${forgeNeed(r)}개<small>→ ${RARITY_NAMES[r + 1]} ${Math.round(forgeOdds(r) * 100)}%</small></button>`
@@ -233,7 +262,7 @@ export class TownPanel {
           ${
             have < need
               ? `<p class="tp-empty">${RARITY_NAMES[rar]} 아이템을 더 모아 오라 — 가방과 보관함을 함께 센다.</p>`
-              : me.bag.length >= BAG_SIZE
+              : me.bag.length >= me.bagMax
                 ? '<p class="tp-empty">가방이 가득 찼다.</p>'
                 : ''
           }`
@@ -257,18 +286,57 @@ export class TownPanel {
         list || '<p class="tp-empty">강화할 장비가 없다.</p>'
       }</div>`
     } else if (npc === 'gambler') {
+      // 2026-09-25 요청: **10연 뽑기** 와 **뭐가 나왔는지** 카드로
       const price = gamblePrice(me.level)
-      body = `<p class="tp-note">칸을 고르면 그 칸의 아이템 하나 (레벨 ${me.level + 2} · 등급은 운) — ${price} 골드.</p><div class="tp-slots">${Array.from({ length: SLOT_COUNT }, (_, k) => `<button class="btn" data-cmd="${CMD_GAMBLE}" data-arg="${k}" ${me.gold < price ? 'disabled' : ''}>${SLOT_NAMES[k]}</button>`).join('')}</div>`
+      const room = me.bagMax - me.bag.length
+      const canOne = me.gold >= price && room >= 1
+      const g = this.lastGamble
+      let card = ''
+      if (g && g.items.length > 0) {
+        const best = g.items.reduce((a, b) => (b.rarity > a.rarity ? b : a))
+        const counts = [0, 0, 0, 0, 0]
+        for (const it of g.items) counts[it.rarity]++
+        const tally = counts.map((n, r) => (n > 0 ? `<span style="color:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${n}</span>` : '')).filter(Boolean).join(' · ')
+        card = `<div class="forge-out ${best.rarity >= 3 ? 'win' : ''}" style="--rc:${RARITY_COLORS[best.rarity]}">
+          <div class="fo-h"><b>${g.items.length}번 뽑았다</b><span>${goldText(g.gold)} · 가방에 들어갔다</span></div>
+          <div class="gb-out">${g.items.map((it, i) => cellHtml(it, `data-gb="${i}"`, me)).join('')}</div>
+          <p class="gb-tally">${tally}</p>
+          <div class="gb-best"><div class="tip-t">가장 좋은 것</div>${itemHtml(best, me)}</div>
+        </div>`
+      }
+      body =
+        card +
+        `<p class="tp-note">칸을 고르면 그 칸의 아이템 (레벨 ${me.level + 2} · 등급은 운) — 한 번 <b>${goldText(price)}</b> · 10연 <b>${goldText(price * 10)}</b>.</p>
+        <div class="gb-grid">${Array.from({ length: SLOT_COUNT }, (_, k) => `<div class="gb-slot"><b>${SLOT_NAMES[k]}</b>
+            <button class="btn secondary" data-cmd="${CMD_GAMBLE}" data-arg="${k}" ${canOne ? '' : 'disabled'}>한 번</button>
+            <button class="btn" data-cmd="${CMD_GAMBLE}" data-arg="${k + 16}" ${canOne ? '' : 'disabled'}>10연</button></div>`).join('')}</div>
+        <p class="tp-hint2">가방 빈 칸 <b class="${room > 0 ? '' : 'bad'}">${room}</b> · 돈이나 자리가 모자라면 되는 데까지만 뽑는다.</p>`
     } else if (npc === 'stash') {
-      const full = me.stash.length >= STASH_SIZE
+      // 2026-09-25 요청: 보관함도 **가방처럼 칸으로** 보고, 한꺼번에 넣고, 골드로 늘린다
+      const full = me.stash.length >= me.stashMax
+      const bagFull = me.bag.length >= me.bagMax
+      const canPut = !full && me.bag.some((it) => !it.lk)
+      const up = stashUpPrice(me.stashMax)
+      const grid = (n: number, get: (i: number) => Item | undefined, attr: string) =>
+        `<div class="bag st-grid">${Array.from({ length: n }, (_, i) => cellHtml(get(i), `${attr}="${i}"`, me)).join('')}</div>`
       body = `<div class="tp-cols">
-        <div class="tp-col"><div class="tp-h">가방 <span>${me.bag.length}/${BAG_SIZE}</span><button class="bag-sort" data-cmd="${CMD_SORT}" data-arg="0">정렬</button></div>
-          <p class="tp-colhint">누르면 보관함에 <b>넣는다</b> →</p>
-          <div class="tp-list">${me.bag.map((it, i) => row(it, '→', `data-cmd="${CMD_STASH_PUT}" data-arg="${i}"`, full, true)).join('') || '<p class="tp-empty">비었다</p>'}</div></div>
-        <div class="tp-col"><div class="tp-h">보관함 <span class="${full ? 'bad' : ''}">${me.stash.length}/${STASH_SIZE}</span><button class="bag-sort" data-cmd="${CMD_SORT}" data-arg="1">정렬</button></div>
-          <p class="tp-colhint">← 누르면 가방으로 <b>꺼낸다</b></p>
-          <div class="tp-list">${me.stash.map((it, i) => row(it, '←', `data-cmd="${CMD_STASH_TAKE}" data-arg="${i}"`, me.bag.length >= BAG_SIZE, true)).join('') || '<p class="tp-empty">비었다</p>'}</div></div></div>
-        ${full ? '<p class="tp-note">보관함이 가득 찼다 — 먼저 꺼내거나 팔아야 넣을 수 있다.</p>' : ''}`
+        <div class="tp-col"><div class="tp-h">가방 <span class="${bagFull ? 'bad' : ''}">${me.bag.length}/${me.bagMax}</span></div>
+          <div class="tp-btns"><button class="btn secondary" data-cmd="${CMD_SORT}" data-arg="0">정렬</button>
+            <button class="btn" data-cmd="${CMD_STASH_PUT}" data-arg="200" ${canPut ? '' : 'disabled'}>전부 보관 →</button></div>
+          ${grid(me.bagMax, (i) => me.bag[i], 'data-put')}</div>
+        <div class="tp-col"><div class="tp-h">보관함 <span class="${full ? 'bad' : ''}">${me.stash.length}/${me.stashMax}</span></div>
+          <div class="tp-btns"><button class="btn secondary" data-cmd="${CMD_SORT}" data-arg="1">정렬</button>
+            <button class="btn" data-cmd="${CMD_STASH_TAKE}" data-arg="200" ${me.stash.length > 0 && !bagFull ? '' : 'disabled'}>← 전부 꺼내기</button></div>
+          ${grid(me.stashMax, (i) => me.stash[i], 'data-take')}</div></div>
+        <p class="tp-hint2">칸을 누르면 옮긴다 · 마우스를 올리면 설명 · 잠근 것(🔒)은 <b>전부 보관</b>에서 빠진다.</p>
+        <div class="tp-svc">${
+          me.stashMax >= STASH_MAX
+            ? `<button class="btn secondary" disabled>보관함을 끝까지 늘렸다<small>${STASH_MAX}칸</small></button>`
+            : `<button class="btn" data-cmd="${CMD_STASHUP}" data-arg="0" ${me.gold >= up ? '' : 'disabled'}>보관함 ${STASH_STEP}칸 늘리기 — ${goldText(up)}<small>${me.stashMax} → ${
+                me.stashMax + STASH_STEP
+              }칸 · 모든 캐릭터가 함께 쓴다</small></button>`
+        }</div>
+        ${full ? '<p class="tp-note">보관함이 가득 찼다 — 꺼내거나 팔거나, 칸을 늘려야 넣을 수 있다.</p>' : ''}`
     } else if (npc === 'elder') {
       const reach = actReached(me.quests)
       const here = areaDef(me.area).act
@@ -300,12 +368,14 @@ export class TownPanel {
 
   /** 창을 그리고 단추를 잇는다 (모든 NPC 공용) */
   private paint(npc: NpcId, me: PlayerState, body: string): void {
-    this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${me.gold} 골드</span><button class="inv-x" data-x>✕</button></div>
+    this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${myGoldText(me.gold)}</span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
-    this.el.classList.toggle('wide', npc === 'stash')
+    this.el.classList.toggle('wide', npc === 'stash' || npc === 'gambler')
+    this.el.classList.toggle('stashp', npc === 'stash')
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
     this.el.classList.toggle('smith', npc === 'smith')
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
+    this.wireCells(me)
     this.el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
       b.onclick = () => {
         this.sellArmed = false
@@ -343,5 +413,30 @@ export class TownPanel {
         this.send(Number(b.dataset.cmd), Number(b.dataset.arg))
       }
     })
+  }
+
+  /** 보관함 · 도박 결과의 칸: 누르면 옮기고, 올리면 설명 풍선 (가방 창과 같은 손맛) */
+  private wireCells(me: PlayerState): void {
+    const wire = (sel: string, list: () => Item[], cmd: number) => {
+      this.el.querySelectorAll<HTMLElement>(sel).forEach((cell) => {
+        const i = Number(cell.dataset.put ?? cell.dataset.take ?? cell.dataset.gb)
+        const get = () => list()[i]
+        if (cmd >= 0)
+          cell.onclick = () => {
+            if (!get()) return
+            this.tip.hide()
+            this.send(cmd, i)
+          }
+        cell.onmouseenter = () => this.tip.show(cell, get(), me, true)
+        cell.onmouseleave = () => this.tip.hide()
+      })
+    }
+    wire('[data-put]', () => this.me().bag, CMD_STASH_PUT)
+    wire('[data-take]', () => this.me().stash, CMD_STASH_TAKE)
+    wire('[data-gb]', () => this.lastGamble?.items ?? [], -1)
+  }
+
+  dispose(): void {
+    this.tip.dispose()
   }
 }

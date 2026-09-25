@@ -114,6 +114,11 @@ export class Session {
   /** 마을 준비(idlePrep)의 다음 걸음 시각 */
   private prepAt = 0
   private waypoints!: WaypointPanel
+  /** 전투로 보는 거리 (웨이포인트 창) · 마지막 안내 시각 */
+  private static readonly FIGHT_R = 520
+  private lastWpHint = 0
+  /** 방금 밟아서 연 웨이포인트 시각 — 그 뒤 잠깐은 F 로 창을 띄우지 않는다(줍기 · 일으키기로 흘려보낸다) */
+  private wpFoundAt = -1e9
   private town!: TownPanel
   private skills!: SkillPanel
   private chars!: CharSheet
@@ -698,6 +703,17 @@ export class Session {
     return this.cfg.chars.map((_, i) => (i === this.cfg.localPlayer ? v.on && v.speaking(null) : !!this.cfg.peerIds?.[i] && v.speaking(this.cfg.peerIds[i])))
   }
 
+  /** 곁에서 싸우는 괴물이 있나 (웨이포인트 창을 열지 말지 — 2026-09-25) */
+  private fightNear(): boolean {
+    const me = this.state.players[this.cfg.localPlayer]
+    if (!me) return false
+    for (const m of this.view().monsters) {
+      if (m.hp <= 0) continue
+      if ((m.x - me.x) ** 2 + (m.y - me.y) ** 2 <= Session.FIGHT_R * Session.FIGHT_R) return true
+    }
+    return false
+  }
+
   /** 내 캐릭터가 웨이포인트 곁에 서 있나 (창을 열 때) */
   private nearWaypoint(): boolean {
     const me = this.state.players[this.cfg.localPlayer]
@@ -970,6 +986,18 @@ export class Session {
       return
     }
     if (use && !this.arena && this.nearWaypoint()) {
+      // 싸우는 중에는 창을 열지 않는다 (2026-09-25 사용자: "웨이포인트 찍고 나면 창이 떠서 전투 중에 방해된다").
+      // 웨이포인트는 밟는 순간 이미 열렸다고 알려 주었으니, 여기서는 F 를 줍기 · 일으키기로 흘려보낸다
+      if (this.fightNear()) {
+        const now = performance.now()
+        if (now - this.lastWpHint > 5000) {
+          this.lastWpHint = now
+          this.renderer.hud.notice('웨이포인트 — 적을 정리한 뒤 F 로 이동 창', '#7ab8ff')
+        }
+        return
+      }
+      // 막 밟아서 연 참이면 알리기만 (밟자마자 F 를 눌러 창이 뜨고 ✕ 를 따로 눌러야 했다 — 2026-09-25 사용자)
+      if (performance.now() - this.wpFoundAt < 4000) return
       this.waypoints.toggle(true)
       return
     }
@@ -1591,12 +1619,25 @@ export class Session {
       this.sfx.onEvents(view.events, view, lp)
       // 벼리기 결과는 대장장이 창에도 카드로 띄운다 (2026-09-20 "뭐가 나왔는지 확실하게")
       for (const e of view.events) {
-        if (e.type !== 'forge' || e.p !== this.cfg.localPlayer) continue
-        const it = this.state.players[e.p]?.bag.find((b) => b.uid === e.uid)
-        if (!it) continue
-        this.town.forgeResult(it, e.up)
-        showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, it, e.up)
+        if (e.type === 'forge' && e.p === this.cfg.localPlayer) {
+          const it = this.state.players[e.p]?.bag.find((b) => b.uid === e.uid)
+          if (!it) continue
+          this.town.forgeResult(it, e.up)
+          showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, it, e.up)
+        } else if (e.type === 'wpFound' && e.p === this.cfg.localPlayer) {
+          this.wpFoundAt = performance.now()
+        } else if (e.type === 'gamble' && e.p === this.cfg.localPlayer) {
+          // 도박 결과도 창에 카드로 (2026-09-25 "어떤 아이템을 뽑았는지 알려 줘"). 전설 이상이면 가운데 연출까지
+          const bag = this.state.players[e.p]?.bag ?? []
+          const got = e.uids.map((u) => bag.find((b) => b.uid === u)).filter((b): b is NonNullable<typeof b> => !!b)
+          if (got.length === 0) continue
+          this.town.gambleResult(got, e.gold)
+          const best = got.reduce((a, b) => (b.rarity > a.rarity ? b : a))
+          if (best.rarity >= 3) showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, best, true)
+        }
       }
+      // 웨이포인트 창은 곁을 떠나거나 괴물이 다가오면 저절로 닫는다 — ✕ 를 따로 누르지 않게 (2026-09-25 사용자: "전투 중에 방해된다")
+      if (this.waypoints.open && this.state.tick % 6 === 0 && (!this.nearWaypoint() || this.fightNear())) this.waypoints.toggle(false)
       if (this.lockstep && this.state.tick % 60 === 0) {
         const h = hashState(this.state)
         this.hashes.set(this.state.tick, h)
@@ -2340,6 +2381,7 @@ export class Session {
     this.ticker.stop()
     this.input.dispose()
     this.inventory.dispose()
+    this.town.dispose()
     this.touch?.dispose()
     this.sfx.dispose()
     window.removeEventListener('keydown', this.onKey)

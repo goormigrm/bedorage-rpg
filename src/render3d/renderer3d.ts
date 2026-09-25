@@ -1046,7 +1046,8 @@ export class Renderer3D {
           break
         case 'wpFound':
           if (e.p === localPlayer) {
-            this.hud.notice(`웨이포인트 — ${areaDef(e.area).name}`, '#7ab8ff')
+            // 창은 띄우지 않는다 — 알리기만 (2026-09-25 사용자: "찍었을 때 알려만 주고")
+            this.hud.notice(`웨이포인트 열림 — ${areaDef(e.area).name} · F 로 이동 창`, '#7ab8ff')
             const l = areaLayout(e.area, this.map)
             if (l.wp) this.spawnRing(l.wp.x * U, l.wp.y * U, 0.3, 2.4, 0.7, 0x7ab8ff)
           }

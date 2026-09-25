@@ -205,6 +205,8 @@ export interface PlayerState {
   /** 장비 5칸 · 가방 (상태 안에 있어야 장착이 모두의 화면에서 같다) */
   equip: (Item | null)[]
   bag: Item[]
+  /** 가방 칸 수 (상인에게 골드로 늘린다 — 2026-09-25). 세이브에 남는다 */
+  bagMax: number
   /** 장비 + 레벨로 낸 능력치 (items.ts ST_*) */
   st: number[]
   /** 탄창 크기 (탄창 옵션 반영) */
@@ -239,6 +241,8 @@ export interface PlayerState {
   shrineT: number
   /** 보관함 (캐릭터 공유 · 마을의 보관함 곁에서 넣고 꺼낸다) */
   stash: Item[]
+  /** 보관함 칸 수 (관리인에게 골드로 늘린다 — 2026-09-25) */
+  stashMax: number
   /** 낀 전설 효과 비트 묶음 (items.ts LEGENDS) · 불굴 재사용 대기 */
   legs: number
   legCd: number
@@ -620,8 +624,10 @@ export type SimEvent =
   /** 상자를 열었다 · 항아리가 깨졌다 · 제단의 축복 */
   | { type: 'objOpen'; p: number; kind: number; x: number; y: number }
   | { type: 'shrine'; p: number; kind: number; x: number; y: number }
-  /** 마을 NPC 와 거래했다 (what: sell · buy · potup · reroll · gamble · stash) */
+  /** 마을 NPC 와 거래했다 (what: sell · buy · gamble · stash · stashAll · bagUp · stashUp · shopNew) */
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }
+  /** 도박꾼에게서 뽑았다 — 뭐가 나왔는지 창에 카드로 (2026-09-25 요청). uids = 나온 차례대로 */
+  | { type: 'gamble'; p: number; uids: number[]; n: number; gold: number }
   /** 벼리기 결과 (2026-09-20): 등급이 올랐나(up) · 나온 등급 · 만든 물건 uid — 화면 가운데 연출에 쓴다 */
   | { type: 'forge'; p: number; uid: number; rarity: number; up: boolean }
   /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */

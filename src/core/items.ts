@@ -17,6 +17,18 @@ export const SLOT_COUNT = 5
 export const SLOT_NAMES = ['무기', '투구', '갑옷', '반지', '목걸이']
 /** 가방 칸 수 */
 export const BAG_SIZE = 30
+/**
+ * 가방은 **상인에게 골드로 늘린다** (2026-09-25 사용자: "돈을 쓸 곳이 도박꾼밖에 없는데 돈으로 가방 크기를 늘리거나").
+ * 한 번에 BAG_STEP 칸씩 BAG_MAX 까지. 늘린 칸 수는 캐릭터마다 세이브에 남는다(Sheet.bagMax).
+ */
+export const BAG_STEP = 6
+export const BAG_MAX = 60
+/** 확장 값 (몇 번째 확장인지 → 골드). 뒤로 갈수록 비싸다 — 후반 골드가 남아돌지 않게 */
+export const BAG_UP_PRICES = [1200, 3000, 6000, 10000, 15000]
+/** 지금 칸 수에서 한 단계 더 늘리는 값 (0 = 더 못 늘린다) */
+export function bagUpPrice(bagMax: number): number {
+  return BAG_UP_PRICES[Math.floor((bagMax - BAG_SIZE) / BAG_STEP)] ?? 0
+}
 
 // 뒤에만 붙인다 — 세이브의 아이템이 번호(wt)로 무기 종류를 들고 있다
 // 번호가 세이브에 들어간다 — 새 무기는 끝에 붙인다 (2026-09-19 고기 바이올린 · 첼로 · 장검 · 태도)
@@ -311,8 +323,28 @@ export function itemValue(it: Item): number {
 export const buyPrice = (it: Item) => itemValue(it) * 4
 export const gamblePrice = (level: number) => 60 + level * 25
 export const potUpPrice = (potMax: number) => 200 * (potMax - 3) ** 2
-/** 보관함 칸 (캐릭터 공유) */
+/** 보관함 칸 (캐릭터 공유) — 바탕값. 보관함 관리인에게 골드로 늘린다 */
 export const STASH_SIZE = 60
+export const STASH_STEP = 20
+export const STASH_MAX = 180
+/** 보관함 확장 값 (2026-09-25 — 보관함도 돈 쓸 곳이다. 캐릭터 공유라 가방보다 비싸다) */
+export const STASH_UP_PRICES = [2000, 5000, 9000, 14000, 20000, 28000]
+export function stashUpPrice(stashMax: number): number {
+  return STASH_UP_PRICES[Math.floor((stashMax - STASH_SIZE) / STASH_STEP)] ?? 0
+}
+/** 상인 진열을 새로 받는 값 (2026-09-25 — 돈 쓸 곳. 도박보다 싸고, 판 전체의 진열이 바뀐다) */
+export const shopNewPrice = (level: number) => 150 + level * 20
+
+/**
+ * 골드 글자는 **여기 하나**로 만든다 (2026-09-25 사용자: "골드 표시를 통일해 줘").
+ * 창마다 "◈ 1234" · "1234 골드" 로 달랐다. 이제 값은 `goldText`, 내 돈은 `myGoldText`(◈ 가 붙는다).
+ */
+export function goldText(n: number): string {
+  return `${Math.round(n).toLocaleString('ko-KR')} 골드`
+}
+export function myGoldText(n: number): string {
+  return `◈ ${goldText(n)}`
+}
 
 /**
  * 대장장이 **강화** (2026-09-19 "옵션 변경 NPC 를 없애고 강화 — 동일 단계의 아이템 부위를 모아 오면 소모해서 강화"):
@@ -493,6 +525,10 @@ export type Sheet = {
   gold: number
   equip: (Item | null)[]
   bag: Item[]
+  /** 가방 칸 수 (상인에게서 늘린다, 기본 BAG_SIZE · 최대 BAG_MAX) */
+  bagMax?: number
+  /** 보관함 칸 수 (캐릭터 공유 — 세이브도 보관함과 같이 캐릭터 밖에 둔다) */
+  stashMax?: number
   /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) */
   wps?: number
   /** 물약 칸 수 (상인에게서 늘린다, 기본 4 · 최대 8) */
@@ -514,7 +550,13 @@ export type Sheet = {
 }
 
 export function emptySheet(): Sheet {
-  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], wps: 0 }
+  return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], wps: 0, bagMax: BAG_SIZE, stashMax: STASH_SIZE }
+}
+
+/** 늘린 칸 수를 단계에 맞춰 자른다 (세이브를 손댔거나 예전 세이브라도 말이 되게) */
+function clampSteps(v: unknown, base: number, step: number, max: number): number {
+  const n = Math.floor((Math.max(base, Math.min(max, Math.floor(Number(v) || base))) - base) / step)
+  return base + n * step
 }
 
 /** 받은 기록이 말이 되는가 (깨진 데이터로 판이 어긋나지 않게 — 치트 방지가 아니라 사고 방지, PLAN 4.5) */
@@ -533,14 +575,17 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.xp = Math.max(0, Math.floor(Number(o.xp) || 0))
   e.gold = Math.max(0, Math.floor(Number(o.gold) || 0))
   if (Array.isArray(o.equip)) for (let i = 0; i < SLOT_COUNT; i++) e.equip[i] = okItem(o.equip[i]) && o.equip[i]!.slot === i ? o.equip[i]! : null
-  if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, BAG_SIZE)
+  // 칸 수를 먼저 정해야 가방 · 보관함을 그만큼만 남긴다
+  e.bagMax = clampSteps(o.bagMax, BAG_SIZE, BAG_STEP, BAG_MAX)
+  e.stashMax = clampSteps(o.stashMax, STASH_SIZE, STASH_STEP, STASH_MAX)
+  if (Array.isArray(o.bag)) e.bag = o.bag.filter(okItem).slice(0, e.bagMax)
   // 웨이포인트는 19개(보스 방 넷을 뒤에 붙였다) — 예전 16비트(0xffff)로 잘라 거미 둥지 · 관리인의 방 · 심연의 옥좌가 저장 때마다 지워졌다 (2026-09-24)
   e.wps = Math.max(0, Math.floor(Number(o.wps) || 0)) & 0x3fffffff
   if (Array.isArray(o.playSec)) e.playSec = o.playSec.slice(0, 8).map((v) => Math.max(0, Math.floor(Number(v) || 0)))
   if (Array.isArray(o.twps)) e.twps = o.twps.slice(0, 3).map((v) => Math.max(0, Math.floor(Number(v) || 0)) & 0x3fffffff)
   if (Array.isArray(o.tq)) e.tq = o.tq.slice(0, 3).map((q) => (Array.isArray(q) ? q.slice(0, 32).map((v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0)))) : []))
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
-  e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, STASH_SIZE) : []
+  e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, e.stashMax) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build
   e.quests = Array.from({ length: 32 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))

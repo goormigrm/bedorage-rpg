@@ -16,7 +16,7 @@ import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
 import { AREAS, QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
-import { xpNeed } from '../core/items'
+import { myGoldText, xpNeed } from '../core/items'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
@@ -436,7 +436,7 @@ export class D4Hud {
     c.textAlign = 'right'
     c.font = `600 10px ${SANS}`
     c.fillStyle = '#9a8a70'
-    c.fillText(`◈ ${me.gold}  ·  가방 ${me.bag.length} (I)`, bx + barW - 20, xpY + 14)
+    c.fillText(`${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (I)`, bx + barW - 20, xpY + 14)
     c.restore()
 
     // ---- 체력 오브 (왼쪽)

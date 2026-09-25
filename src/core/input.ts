@@ -62,7 +62,9 @@ export const CMD_SELL = 5
 export const CMD_BUY = 6
 export const CMD_POTUP = 7
 export const CMD_REROLL = 8
+/** 도박: arg 아래 4비트 = 장비 칸, 16비트(0x10) 를 세우면 **10연** (2026-09-25 요청) */
 export const CMD_GAMBLE = 9
+/** 보관함 넣기(가방 칸) · 꺼내기(보관함 칸). arg 200 = **한꺼번에**(잠근 것 빼고 자리가 차는 데까지 — 2026-09-25 요청) */
 export const CMD_STASH_PUT = 10
 export const CMD_STASH_TAKE = 11
 /** 스킬 트리 (D4): 랭크 올리기(칸) · 변형 고르기(칸×4 + 단계×2 + (고른 것−1)) · 칸에 걸기(칸자리×16 + 칸) · 재분배(마을) · 용병(캐릭터 번호, 255 = 내보내기) */
@@ -92,6 +94,10 @@ export const CMD_LOCK = 24
  * 후원 번호는 후원자 이름표를 찾는 열쇠다 — 이름(문자열)은 입력에 못 실어 방 통로(donate 메시지)로 따로 보낸다
  */
 export const CMD_DONATE = 25
+/** 돈 쓸 곳 (2026-09-25 사용자: "돈 쓸 곳을 더 만들어 줘") — 상인: 가방 칸 늘리기 · 진열 새로 받기 · 보관함: 칸 늘리기 */
+export const CMD_BAGUP = 26
+export const CMD_STASHUP = 27
+export const CMD_SHOPNEW = 28
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

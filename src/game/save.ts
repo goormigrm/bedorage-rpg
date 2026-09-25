@@ -14,6 +14,8 @@ interface SaveData {
   chars: Partial<Record<CharacterId, Sheet>>
   /** 보관함 — 캐릭터끼리 공유 (GUIDE 9장) */
   stash?: Sheet['stash']
+  /** 보관함 칸 수 — 보관함과 같이 캐릭터 밖에 둔다 (한 캐릭터가 늘리면 모두가 쓴다, 2026-09-25) */
+  stashMax?: number
   updated: number
 }
 
@@ -48,7 +50,7 @@ function write(d: SaveData): void {
 export function sheetOf(char: CharacterId): Sheet {
   const d = loadSave()
   // 보관함은 캐릭터 밖에 두고, 판에 들어갈 때 내 기록에 실어 간다
-  return sanitizeSheet({ ...(d.chars[char] ?? emptySheet()), stash: d.stash ?? [] })
+  return sanitizeSheet({ ...(d.chars[char] ?? emptySheet()), stash: d.stash ?? [], stashMax: d.stashMax })
 }
 
 /** 판의 플레이어 상태를 세이브에 적는다. 퀘스트는 그 판의 난이도 칸에 (보통 = quests · 악몽·지옥 = tq[난이도]) */
@@ -69,9 +71,12 @@ export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; se
     playSec[k] = (playSec[k] ?? 0) + Math.round(x.sec)
   }
   for (let i = 0; i < playSec.length; i++) playSec[i] = playSec[i] ?? 0
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
   delete d.chars[p.char]!.stash
-  d.stash = sanitizeSheet({ stash: p.stash }).stash
+  delete d.chars[p.char]!.stashMax
+  const shared = sanitizeSheet({ stash: p.stash, stashMax: p.stashMax })
+  d.stash = shared.stash
+  d.stashMax = shared.stashMax
   write(d)
 }
 
@@ -112,9 +117,12 @@ export async function importSave(file: File): Promise<number> {
     if (!(id in CHARACTERS)) continue
     d.chars[id as CharacterId] = sanitizeSheet(sh)
     delete d.chars[id as CharacterId]!.stash
+    delete d.chars[id as CharacterId]!.stashMax
     n++
   }
-  d.stash = sanitizeSheet({ stash: raw.stash }).stash
+  const shared = sanitizeSheet({ stash: raw.stash, stashMax: raw.stashMax })
+  d.stash = shared.stash
+  d.stashMax = shared.stashMax
   write(d)
   return n
 }

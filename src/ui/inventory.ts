@@ -6,8 +6,8 @@
 import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
 import {
-  AFFIXES, BAG_SIZE, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, computeStats, hasImplicit, itemName, weaponBaseDmg, xpNeed,
+  AFFIXES, Item, LEGENDS, RARITY_COLORS, RARITY_NAMES, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
+  affixText, affixValue, armorBase, computeStats, hasImplicit, itemName, myGoldText, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -17,7 +17,7 @@ function esc(t: string): string {
 }
 
 /** 이 캐릭터가 낄 수 있는 무기인가 (같은 계열 — SMG 캐릭터는 SMG·화염방사기) */
-function canWield(me: PlayerState, it: Item): boolean {
+export function canWield(me: PlayerState, it: Item): boolean {
   return WEAPONS[WEAPON_IDS[it.wt]]?.family === WEAPONS[CHARACTERS[me.char].weapon].family
 }
 
@@ -43,6 +43,53 @@ export function itemHtml(it: Item, me?: PlayerState): string {
     ${lines.join('')}${warn}`
 }
 
+/**
+ * 가방 칸 하나. **보관함 창도 같은 것을 쓴다** — 보관함을 가방처럼 칸으로 본다(2026-09-25 요청).
+ * `attr` 은 누를 때 알아볼 표(data-bag="3" 같은 것), `me` 를 주면 못 끼는 무기를 흐리게 한다.
+ */
+export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): string {
+  if (!it) return `<div class="cell empty" ${attr}></div>`
+  const col = RARITY_COLORS[it.rarity]
+  const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
+  // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
+  return `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}" ${attr} style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(
+    itemName(it).split(' ')[1] ?? '',
+  )}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
+}
+
+/** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */
+export class ItemTip {
+  readonly el: HTMLElement
+  constructor(parent: HTMLElement) {
+    this.el = document.createElement('div')
+    this.el.className = 'inv-tip'
+    this.el.hidden = true
+    parent.appendChild(this.el)
+  }
+
+  /** anchor 왼쪽에 띄운다. compare 면 끼고 있는 것과 견준다 */
+  show(anchor: HTMLElement, it: Item | undefined, me: PlayerState, compare: boolean): void {
+    if (!it) return
+    const eq = me.equip[it.slot]
+    this.el.innerHTML = `<div class="tip-main" style="--rc:${RARITY_COLORS[it.rarity]}">${itemHtml(it, me)}${compare ? compareHtml(it, me) : ''}</div>
+      ${compare && eq && eq !== it ? `<div class="tip-eq"><div class="tip-t">끼고 있는 것</div>${itemHtml(eq)}</div>` : ''}`
+    this.el.hidden = false
+    const r = anchor.getBoundingClientRect()
+    const pr = (this.el.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? { left: 0, top: 0 }
+    const scale = r.width / anchor.offsetWidth || 1
+    this.el.style.left = `${(r.left - pr.left) / scale - 250}px`
+    this.el.style.top = `${(r.top - pr.top) / scale}px`
+  }
+
+  hide(): void {
+    this.el.hidden = true
+  }
+
+  dispose(): void {
+    this.el.remove()
+  }
+}
+
 /** 이 아이템을 끼면 능력치가 어떻게 바뀌나 (비교 줄) */
 function compareHtml(it: Item, me: PlayerState): string {
   if (it.slot === SLOT_WEAPON && !canWield(me, it)) return ''
@@ -61,7 +108,7 @@ function compareHtml(it: Item, me: PlayerState): string {
 
 export class Inventory {
   readonly el: HTMLElement
-  private tip: HTMLElement
+  private tip: ItemTip
   open = false
   private timer = 0
   private lastKey = ''
@@ -75,11 +122,8 @@ export class Inventory {
     this.el = document.createElement('div')
     this.el.className = 'inv'
     this.el.hidden = true
-    this.tip = document.createElement('div')
-    this.tip.className = 'inv-tip'
-    this.tip.hidden = true
     parent.appendChild(this.el)
-    parent.appendChild(this.tip)
+    this.tip = new ItemTip(parent)
     this.el.addEventListener('contextmenu', (e) => e.preventDefault())
     // 창 안의 클릭이 게임(사격)으로 새지 않게
     for (const ev of ['mousedown', 'mouseup', 'click']) this.el.addEventListener(ev, (e) => e.stopPropagation())
@@ -88,7 +132,7 @@ export class Inventory {
   toggle(force?: boolean): void {
     this.open = force ?? !this.open
     this.el.hidden = !this.open
-    this.tip.hidden = true
+    this.tip.hide()
     this.lastKey = ''
     clearInterval(this.timer)
     if (this.open) {
@@ -101,7 +145,7 @@ export class Inventory {
 
   private render(): void {
     const me = this.me()
-    const key = JSON.stringify([me.level, me.xp, me.gold, me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}`)])
+    const key = JSON.stringify([me.level, me.xp, me.gold, me.bagMax, me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`)])
     if (key === this.lastKey) return
     this.lastKey = key
     const c = CHARACTERS[me.char]
@@ -116,21 +160,9 @@ export class Inventory {
       return `<div><span>${AFFIXES[i].name}</span><b>${v > 0 ? (i === 6 || i === 9 ? '-' : '+') : ''}${v}${AFFIXES[i].pct ? '%' : ''}</b></div>`
     })
     const cells: string[] = []
-    for (let i = 0; i < BAG_SIZE; i++) {
-      const it = me.bag[i]
-      if (!it) {
-        cells.push('<div class="cell empty"></div>')
-        continue
-      }
-      const col = RARITY_COLORS[it.rarity]
-      const cant = it.slot === SLOT_WEAPON && !canWield(me, it)
-      // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료에서 빠진다 (2026-09-20)
-      cells.push(
-        `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}" data-bag="${i}" style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(itemName(it).split(' ')[1] ?? '')}</b>${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`,
-      )
-    }
+    for (let i = 0; i < me.bagMax; i++) cells.push(cellHtml(me.bag[i], `data-bag="${i}"`, me))
     this.el.innerHTML = `
-      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">◈ ${me.gold}</span><button class="inv-x" title="닫기 (I · Tab · Esc)">✕</button></div>
+      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">${myGoldText(me.gold)}</span><button class="inv-x" title="닫기 (I · Tab · Esc)">✕</button></div>
       <div class="inv-xp"><i style="width:${Math.min(100, (me.xp / need) * 100).toFixed(1)}%"></i><span>${me.xp} / ${need}</span></div>
       <div class="inv-body">
         <div class="inv-left">
@@ -138,7 +170,7 @@ export class Inventory {
           <div class="inv-stats">${stats.join('')}</div>
         </div>
         <div class="inv-right">
-          <div class="bag-h">가방 ${me.bag.length} / ${BAG_SIZE}
+          <div class="bag-h">가방 ${me.bag.length} / ${me.bagMax}
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
             <small>왼클릭 끼기 · 오른클릭 버리기 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)</small></div>
           <div class="bag">${cells.join('')}</div>
@@ -154,50 +186,34 @@ export class Inventory {
     this.el.querySelectorAll<HTMLElement>('[data-bag]').forEach((cell) => {
       const i = Number(cell.dataset.bag)
       cell.onclick = (e) => {
+        if (!me.bag[i]) return
         // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝)
         this.send((e as MouseEvent).shiftKey ? CMD_LOCK : CMD_EQUIP, i)
         this.lastKey = ''
-        this.tip.hidden = true
+        this.tip.hide()
       }
       cell.oncontextmenu = (e) => {
         e.preventDefault()
         if (!me.bag[i]?.lk) this.send(CMD_DROP, i)
-        this.tip.hidden = true
+        this.tip.hide()
       }
-      cell.onmouseenter = () => this.showTip(cell, me.bag[i], true)
-      cell.onmouseleave = () => (this.tip.hidden = true)
+      cell.onmouseenter = () => this.tip.show(cell, me.bag[i], me, true)
+      cell.onmouseleave = () => this.tip.hide()
     })
     this.el.querySelectorAll<HTMLElement>('[data-eq]').forEach((cell) => {
       const i = Number(cell.dataset.eq)
       cell.onclick = () => {
         if (me.equip[i]) this.send(CMD_UNEQUIP, i)
-        this.tip.hidden = true
+        this.tip.hide()
       }
-      cell.onmouseenter = () => {
-        const it = me.equip[i]
-        if (it) this.showTip(cell, it, false)
-      }
-      cell.onmouseleave = () => (this.tip.hidden = true)
+      cell.onmouseenter = () => this.tip.show(cell, me.equip[i] ?? undefined, me, false)
+      cell.onmouseleave = () => this.tip.hide()
     })
-  }
-
-  private showTip(anchor: HTMLElement, it: Item | undefined, compare: boolean): void {
-    if (!it) return
-    const me = this.me()
-    const eq = me.equip[it.slot]
-    this.tip.innerHTML = `<div class="tip-main" style="--rc:${RARITY_COLORS[it.rarity]}">${itemHtml(it, me)}${compare ? compareHtml(it, me) : ''}</div>
-      ${compare && eq ? `<div class="tip-eq"><div class="tip-t">끼고 있는 것</div>${itemHtml(eq)}</div>` : ''}`
-    this.tip.hidden = false
-    const r = anchor.getBoundingClientRect()
-    const pr = (this.tip.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? { left: 0, top: 0 }
-    const scale = r.width / anchor.offsetWidth || 1
-    this.tip.style.left = `${(r.left - pr.left) / scale - 250}px`
-    this.tip.style.top = `${(r.top - pr.top) / scale}px`
   }
 
   dispose(): void {
     clearInterval(this.timer)
     this.el.remove()
-    this.tip.remove()
+    this.tip.dispose()
   }
 }
