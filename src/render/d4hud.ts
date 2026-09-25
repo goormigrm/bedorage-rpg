@@ -571,7 +571,8 @@ export class D4Hud {
       const report = QUESTS.findIndex((_, i) => q[i] === 2)
       const here = QUESTS.findIndex((d, i) => (q[i] ?? 0) < 2 && d.area === s.curArea)
       const next = QUESTS.findIndex((_, i) => (q[i] ?? 0) < 2)
-      const questLine = report >= 0 ? `◆ 촌장에게 보고 — ${QUESTS[report].name}` : here >= 0 ? `◆ ${QUESTS[here].task}` : town && next >= 0 ? `◆ ${QUESTS[next].task}` : ''
+      // 다음 할 일이 먼저 — 이룬 것(보고만 남은 것)은 할 일이 없을 때만 (2026-09-25 사용자: "완료 건을 안내하지 마")
+      const questLine = here >= 0 ? `◆ ${QUESTS[here].task}` : town && next >= 0 ? `◆ ${QUESTS[next].task}` : report >= 0 ? `◆ 촌장에게 보고 — ${QUESTS[report].name}` : ''
       const goal = questLine
         ? questLine
         : town

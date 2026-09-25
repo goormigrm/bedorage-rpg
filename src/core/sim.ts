@@ -2872,6 +2872,9 @@ function noise(state: GameState, x: number, y: number): void {
 
 function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit: boolean, x: number, y: number): void {
   if (m.hp <= 0 || dmg <= 0) return
+  // 보스 방의 보스는 **사람이 먼저** 친다 (2026-09-25 사용자: "보스방에서 AI 봇이 먼저 보스를 때리지 않도록 — 유저가 때린 후 때리도록").
+  // 안 맞은 보스에게 봇 · 용병(빗나간 탄 · 범위) · 주인 없는 피해는 들지 않는다 — 깨우지도 않는다
+  if (m.hitTick < 0 && isGiant(m) && !isHumanSeat(by >= 0 ? state.players[by] : undefined)) return
   // 정예·보스 피해 옵션 (옛 탄창 칸)
   const hitter = by >= 0 ? state.players[by] : undefined
   if (hitter && hitter.st[ST_ELITEDMG] > 0 && (m.elite || MONSTER_LIST[m.kind].boss)) dmg = Math.round(dmg * (1 + hitter.st[ST_ELITEDMG] / 100))
@@ -3120,6 +3123,8 @@ function stepAllies(state: GameState, map: GameMap): void {
       let bd = Infinity
       for (const m of state.monsters) {
         if (m.hp <= 0 || MONSTER_LIST[m.kind].attack === 'flee') continue
+        // 보스 방의 보스는 사람이 먼저 친 뒤에 (응원 아군도 봇과 같다)
+        if (m.hitTick < 0 && isGiant(m)) continue
         if ((m.x - cx) ** 2 + (m.y - cy) ** 2 > ALLY_SEEK * ALLY_SEEK) continue
         const d2 = (m.x - al.x) ** 2 + (m.y - al.y) ** 2
         if (d2 < bd && !rayBlocked(map, al.x, al.y, m.x, m.y)) {
@@ -3148,7 +3153,7 @@ function stepAllies(state: GameState, map: GameMap): void {
         state.events.push({ type: 'swipe', m: al.id, x: al.x, y: al.y, aim: al.aim })
         if (al.splash > 0) {
           for (const m of state.monsters) {
-            if (m.hp > 0 && m !== tgt && (m.x - tgt.x) ** 2 + (m.y - tgt.y) ** 2 <= al.splash * al.splash) hurtMonster(state, m, Math.round(al.dmg * 0.5), al.by, false, m.x, m.y)
+            if (m.hp > 0 && m !== tgt && !(m.hitTick < 0 && isGiant(m)) && (m.x - tgt.x) ** 2 + (m.y - tgt.y) ** 2 <= al.splash * al.splash) hurtMonster(state, m, Math.round(al.dmg * 0.5), al.by, false, m.x, m.y)
           }
         }
         hurtMonster(state, tgt, al.dmg, al.by, false, tgt.x, tgt.y)
@@ -3725,9 +3730,12 @@ function stepMonsters(state: GameState, map: GameMap): void {
         // 보물 고블린: **들킨 뒤부터** 도망친다 — 골드를 흘리고, 오래 버티면 사라진다 (t = 들킨 뒤 틱 — 예고·회복 상태를 쓰지 않아 비어 있다).
         // 2026-09-24 사용자: "실제 만나기도 전에 도망갔다고 뜬다" — 총소리에 깨어(벽 너머로도) 곧장 시계가 돌았다.
         // 이제 사람이 보이는 거리(GOBLIN.seen)에서 벽 없이 마주쳐야 들킨다 — 그 전에는 제자리에서 기다린다
+        // 2026-09-25 사용자: "난 보이지도 않았는데 이미 도망갔대" — 멀리 간 봇이 먼저 보아 시계가 돌았다. **사람**이 보아야 들킨다
         if (!m.seen) {
-          if (m.los === 1 && d <= GOBLIN.seen) m.seen = 1
-          else continue
+          const seenBy = state.players.some((q) => isHumanSeat(q) && isActive(q) && len(q.x - m.x, q.y - m.y) <= GOBLIN.seen && !rayBlocked(map, q.x, q.y, m.x, m.y))
+          if (!seenBy) continue
+          m.seen = 1
+          state.events.push({ type: 'goblinSeen', x: m.x, y: m.y })
         }
         away = true
         m.t++
@@ -3900,6 +3908,11 @@ function bossPick(state: GameState, map: GameMap, m: Monster, min: number, max: 
   let best = ok[0]
   for (const p of ok) if (len(p.x - m.x, p.y - m.y) > len(best.x - m.x, best.y - m.y)) best = p
   return best
+}
+
+/** 사람이 조작하는 자리인가 — 봇(대장을 따라다닌다 · follow ≥ 0) · 용병(merc ≥ 0) · 영상의 크루(cameo)가 아니면 */
+export function isHumanSeat(p: PlayerState | undefined): boolean {
+  return !!p && p.follow < 0 && p.merc < 0 && !p.cameo
 }
 
 /** 잡은 막 보스(막 보스 퀘스트를 마친 막)의 보스 방 웨이포인트 비트 */

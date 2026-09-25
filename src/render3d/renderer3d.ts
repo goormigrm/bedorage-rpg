@@ -984,6 +984,10 @@ export class Renderer3D {
           }
           break
         }
+        case 'goblinSeen':
+          this.hud.banner('보물 고블린!', '도망치기 전에 잡아라 — 30초 뒤면 문을 열고 사라진다', '#ffd84a')
+          this.spawnRing(e.x * U, e.y * U, 0.2, 2.2, 0.8, 0xffd84a)
+          break
         case 'goblinGone':
           this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
           this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
@@ -1919,6 +1923,19 @@ export class Renderer3D {
     // 보이는 몬스터: 작은 빨간 점 (잠든 것은 어둡게)
     for (const m of curr.monsters) {
       if (m.hp <= 0 || (this.hiddenM.has(m.id) && lp >= 0)) continue
+      if (MONSTER_LIST[m.kind].attack === 'flee') {
+        // 보물 고블린: 금빛 큰 점 + 깜빡이는 테
+        ctx.fillStyle = '#ffd84a'
+        ctx.beginPath()
+        ctx.arc(m.x / TILE, m.y / TILE, 3.6 * rp, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#ffd84a'
+        ctx.lineWidth = 1.4 * rp
+        ctx.beginPath()
+        ctx.arc(m.x / TILE, m.y / TILE, (6 + Math.sin(this.t * 6) * 1.5) * rp, 0, Math.PI * 2)
+        ctx.stroke()
+        continue
+      }
       ctx.fillStyle = m.st === 0 ? '#7a3a34' : '#ff5a4a'
       ctx.fillRect(m.x / TILE - 1.6 * rp, m.y / TILE - 1.6 * rp, 3.2 * rp, 3.2 * rp)
     }
@@ -3619,7 +3636,7 @@ export class Renderer3D {
         continue
       }
       if (!m.elite && !goblin && curr.tick - m.hitTick > 180) continue
-      const s0 = this.worldToScreen(at.x, MONSTER_TOP[m.kind] * (def.r / 13) + 0.15, at.z)
+      const s0 = this.worldToScreen(at.x, monsterTop(m) + 0.15, at.z)
       const w = 30
       const k = Math.max(0, m.hp / m.maxHp)
       ctx.globalAlpha = m.elite ? 1 : Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
@@ -3628,10 +3645,17 @@ export class Renderer3D {
       ctx.fillStyle = m.elite || goblin ? '#ffb84a' : '#e04a3a'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, 2)
       if (goblin) {
-        ctx.font = '700 10px "Nanum Myeongjo", serif'
+        // 크게 · 테두리 · 깜빡이는 금빛 — 멀리서도 눈에 띄게 (2026-09-25 사용자: "보이지도 않았는데 이미 도망갔대")
+        const pulse = 0.75 + 0.25 * Math.sin(this.t * 6)
+        ctx.font = '800 17px "Nanum Myeongjo", serif'
         ctx.textAlign = 'center'
-        ctx.fillStyle = '#ffd86a'
-        ctx.fillText('보물 고블린', s0.x, s0.y - 4)
+        ctx.lineWidth = 4
+        ctx.strokeStyle = 'rgba(40,24,0,0.9)'
+        ctx.strokeText('★ 보물 고블린 ★', s0.x, s0.y - 6)
+        ctx.globalAlpha = pulse
+        ctx.fillStyle = '#ffd84a'
+        ctx.fillText('★ 보물 고블린 ★', s0.x, s0.y - 6)
+        ctx.globalAlpha = 1
       }
       if (m.elite) {
         ctx.font = '700 10px "Nanum Myeongjo", serif'

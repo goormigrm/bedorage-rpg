@@ -16,7 +16,7 @@ describe('퀘스트 길 안내', () => {
     }
     expect(areaPath(5, 5)).toEqual([5])
   })
-  it('보고할 것 → 촌장 · 진행 중 → 그 지역 · 안 맡은 것 → 촌장', () => {
+  it('진행 중 → 그 지역 · 안 맡은 것 → 촌장 · 이룬 것(보고만 남은 것)은 가리키지 않는다', () => {
     const q = new Array(32).fill(0)
     const town = ACTS[0].town
     // 아무것도 안 맡았다 → 촌장에게 받으러
@@ -24,13 +24,15 @@ describe('퀘스트 길 안내', () => {
     // 첫 퀘스트를 맡았다 → 그 지역
     q[0] = 1
     expect(questGuide(q, 1)).toMatchObject({ area: QUESTS[0].area, quest: 0 })
-    // 이뤘다 → 보고하러 촌장
+    // 첫 퀘스트를 이뤘고(보고 전) 둘째를 맡았다 → 보고가 아니라 둘째 지역 (2026-09-25 사용자: "완료 건을 안내하지 마")
     q[0] = 2
-    expect(questGuide(q, 2)).toMatchObject({ area: town, npc: 'elder', label: '촌장에게 보고' })
-    // 1막을 다 끝냈으면 1막에서 가리킬 곳이 없다
+    q[1] = 1
+    expect(questGuide(q, 1)).toMatchObject({ area: QUESTS[1].area, quest: 1 })
+    // 1막을 다 이루거나 끝냈으면 1막에서 가리킬 곳이 없다 (보고할 것이 남아도)
     QUESTS.forEach((d, i) => {
       if (d.act === 0) q[i] = 3
     })
+    q[0] = 2
     expect(questGuide(q, 1)).toBeNull()
   })
 })

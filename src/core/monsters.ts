@@ -211,7 +211,9 @@ export const MONSTER_LIST: MonsterDef[] = [
 
 /** 보물 고블린: 깨어 있는 틱 상한(20초) · 골드를 흘리는 간격 · 지역에 나올 확률 */
 /** 보물 고블린: 들킨 뒤 사라지기까지(틱) · 골드 흘리는 간격 · 지역에 나올 확률 · 들켰다고 보는 거리(px — 화면 시야 안) */
-export const GOBLIN = { escape: 60 * 20, trail: 70, chance: 0.14, seen: 14 * 32 }
+// 들킨 뒤 20 → 30초 (2026-09-25 사용자: "난 보이지도 않았는데 이미 도망갔대") · 그림은 1.8배(GOBLIN_VIEW — 우두머리만큼)
+export const GOBLIN = { escape: 60 * 30, trail: 70, chance: 0.14, seen: 14 * 32 }
+export const GOBLIN_VIEW = 1.8
 export const GOBLIN_KIND = 4
 
 export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MONSTER_LIST.map((m) => [m.id, m])) as Record<MonsterKindId, MonsterDef>

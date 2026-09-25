@@ -7,7 +7,7 @@
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import { BTN_DASH, BTN_FIRE, BTN_USE, Input, SKILL_BTNS } from './input'
 import { GameMap, TILE, isWallAt, rayBlocked } from './map'
-import { ACID, MONSTER_LIST } from './monsters'
+import { ACID, MONSTER_LIST, isGiant } from './monsters'
 import { Rng, makeRng, rand, randSigned } from './rng'
 import { GameState, MS_SLEEP, MS_WINDUP, Monster, PlayerState, ZONE_ACID, ZONE_FUSE, ZONE_WARN, isActive } from './state'
 import { inZone, zoneEscape } from './bosszone'
@@ -176,6 +176,8 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     let bestD = Infinity
     for (const m of state.monsters) {
       if (m.hp <= 0) continue
+      // 보스 방의 보스는 사람이 먼저 친 뒤에 (2026-09-25 사용자) — 봇이 먼저 쏘면 사람은 준비도 못 한 채 싸움이 시작됐다
+      if (m.hitTick < 0 && isGiant(m)) continue
       const raw = len(m.x - me.x, m.y - me.y)
       if (raw > range) continue
       // 방패를 이쪽으로 든 방패병은 뒤로 미룬다 (다른 표적이 있으면 그쪽부터)

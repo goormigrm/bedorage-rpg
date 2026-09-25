@@ -637,6 +637,8 @@ export type SimEvent =
   | { type: 'forge'; p: number; uid: number; rarity: number; up: boolean }
   /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */
   | { type: 'goblinGone'; x: number; y: number }
+  /** 보물 고블린을 사람이 처음 보았다 (그때부터 도망 시계가 돈다) */
+  | { type: 'goblinSeen'; x: number; y: number }
   /** 용병 고용 · 내보냄 */
   | { type: 'hire'; p: number; by: number; on: boolean }
   /** 퀘스트: 목표를 이뤘다(모두) · 보상을 받았다(한 사람) */

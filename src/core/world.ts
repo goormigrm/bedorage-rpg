@@ -481,14 +481,13 @@ export function areaPath(from: number, to: number): number[] | null {
 
 /**
  * 퀘스트 길 안내 (2026-09-25 사용자 고른 개선 4 — "막 안에서 어디로 가야 할지 헤매지 않게"): 지금 가야 할 곳.
- * ① 보고할 것이 있으면 이 막 야영지의 촌장(어느 촌장이든 받는다) ② 이 막에서 진행 중인 퀘스트의 지역
- * ③ 이 막에서 아직 안 맡은 퀘스트가 있으면 촌장. 다른 막의 지역은 가리키지 않는다(웨이포인트 · 촌장으로 건너간다)
+ * ① 이 막에서 진행 중인 퀘스트의 지역 ② 이 막에서 아직 안 맡은 퀘스트가 있으면 촌장.
+ * 이룬 퀘스트(보고만 남은 것)는 가리키지 않는다(같은 날 사용자). 다른 막의 지역은 가리키지 않는다(웨이포인트 · 촌장으로 건너간다)
  */
 export function questGuide(q: number[], cur: number): { area: number; npc?: NpcId; quest?: number; label: string } | null {
   const act = areaDef(cur).act
-  const reach = actReached(q)
   const town = ACTS[act].town
-  if (QUESTS.some((d, i) => d.act <= reach && (q[i] ?? 0) === 2)) return { area: town, npc: 'elder', label: '촌장에게 보고' }
+  // 이룬 퀘스트(보고만 남은 것)는 가리키지 않는다 — 다음 할 일로 (2026-09-25 사용자: "완료 건을 안내하는 건 맞지 않다")
   const doing = QUESTS.findIndex((d, i) => d.act === act && (q[i] ?? 0) === 1)
   if (doing >= 0) return { area: QUESTS[doing].area, quest: doing, label: QUESTS[doing].name }
   if (QUESTS.some((d, i) => d.act === act && (q[i] ?? 0) === 0)) return { area: town, npc: 'elder', label: '촌장에게 퀘스트 받기' }
