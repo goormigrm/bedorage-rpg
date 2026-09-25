@@ -207,6 +207,8 @@ export interface PlayerState {
   bag: Item[]
   /** 가방 칸 수 (상인에게 골드로 늘린다 — 2026-09-25). 세이브에 남는다 */
   bagMax: number
+  /** 도박 천장: 전설 이상 없이 뽑은 수 (items.ts GAMBLE_PITY — 2026-09-25) */
+  gpity: number
   /** 장비 + 레벨로 낸 능력치 (items.ts ST_*) */
   st: number[]
   /** 탄창 크기 (탄창 옵션 반영) */

@@ -7,6 +7,7 @@ import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
 import { worldDirToScreen } from '../render3d/camera'
+import { onVolume, volumes } from './volume'
 
 const STORAGE_KEY = 'brpg.muted'
 const MASTER = 0.8
@@ -115,7 +116,11 @@ export class Sfx {
   private dropped = 0
   private stalls = 0
 
+  /** 설정의 소리 크기가 바뀌면 곧장 반영 (audio/volume.ts) */
+  private volOff: (() => void) | null = null
+
   constructor() {
+    this.volOff = onVolume(() => this.applyVolumes())
     // 음성 합성 목소리 목록은 처음 부를 때 늦게 채워진다 — 미리 한 번 불러 둔다 (보스 대사 TTS)
     try {
       if (typeof speechSynthesis !== 'undefined') speechSynthesis.getVoices()
@@ -151,7 +156,16 @@ export class Sfx {
     } catch {
       /* 무시 */
     }
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(v ? 0 : MASTER, this.ctx.currentTime, 0.02)
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(v ? 0 : MASTER * volumes().all, this.ctx.currentTime, 0.02)
+  }
+
+  /** 전체 · 배경음 크기를 곧장 (효과음 · 괴물 소리 · 보스 목소리는 소리를 만들 때마다 읽는다) */
+  private applyVolumes(): void {
+    if (!this.ctx) return
+    const v = volumes()
+    const t = this.ctx.currentTime
+    if (this.master) this.master.gain.setTargetAtTime(this.mutedFlag ? 0 : MASTER * v.all, t, 0.03)
+    if (this.bgmGain) this.bgmGain.gain.setTargetAtTime(BGM_LEVEL * v.bgm, t, 0.03)
   }
 
   toggle(): boolean {
@@ -170,7 +184,7 @@ export class Sfx {
       ctx = new AudioContext()
     }
     const master = ctx.createGain()
-    master.gain.value = this.mutedFlag ? 0 : MASTER
+    master.gain.value = this.mutedFlag ? 0 : MASTER * volumes().all
     const comp = ctx.createDynamicsCompressor()
     comp.threshold.value = -14
     comp.knee.value = 18
@@ -180,7 +194,7 @@ export class Sfx {
     master.connect(comp)
     comp.connect(ctx.destination)
     const bgm = ctx.createGain()
-    bgm.gain.value = BGM_LEVEL
+    bgm.gain.value = BGM_LEVEL * volumes().bgm
     bgm.connect(master)
     const len = ctx.sampleRate
     const buf = ctx.createBuffer(1, len, ctx.sampleRate)
@@ -606,10 +620,11 @@ export class Sfx {
     }
   }
 
-  private bus(s: Spatial, vol: number): { node: GainNode; t0: number } {
+  /** kind: 효과음(sfx) · 괴물 소리(mon) — 설정의 크기를 따로 곱한다 */
+  private bus(s: Spatial, vol: number, kind: 'sfx' | 'mon' = 'sfx'): { node: GainNode; t0: number } {
     const ctx = this.ctx!
     const g = ctx.createGain()
-    g.gain.value = vol * s.gain
+    g.gain.value = vol * s.gain * volumes()[kind]
     const pan = ctx.createStereoPanner()
     pan.pan.value = s.pan
     g.connect(pan)
@@ -934,7 +949,7 @@ export class Sfx {
       this.kindVoice.set(kind, now)
     }
     // 괴물 소리를 1.5배(+3.5dB) — 봇 총소리 · 타격음 사이에서도 들리게 (보스는 그대로)
-    const { node, t0 } = this.bus(s, def.boss ? vol : vol * 1.5)
+    const { node, t0 } = this.bus(s, def.boss ? vol : vol * 1.5, 'mon')
     const r = (a: number, b: number) => a + Math.random() * (b - a)
     const big = act === 'wake' || act === 'ult'
     switch (def.id) {
@@ -1260,7 +1275,7 @@ export class Sfx {
     shaper.curve = curve
     shaper.oversample = '2x'
     const out = mk(ctx.createGain())
-    out.gain.value = P.vol // 넷의 크기를 맞춘다 (낮은 목소리를 깐 군주 · 관리인이 더 크다 — 꼭짓점 0.9 안팎)
+    out.gain.value = P.vol * volumes().boss // 넷의 크기를 맞춘다 (낮은 목소리를 깐 군주 · 관리인이 더 크다 — 꼭짓점 0.9 안팎)
     out.connect(this.master!)
     input.connect(lowS)
     lowS.connect(highS)
@@ -1372,7 +1387,7 @@ export class Sfx {
     const [pitch, rate] = id === 'lord' ? [0.1, 0.72] : id === 'warden' ? [0.25, 0.78] : id === 'butcher' ? [0.35, 0.85] : id === 'queen' ? [1.5, 0.85] : [0.5, 0.8]
     u.pitch = pitch
     u.rate = rate
-    u.volume = 1
+    u.volume = volumes().boss
     speechSynthesis.cancel()
     speechSynthesis.speak(u)
   }
@@ -1919,6 +1934,8 @@ export class Sfx {
   }
 
   dispose(): void {
+    this.volOff?.()
+    this.volOff = null
     this.stopBgm()
     this.unlockOff?.()
     this.unlockOff = null

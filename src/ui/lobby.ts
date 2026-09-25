@@ -22,7 +22,7 @@ const TIER_DESC = [
 ]
 import { CHAR_SKILLS, SKILLS, TREE_ACTIVE } from '../core/skills'
 import { sanitizeSheet } from '../core/items'
-import { exportSave, importSave, levelOf, playTimeOf, sheetOf } from '../game/save'
+import { backupNag, exportSave, importSave, levelOf, playTimeOf, sheetOf } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
@@ -167,6 +167,10 @@ export class Lobby {
               <button class="tool t-exp" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">💾 세이브 내보내기</button>
               <label class="tool t-imp" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">📂 세이브 가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label>
             </div>
+            ${(() => {
+              const nag = backupNag()
+              return nag ? `<p class="bk-nag" id="bk-nag">💾 ${nag}</p>` : ''
+            })()}
             <div class="status" id="status"></div>
             <div class="roomchat" id="roomchat" hidden></div>
           </div>
@@ -352,7 +356,10 @@ export class Lobby {
     nickEl.addEventListener('input', () => applyNick(false))
     nickEl.addEventListener('change', () => applyNick(true))
     ;(h.querySelector('#btn-refresh') as HTMLButtonElement).onclick = () => this.refreshRooms()
-    ;(h.querySelector('#btn-export') as HTMLButtonElement).onclick = () => exportSave()
+    ;(h.querySelector('#btn-export') as HTMLButtonElement).onclick = () => {
+      exportSave()
+      h.querySelector('#bk-nag')?.remove()
+    }
     ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.openSettings()
     const fileEl = h.querySelector('#file-import') as HTMLInputElement
     fileEl.onchange = async () => {

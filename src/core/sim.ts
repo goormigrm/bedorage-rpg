@@ -12,7 +12,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -673,7 +673,10 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
       if (p.gold < g || p.bag.length >= p.bagMax) break
       p.gold -= g
       spent += g
-      const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 'gamble', tierOf(state.tier).loot, 0, slot)
+      // 천장: 전설 없이 GAMBLE_PITY 번이면 이번은 전설 이상
+      const pity = p.gpity >= GAMBLE_PITY
+      const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 'gamble', tierOf(state.tier).loot, pity ? 3 : 0, slot)
+      p.gpity = it.rarity >= 3 ? 0 : p.gpity + 1
       p.bag.push(it)
       uids.push(it.uid)
     }
@@ -1101,6 +1104,7 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     equip,
     bag,
     bagMax: sh.bagMax ?? BAG_SIZE,
+    gpity: sh.gpity ?? 0,
     st,
     magSize,
     xpGain: 0,

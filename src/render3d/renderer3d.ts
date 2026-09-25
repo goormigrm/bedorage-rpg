@@ -1687,6 +1687,8 @@ export class Renderer3D {
       if (!def.boss || m.sum !== undefined || m.st === 0 || m.hp <= 0 || this.bossSeen.has(m.id) || this.hiddenM.has(m.id)) continue
       this.bossSeen.add(m.id)
       this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
+      // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다(v0.61.0) — 처음 온 사람은 모른다 (2026-09-25 사용자 고른 개선 2)
+      if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
       this.shake = Math.max(this.shake, 0.55)
       this.punch = Math.max(this.punch, 1)
     }

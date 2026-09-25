@@ -241,7 +241,8 @@ export const DROP_TABLE: Record<LootSource, number[]> = {
   chest: [0.55, 0.45, 0, 0, 0],
   goldchest: [0.2, 0.6, 0.18, 0.02, 0],
   gamble: [0, 0.55, 0.35, 0.095, 0.005],
-  shop: [0.25, 0.6, 0.15, 0, 0],
+  // 상인 진열에 드물게 전설 (2026-09-25 사용자 고른 개선 5 — 진열 새로 받기의 재미). 한 칸 약 2.4% · 값은 두 배(buyPrice)
+  shop: [0.25, 0.6, 0.15, 0.025, 0],
   // 벼리기: 등급은 벼리기 쪽에서 정해 minRarity 로 넘긴다 (forgeOdds) — 표는 쓰지 않는다
   forge: [1, 0, 0, 0, 0],
 }
@@ -320,8 +321,13 @@ export function itemValue(it: Item): number {
 }
 
 /** 마을 값 (GUIDE 9장): 상인 진열은 파는 값의 4배 · 대장장이 강화 = 파는 값의 절반 × 다음 단계 · 도박 = 60 + 레벨×25 */
-export const buyPrice = (it: Item) => itemValue(it) * 4
+export const buyPrice = (it: Item) => itemValue(it) * 4 * (it.rarity >= 3 ? 2 : 1)
 export const gamblePrice = (level: number) => 60 + level * 25
+/**
+ * 도박 **천장** (2026-09-25 사용자 고른 개선 6 — "10연을 계속 해도 허탕인 답답함"): 전설 이상 없이 GAMBLE_PITY 번 뽑으면
+ * 그다음 한 번은 전설 이상. 전설 이상이 나오면 다시 0 부터 센다. 캐릭터마다 세이브에 남는다(Sheet.gpity)
+ */
+export const GAMBLE_PITY = 30
 export const potUpPrice = (potMax: number) => 200 * (potMax - 3) ** 2
 /** 보관함 칸 (캐릭터 공유) — 바탕값. 보관함 관리인에게 골드로 늘린다 */
 export const STASH_SIZE = 60
@@ -527,6 +533,8 @@ export type Sheet = {
   bag: Item[]
   /** 가방 칸 수 (상인에게서 늘린다, 기본 BAG_SIZE · 최대 BAG_MAX) */
   bagMax?: number
+  /** 도박 천장: 전설 이상 없이 뽑은 수 (GAMBLE_PITY) */
+  gpity?: number
   /** 보관함 칸 수 (캐릭터 공유 — 세이브도 보관함과 같이 캐릭터 밖에 둔다) */
   stashMax?: number
   /** 연 웨이포인트 (world.ts WAYPOINTS 순서의 비트) */
@@ -585,6 +593,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   if (Array.isArray(o.twps)) e.twps = o.twps.slice(0, 3).map((v) => Math.max(0, Math.floor(Number(v) || 0)) & 0x3fffffff)
   if (Array.isArray(o.tq)) e.tq = o.tq.slice(0, 3).map((q) => (Array.isArray(q) ? q.slice(0, 32).map((v) => Math.max(0, Math.min(3, Math.floor(Number(v) || 0)))) : []))
   e.potMax = Math.max(4, Math.min(8, Math.floor(Number(o.potMax) || 4)))
+  e.gpity = Math.max(0, Math.min(GAMBLE_PITY, Math.floor(Number(o.gpity) || 0)))
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, e.stashMax) : []
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build

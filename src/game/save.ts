@@ -8,6 +8,104 @@ import { PlayerState } from '../core/state'
 
 const KEY = 'brpg.save.v1'
 const BACKUP = 'brpg.save.v1.bak'
+/** 마지막으로 파일로 내보낸 시각 (백업 알림 — 2026-09-25) */
+const EXPORTED = 'brpg.save.exported'
+
+/**
+ * 세이브를 **IndexedDB 에도 한 벌** (2026-09-25 사용자 고른 개선 10 — "사이트 데이터를 지우면 캐릭터가 통째로 사라진다").
+ * localStorage 만 지워지는 경우(저장소 정리 · 확장 프로그램 · 용량 초과)에 되살린다. 둘 다 지우면 파일 내보내기만 남는다.
+ */
+const IDB_NAME = 'brpg'
+const IDB_STORE = 'save'
+function idb(): Promise<IDBDatabase | null> {
+  return new Promise((res) => {
+    try {
+      if (typeof indexedDB === 'undefined') return res(null)
+      const r = indexedDB.open(IDB_NAME, 1)
+      r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE)
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => res(null)
+    } catch {
+      res(null)
+    }
+  })
+}
+function mirrorPut(json: string): void {
+  void idb().then((db) => {
+    if (!db) return
+    try {
+      const tx = db.transaction(IDB_STORE, 'readwrite')
+      tx.objectStore(IDB_STORE).put(json, KEY)
+      tx.oncomplete = () => db.close()
+      tx.onerror = () => db.close()
+    } catch {
+      db.close()
+    }
+  })
+}
+function mirrorGet(): Promise<string | null> {
+  return idb().then(
+    (db) =>
+      new Promise<string | null>((res) => {
+        if (!db) return res(null)
+        try {
+          const r = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(KEY)
+          r.onsuccess = () => {
+            res(typeof r.result === 'string' ? r.result : null)
+            db.close()
+          }
+          r.onerror = () => {
+            res(null)
+            db.close()
+          }
+        } catch {
+          db.close()
+          res(null)
+        }
+      }),
+  )
+}
+
+/**
+ * 시작할 때 한 번: localStorage 에 세이브가 없는데 IndexedDB 에 있으면 되살린다. 되살렸으면 true.
+ * 있으면 거울을 지금 것으로 맞춘다 (거울을 만들기 전의 세이브도 한 벌 생기게)
+ */
+export async function restoreFromMirror(): Promise<boolean> {
+  const cur = read(KEY) ?? read(BACKUP)
+  if (cur) {
+    mirrorPut(JSON.stringify(cur))
+    return false
+  }
+  const json = await mirrorGet()
+  if (!json) return false
+  try {
+    const d = JSON.parse(json) as SaveData
+    if (!d || d.v !== 1 || typeof d.chars !== 'object') return false
+    localStorage.setItem(KEY, json)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 백업 알림 글 (없으면 null): 캐릭터를 조금이라도 키웠는데(5레벨 이상) 파일로 내보낸 적이 없거나 7일이 지났으면.
+ * 사이트 데이터를 지우면 localStorage · IndexedDB 가 같이 지워진다 — 파일만 남는다
+ */
+export function backupNag(now = Date.now()): string | null {
+  const d = loadSave()
+  const grown = Object.values(d.chars).some((c) => (c?.level ?? 1) >= 5)
+  if (!grown) return null
+  let last = 0
+  try {
+    last = Number(localStorage.getItem(EXPORTED)) || 0
+  } catch {
+    last = 0
+  }
+  const days = Math.floor((now - last) / 86400000)
+  if (last > 0 && days < 7) return null
+  return last > 0 ? `세이브를 내보낸 지 ${days}일 — 가끔 파일로 받아 두세요` : '세이브를 파일로 받아 두세요 — 브라우저 데이터를 지우면 캐릭터가 사라집니다'
+}
 
 interface SaveData {
   v: 1
@@ -40,9 +138,11 @@ function write(d: SaveData): void {
     const prev = localStorage.getItem(KEY)
     if (prev) localStorage.setItem(BACKUP, prev)
     d.updated = Date.now()
-    localStorage.setItem(KEY, JSON.stringify(d))
+    const json = JSON.stringify(d)
+    mirrorPut(json)
+    localStorage.setItem(KEY, json)
   } catch {
-    /* 저장소가 막혀 있으면(시크릿 창 등) 이번 판만 남는다 */
+    /* 저장소가 막혀 있으면(시크릿 창 등) 이번 판만 남는다 — IndexedDB 거울은 먼저 적어 두었다 */
   }
 }
 
@@ -71,7 +171,7 @@ export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; se
     playSec[k] = (playSec[k] ?? 0) + Math.round(x.sec)
   }
   for (let i = 0; i < playSec.length; i++) playSec[i] = playSec[i] ?? 0
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
+  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, gpity: p.gpity, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
   delete d.chars[p.char]!.stash
   delete d.chars[p.char]!.stashMax
   const shared = sanitizeSheet({ stash: p.stash, stashMax: p.stashMax })
@@ -104,6 +204,11 @@ export function exportSave(): void {
   a.download = `bedorage-rpg-save-${t.getFullYear()}${String(t.getMonth() + 1).padStart(2, '0')}${String(t.getDate()).padStart(2, '0')}.json`
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+  try {
+    localStorage.setItem(EXPORTED, String(Date.now()))
+  } catch {
+    /* 무시 */
+  }
 }
 
 /** 파일에서 세이브를 가져온다. 캐릭터마다 검사해서 말이 되는 것만 받는다. 반환 = 받은 캐릭터 수 */

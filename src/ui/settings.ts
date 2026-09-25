@@ -6,6 +6,7 @@
 import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES } from '../core/items'
 import { isTouchDevice } from '../game/touch'
 import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } from '../game/keymap'
+import { VOL_KEYS, VOL_NAMES, VolKey, setVolume, volumes } from '../audio/volume'
 
 const AUTOPICK_KEY = 'brpg.autopick'
 const REAL_KEY = 'brpg.real'
@@ -122,10 +123,11 @@ export function settingsHtml(o: SettingsOpts = {}): string {
   return (
     `<div class="settings${kb && kbOpen ? ' kbwide' : ''}"><div class="sg-main">` +
     onoff('소리', !soundMuted()) +
+    volRowsHtml() +
     onoff('실사 괴물', realMonstersOn()) +
     `<p class="apn">실사 괴물은 처음 만날 때 모델을 받습니다. 느린 기기·데이터가 아까우면 끄세요.</p>` +
     onoff('보스 목소리', bossVoiceOn()) +
-    `<p class="apn">보스가 즉사기를 쓸 때 대사를 목소리로 읽습니다(기기의 한국어 음성 — 없으면 소리 효과만).</p>` +
+    `<p class="apn">보스가 즉사기를 쓸 때 대사를 낮게 울리는 목소리로 외칩니다. 크기는 위의 "보스 목소리" 밀대로.</p>` +
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
     gfxRowHtml() +
@@ -134,6 +136,19 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
     `</div>` +
     (kb ? keybindHtml() : '') +
+    `</div>`
+  )
+}
+
+/** 소리 크기 밀대 다섯 (2026-09-25 — 켜고 끄기뿐이던 것) */
+function volRowsHtml(): string {
+  const v = volumes()
+  return (
+    `<div class="vols">` +
+    VOL_KEYS.map((k) => {
+      const pct = Math.round(v[k] * 100)
+      return `<label class="vrow"><span>${VOL_NAMES[k]}</span><input type="range" min="0" max="100" step="5" value="${pct}" data-vol="${k}"><em>${pct}%</em></label>`
+    }).join('') +
     `</div>`
   )
 }
@@ -229,6 +244,15 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         o.onKeys?.(on)
       }
       redraw()
+    }
+  })
+  // 소리 크기: 끄는 동안에도 곧장 들리게 input 마다 반영 (칸을 다시 그리면 밀대를 놓친다 — 글자만 바꾼다)
+  box.querySelectorAll<HTMLInputElement>('input[data-vol]').forEach((inp) => {
+    inp.oninput = () => {
+      const pct = Number(inp.value)
+      setVolume(inp.dataset.vol as VolKey, pct / 100)
+      const em = inp.parentElement?.querySelector('em')
+      if (em) em.textContent = `${pct}%`
     }
   })
   box.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {

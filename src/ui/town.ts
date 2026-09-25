@@ -6,7 +6,7 @@ import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -307,6 +307,7 @@ export class TownPanel {
       body =
         card +
         `<p class="tp-note">칸을 고르면 그 칸의 아이템 (레벨 ${me.level + 2} · 등급은 운) — 한 번 <b>${goldText(price)}</b> · 10연 <b>${goldText(price * 10)}</b>.</p>
+        <p class="tp-note gb-pity">전설 천장 <b>${me.gpity} / ${GAMBLE_PITY}</b> — ${me.gpity >= GAMBLE_PITY ? '<b style="color:#ff9a3a">다음 한 번은 전설 이상</b>' : `전설 없이 ${GAMBLE_PITY - me.gpity}번 더 뽑으면 그다음은 전설 이상`}</p>
         <div class="gb-grid">${Array.from({ length: SLOT_COUNT }, (_, k) => `<div class="gb-slot"><b>${SLOT_NAMES[k]}</b>
             <button class="btn secondary" data-cmd="${CMD_GAMBLE}" data-arg="${k}" ${canOne ? '' : 'disabled'}>한 번</button>
             <button class="btn" data-cmd="${CMD_GAMBLE}" data-arg="${k + 16}" ${canOne ? '' : 'disabled'}>10연</button></div>`).join('')}</div>

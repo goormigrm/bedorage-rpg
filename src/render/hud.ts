@@ -241,8 +241,9 @@ export class Hud {
     this.d4.banner = { title, sub, color, t0: performance.now() }
   }
 
-  notice(text: string, color: string): void {
-    this.notices.push({ text, color, life: 2.2, max: 2.2 })
+  /** life: 떠 있는 초 (긴 안내는 길게) */
+  notice(text: string, color: string, life = 2.2): void {
+    this.notices.push({ text, color, life, max: life })
     if (this.notices.length > 3) this.notices.shift()
   }
 
