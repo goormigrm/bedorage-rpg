@@ -175,6 +175,8 @@ export class Session {
   private czBadge: StreamBadge | null = null
   private czClose: (() => void) | null = null
   private donTableAt = 0
+  /** 마지막으로 화면을 그린 때 — 오래 멈췄으면(창이 가려짐) 방송 처리를 틱 타이머가 대신 한다 */
+  private lastFrameAt = 0
   /** 판에 알린 "같은 방해 효과 한도"(초 — CMD_DONCAP). 치지직 창에서 바꾸면 다시 알린다 */
   private sentCap = -1
   /** 도배 거르기 (2026-09-25 방송 개선 3 — game/chatfilter.ts) */
@@ -1655,6 +1657,9 @@ export class Session {
     const dt = Math.max(0, Math.min(0.25, (now - this.lastTick) / 1000))
     this.lastTick = Math.max(this.lastTick, now)
     if (this.paused || this.state.phase === 'over') return
+    // 창이 가려져(최소화 · 다른 창 뒤 · OBS 를 앞에) 화면 그리기(frame)가 멈췄으면 방송 처리(후원 · 채팅 · 이름 괴물)는 여기서 한다 —
+    // 전에는 frame 에서만 돌아 가려진 동안 후원이 쌓이기만 했다 (2026-09-26 확인). 이 타이머는 워커라 가려져도 돈다
+    if (now - this.lastFrameAt > 250) this.pumpStream(now)
     const lp = this.cfg.localPlayer
     const me = this.state.players[lp]
     const n = this.state.players.length
@@ -1806,6 +1811,7 @@ export class Session {
 
   private frame = (now: number): void => {
     if (this.disposed) return
+    this.lastFrameAt = performance.now()
     this.autoQuality(now - this.last)
     // 프레임 간격은 0 아래로 내려가지 않는다 (2026-09-23): rAF 의 시각과 직접 부른 frame(performance.now()) 이 섞이면
     // 앞선 시각 뒤에 더 이른 시각이 와 dt 가 음수가 됐고, 카메라 따라가기(1 - 0.002^dt)가 폭발해 화면이 몇 초씩 까매졌다
