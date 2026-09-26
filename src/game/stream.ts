@@ -3,7 +3,7 @@
 // 세션이 없을 때(로비) 온 후원은 버리지 않고 들고 있다가 다음 판이 가져간다 — 돈을 낸 후원이 사라지면 안 된다.
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
-import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent } from '../core/donate'
+import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent, cheerEvent } from '../core/donate'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 
@@ -40,6 +40,8 @@ export interface StreamCfg {
   antiSpam: boolean
   /** 채팅 "!참여" 한 시청자의 이름을 정예 · 우두머리 머리 위에 (2026-09-25 방송 개선 7) */
   named: boolean
+  /** 보스전(막 보스와 싸우는 중)에는 방해 이벤트를 대기열에 둔다 (2026-09-26 방송 개선 3) */
+  holdBoss: boolean
 }
 
 /**
@@ -64,6 +66,7 @@ export function defaultStreamCfg(): StreamCfg {
     maskLinks: true,
     antiSpam: true,
     named: true,
+    holdBoss: false,
   }
 }
 
@@ -94,6 +97,7 @@ export function loadStreamCfg(): StreamCfg {
       maskLinks: v.maskLinks ?? d.maskLinks,
       antiSpam: v.antiSpam ?? d.antiSpam,
       named: v.named ?? d.named,
+      holdBoss: v.holdBoss ?? d.holdBoss,
     }
   } catch {
     return d
@@ -164,6 +168,18 @@ export function eventRows(cfg = loadStreamCfg()): { e: DonateEvent; amount: numb
 
 export const won = (n: number): string => `${n.toLocaleString('ko-KR')}원`
 
+/** 큰 후원 예고 (2026-09-26 방송 개선 2): 중간보스 이상의 방해 이벤트(번호 6~10 — 중간보스 · 봉인 · 광폭화 · 막 보스 · 지옥문)는 3초 세고 일어난다 */
+export const DON_WARN_MS = 3000
+export const isBigDonation = (ev: number): boolean => ev >= 6 && ev <= 10
+
+/**
+ * 다음에 판에 넣을 후원 (2026-09-26 방송 개선 3 — 잠깐 멈춤 · 보스전 대기): 멈춤 중에는 **방해 이벤트만** 기다리고 응원은 그대로 간다.
+ * canRun 은 소환 상한 · 막 보스 하나 같은 판 조건. 없으면 -1
+ */
+export function nextDonation(pending: { ev: number }[], hold: boolean, canRun: (ev: number) => boolean): number {
+  return pending.findIndex((d) => (!hold || cheerEvent(d.ev) !== undefined) && canRun(d.ev))
+}
+
 /** 채팅 "!참여" — 시청자 이름 괴물 추첨 후보가 된다 (말풍선으로는 띄우지 않는다) */
 export const JOIN_RE = /^!\s*(참여|참가|join)$/i
 
@@ -216,6 +232,11 @@ class StreamHub {
   detail = ''
   /** 시험 단추를 눌렀나 (그러면 치지직이 없어도 표를 보여 준다) */
   tried = false
+  /**
+   * 방해 이벤트 잠깐 멈춤 (2026-09-26 방송 개선 3 — 치지직 창 · P 키). 받은 후원은 버리지 않고 대기열에 두었다가 풀면 차례로.
+   * 페이지를 새로 열면 풀린다(저장하지 않는다 — 멈춘 것을 잊고 방송을 이어 가지 않게)
+   */
+  hold = false
   // 받은 채팅 · 후원의 **개수 · 합계 · 목록은 모으지 않는다** (2026-09-23 사용자: "후원 합계는 수입의 전체 수준을 알 수 있으니
   // 절대 표시되지 않게 — 받은 채팅 · 후원 숫자 · 합계 내역은 나타내지 않도록"). 모으지 않으면 어디에도 샐 수 없다.
   private actFns = new Set<() => void>()

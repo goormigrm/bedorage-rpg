@@ -5,6 +5,7 @@
 
 import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
 import { DEFAULT_BANNED, StreamStatus, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { keyLabel } from '../game/keymap'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -155,6 +156,9 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>방해 효과 · 시청자 참여</b></div>` +
+    toggle('hold', `방해 이벤트 잠깐 멈춤 (${keyLabel('donHold')})`, stream.hold, '멈춤', '진행') +
+    toggle('holdBoss', '보스전 중에는 방해 이벤트 대기', c.holdBoss) +
+    `<p class="czn">멈춘 동안 받은 방해 후원은 버리지 않고 기다렸다가 풀면 차례로 일어납니다. 응원(!응원)은 그대로 들어갑니다. 멈춤은 페이지를 새로 열면 풀립니다.</p>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
     `<p class="czn">화면 흔들림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 이 시간을 넘게 이어 붙지 않습니다 — 넘는 만큼은 버려집니다 (화면 흔들림은 15초까지).</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
@@ -297,7 +301,13 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       const c = loadStreamCfg()
       const on = b.dataset.on === '1'
       const tg = (b.parentElement as HTMLElement).dataset.tg
+      if (tg === 'hold') {
+        stream.hold = on
+        redraw()
+        return
+      }
       if (tg === 'bubbles') c.bubbles = on
+      else if (tg === 'holdBoss') c.holdBoss = on
       else if (tg === 'maskLinks') c.maskLinks = on
       else if (tg === 'antiSpam') c.antiSpam = on
       else if (tg === 'named') c.named = on

@@ -9,7 +9,7 @@ import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
-import { cheerForAmount, defaultStreamCfg, eventForAmount } from '../src/game/stream'
+import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -422,5 +422,45 @@ describe('응원 아군은 마을로는 안 따라간다', () => {
     expect(p.area).toBe(0)
     g.run(() => idle())
     expect(areaView(g.s, 0).allies ?? []).toEqual([])
+  })
+})
+
+// 2026-09-26 방송 개선 1 · 2 · 3
+describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
+  it('멈춤 중에는 방해 이벤트는 기다리고 응원은 간다 · 풀면 먼저 온 것부터', () => {
+    const pending = [{ ev: ev('dark') }, { ev: CHEER_EVENTS[0].id }, { ev: ev('horde') }]
+    expect(nextDonation(pending, true, () => true)).toBe(1)
+    expect(nextDonation([{ ev: ev('dark') }], true, () => true)).toBe(-1)
+    expect(nextDonation(pending, false, () => true)).toBe(0)
+    // 판 조건(소환 상한)에 걸린 것은 건너뛴다
+    expect(nextDonation(pending, false, (e) => e !== ev('dark'))).toBe(1)
+  })
+
+  it('3초 예고는 중간보스 이상의 방해 이벤트만 (응원 · 싼 것은 바로)', () => {
+    const big = DONATE_EVENTS.filter((e) => isBigDonation(e.id)).map((e) => e.key)
+    expect(big).toEqual(['unique', 'seal', 'rage', 'boss', 'hell'])
+    for (const c of CHEER_EVENTS) expect(isBigDonation(c.id)).toBe(false)
+  })
+
+  it('쓰러짐 이벤트에 쓰러뜨린 괴물이 실린다 ("○○님의 막 보스에게 쓰러짐")', () => {
+    const g = game(95)
+    toField(g)
+    const p = g.s.players[0]
+    g.donate(ev('unique', 3))
+    const lead = areaView(g.s, 1).monsters.find((m) => m.hp > 0 && m.sum === 4)!
+    expect(lead).toBeDefined()
+    p.hp = 1
+    p.invuln = 0
+    let by = -2
+    for (let t = 0; t < 600 && by === -2; t++) {
+      lead.x = p.x + 20
+      lead.y = p.y
+      g.run(() => idle())
+      for (const e of g.s.events) if (e.type === 'down' && e.p === 0) by = e.by ?? -1
+      p.hp = Math.min(p.hp, 1)
+    }
+    expect(by).toBeGreaterThanOrEqual(0)
+    const killer = areaView(g.s, 1).monsters.find((m) => m.id === by)
+    expect(killer?.sum).toBe(4)
   })
 })

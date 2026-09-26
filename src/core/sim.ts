@@ -1866,12 +1866,12 @@ function hurtPlayer(state: GameState, p: PlayerState, dmg: number, by: number, s
     const m = state.monsters.find((q) => q.id === by)
     if (m && m.hp > 0 && m.elite & EA_VAMP) m.hp = Math.min(m.maxHp, m.hp + Math.round(dmg * AFFIX_TUNE.vamp))
   }
-  if (p.hp <= 0) downPlayer(state, p)
+  if (p.hp <= 0) downPlayer(state, p, by)
   return true
 }
 
-/** 체력 0 → 쓰러짐 (동료가 일으킨다 · 죽음 규칙은 쓰러진 채 시간이 다 됐을 때) */
-function downPlayer(state: GameState, p: PlayerState): void {
+/** 체력 0 → 쓰러짐 (동료가 일으킨다 · 죽음 규칙은 쓰러진 채 시간이 다 됐을 때). by = 쓰러뜨린 것 (이벤트에 싣는다) */
+function downPlayer(state: GameState, p: PlayerState, by = -1): void {
   p.hp = 0
   p.downed = true
   p.revive = 0
@@ -1882,7 +1882,7 @@ function downPlayer(state: GameState, p: PlayerState): void {
   p.killStreak = 0
   p.fx.fill(0)
   p.rateMul = 1
-  state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y })
+  state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y, by })
 }
 
 /**
@@ -1896,7 +1896,7 @@ function killOutright(state: GameState, p: PlayerState, by: number): void {
   p.dmgTaken += p.hp
   state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg: p.hp })
   state.events.push({ type: 'ultHit', p: p.id, x: p.x, y: p.y })
-  downPlayer(state, p)
+  downPlayer(state, p, by)
 }
 
 /**

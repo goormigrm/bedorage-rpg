@@ -615,7 +615,8 @@ export type SimEvent =
   | { type: 'bash'; p: number; x: number; y: number; aim: number }
   /** 플레이어가 맞음 (by = 몬스터 id, 플레이어가 아니다) */
   | { type: 'hurt'; p: number; by: number; x: number; y: number; dmg: number }
-  | { type: 'down'; p: number; x: number; y: number }
+  /** by = 쓰러뜨린 것(몬스터 id · 사람은 -(번호+1) · 모르면 -1) — 후원 결과 알림 "○○님의 막 보스에게 쓰러짐"(2026-09-26) */
+  | { type: 'down'; p: number; x: number; y: number; by?: number }
   | { type: 'revive'; p: number; by: number; x: number; y: number }
   /** 죽음. by = 죽인 플레이어 (투기장), 던전은 -1 */
   | { type: 'death'; p: number; by: number; x: number; y: number; out: boolean }

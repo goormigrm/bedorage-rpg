@@ -1054,6 +1054,7 @@ body { background: var(--bg); }
 .dontable[hidden] { display: none; }
 .dontable .dh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
 .dontable .dh.join { margin-top: 5px; color: #8fd8ff; }
+.dontable .dw.hold { color: #ffd24a; font-weight: 800; }
 /* 금액 · 이름 · (걸려 있으면) 남은 초 — 줄바꿈 없이 */
 .dontable .dr { display: grid; grid-template-columns: 82px auto 34px; gap: 8px; align-items: baseline; line-height: 1.5; padding: 0 4px; border-radius: 2px; white-space: nowrap; }
 .dontable .da { font: 700 12px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; white-space: nowrap; }

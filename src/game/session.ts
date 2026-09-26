@@ -7,7 +7,7 @@ import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
-import { JOIN_RE, Joiner, StreamChat, StreamDonation, addJoiner, drawJoiner, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -20,7 +20,7 @@ import { QuestLog, TownPanel } from '../ui/town'
 import { showEnding, showIntro } from '../ui/ending'
 import { showForgeFx } from '../ui/forgefx'
 import { isKey, keyLabel, keysHintHtml, onKeymap } from './keymap'
-import { LORD_KIND, MONSTER_LIST, TIER_LABEL, tierOf } from '../core/monsters'
+import { LORD_KIND, MONSTER_LIST, TIER_LABEL, isGiant, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
@@ -175,6 +175,22 @@ export class Session {
   private czBadge: StreamBadge | null = null
   private czClose: (() => void) | null = null
   private donTableAt = 0
+  /**
+   * 후원 결과 알림 (2026-09-26 방송 개선 1): 후원으로 부른 괴물 무리(부른 사람 · 후원 번호)를 지켜보다 다 쓰러지면 "○○님의 막 보스 처치! (38초)".
+   * 모두의 화면에서 같은 판 이벤트로 만들므로 방 사람들도 같은 알림을 본다
+   */
+  private donWatch: { p: number; seq: number; area: number; nick: string; name: string; ev: number; at: number; seen: number }[] = []
+  private donWatchAt = 0
+  /** 쓰러짐 알림을 몰아서 띄우지 않게 */
+  private downNoteAt = 0
+  /** 큰 후원 예고: 초 읽기 소리 (마지막으로 삑 한 초) */
+  private donWarnUntil = 0
+  private donWarnSec = 0
+  /** 치지직 연결 끊김 알림 (2026-09-26 방송 개선 5): 연결됐었나 · 끊긴 채인가 · 다음 다시 알릴 때 */
+  private czWasOn = false
+  private czDropped = false
+  private czNoteAt = 0
+  private unlistenCzStatus: (() => void) | null = null
   /** 마지막으로 화면을 그린 때 — 오래 멈췄으면(창이 가려짐) 방송 처리를 틱 타이머가 대신 한다 */
   private lastFrameAt = 0
   /** 판에 알린 "같은 방해 효과 한도"(초 — CMD_DONCAP). 치지직 창에서 바꾸면 다시 알린다 */
@@ -451,6 +467,8 @@ export class Session {
       (d) => this.onStreamDonation(d),
     )
     stream.sayBlock = () => this.sayBlock()
+    this.czWasOn = stream.status === 'on'
+    this.unlistenCzStatus = stream.onStatus((st) => this.onCzStatus(st))
     this.czBadge = new StreamBadge(this.stage.querySelector('.game-ui .top-right') as HTMLElement, () => this.openCz(), true)
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
@@ -927,6 +945,11 @@ export class Session {
       return
     }
     // 창 · 기타 키는 설정에서 바꿀 수 있다 (keymap.ts — e.code 로 보므로 한글 입력 상태에서도 된다)
+    if (isKey(e, 'donHold') && !this.arena) {
+      stream.hold = !stream.hold
+      this.renderer.notice(stream.hold ? `⏸ 후원 방해 이벤트 잠깐 멈춤 — 받은 후원은 기다립니다 (${keyLabel('donHold')} 로 풀기)` : '▶ 후원 방해 이벤트 다시 — 기다리던 것이 차례로 일어납니다', stream.hold ? '#ffd24a' : '#7dffc4', 3)
+      return
+    }
     if (isKey(e, 'mute')) {
       this.sfx.toggle()
       this.syncMute()
@@ -1563,7 +1586,13 @@ export class Session {
         // 금액은 받아도 버린다 (옛 판이 보냈더라도 — 2026-09-23)
         // 내 방송 화면에도 뜨므로 **내 가릴 말**로 한 번 더 거른다 (방송인마다 목록이 다르다)
         const fc = loadStreamCfg()
-        this.donNames.set(`${m.p}:${m.seq & 15}`, { nick: maskText(cleanChat(m.nick).slice(0, 20), fc) || '후원자', amount: 0, text: maskText(cleanChat(m.text), fc), ev: m.ev })
+        const dn = { nick: maskText(cleanChat(m.nick).slice(0, 20), fc) || '후원자', amount: 0, text: maskText(cleanChat(m.text), fc), ev: m.ev }
+        this.donNames.set(`${m.p}:${m.seq & 15}`, dn)
+        // 큰 후원 예고 — 같은 지역이거나 파티 모두에게 거는 효과(봉인)면 나도 센다
+        if (m.warn && m.warn > 0) {
+          const e = donateEvent(m.ev)
+          if (e && (this.state.players[m.p]?.area === this.viewArea || e.key === 'seal')) this.startDonWarn(`${dn.nick}님의 ${e.name}!`, performance.now() + Math.min(5000, m.warn))
+        }
         break
       }
       case 'kick': {
@@ -1774,6 +1803,7 @@ export class Session {
       for (const e of this.state.events) {
         if (e.type === 'donate') this.onDonateEvent(e)
         else if (e.type === 'mdeath' && this.vnames.size > 0) this.onNamedDeath(e.m)
+        else if (e.type === 'down') this.onDownBy(e.p, e.by ?? -1)
       }
       for (const e of this.state.events) {
         if (e.type === 'over') {
@@ -2174,17 +2204,39 @@ export class Session {
       this.input.queueCmd(CMD_DONATE, (d.ev & 15) | ((d.seq & 15) << 4))
     }
     if (!this.donSending && this.donPending.length > 0 && now >= this.donNextAt && this.canDonateNow()) {
-      const i = this.donPending.findIndex((d) => this.canRunDonation(d.ev))
+      // 잠깐 멈춤 · 보스전 대기 중에는 방해 이벤트만 기다린다 (응원은 간다 — 2026-09-26 방송 개선 3)
+      const i = nextDonation(this.donPending, this.donHeld(), (ev) => this.canRunDonation(ev))
       if (i >= 0) {
         const d = this.donPending.splice(i, 1)[0]
         const lp = this.cfg.localPlayer
         const seq = this.donSeq++ & 15
         this.donNames.set(`${lp}:${seq}`, { nick: d.nick, amount: 0, text: d.text, ev: d.ev })
+        // 큰 후원(중간보스 이상)은 3초 세고 일어난다 — 방송인이 준비할 틈 · 보는 사람의 긴장 (2026-09-26 방송 개선 2)
+        const warn = isBigDonation(d.ev) ? DON_WARN_MS : 0
         // 방 사람들에게도 금액은 보내지 않는다 (이벤트 번호로 충분하다)
-        this.cfg.link?.sendCtl({ t: 'donate', p: lp, seq, nick: d.nick, amount: 0, text: d.text, ev: d.ev })
-        this.donSending = { ev: d.ev, seq, at: now + 300 }
-        this.donNextAt = now + 1500
+        this.cfg.link?.sendCtl({ t: 'donate', p: lp, seq, nick: d.nick, amount: 0, text: d.text, ev: d.ev, warn })
+        if (warn > 0) this.startDonWarn(`${d.nick}님의 ${donateEvent(d.ev)?.name ?? '후원'}!`, now + 300 + warn)
+        this.donSending = { ev: d.ev, seq, at: now + 300 + warn }
+        this.donNextAt = now + 1500 + warn
       }
+    }
+    // 큰 후원 예고의 초 읽기 (3 · 2 · 1)
+    if (this.donWarnUntil > now) {
+      const sec = Math.ceil((this.donWarnUntil - now) / 1000)
+      if (sec !== this.donWarnSec && sec >= 1 && sec <= 3) {
+        this.donWarnSec = sec
+        this.sfx.countTick(sec)
+      }
+    }
+    // 후원 결과 (4번에 한 번 — 0.25초마다)
+    if (this.donWatch.length > 0 && now >= this.donWatchAt) {
+      this.donWatchAt = now + 250
+      this.checkDonWatch(now)
+    }
+    // 치지직이 끊긴 채면 1분마다 다시 알린다
+    if (this.czDropped && now >= this.czNoteAt) {
+      this.czNoteAt = now + 60_000
+      this.renderer.notice('⚠ 치지직 연결이 아직 끊겨 있습니다 — 왼쪽 위 치지직 단추에서 확인하세요', '#ff9d8a', 6)
     }
     // 시청자 이름 괴물: 1초마다 차례를 보고, 화면의 정예 · 우두머리에 붙인다
     if (now >= this.nameNextAt) {
@@ -2229,6 +2281,95 @@ export class Session {
       if (e.m >= 0) this.renderer.monsterSay(e.m, nick, info?.text || `${nick}님이 보냈다!`, true)
     }
     this.chat?.add(nick, cheerEvent(ev.id) ? `응원: ${ev.desc}` : `${ev.name}: ${ev.desc}`, 'don')
+    // 후원으로 부른 무리를 지켜본다 (다 쓰러지면 결과 알림)
+    if (SUMMON_KEYS.has(ev.key) && e.m >= 0) {
+      const area = this.state.players[e.p]?.area ?? -1
+      this.donWatch.push({ p: e.p, seq: e.seq & 15, area, nick, name: ev.name, ev: ev.id, at: performance.now(), seen: 0 })
+      if (this.donWatch.length > 16) this.donWatch.shift()
+    }
+  }
+
+  /** 후원 무리가 다 쓰러졌나 — 쓰러졌으면 "○○님의 막 보스 처치! (38초)". 그 지역에 사람이 없어졌으면 조용히 그만 본다 */
+  private checkDonWatch(now: number): void {
+    const keep: typeof this.donWatch = []
+    for (const w of this.donWatch) {
+      if (!this.state.players.some((q) => !q.left && q.area === w.area)) continue
+      const alive = areaView(this.state, w.area).monsters.filter((m) => m.hp > 0 && m.sum === w.seq + 1 && m.sumBy === w.p).length
+      if (alive > 0) {
+        w.seen = Math.max(w.seen, alive)
+        keep.push(w)
+        continue
+      }
+      if (w.seen === 0) {
+        // 아직 한 번도 못 보았다 (판에 들어오기 전) — 5초까지 기다린다
+        if (now - w.at < 5000) keep.push(w)
+        continue
+      }
+      if (w.area !== this.viewArea) continue
+      const secs = Math.max(1, Math.round((now - w.at) / 1000))
+      const title = `${w.nick}님의 ${w.name} 처치!`
+      if (w.ev >= 6) this.renderer.banner(title, `${secs}초 만에`, '#ffd24a')
+      else this.renderer.notice(`${title} (${secs}초)`, '#ffd24a', 3)
+    }
+    this.donWatch = keep
+  }
+
+  /** 누가 쓰러졌다: 후원 괴물 · 시청자 이름 괴물에게면 알린다 (2026-09-26 방송 개선 1) */
+  private onDownBy(p: number, by: number): void {
+    if (by < 0) return
+    const q = this.state.players[p]
+    if (!q || q.area !== this.viewArea) return
+    const now = performance.now()
+    if (now < this.downNoteAt) return
+    const who = this.names[p] ?? `${p + 1}번`
+    const vn = this.vnames.get(by)
+    if (vn) {
+      this.downNoteAt = now + 1500
+      this.renderer.notice(`💀 ${who} — ${vn.nick}에게 당했다!`, VIEWER_TAG, 3)
+      return
+    }
+    const m = areaView(this.state, q.area).monsters.find((x) => x.id === by)
+    if (!m || m.sum === undefined) return
+    const info = this.donNames.get(`${m.sumBy ?? -1}:${(m.sum - 1) & 15}`)
+    const ev = info ? donateEvent(info.ev) : undefined
+    if (!info || !ev) return
+    this.downNoteAt = now + 1500
+    this.renderer.notice(`💀 ${who} — ${info.nick}님의 ${ev.name}에게 쓰러짐!`, '#ffae4a', 3)
+  }
+
+  /** 큰 후원 예고를 띄운다 (가운데 3 · 2 · 1 + 초 읽기 소리) */
+  private startDonWarn(title: string, until: number): void {
+    this.renderer.donCountdown(title, until)
+    this.donWarnUntil = until
+    this.donWarnSec = 0
+  }
+
+  /** 방해 이벤트를 기다리게 하나: 잠깐 멈춤(P · 치지직 창) · 보스전 대기(설정 — 보는 지역에 깨어 싸우는 막 보스) */
+  private donHeld(): boolean {
+    if (stream.hold) return true
+    if (!loadStreamCfg().holdBoss) return false
+    return this.view().monsters.some((m) => m.hp > 0 && isGiant(m) && m.hitTick >= 0)
+  }
+
+  /** 치지직 연결이 끊겼다 · 다시 붙었다 — 화면 위에 알린다 (단추 색만 바뀌어 모르는 채 후원을 놓쳤다 — 2026-09-26 방송 개선 5) */
+  private onCzStatus(st: StreamStatus): void {
+    if (st === 'on') {
+      if (this.czDropped) this.renderer.notice('✅ 치지직 다시 연결됨 — 채팅 · 후원을 받습니다', '#7dffc4', 3.5)
+      this.czWasOn = true
+      this.czDropped = false
+      return
+    }
+    // 직접 끊은 것(연결 끊기 · 로그아웃)은 알리지 않는다
+    if (st === 'off') {
+      this.czWasOn = false
+      this.czDropped = false
+      return
+    }
+    if (this.czWasOn && !this.czDropped) {
+      this.czDropped = true
+      this.czNoteAt = performance.now() + 60_000
+      this.renderer.notice('⚠ 치지직 연결이 끊겼습니다 — 다시 연결하는 중 (후원 · 채팅이 잠시 안 들어옵니다)', '#ff9d8a', 6)
+    }
   }
 
   /**
@@ -2264,7 +2405,12 @@ export class Session {
         return `<div class="dr${on ? ' on' : ''}"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt">${on ? `${Math.ceil(t / 60)}초` : ''}</span></div>`
       })
       .join('')
-    const wait = this.donPending.length > 0 ? `<div class="dw">대기 ${this.donPending.length} — 던전에서 일어납니다</div>` : ''
+    const held = this.donHeld()
+    const wait = held
+      ? `<div class="dw hold">⏸ ${stream.hold ? '방해 이벤트 잠깐 멈춤' : '보스전 — 방해 이벤트 대기'}${this.donPending.length > 0 ? ` · 대기 ${this.donPending.length}` : ''}</div>`
+      : this.donPending.length > 0
+        ? `<div class="dw">대기 ${this.donPending.length} — 던전에서 일어납니다</div>`
+        : ''
     // 후원 글에 "!응원" — 돕는 후원도 있다는 것을 시청자에게 알린다. 금액마다 단계가 다르다 (2026-09-23)
     const cr = cheerRows(cfg)
     const cheer = cr.length
@@ -2592,6 +2738,7 @@ export class Session {
     this.chat?.dispose()
     this.chat = null
     this.unlistenStream?.()
+    this.unlistenCzStatus?.()
     this.unlistenStream = null
     if (stream.sayBlock) stream.sayBlock = null
     for (const f of this.unlistenCz) f()

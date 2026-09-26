@@ -10,7 +10,7 @@ export type Action =
   | 'dash' | 'sprint' | 'use' | 'portal'
   | 'skill1' | 'skill2' | 'ult' | 'skill3' | 'skill4'
   | 'bag' | 'skills' | 'attr' | 'quest' | 'map'
-  | 'voice' | 'mark' | 'mute'
+  | 'voice' | 'mark' | 'mute' | 'donHold'
 
 export const ACTIONS: { id: Action; label: string; def: string; group: string }[] = [
   { id: 'up', label: '위로', def: 'KeyW', group: '이동' },
@@ -34,6 +34,7 @@ export const ACTIONS: { id: Action; label: string; def: string; group: string }[
   { id: 'voice', label: '음성(누르고 말하기)', def: 'KeyB', group: '기타' },
   { id: 'mark', label: '신호', def: 'KeyV', group: '기타' },
   { id: 'mute', label: '소리 켜고 끄기', def: 'KeyN', group: '기타' },
+  { id: 'donHold', label: '후원 방해 이벤트 멈춤', def: 'KeyP', group: '기타' },
 ]
 
 /** 걸 수 없는 키 (정해진 뜻이 있다) */

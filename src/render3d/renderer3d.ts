@@ -307,6 +307,13 @@ export class Renderer3D {
   private says = new Map<number, { nick: string; text: string; until: number; gold: boolean; warn?: boolean; x?: number; z?: number; top?: number }>()
   /** 막 보스 즉사기 경고 (화면 가장자리 붉게 · 가운데 큰 글 — 예고가 끝날 때까지) */
   private ultWarn: { name: string; hint: string; t0: number; until: number } | null = null
+  /** 큰 후원 예고 (2026-09-26 방송 개선 2): 가운데에 3 · 2 · 1 과 "○○님의 막 보스!" */
+  private donWarn: { title: string; t0: number; until: number } | null = null
+
+  /** 큰 후원 예고를 띄운다 (until 에 일어난다) */
+  donCountdown(title: string, until: number): void {
+    this.donWarn = { title, t0: performance.now(), until }
+  }
   /** 후원 소환 괴물의 이름표: (부른 사람, 후원 번호) → "○○님의" (세션이 넣는다 — 이름은 sim 밖) */
   private summonLabel: ((by: number, seq: number) => string | undefined) | null = null
 
@@ -1649,6 +1656,7 @@ export class Renderer3D {
     this.drawMonsterBars(curr)
     this.drawAllyTags(curr)
     this.drawUltWarn()
+    this.drawDonWarn()
     this.drawOrphanSays(curr)
     this.drawDropLabels(curr, opts.localPlayer)
     this.drawPlaceLabels(curr, opts.localPlayer)
@@ -3999,6 +4007,45 @@ export class Renderer3D {
     ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw, 6 * VIEW_K)
     ctx.fillStyle = '#ff3a2a'
     ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw * left, 6 * VIEW_K)
+    ctx.restore()
+  }
+
+  /** 큰 후원 예고: 가운데 큰 숫자(3 · 2 · 1 — 초마다 커졌다 줄어든다) + 그 아래 "○○님의 막 보스!" · 가장자리가 금빛으로 맥박 */
+  private drawDonWarn(): void {
+    const w = this.donWarn
+    if (!w) return
+    const now = performance.now()
+    if (now > w.until + 250) {
+      this.donWarn = null
+      return
+    }
+    const leftMs = Math.max(0, w.until - now)
+    const sec = Math.max(1, Math.ceil(leftMs / 1000))
+    const inSec = 1 - (leftMs % 1000) / 1000
+    const fade = Math.min(1, (now - w.t0) / 150) * Math.min(1, (w.until + 250 - now) / 250)
+    const ctx = this.hud.ctx
+    ctx.save()
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.62)
+    g.addColorStop(0, 'rgba(255,170,40,0)')
+    g.addColorStop(1, `rgba(255,150,30,${(0.12 + 0.18 * (1 - inSec)) * fade})`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    ctx.globalAlpha = fade
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    const y = VIEW_H * 0.36
+    const k = 1.35 - 0.35 * Math.min(1, inSec * 3)
+    ctx.font = `900 ${Math.round(84 * k * VIEW_K)}px ${SAY_FONT}`
+    ctx.lineWidth = 8
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+    ctx.strokeText(String(sec), VIEW_W / 2, y)
+    ctx.fillStyle = '#ffd24a'
+    ctx.fillText(String(sec), VIEW_W / 2, y)
+    ctx.font = `900 ${Math.round(28 * VIEW_K)}px ${SAY_FONT}`
+    ctx.lineWidth = 5
+    ctx.strokeText(w.title, VIEW_W / 2, y + 44 * VIEW_K)
+    ctx.fillStyle = '#ffae4a'
+    ctx.fillText(w.title, VIEW_W / 2, y + 44 * VIEW_K)
     ctx.restore()
   }
 

@@ -1502,6 +1502,11 @@ export class Sfx {
     this.tone(node, t0, 0.08, 'sine', 880, 1320, 0.4, 0.005)
   }
 
+  /** 큰 후원 예고의 초 읽기 (3 · 2 · 1 — 1 은 높게) */
+  countTick(sec: number): void {
+    if (this.ready()) this.tick(sec)
+  }
+
   private tick(sec: number): void {
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
     this.tone(node, t0, 0.12, 'sine', sec === 1 ? 880 : 660, sec === 1 ? 880 : 660, 0.5, 0.005)
