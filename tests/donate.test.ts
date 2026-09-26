@@ -405,3 +405,22 @@ describe('응원 아군은 부른 사람을 따라 지역을 건너간다', () =
     expect(run()).toBe(run())
   })
 })
+
+describe('응원 아군은 마을로는 안 따라간다', () => {
+  it('부른 사람이 마을로 가면 아군은 마을에 없다 (남은 지역에 사람이 없으면 사라진다)', () => {
+    const g = game(94)
+    toField(g)
+    const p = g.s.players[0]
+    g.donate(CHEER_EVENTS[2].id | (5 << 4))
+    expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
+    const ex = areaLayout(1, g.mapOf(1)).exits.find((x) => x.to === 0)!
+    p.x = ex.x
+    p.y = ex.y
+    p.exitLock = 0
+    p.btnPrev = 0
+    g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(p.area).toBe(0)
+    g.run(() => idle())
+    expect(areaView(g.s, 0).allies ?? []).toEqual([])
+  })
+})

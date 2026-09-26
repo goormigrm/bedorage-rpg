@@ -325,8 +325,9 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   p.ads = false
   p.fx[FX_CHARGE] = 0
   p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
-  // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록")
-  if (from !== to) carryAllies(state, map, p, from, a)
+  // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록").
+  // **마을로는 안 따라간다**(같은 날 사용자 — 싸울 곳이 아니다): 남은 지역에서 제 둘레 괴물과 싸우다(동료가 있으면 돕는다) 사람이 모두 떠나면 사라진다
+  if (from !== to && !isTown(to)) carryAllies(state, map, p, from, a)
   // 마을에 들어서면 그 마을의 웨이포인트가 열린다
   if (isTown(to)) p.wps |= wpBit(to)
   // 이 게임에서 누군가 가 본 가장 뒤 막 (난입한 사람이 설 마을을 정한다)
