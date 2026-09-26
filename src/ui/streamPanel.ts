@@ -196,7 +196,7 @@ function panelHtml(): string {
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
     `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
-    `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요.</p>` +
+    `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요. 창은 닫히지 않으니 여러 번 눌러 보세요.</p>` +
     `<div class="czh"><b>💚 후원 글에 !응원 입력 — 금액 → 효과</b></div>` +
     `<div class="czt">${cheers}</div>` +
     `<p class="czn">후원 글에 <b>!응원</b> 입력 → 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
@@ -216,10 +216,19 @@ function flashBtn(b: HTMLButtonElement, text: string): void {
   const was = b.dataset.was ?? b.textContent ?? ''
   b.dataset.was = was
   b.textContent = text
-  window.setTimeout(() => {
-    b.textContent = was
-    delete b.dataset.was
-  }, 1400)
+  // 거듭 누르면 되돌리는 시계를 새로 (앞 시계가 방금 바꾼 글을 먼저 되돌리지 않게) · 눌릴 때마다 한 번 반짝
+  window.clearTimeout(Number(b.dataset.timer ?? 0))
+  b.classList.remove('sent')
+  void b.offsetWidth
+  b.classList.add('sent')
+  b.dataset.timer = String(
+    window.setTimeout(() => {
+      b.textContent = was
+      b.classList.remove('sent')
+      delete b.dataset.was
+      delete b.dataset.timer
+    }, 1400),
+  )
 }
 
 function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): void {
@@ -251,9 +260,9 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
           flashBtn(b, why)
           return
         }
+        // 창은 닫지 않는다 — 여러 번 눌러 볼 수 있게 (2026-09-26 사용자: "버튼 눌렀다고 창이 꺼지게 하지 마")
         stream.fakeChat()
-        // 창이 화면 가운데를 덮어 말풍선이 가려진다 — 닫고 게임을 보여 준다
-        close()
+        flashBtn(b, why === 'wait' ? '보냄 — 괴물이 보이면 뜹니다' : '보냄 ✓')
         return
       }
       else if (a === 'join') {
@@ -266,7 +275,7 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
           return
         }
         stream.fakeJoin()
-        close()
+        flashBtn(b, '참여 보냄 ✓')
         return
       } else if (a === 'banshow') banOpen = true
       else if (a === 'banhide') banOpen = false

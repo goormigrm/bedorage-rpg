@@ -1131,6 +1131,9 @@ body { background: var(--bg); }
 .cztg { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
 .cztg b { font-weight: 800; color: #d8e8e0; }
 .czbtns { margin-top: 10px; }
+/* 시험 단추가 눌릴 때마다 한 번 반짝 (창은 닫히지 않는다 — 2026-09-26) */
+.czpanel .btn.sent { animation: czsent .45s ease-out; }
+@keyframes czsent { 0% { box-shadow: 0 0 0 0 rgba(0,255,163,.7); } 100% { box-shadow: 0 0 0 10px rgba(0,255,163,0); } }
 .czpanel .czh { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
 .czpanel .czh b { font-weight: 900; font-size: 14px; color: #ffc94a; margin-right: auto; }
 .czpanel .czt { display: flex; flex-direction: column; gap: 3px; }
