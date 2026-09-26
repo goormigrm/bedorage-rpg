@@ -73,7 +73,7 @@ function drawName(g, text, cx, cy) {
   g.restore()
 }
 /** 덧그리는 것 */
-const ov = { title: null, cap: null, fade: { a: 1, from: 1, to: 1, at: 0, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: 0, dur: 1 }, end: null }
+const ov = { don: false, title: null, cap: null, fade: { a: 1, from: 1, to: 1, at: 0, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: 0, dur: 1 }, end: null }
 /** 소리 단서 (영상 초) */
 let music = []
 let sfxCues = []
@@ -115,6 +115,84 @@ function drawGame() {
   }
 }
 
+/**
+ * 왼쪽 아래 후원 표 (2026-09-26 사용자: "후원 관련 기능들을 잘 보이게"): 게임의 표는 HTML 이라 캔버스를 합치는 영상에 담기지 않는다 →
+ * 같은 모양 · 같은 내용(금액 → 이벤트 · 걸려 있으면 남은 초 · !응원 단계 · !참여)을 영상에 그린다. 게임과 같은 금액표(stream.ts)를 읽는다
+ */
+function drawDonTable() {
+  const SM = M.streamMod
+  if (!SM) return
+  const cfg = SM.loadStreamCfg()
+  const rows = SM.eventRows(cfg)
+  const cheers = SM.cheerRows(cfg)
+  const s = st()
+  const don = s.players[0]?.don ?? []
+  let rage = 0
+  for (const m of s.monsters) if (m.hp > 0 && (m.rage ?? 0) > rage) rage = m.rage ?? 0
+  const left = { shake: don[0] ?? 0, dark: don[1] ?? 0, invert: don[2] ?? 0, seal: don[3] ?? 0, rage }
+  const K = 1.45
+  const lh = 18 * K
+  const pad = 9 * K
+  const w = 262 * K
+  const nLines = 1 + rows.length + (cheers.length ? 1 + cheers.length : 0) + (cfg.named ? 1 : 0)
+  const h = nLines * lh + pad * 2 + 6 * K
+  // 자막(왼쪽 아래 — 약 300px)을 피해 그 위에 (자막에 아래 절반이 가렸다)
+  const x0 = 24
+  const y0 = H - 300 - h
+  g.save()
+  const bg = g.createLinearGradient(0, y0, 0, y0 + h)
+  bg.addColorStop(0, 'rgba(20,14,8,0.88)')
+  bg.addColorStop(1, 'rgba(10,8,6,0.92)')
+  g.fillStyle = bg
+  g.beginPath()
+  g.roundRect(x0, y0, w, h, 5)
+  g.fill()
+  g.strokeStyle = 'rgba(201,162,74,0.6)'
+  g.lineWidth = 1.5
+  g.stroke()
+  g.textBaseline = 'middle'
+  let y = y0 + pad + lh / 2
+  const head = (text, color) => {
+    g.font = `800 ${13.5 * K}px "Nanum Myeongjo", serif`
+    g.fillStyle = color
+    g.textAlign = 'left'
+    g.fillText(text, x0 + pad, y)
+    y += lh
+  }
+  const row = (amount, name, sec, cheer) => {
+    if (sec > 0) {
+      g.fillStyle = `rgba(255,90,60,${0.2 + 0.14 * Math.sin(now() / 160)})`
+      g.fillRect(x0 + pad * 0.5, y - lh / 2 + 1, w - pad, lh - 2)
+    }
+    g.font = `700 ${12 * K}px "IBM Plex Mono", monospace`
+    g.fillStyle = cheer ? '#9dffb8' : '#ffc94a'
+    g.textAlign = 'right'
+    g.fillText(SM.won(amount), x0 + pad + 76 * K, y)
+    g.font = `800 ${12 * K}px "IBM Plex Sans KR", sans-serif`
+    g.fillStyle = cheer ? '#d8ffe2' : '#f4ead2'
+    g.textAlign = 'left'
+    g.fillText(name, x0 + pad + 84 * K, y)
+    if (sec > 0) {
+      g.fillStyle = '#ffb0a0'
+      g.textAlign = 'right'
+      g.fillText(`${Math.ceil(sec / 60)}초`, x0 + w - pad, y)
+    }
+    y += lh
+  }
+  head('💰 후원 이벤트', '#f1d58a')
+  for (const r of rows) row(r.amount, r.e.name, left[r.e.key] ?? 0, false)
+  if (cheers.length) {
+    y += 3 * K
+    head('💚 후원 글에 !응원 입력', '#7aff9a')
+    for (const r of cheers) row(r.amount, r.e.name, 0, true)
+  }
+  if (cfg.named) {
+    y += 3 * K
+    head('🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름', '#8fd8ff')
+  }
+  g.restore()
+}
+
 function drawOverlay() {
   const t = now()
   const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.72)
@@ -122,6 +200,7 @@ function drawOverlay() {
   vg.addColorStop(1, 'rgba(0,0,0,0.32)')
   g.fillStyle = vg
   g.fillRect(0, 0, W, H)
+  if (ov.don) drawDonTable()
 
   if (ov.title) {
     const a = ease((t - ov.title.at) / 900) * (ov.title.out ? 1 - ease((t - ov.title.out) / 700) : 1)
@@ -381,6 +460,9 @@ function faceBoss(kind, dist) {
   const b = s.monsters.find((m) => m.kind === kind && m.hp > 0)
   if (!b || !a) return
   for (const m of s.monsters) if (m !== b) m.hp = 0
+  // 치지직 장면의 후원 효과(봉인) · 응원 아군(아군 보스 — 지역을 따라온다)은 보스 장면에 넣지 않는다
+  for (const q of s.players) if (q.don) q.don.fill(0)
+  s.allies = undefined
   // 카메라 쪽(화면 아래 — 남동)에 선다: 거대한 보스가 파티 뒤(화면 위)로 온몸이 보이고, 보스 몸에 파티가 가려지지 않는다 (2026-09-24 — 보스 4배)
   const p = s.players[0]
   p.x = b.x + Math.SQRT1_2 * dist
@@ -596,44 +678,104 @@ function scenes() {
   cut(at, () => {
     gatherBots()
     caption('캐릭터마다 스킬 둘 · 궁극기', '탱커 · 딜러 · 힐러 — 스킬을 쓰면 이름을 외치고, 초록 말풍선은 "이쪽으로 모여"')
-    spawn([0, 1, 2], 30, 5, 11)
+    spawn([0, 1, 2], 45, 5, 11)
   })
   const skills = t
-  every(skills + 0.6, skills + 8, 1.0, () => alive() < 50 && spawn([0, 1, 2], 20, 6, 11))
+  every(skills + 0.6, skills + 8, 1.0, () => alive() < 55 && spawn([0, 1, 2], 22, 6, 11))
   // 정예
   at(8.2, () => {})
   cut(at, () => {
     gatherBots()
     caption('정예 · 접두 능력', '금빛 이름표 — 빠름 · 단단함 · 폭발 · 분열 · 흡혈')
     elites()
-    spawn([0, 0, 2], 24, 6, 11)
+    spawn([0, 0, 2], 36, 6, 11)
   })
   at(6.5, () => {})
-  // 치지직 — 채팅 말풍선 · !응원(아군 괴물) · 후원 이벤트(좀비 떼 · 정예 무리)
+  // 치지직 (2026-09-26 사용자: "후원 관련 기능들을 잘 보이게, 몬스터 많게 제작해서 트레일러 영상 업데이트"):
+  // 채팅 말풍선(링크 가림) → !참여 시청자 이름 괴물 → 금액마다 이벤트(좀비 떼 둘 · 정예 무리) → 큰 후원 3초 예고(중간보스) → 결과 알림 →
+  // !응원(아군 괴물 넷 · 아군 보스) → 스킬 봉인(예고 · HUD). 괴물은 내내 50 넘게. 후원은 판에서 1.5초(큰 것은 + 3초 예고)마다 하나씩 일어난다
   cut(at, () => {
     gatherBots()
-    caption('치지직 방송 연동', '시청자 채팅은 괴물 머리 위 말풍선으로')
+    ov.don = true
+    caption('치지직 방송 연동', '시청자 채팅은 괴물 머리 위 말풍선으로 — 욕 · 링크는 가려서')
     for (let i = 0; i < 4; i++) M.stream.fakeChat(false)
-    spawn([0, 1, 2], 30, 6, 11)
+    spawn([0, 1, 2, 0], 50, 5, 12)
   })
-  every(t + 0.3, t + 16, 0.4, () => M.stream.fakeChat(false))
-  every(t + 1, t + 16, 1.2, () => alive() < 40 && spawn([0, 1, 2], 14, 6, 11))
-  at(3.2, () => {
-    caption('후원 글에 !응원 입력', '괴롭히는 대신 돕는다 — 아군 괴물 · 회복 구슬 · 공격 강화')
-    M.stream.fakeCheer(10000)
+  const cz = t
+  every(cz + 0.3, cz + 33, 0.35, () => M.stream.fakeChat(false))
+  every(cz + 1, cz + 33, 1.0, () => alive() < 55 && spawn([0, 1, 2, 0], 18, 6, 12))
+  A.push({ t: cz + 1.3, fn: () => M.stream.chat({ nick: '지나가던계란', text: '여기서 같이 해요 www.abc.com' }) })
+  // !참여 — 추첨으로 정예 · 우두머리에 시청자 이름 (영상은 기다리지 않게 바로바로 붙인다 — 게임은 3초에 한 명)
+  const JOIN = ['콩떡이', '밤톨계란', '국밥한그릇', '새벽두시', '고양이집사', '치즈볶이', '감자튀김', '달걀귀신']
+  at(4.0, () => {
+    caption('채팅에 !참여 — 추첨으로 괴물에 내 이름', '돈 없이 참여 — 정예 · 우두머리 머리 위에 시청자 이름, 그 시청자의 채팅은 그 괴물이')
+    elites()
+    elites()
   })
-  at(5.5, () => {
-    caption('후원 금액마다 이벤트', '좀비 떼 · 암흑 · 정예 무리 · 중간보스 · 막 보스 — 보낸 사람 이름표')
+  A.push({ t: t + 0.3, fn: () => JOIN.forEach((nick) => M.stream.chat({ nick, text: '!참여' })) })
+  every(t + 0.5, t + 3.2, 0.4, () => (S().nameNextAt = 0))
+  A.push({
+    t: t + 2.4,
+    fn: () => {
+      for (const v of S().vnames.values()) M.stream.chat({ nick: v.nick, text: '내가 이 괴물이다 ㅋㅋ' })
+    },
+  })
+  // 이름 붙은 하나를 곧 쓰러지게 → "○○ 처치!"
+  A.push({
+    t: t + 3.6,
+    fn: () => {
+      const id = [...S().vnames.keys()][0]
+      const m = st().monsters.find((x) => x.id === id && x.hp > 0)
+      if (m) m.hp = Math.min(m.hp, 20)
+    },
+  })
+  // 후원 금액마다 이벤트 — 부른 괴물 머리 위에 보낸 사람 이름표
+  at(5.0, () => {
+    caption('후원 금액마다 이벤트', '좀비 떼 · 암흑 · 정예 무리 · 중간보스 · 막 보스 — 부른 괴물에 보낸 사람 이름표')
     M.stream.fakeDonation(1000)
+    M.stream.fakeDonation(1000)
+    M.stream.fakeDonation(5000)
   })
-  at(1.6, () => M.stream.fakeDonation(5000))
-  at(4.6, () => {})
+  // 큰 후원은 3초 예고 → 중간보스 → 잡으면 결과 알림
+  at(4.6, () => {
+    caption('큰 후원은 3초 예고', '중간보스 이상은 3 · 2 · 1 — 방송인이 준비할 틈')
+    M.stream.fakeDonation(10000)
+  })
+  at(3.9, () => caption('잡으면 결과 알림', '"○○님의 중간보스 처치!" — 몇 초 만에 잡았는지까지'))
+  // 부른 무리를 주인공 곁으로 모아 곧 쓰러지게 (원거리 우두머리는 떼 뒤에 서 있어 영상 안에 안 잡혔다)
+  A.push({
+    t: t + 0.8,
+    fn: () => {
+      const p = st().players[0]
+      for (const m of st().monsters) {
+        if (m.hp <= 0 || m.sum === undefined) continue
+        const a = Math.random() * Math.PI * 2
+        m.x = p.x + Math.cos(a) * 36
+        m.y = p.y + Math.sin(a) * 36
+        m.hp = Math.min(m.hp, 5)
+      }
+    },
+  })
+  // !응원 — 괴롭히는 대신 돕는다
+  at(4.2, () => {
+    caption('후원 글에 !응원 입력', '괴롭히는 대신 돕는다 — 아군 괴물 넷 · 아군 보스 · 회복 구슬 · 공격 강화')
+    M.stream.fakeCheer(10000)
+    M.stream.fakeCheer(30000)
+    spawn([0, 1, 2, 0], 26, 5, 10)
+  })
+  // 방해 효과 — 스킬 봉인(예고 뒤 스킬 칸이 "봉인") · 방송인이 조절
+  at(6.2, () => {
+    caption('방해 효과 — 방송인이 조절', '스킬 봉인 · 암흑 · 거꾸로 걷기 — 최대 길이 · 잠깐 멈춤 · 보스전 중 대기')
+    M.stream.fakeDonation(20000)
+  })
+  at(6.4, () => {})
   // ---- 막 보스 넷 — 저마다의 보스 방으로 (패턴 몇 개만 — 즉사기는 스포일러라 넣지 않는다)
   const boss = (area, kind, dist, capText, capSub, pats, stay, extra) => {
     at(0, () => fadeTo(1, 380))
     at(0.42, () => {
       holding = true
       ov.cap = null
+      ov.don = false
       for (const m of st().monsters) m.hp = 0
       warpParty(area)
       window.__bd.zoom(GIANT_ZOOM)
@@ -830,6 +972,7 @@ async function renderAudio(durSec) {
       sx.live = ends.length
       try {
         if (c.donate !== undefined) sx.donate(c.donate)
+        else if (c.count !== undefined) sx.countTick(c.count)
         else sx.onEvents(c.ev, c.st, c.lp)
       } catch (e) {
         log.push('소리 ' + e)
@@ -1010,7 +1153,7 @@ async function lobbyPhase(ve) {
   vt = realNow()
   performance.now = () => vt
   bf.last = vt
-  Object.assign(ov, { title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
   // 넷만 눌러 본다 (2026-09-24 사용자: "12개를 모두 클릭할 필요는 없다 — 침착란 · 단군란 · 매직란 · 철면란만")
   const order = ['chim', 'dangun', 'magic', 'cheolmyeon'].filter((id) => PLAYABLE.includes(id))
   bf.select(null)
@@ -1110,6 +1253,8 @@ export async function start(opts = {}) {
     rng: await import('/bedorage-rpg/src/core/rng.ts'),
     // 개발 서버는 고친 파일을 ?t= 꼬리표가 붙은 주소로 준다 — 게임이 쓰는 그 사본을 불러야 시험 후원이 판에 닿는다
     stream: (await sameModule('/src/game/stream.ts')).stream,
+    // 영상에 그리는 후원 표 (금액표 · 원 표기)
+    streamMod: await sameModule('/src/game/stream.ts'),
     // 보스 방으로 옮기기(warpPlayer)는 게임이 쓰는 sim 사본이어야 한다 (모듈 안 상태 — 묶인 지역 · 소환 대기열)
     sim: await sameModule('/src/core/sim.ts'),
     chars: await sameModule('/src/core/characters.ts'),
@@ -1233,8 +1378,11 @@ export async function start(opts = {}) {
   sfx.donate = (big) => {
     if (!holding) sfxCues.push({ t: vidSec(), donate: big })
   }
+  sfx.countTick = (sec) => {
+    if (!holding) sfxCues.push({ t: vidSec(), count: sec })
+  }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
   const acts = ULT ? ultScenes() : scenes()
@@ -1256,7 +1404,7 @@ export async function start(opts = {}) {
   glc?.addEventListener('webglcontextlost', onLost)
   glc?.addEventListener('webglcontextrestored', onBack)
   try {
-    for (let i = 0; i < FPS * 120; i++) {
+    for (let i = 0; i < FPS * 240; i++) {
       if (lost) {
         await ve.flush()
         await new Promise((r) => setTimeout(r, 250))
@@ -1337,6 +1485,7 @@ export async function start(opts = {}) {
     performance.now = realNow
     delete sfx.onEvents
     delete sfx.donate
+    delete sfx.countTick
     delete sfx.updateSteps
     sess.lastTick = realNow()
     sess.last = realNow()

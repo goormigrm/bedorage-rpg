@@ -4035,12 +4035,15 @@ export class Renderer3D {
     ctx.textBaseline = 'alphabetic'
     const y = VIEW_H * 0.36
     const k = 1.35 - 0.35 * Math.min(1, inSec * 3)
-    ctx.font = `900 ${Math.round(84 * k * VIEW_K)}px ${SAY_FONT}`
-    ctx.lineWidth = 8
     ctx.strokeStyle = 'rgba(0,0,0,0.85)'
-    ctx.strokeText(String(sec), VIEW_W / 2, y)
-    ctx.fillStyle = '#ffd24a'
-    ctx.fillText(String(sec), VIEW_W / 2, y)
+    // 다 셌으면(일어난 뒤 옅어지는 동안) 숫자는 지운다 — "1" 이 이벤트 배너와 함께 남아 있었다
+    if (leftMs > 0) {
+      ctx.font = `900 ${Math.round(84 * k * VIEW_K)}px ${SAY_FONT}`
+      ctx.lineWidth = 8
+      ctx.strokeText(String(sec), VIEW_W / 2, y)
+      ctx.fillStyle = '#ffd24a'
+      ctx.fillText(String(sec), VIEW_W / 2, y)
+    }
     ctx.font = `900 ${Math.round(28 * VIEW_K)}px ${SAY_FONT}`
     ctx.lineWidth = 5
     ctx.strokeText(w.title, VIEW_W / 2, y + 44 * VIEW_K)
