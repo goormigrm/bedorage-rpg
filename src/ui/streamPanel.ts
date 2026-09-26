@@ -6,6 +6,7 @@
 import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
 import { DEFAULT_BANNED, StreamStatus, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
+import { isDev, onDevChange } from '../game/devmode'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -89,6 +90,7 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
     closed = true
     offStatus()
     offAct()
+    offDev()
     window.removeEventListener('keydown', onKey, true)
     wrap.remove()
     onClose?.()
@@ -101,6 +103,8 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
   const offStatus = stream.onStatus(() => {
     if (!busy()) draw()
   })
+  // 개발자 모드를 켜고 끄면 시험 단추를 다시 그린다
+  const offDev = onDevChange(() => draw())
   const offAct = stream.onActivity(() => {
     // 받은 것은 보여 주지 않는다 — 불만 한 번 깜빡인다
     const dot = box.querySelector('.czdot') as HTMLElement | null
@@ -152,7 +156,8 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     ban +
     toggle('maskLinks', '주소(링크)는 [링크] 로', c.maskLinks) +
     toggle('antiSpam', '도배 거르기 (같은 말 · 몰아 쓰기)', c.antiSpam) +
-    `<p class="czn">괴물 말풍선 · 후원 글 · 닉네임에서 가릴 말은 <b>○○</b> 로 — 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸립니다. 후원은 거르지 않고 글만 가립니다.</p>` +
+    toggle('hideLobbyChat', '대기실 전체 채팅 숨기기', c.hideLobbyChat, '숨기기', '보이기') +
+    `<p class="czn">괴물 말풍선 · 후원 글 · 닉네임, 그리고 <b>대기실 · 방 · 게임 채팅</b>(머리 위 말풍선 · 방 목록 이름까지)에서 가릴 말은 <b>○○</b> 로 — 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸립니다. 후원은 거르지 않고 글만 가립니다. 대기실 전체 채팅은 방 밖의 누구나 쓸 수 있어 방송 중에는 숨길 수 있습니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>방해 효과 · 시청자 참여</b></div>` +
@@ -162,7 +167,7 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
     `<p class="czn">화면 흔들림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 이 시간을 넘게 이어 붙지 않습니다 — 넘는 만큼은 버려집니다 (화면 흔들림은 15초까지).</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
-    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` +
+    (isDev() ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` : '') +
     `<p class="czn">채팅에 <b>!참여</b> → 최근 15분 안에 참여한 사람 중 <b>추첨</b>으로 한 명씩, 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +
     `</div></div>`
   )
@@ -178,16 +183,20 @@ function panelHtml(): string {
       : login
         ? `<button type="button" class="btn main czgo" data-cz="on">치지직 연결</button>`
         : `<button type="button" class="btn main czgo" data-cz="login">치지직 로그인</button>`
+  // 시험 단추는 개발자 모드에서만 (2026-09-26 — devmode.ts)
+  const dev = isDev()
   const rows = DONATE_EVENTS.map(
     (e, i) =>
       `<div class="czr"><input type="number" min="0" step="500" data-amt="${i}" value="${c.amounts[i]}" title="0 이면 끕니다"><b>${e.name}</b><span title="${e.desc}">${e.desc}</span>` +
-      `<button type="button" class="lnk" data-try="${i}" title="이 금액으로 시험 후원 — 던전에서 일어납니다">시험</button></div>`,
+      (dev ? `<button type="button" class="lnk" data-try="${i}" title="이 금액으로 시험 후원 — 던전에서 일어납니다">시험</button>` : '<span></span>') +
+      `</div>`,
   ).join('')
   // 응원 금액표 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") — 후원 글에 !응원 이면 이 표로
   const cheers = CHEER_EVENTS.map(
     (e, i) =>
       `<div class="czr cheer"><input type="number" min="0" step="500" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><span title="${e.desc}">${e.desc}</span>` +
-      `<button type="button" class="lnk" data-cheertry="${i}" title="이 금액 + !응원 으로 시험 후원 — 던전에서 일어납니다">시험</button></div>`,
+      (dev ? `<button type="button" class="lnk" data-cheertry="${i}" title="이 금액 + !응원 으로 시험 후원 — 던전에서 일어납니다">시험</button>` : '<span></span>') +
+      `</div>`,
   ).join('')
   return (
     `<div class="czhead"><i class="czdot" data-st="${st}"></i><h3>치지직 방송 연동</h3><span class="czs" data-st="${st}">${STATUS_LABEL[st]}</span>` +
@@ -199,8 +208,10 @@ function panelHtml(): string {
     `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
-    `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
-    `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요. 창은 닫히지 않으니 여러 번 눌러 보세요.</p>` +
+    (dev
+      ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
+        `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요. 창은 닫히지 않으니 여러 번 눌러 보세요. 여럿이 하는 판에서는 방장만 됩니다.</p>`
+      : '') +
     `<div class="czh"><b>💚 후원 글에 !응원 입력 — 금액 → 효과</b></div>` +
     `<div class="czt">${cheers}</div>` +
     `<p class="czn">후원 글에 <b>!응원</b> 입력 → 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것 · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
@@ -252,7 +263,10 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         saveStreamCfg(c)
         chzzkDisconnect()
       } else if (a === 'logout') chzzkLogout()
-      else if (a === 'chat') {
+      else if ((a === 'chat' || a === 'join') && stream.testBlock?.()) {
+        flashBtn(b, stream.testBlock!()!)
+        return
+      } else if (a === 'chat') {
         // 게임 밖(로비)에서는 받을 곳이 없다 — 단추에 알린다
         if (!stream.inGame) {
           flashBtn(b, '게임 안에서 됩니다')
@@ -308,6 +322,7 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       }
       if (tg === 'bubbles') c.bubbles = on
       else if (tg === 'holdBoss') c.holdBoss = on
+      else if (tg === 'hideLobbyChat') c.hideLobbyChat = on
       else if (tg === 'maskLinks') c.maskLinks = on
       else if (tg === 'antiSpam') c.antiSpam = on
       else if (tg === 'named') c.named = on
@@ -352,6 +367,8 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
   })
   box.querySelectorAll<HTMLButtonElement>('[data-cheertry]').forEach((b) => {
     b.onclick = () => {
+      const why = stream.testBlock?.()
+      if (why) return flashBtn(b, why)
       const c = loadStreamCfg()
       const i = Number(b.dataset.cheertry)
       const amt = c.cheers[i] || CHEER_EVENTS[i].amount
@@ -362,6 +379,8 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
   })
   box.querySelectorAll<HTMLButtonElement>('[data-try]').forEach((b) => {
     b.onclick = () => {
+      const why = stream.testBlock?.()
+      if (why) return flashBtn(b, why)
       const c = loadStreamCfg()
       const i = Number(b.dataset.try)
       const amt = c.amounts[i] || DONATE_EVENTS[i].amount

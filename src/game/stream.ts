@@ -4,6 +4,7 @@
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
 import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent, cheerEvent } from '../core/donate'
+import { maskText } from './chatfilter'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 
@@ -42,6 +43,8 @@ export interface StreamCfg {
   named: boolean
   /** 보스전(막 보스와 싸우는 중)에는 방해 이벤트를 대기열에 둔다 (2026-09-26 방송 개선 3) */
   holdBoss: boolean
+  /** 대기실 전체 채팅을 숨긴다 — 방 밖의 누구나 쓸 수 있어 방송 화면에 그대로 뜬다 (2026-09-26 방송 개선 4) */
+  hideLobbyChat: boolean
 }
 
 /**
@@ -67,6 +70,7 @@ export function defaultStreamCfg(): StreamCfg {
     antiSpam: true,
     named: true,
     holdBoss: false,
+    hideLobbyChat: false,
   }
 }
 
@@ -98,6 +102,7 @@ export function loadStreamCfg(): StreamCfg {
       antiSpam: v.antiSpam ?? d.antiSpam,
       named: v.named ?? d.named,
       holdBoss: v.holdBoss ?? d.holdBoss,
+      hideLobbyChat: v.hideLobbyChat ?? d.hideLobbyChat,
     }
   } catch {
     return d
@@ -114,6 +119,14 @@ export function cleanBanned(list: unknown[]): string[] {
     if (out.length >= 200) break
   }
   return out
+}
+
+/**
+ * 방송 화면에 뜨는 **사람들의 글 · 이름**도 가린다 (2026-09-26 방송 개선 4 — 대기실 · 방 · 게임 채팅 · 머리 위 말풍선 · 방 목록 · 이름표):
+ * 시청자 글과 같은 가릴 말 목록 · 주소 가리기 (chatfilter.ts)
+ */
+export function maskShown(text: string): string {
+  return text ? maskText(text, loadStreamCfg()) : text
 }
 
 export function saveStreamCfg(c: StreamCfg): void {
@@ -295,6 +308,12 @@ class StreamHub {
    * 8초 기다렸다 조용히 버려서, 아무 일도 안 일어난 것처럼 보였다)
    */
   sayBlock: (() => string | null) | null = null
+
+  /**
+   * 게임(세션)이 넣는다: 시험 후원 · 채팅 · 참여를 막는 까닭 — 여럿이 하는 판에서 **방장이 아니면** 막는다
+   * (2026-09-26 사용자: "악성 시청자가 같이 게임하는데 게임을 망치는 게 가능하니까"). 되면 null
+   */
+  testBlock: (() => string | null) | null = null
 
   chat(c: StreamChat): void {
     this.note()

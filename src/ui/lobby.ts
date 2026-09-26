@@ -35,6 +35,7 @@ import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { ChatBox, cleanChat } from './chat'
 import { StreamBadge, openStreamPanel } from './streamPanel'
+import { loadStreamCfg, maskShown } from '../game/stream'
 import { SessionConfig } from '../game/session'
 
 export interface LobbyHandlers {
@@ -188,6 +189,7 @@ export class Lobby {
           <div class="panel lobbychat">
             <h2>💬 대기실 채팅 <span class="k">로비에 접속한 모두</span></h2>
             <div class="lchat" id="lobbychat"></div>
+            <p class="lchat-hid">방송 화면이라 숨겼습니다 — 치지직 창 "대기실 전체 채팅 숨기기"에서 다시 보이게 합니다.</p>
           </div>
           <div class="d2-foot">
             <p id="net-notice">서버가 없는 게임입니다 — <b>게임을 만든 사람의 연결이 곧 게임</b>이라, 만든 사람이 나가면 게임도 닫힙니다(캐릭터는 저장돼 있다). 가능하면 유선 PC 에서 만들어 주세요.</p>
@@ -586,6 +588,13 @@ export class Lobby {
     for (const l of link.chatHistory()) chat.add(l.nick, l.text, l.mine ? 'me' : 'ally')
     link.onChat((l) => this.lobbyChat?.add(l.nick, l.text, l.mine ? 'me' : 'ally'))
     this.lobbyChat = chat
+    this.applyLobbyChatHide()
+  }
+
+  /** 방송 중 대기실 전체 채팅 숨기기 (치지직 창 — 2026-09-26 방송 개선 4). 칸은 그대로 두고 줄만 감춘다(화면이 들썩이지 않게) */
+  private applyLobbyChatHide(): void {
+    const panel = this.host.querySelector('.panel.lobbychat') as HTMLElement | null
+    panel?.classList.toggle('hid', loadStreamCfg().hideLobbyChat)
   }
 
   private openLobbyList(): void {
@@ -692,7 +701,7 @@ export class Lobby {
         const meta = [arenaRoom ? '투기장' : '던전', ...rule, ...power, m, `${r.count}/${r.max}명`]
         return `<div class="room">
           <div class="rmain">
-            <div class="rtop"><span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(r.hostName.trim()) : c ? c.name : r.hostChar}</b>의 방</span>${st}</div>
+            <div class="rtop"><span class="rhost"><b>${r.hostName && r.hostName.trim() ? esc(maskShown(r.hostName.trim())) : c ? c.name : r.hostChar}</b>의 방</span>${st}</div>
             <div class="rmeta">${meta.map((t) => `<span>${esc(String(t))}</span>`).join('')}</div>
           </div>
           <span class="ract"><button class="btn" data-code="${r.code}" ${canJoin ? '' : 'disabled'}>${r.state === 'playing' ? '난입' : '참가'}</button></span>
@@ -1231,7 +1240,7 @@ export class Lobby {
     const h = this.members[0]
     if (!h) return '호스트'
     const nick = (h.name ?? '').trim()
-    if (nick) return esc(nick)
+    if (nick) return esc(maskShown(nick))
     const c = (CHARACTERS as Record<string, { name: string } | undefined>)[h.char]
     return c ? c.name : '호스트'
   }
@@ -1336,7 +1345,7 @@ export class Lobby {
       const roleChip = role ? `<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span>` : ''
       const who = (i === 0 ? '방장' : `${i + 1}번`) + (mine ? ' · 나' : '')
       const badge = teams ? `<span class="team ${m.team === 0 ? 'team-a' : 'team-b'}">${m.team === 0 ? 'A팀' : 'B팀'}</span>` : ''
-      const nick = (m.name ?? '').trim()
+      const nick = maskShown((m.name ?? '').trim())
       // 레벨 · 템 수준 (2026-09-20 요청): 누가 얼마나 키웠는지 보고 자리를 고르라고
       const power = m.sheet ? `<span class="pw">Lv ${m.sheet.level ?? 1} · 템 ${gearScore(m.sheet.equip)}</span>` : ''
       // 방장만: 다른 사람 칸에 "내보내기" (2026-09-25 방송 개선 2 — 한 번 더 눌러야 내보낸다)
@@ -1513,7 +1522,7 @@ export class Lobby {
   private memberName(id: string): string {
     const m = this.members.find((x) => x.id === id)
     if (!m) return id === this.link?.selfId ? this.nick || '나' : '손님'
-    const nick = (m.name ?? '').trim()
+    const nick = maskShown((m.name ?? '').trim())
     return nick || ((CHARACTERS as Record<string, { name: string } | undefined>)[m.char]?.name ?? m.char)
   }
 
@@ -1541,7 +1550,10 @@ export class Lobby {
   /** 치지직 방송 연동 창 */
   private openCz(): void {
     if (this.czClose) return
-    this.czClose = openStreamPanel(this.host, () => (this.czClose = null))
+    this.czClose = openStreamPanel(this.host, () => {
+      this.czClose = null
+      this.applyLobbyChatHide()
+    })
   }
 
   dispose(): void {

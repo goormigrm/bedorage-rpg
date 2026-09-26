@@ -3,6 +3,8 @@
 // 대화 줄은 왼쪽에 쌓이고 몇 초 뒤 흐려진다(싸움 화면을 가리지 않게). 입력칸이 열려 있는 동안은 지난 줄이 모두 보인다.
 // 대기실은 붙박이(docked): 입력칸이 늘 있고 줄이 사라지지 않는다. 대기실 대화는 게임을 시작하면 게임 안 채팅으로 이어진다.
 
+import { maskShown } from '../game/stream'
+
 /** 한 줄 최대 글자 수. 받는 쪽도 이만큼 자른다 (고친 클라이언트가 긴 글을 보내도 화면이 덮이지 않게) */
 export const CHAT_MAX = 120
 /** 보내기 간격 (도배 막기) */
@@ -126,6 +128,8 @@ export class ChatBox {
   }
 
   private push(line: ChatLine): void {
+    // 가릴 말 · 주소는 줄을 쌓을 때 가린다 — 대기실 · 방 · 게임 채팅 모두 (방송 화면에 그대로 뜬다 — 2026-09-26 방송 개선 4)
+    line = { ...line, name: maskShown(line.name), text: maskShown(line.text) }
     const { name, kind } = line
     if (!line.text) return
     const el = document.createElement('div')

@@ -1055,6 +1055,10 @@ body { background: var(--bg); }
 .dontable .dh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
 .dontable .dh.join { margin-top: 5px; color: #8fd8ff; }
 .dontable .dw.hold { color: #ffd24a; font-weight: 800; }
+/* 대기실 전체 채팅 숨기기 (방송 중 — 2026-09-26) */
+.lobbychat .lchat-hid { display: none; margin: 10px 4px; font-size: 12px; color: #8a9a90; line-height: 1.5; }
+.lobbychat.hid .lchat { display: none; }
+.lobbychat.hid .lchat-hid { display: block; }
 /* 금액 · 이름 · (걸려 있으면) 남은 초 — 줄바꿈 없이 */
 .dontable .dr { display: grid; grid-template-columns: 82px auto 34px; gap: 8px; align-items: baseline; line-height: 1.5; padding: 0 4px; border-radius: 2px; white-space: nowrap; }
 .dontable .da { font: 700 12px "IBM Plex Mono", monospace; color: #ffc94a; text-align: right; white-space: nowrap; }
@@ -1132,6 +1136,9 @@ body { background: var(--bg); }
 .cztg { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
 .cztg b { font-weight: 800; color: #d8e8e0; }
 .czbtns { margin-top: 10px; }
+/* 개발자 모드 안내 (Ctrl + Shift + D — game/devmode.ts) */
+.devtoast { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 200; padding: 8px 16px; border-radius: 6px; pointer-events: none;
+  font: 800 13px "IBM Plex Sans KR", sans-serif; color: #04130d; background: #00ffa3; box-shadow: 0 4px 18px rgba(0,0,0,.5); }
 /* 시험 단추가 눌릴 때마다 한 번 반짝 (창은 닫히지 않는다 — 2026-09-26) */
 .czpanel .btn.sent { animation: czsent .45s ease-out; }
 @keyframes czsent { 0% { box-shadow: 0 0 0 0 rgba(0,255,163,.7); } 100% { box-shadow: 0 0 0 10px rgba(0,255,163,0); } }

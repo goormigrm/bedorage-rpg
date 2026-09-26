@@ -7,7 +7,7 @@ import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -467,6 +467,8 @@ export class Session {
       (d) => this.onStreamDonation(d),
     )
     stream.sayBlock = () => this.sayBlock()
+    // 시험 후원 · 채팅 · 참여는 방장만 (같이 하는 사람이 시험 단추로 판을 망치지 못하게 — 2026-09-26)
+    stream.testBlock = () => (this.cfg.link && !this.isHost ? '시험은 방장만 됩니다' : null)
     this.czWasOn = stream.status === 'on'
     this.unlistenCzStatus = stream.onStatus((st) => this.onCzStatus(st))
     this.czBadge = new StreamBadge(this.stage.querySelector('.game-ui .top-right') as HTMLElement, () => this.openCz(), true)
@@ -589,7 +591,8 @@ export class Session {
     return base.map((n, i) => {
       if (this.state.players[i].vacant) return '빈 자리'
       const nick = this.cfg.names?.[i]?.trim()
-      return nick ? nick.slice(0, 8) : n
+      // 이름표 · 파티 칸 · 알림에 뜨는 닉네임도 가릴 말을 가린다 (방송 화면 — 2026-09-26)
+      return nick ? maskShown(nick.slice(0, 8)) : n
     })
   }
 
@@ -1623,7 +1626,7 @@ export class Session {
         const text = cleanChat(m.text)
         if (!text || m.p === this.cfg.localPlayer || this.peerIndex.get(from) !== m.p) break
         this.chat?.add(this.names[m.p] ?? `${m.p + 1}번`, text, 'ally')
-        this.renderer.showSay(m.p, text)
+        this.renderer.showSay(m.p, maskShown(text))
         this.sfx.blip()
         break
       }
@@ -2434,7 +2437,7 @@ export class Session {
     const me = this.state.players[lp]
     if (!me || me.left || !this.cfg.link) return false
     this.chat?.add(this.names[lp] ?? '나', text, 'me')
-    this.renderer.showSay(lp, text)
+    this.renderer.showSay(lp, maskShown(text))
     this.cfg.link.sendCtl({ t: 'chat', p: lp, text })
     return true
   }
@@ -2741,6 +2744,7 @@ export class Session {
     this.unlistenCzStatus?.()
     this.unlistenStream = null
     if (stream.sayBlock) stream.sayBlock = null
+    stream.testBlock = null
     for (const f of this.unlistenCz) f()
     this.unlistenCz = []
     this.czClose?.()

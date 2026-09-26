@@ -7,8 +7,11 @@ import { openLobby } from './net/room'
 import { Lobby } from './ui/lobby'
 import { connect, handleOAuthRedirect, hasToken } from './net/chzzk'
 import { loadStreamCfg, saveStreamCfg } from './game/stream'
+import { installDevKey } from './game/devmode'
 
 const app = document.getElementById('app')!
+// 개발자 모드 (Ctrl + Shift + D — 치지직 창의 시험 단추)
+installDevKey()
 /**
  * 공용 로비 통로는 **페이지가 사는 동안 하나만** 연다(2026-09-06). 전에는 세션이 끝날 때 통로를 닫고(200ms 뒤 leave) 새 로비가 곧바로
  * 다시 열었는데, Trystero 가 같은 방을 캐시하고 있어 늦게 도는 leave 가 새 통로까지 죽였다 → 판이 끝나고 다시 만든 방이
