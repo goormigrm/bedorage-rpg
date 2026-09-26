@@ -325,11 +325,40 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   p.ads = false
   p.fx[FX_CHARGE] = 0
   p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
+  // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록")
+  if (from !== to) carryAllies(state, map, p, from, a)
   // 마을에 들어서면 그 마을의 웨이포인트가 열린다
   if (isTown(to)) p.wps |= wpBit(to)
   // 이 게임에서 누군가 가 본 가장 뒤 막 (난입한 사람이 설 마을을 정한다)
   state.act = Math.max(state.act, areaDef(to).act)
   state.events.push({ type: 'areaEnter', p: p.id, area: to, from, how })
+}
+
+/**
+ * p 가 부른 응원 아군을 지역 from 에서 to 로 옮겨 p 곁에 둥글게 세운다(벽을 넘지 않게). 남은 시간 · 공격 대기는 그대로.
+ * 지역 배열은 묶였다 풀렸다 하므로 풀어 둔 채(unbind) 지역 쪽 칸을 직접 고치고, 판 밖이면 도로 묶는다
+ */
+function carryAllies(state: GameState, map: GameMap, p: PlayerState, from: number, to: AreaState): void {
+  unbind(state)
+  const src = findArea(state, from)
+  const mine = src?.allies?.filter((al) => al.by === p.id) ?? []
+  if (src && mine.length > 0) {
+    const rest = src.allies!.filter((al) => al.by !== p.id)
+    if (rest.length > 0) src.allies = rest
+    else delete src.allies
+    to.allies ??= []
+    mine.forEach((al, i) => {
+      if (to.allies!.length >= ALLY_CAP) return
+      const ang = (Math.round((i * 1024) / mine.length) + 256) & 1023
+      const at = moveCircle(map, p.x, p.y, MONSTER_LIST[al.kind].r, cosA(ang) * 56, sinA(ang) * 56)
+      al.x = at.x
+      al.y = at.y
+      al.target = -1
+      al.moving = 0
+      to.allies!.push(al)
+    })
+  }
+  if (!stepping) bindPrimary(state)
 }
 
 function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {

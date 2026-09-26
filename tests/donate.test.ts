@@ -374,3 +374,34 @@ describe('같은 방해 효과가 이어 붙는 한도', () => {
     expect(Math.round(p.don![DON_DARK] / 60)).toBeLessThanOrEqual(90)
   })
 })
+
+// 2026-09-26 사용자: "응원으로 소환된 아군 괴물 · 아군 보스가 맵 이동 시 안 따라온다"
+describe('응원 아군은 부른 사람을 따라 지역을 건너간다', () => {
+  it('출구로 옮기면 아군 넷이 새 지역의 곁에 · 남은 시간은 그대로 · 옛 지역에는 없다 · 같은 입력이면 같은 판', () => {
+    const run = () => {
+      const g = game(93)
+      toField(g)
+      const p = g.s.players[0]
+      g.donate(CHEER_EVENTS[2].id | (4 << 4))
+      expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
+      for (let t = 0; t < 30; t++) g.run(() => idle())
+      const left = (areaView(g.s, 1).allies ?? []).map((a) => a.t)
+      // 다른 출구(마을이 아닌 곳)로
+      const ex = areaLayout(1, g.mapOf(1)).exits.find((x) => x.to !== 0)!
+      p.x = ex.x
+      p.y = ex.y
+      p.exitLock = 0
+      p.btnPrev = 0
+      g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
+      expect(p.area).toBe(ex.to)
+      const moved = areaView(g.s, ex.to).allies ?? []
+      expect(moved.length).toBe(4)
+      for (const a of moved) expect(Math.hypot(a.x - p.x, a.y - p.y)).toBeLessThan(120)
+      expect(moved.map((a) => a.t).every((t, i) => t <= left[i] && t > left[i] - 5)).toBe(true)
+      expect(areaView(g.s, 1).allies ?? []).toEqual([])
+      for (let t = 0; t < 60; t++) g.run(() => idle())
+      return hashState(g.s)
+    }
+    expect(run()).toBe(run())
+  })
+})
