@@ -2,13 +2,13 @@
 // 소환한 보스는 막 보스 처치로 치지 않는다 · 손 떨림 · 거꾸로 · 봉인 · 광폭화 · 암흑
 import { describe, expect, it } from 'vitest'
 import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
-import { GameMap } from '../src/core/map'
+import { GameMap, isWallAt } from '../src/core/map'
 import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
 import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, donateEvent } from '../src/core/donate'
+import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, donateEvent, effectFits } from '../src/core/donate'
 import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -46,6 +46,34 @@ function toField(g: ReturnType<typeof game>): void {
 const summoned = (s: GameState) => areaView(s, 1).monsters.filter((m) => m.sum !== undefined && m.hp > 0)
 
 describe('후원 이벤트 — 소환', () => {
+  it('맵 가장자리(출구)에서 불러도 소환 괴물은 모두 맵 안 · 벽 밖에 나온다 (2026-09-27 — 벽 · 테두리를 건너뛰어 맵 밖에 나왔다)', () => {
+    const g = game(101)
+    toField(g)
+    const p = g.s.players[0]
+    const map = g.mapOf(1)
+    let seq = 0
+    let seen = 0
+    // 출구마다 · 출구에서 한 칸씩 안쪽으로 — 부를 때마다 모두 맵 안인지 보고 치운다
+    for (const e of areaLayout(1, map).exits) {
+      for (let k = 0; k < 4; k++) {
+        p.x = e.x + (e.arrive.x - e.x) * (k / 3)
+        p.y = e.y + (e.arrive.y - e.y) * (k / 3)
+        g.donate(ev('horde', seq++ & 15))
+        for (const m of areaView(g.s, 1).monsters) {
+          if (m.sum === undefined || m.hp <= 0) continue
+          seen++
+          expect(m.x).toBeGreaterThan(0)
+          expect(m.y).toBeGreaterThan(0)
+          expect(m.x).toBeLessThan(map.pw)
+          expect(m.y).toBeLessThan(map.ph)
+          expect(isWallAt(map, m.x, m.y)).toBe(false)
+          m.hp = 0
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(40)
+  })
+
   it('이벤트는 열 가지이고 금액이 오를수록 세다(번호 · 금액 순서가 같다)', () => {
     expect(DONATE_EVENTS.length).toBe(10)
     for (let i = 1; i < DONATE_EVENTS.length; i++) expect(DONATE_EVENTS[i].amount).toBeGreaterThan(DONATE_EVENTS[i - 1].amount)
@@ -462,5 +490,66 @@ describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
     expect(by).toBeGreaterThanOrEqual(0)
     const killer = areaView(g.s, 1).monsters.find((m) => m.id === by)
     expect(killer?.sum).toBe(4)
+  })
+})
+
+// 2026-09-27 사용자: "후원 시 최대 시간에 의해서 아예 버려지는 건 별로 — 시간만큼 기다렸다가 누적해 놨다가 계속 반영되도록"
+describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () => {
+  const T = 60
+  const don = (slot: number, sec: number) => {
+    const d = [0, 0, 0, 0]
+    d[slot] = sec * T
+    return d
+  }
+  it('남은 길이 + 이번 길이가 한도 안일 때만 들어간다 (암흑 30초 · 한도 60초)', () => {
+    expect(effectFits(ev('dark'), undefined, 60, 0)).toBe(true)
+    expect(effectFits(ev('dark'), don(DON_DARK, 30), 60, 0)).toBe(true)
+    expect(effectFits(ev('dark'), don(DON_DARK, 31), 60, 0)).toBe(false)
+    // 줄어들면 다시 들어간다 — 버려지지 않고 이어진다
+    expect(effectFits(ev('dark'), don(DON_DARK, 29), 60, 0)).toBe(true)
+    // 다른 칸이 차 있어도 상관없다
+    expect(effectFits(ev('dark'), don(DON_SEAL, 60), 60, 0)).toBe(true)
+    expect(effectFits(ev('seal'), don(DON_SEAL, 1), 30, 0)).toBe(false)
+    expect(effectFits(ev('invert'), don(DON_INVERT, 10), 30, 0)).toBe(true)
+  })
+  it('화면 흔들림은 15초까지 · 지옥문은 암흑 20초 몫을 본다 · 광폭화는 끝난 뒤에', () => {
+    expect(effectFits(ev('shake'), don(DON_SHAKE, 10), 120, 0)).toBe(true)
+    expect(effectFits(ev('shake'), don(DON_SHAKE, 11), 120, 0)).toBe(false)
+    expect(effectFits(ev('hell'), don(DON_DARK, 41), 60, 0)).toBe(false)
+    expect(effectFits(ev('hell'), don(DON_DARK, 40), 60, 0)).toBe(true)
+    expect(effectFits(ev('rage'), undefined, 60, 1)).toBe(false)
+    expect(effectFits(ev('rage'), undefined, 60, 0)).toBe(true)
+  })
+  it('소환 · 응원은 이 조건과 상관없다 · 기다리는 동안 뒤의 다른 후원은 먼저 간다', () => {
+    const full = [SHAKE_MAX, DON_CAP_DEFAULT * T, DON_CAP_DEFAULT * T, DON_CAP_DEFAULT * T]
+    expect(effectFits(ev('horde'), full, 60, 999)).toBe(true)
+    expect(effectFits(CHEER_EVENTS[0].id, full, 60, 999)).toBe(true)
+    const pending = [{ ev: ev('dark') }, { ev: ev('dark') }, { ev: ev('horde') }]
+    const d = don(DON_DARK, 45)
+    expect(nextDonation(pending, false, (e) => effectFits(e, d, 60, 0))).toBe(2)
+    // 암흑이 30초 밑으로 줄면 먼저 온 암흑부터
+    expect(nextDonation(pending, false, (e) => effectFits(e, don(DON_DARK, 20), 60, 0))).toBe(0)
+  })
+  it('sim 에서도: 차례로 넣으면 한도 안에서 모두 이어 붙는다 (버린 몫 없음)', () => {
+    const g = game(78)
+    toField(g)
+    const p = g.s.players[0]
+    let sent = 0
+    let seq = 0
+    let most = 0
+    // 암흑 다섯(150초)을 한도 60초로 — 들어갈 수 있을 때만 넣는다 (그동안 쓰러지지 않게 체력을 채운다)
+    for (let t = 0; t < 200 * 60 && sent < 5; t++) {
+      p.hp = p.maxHp
+      most = Math.max(most, p.don?.[DON_DARK] ?? 0)
+      if (effectFits(ev('dark'), p.don, DON_CAP_DEFAULT, 0)) {
+        g.donate(ev('dark', seq++ & 15))
+        sent++
+      } else g.run(() => idle())
+      expect(p.don?.[DON_DARK] ?? 0).toBeLessThanOrEqual(DON_CAP_DEFAULT * T)
+    }
+    expect(sent).toBe(5)
+    // 다섯째가 들어간 뒤: 앞 것들이 줄어든 만큼 이어 붙어 한도 가까이 — 넘는 몫은 없었다
+    expect(most).toBeGreaterThan(50 * T)
+    expect(p.don![DON_DARK]).toBeGreaterThan(29 * T)
   })
 })

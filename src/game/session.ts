@@ -6,7 +6,7 @@ import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../c
 import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
-import { CHEER_RE, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent } from '../core/donate'
+import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
@@ -2069,8 +2069,11 @@ export class Session {
     this.queueDonation(e.id, nick, text)
   }
 
-  /** 대기열 상한 — 넘치면(1분 넘게 밀린다) 이벤트 없이 감사 말풍선만 */
-  private static readonly DON_QUEUE_MAX = 60
+  /**
+   * 대기열 상한 — 넘치면 이벤트 없이 감사 말풍선만. 60 → 200 (2026-09-27 — 한도에 걸린 효과도 버리지 않고 기다리게 했다 ·
+   * 분당 2 ~ 3건이 몰리면 60건은 금방 찬다)
+   */
+  private static readonly DON_QUEUE_MAX = 200
 
   private queueDonation(ev: number, nick: string, text: string): void {
     this.donPending.push({ ev, nick, text })
@@ -2166,17 +2169,26 @@ export class Session {
     return true
   }
 
-  /** 소환형은 소환 상한에 걸리면 기다린다 · 막 보스는 한 번에 하나 */
+  /**
+   * 소환형은 소환 상한에 걸리면 기다린다 · 막 보스는 한 번에 하나 ·
+   * 사람에게 거는 효과는 한도(같은 방해 효과 최대)를 넘으면 버리지 않고 앞 효과가 줄어들 때까지 기다린다 · 광폭화는 끝날 때까지 (effectFits)
+   */
   private canRunDonation(ev: number): boolean {
     const e = donateEvent(ev)
-    if (!e || !SUMMON_KEYS.has(e.key)) return true
+    if (!e || cheerEvent(ev)) return true
     let summoned = 0
     let boss = false
+    let rage = 0
     for (const m of this.view().monsters) {
-      if (m.hp <= 0 || m.sum === undefined) continue
+      if (m.hp <= 0) continue
+      if ((m.rage ?? 0) > rage) rage = m.rage ?? 0
+      if (m.sum === undefined) continue
       summoned++
       if (MONSTER_LIST[m.kind].boss) boss = true
     }
+    const me = this.state.players[this.cfg.localPlayer]
+    if (!effectFits(ev, me?.don, me?.donCap ?? DON_CAP_DEFAULT, rage)) return false
+    if (!SUMMON_KEYS.has(e.key)) return true
     if (summoned >= SUMMON_CAP - 4) return false
     if ((e.key === 'boss' || e.key === 'hell') && boss) return false
     return true
@@ -2412,7 +2424,7 @@ export class Session {
     const wait = held
       ? `<div class="dw hold">⏸ ${stream.hold ? '방해 이벤트 잠깐 멈춤' : '보스전 — 방해 이벤트 대기'}${this.donPending.length > 0 ? ` · 대기 ${this.donPending.length}` : ''}</div>`
       : this.donPending.length > 0
-        ? `<div class="dw">대기 ${this.donPending.length} — 던전에서 일어납니다</div>`
+        ? `<div class="dw">대기 ${this.donPending.length} — ${this.canDonateNow() ? '차례로 일어납니다' : '던전에서 일어납니다'}</div>`
         : ''
     // 후원 글에 "!응원" — 돕는 후원도 있다는 것을 시청자에게 알린다. 금액마다 단계가 다르다 (2026-09-23)
     const cr = cheerRows(cfg)

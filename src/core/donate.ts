@@ -94,7 +94,7 @@ export const DON_TICKS: Record<number, number> = {
 export const DON_MAX = 120 * TICK_RATE
 /**
  * 같은 방해 효과가 이어 붙는 한도(초) — **방송인이 정한다** (2026-09-25 사용자 고른 방송 개선 5: 암흑 · 거꾸로 · 봉인이 몰리면 2분까지 이어 붙었다).
- * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 화면 흔들림은 SHAKE_MAX(30초)를 넘지 않는다
+ * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 화면 흔들림은 SHAKE_MAX(15초)를 넘지 않는다. 넘는 후원은 버리지 않고 기다린다(effectFits — 2026-09-27)
  */
 export const DON_CAP_CHOICES = [30, 60, 90, 120]
 export const DON_CAP_DEFAULT = 60
@@ -111,5 +111,25 @@ export const RAGE_SPEED = 1.3
  */
 /** 화면 흔들림이 몰려도 이어 붙는 끝 (30 → 15초 — 2026-09-26 멀미) */
 export const SHAKE_MAX = 15 * TICK_RATE
+/**
+ * 사람에게 거는 효과(화면 흔들림 · 암흑 · 거꾸로 · 봉인)가 한도에 걸리면 **버리지 않고 기다린다** (2026-09-27 사용자: "후원 시 최대 시간에
+ * 의해서 아예 버려지는 건 별로 — 시간만큼 기다렸다가 누적해 놨다가 계속 반영되도록"). 지금 남은 길이 + 이번 길이가 한도 안일 때만 판에 넣는다
+ * → 앞 효과가 줄어드는 대로 차례로 이어진다(후원자 이름 알림도 그때 뜬다). 지옥문의 암흑도 같다.
+ * 광폭화는 걸려 있는 동안 기다린다(겹치면 60초로 다시 채울 뿐이라 앞 것이 버려졌다). 소환 자리 · 막 보스 하나는 session.canRunDonation 이 본다.
+ * don = 방송인(후원을 받은 사람)의 PlayerState.don · capSec = 그 사람의 한도(초) · rageLeft = 그 지역 괴물의 가장 긴 광폭화(틱)
+ */
+export function effectFits(id: number, don: readonly number[] | undefined, capSec: number, rageLeft: number): boolean {
+  const e = donateEvent(id)
+  if (!e) return true
+  if (e.key === 'rage') return rageLeft <= 0
+  const slot = e.key === 'shake' ? DON_SHAKE : e.key === 'dark' || e.key === 'hell' ? DON_DARK : e.key === 'invert' ? DON_INVERT : e.key === 'seal' ? DON_SEAL : -1
+  if (slot < 0) return true
+  const ticks = e.key === 'hell' ? HELL_DARK_TICKS : DON_TICKS[slot]
+  const cap = Math.min(DON_MAX, capSec * TICK_RATE)
+  const max = slot === DON_SHAKE ? Math.min(SHAKE_MAX, cap) : cap
+  const left = don?.[slot] ?? 0
+  // 한 번 길이가 한도 이상이면(생기지 않지만) 다 끝난 뒤에 — 영영 못 들어가지 않게
+  return left <= 0 || left + ticks <= max
+}
 /** 암흑일 때 시야 (타일 — 보통 13) */
 export const DARK_VIEW_TILES = 2.6

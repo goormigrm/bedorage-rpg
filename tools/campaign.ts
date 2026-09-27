@@ -8,13 +8,16 @@
 //   npx vite-node tools/campaign.ts                          (혼자 · 시드 2)
 //   npx vite-node tools/campaign.ts -- party=2 seeds=5 act=2  (둘 · 시드 5 · 2막만 — 레벨은 그 막 시작 레벨로 맞춘다)
 //   npx vite-node tools/campaign.ts -- party=4 boss=1          (막 보스 방만 — 들어갈 때 레벨 = 그 방 레벨)
+//   npx vite-node tools/campaign.ts -- party=4 don=150         (방송인이 한 시간에 후원 150건(분당 2.5건)을 받는다고 치고 — 사람 시간 기준)
+//   npx vite-node tools/campaign.ts -- party=4 don=150 big=0   (막 보스 · 지옥문 후원은 오지 않는다고 치고)
 import { botInput, makeBot } from '../src/core/bot'
 import { CHARACTERS, CharacterId } from '../src/core/characters'
-import { Input } from '../src/core/input'
+import { CMD_DONATE, Input } from '../src/core/input'
 import { Item, LEVEL_CAP, SLOT_COUNT, Sheet, emptySheet, rollItem, xpNeed } from '../src/core/items'
+import { DON_CAP_DEFAULT, effectFits } from '../src/core/donate'
 import { MONSTER_LIST, isBossLike } from '../src/core/monsters'
-import { makeRng } from '../src/core/rng'
-import { autoAttr, createState, step } from '../src/core/sim'
+import { makeRng, rand } from '../src/core/rng'
+import { SUMMON_CAP, autoAttr, createState, step } from '../src/core/sim'
 import { MAX_RANK, ULT_NODE, defaultBuild, freePoints } from '../src/core/skills'
 import { ACTS, AREAS, QUESTS, buildAreaMap, questPoints } from '../src/core/world'
 
@@ -75,6 +78,37 @@ function build(level: number, bonus: number) {
 
 // boss=1: 막 보스 방만 (2026-09-23 보스 패턴 계측 — 들어갈 때 레벨 = 그 방 레벨)
 const BOSS_ONLY = arg('boss', 0) === 1
+// don=N: 방송인(0번 자리)이 **사람 시간으로** 한 시간에 후원 N건을 받는다 (2026-09-27 사용자: "후원으로 몹이 추가된 경우를 생각하면
+// 대략 3시간?" · "분당 2 ~ 3건으로는 잡아야지"). 봇은 사람보다 HUMAN 배 빠르니 봇 시간으로는 N × HUMAN 건. 금액은 처음 값 ·
+// 응원(돕는 것)은 빼고 괴롭히는 것만. 섞임은 가정 — 천 원이 가장 많고 비쌀수록 드물다.
+// 게임(session.pumpStream · canRunDonation)과 같게: 대기열 200건 · 1.5초에 하나 · 소환은 살아 있는 소환이 SUMMON_CAP - 4 를 넘으면 ·
+// 막 보스는 하나 있으면 · 사람에게 거는 효과는 한도에 걸리면(effectFits) 기다린다. 남은 대기열은 다음 지역으로 이어 간다(시드마다).
+// 지역 끝은 원래 괴물로 본다(사람은 보스를 잡으면 남은 소환 졸개를 두고 다음 지역으로 간다) — 소환한 막 보스만은 잡아야 끝
+const DON_PER_H = arg('don', 0)
+const DON_MIX: [number, number][] = [
+  [1, 40], // 좀비 떼 1000
+  [2, 10], // 화면 흔들림 2000
+  [3, 8], // 암흑 3000
+  [4, 15], // 정예 무리 5000
+  [5, 5], // 거꾸로 걷기 7000
+  [6, 12], // 중간보스 10000
+  [7, 3], // 스킬 봉인 20000
+  [8, 3], // 광폭화 30000
+  [9, 3], // 막 보스 50000
+  [10, 1], // 지옥문 100000
+]
+// big=0: 막 보스 · 지옥문(5만 · 10만 원)은 오지 않는다고 치고 (얼마나 드무냐에 따라 시간이 가장 크게 바뀐다)
+if (arg('big', 1) === 0) for (const x of DON_MIX) if (x[0] >= 9) x[1] = 0
+const DON_SUM = DON_MIX.reduce((s, x) => s + x[1], 0)
+const DON_QUEUE_MAX = 200
+const DON_GAP = 90
+const SUMMON_IDS = new Set([1, 4, 6, 9, 10])
+const donQueue = new Map<number, number[]>()
+const pickDon = (r: number) => {
+  let k = r * DON_SUM
+  for (const [id, w] of DON_MIX) if ((k -= w) < 0) return id
+  return 1
+}
 // 막마다 **실제 길 순서**(마을 → links[1] … → 보스 방 — 막마다 한 줄). 번호 순으로 돌면 4막 끓는 구덩이(35)가 보스 뒤에 와서
 // 보스 앞 레벨이 실제보다 낮게 나왔다 (2026-09-27)
 function actPath(act: number): (typeof AREAS)[number][] {
@@ -93,9 +127,10 @@ function actPath(act: number): (typeof AREAS)[number][] {
 }
 const path = ACTS.flatMap((_, i) => (ONLY_ACT < 0 || i === ONLY_ACT ? actPath(i) : [])).filter((a) => !BOSS_ONLY || a.kind === 'boss')
 let carry = ONLY_ACT >= 0 ? totalXp(ACT_START[ONLY_ACT], 0) : 0
+let totalDons = 0
 const rows: { act: number; name: string; lv: number; lvIn: number; lvOut: number; sec: number; deaths: number; kill: number; capped: number }[] = []
 
-console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 끝 = 보스·우두머리 + ${CLEAR * 100}% · 상한 ${CAP_MIN}분`)
+console.log(`파티 ${CHARS.length}명(${CHARS.join('·')}) · 보통 봇 · 시드 ${SEEDS.length}개 · 끝 = 보스·우두머리 + ${CLEAR * 100}% · 상한 ${CAP_MIN}분${DON_PER_H ? ` · 후원 사람 한 시간에 ${DON_PER_H}건` : ''}`)
 console.log('지역                    지역Lv  Lv(들어감→나옴)   봇 분   죽음  잡은%  상한')
 for (const a of path) {
   if (BOSS_ONLY) carry = totalXp(a.level, 0)
@@ -106,6 +141,7 @@ for (const a of path) {
   let killFrac = 0
   let capped = 0
   let gained = 0
+  let dons = 0
   const hurtBy: Record<string, number> = {}
   for (const seed of SEEDS) {
     const sheets: Sheet[] = CHARS.map((c, i) => ({
@@ -126,11 +162,53 @@ for (const a of path) {
     const map = buildAreaMap(seed, a.id)
     const s = createState({ seed, chars: CHARS, area: a.id, sheets }, map)
     const bots = CHARS.map((_, i) => makeBot(seed * 31 + i))
+    const donRng = makeRng(seed * 977 + a.id)
+    const donEvery = DON_PER_H > 0 ? Math.round((3600 * 60) / (DON_PER_H * HUMAN)) : 0
+    let donSeq = 0
+    let donAt = donEvery ? Math.floor(rand(donRng) * donEvery) : -1
+    let donNext = 0
+    const queue = donQueue.get(seed) ?? []
+    donQueue.set(seed, queue)
+    // 지역 사이(마을 · 이동 — 사람 어림의 OVERHEAD 초)에 온 후원은 기다렸다가 이 지역에서 일어난다
+    if (DON_PER_H > 0) {
+      const n = Math.round((DON_PER_H * OVERHEAD) / 3600)
+      for (let k = 0; k < n && queue.length < DON_QUEUE_MAX; k++) queue.push(pickDon(rand(donRng)))
+    }
     const start = s.monsters.length
     const cap = CAP_MIN * 60 * 60
     let t = 0
     for (; t < cap; t++) {
       const inputs: Input[] = CHARS.map((_, i) => botInput(s, map, i, bots[i], 'normal'))
+      // 후원이 온다: 간격은 평균 donEvery 틱 · 0.5 ~ 1.5 배로 흩는다 → 대기열
+      if (t === donAt) {
+        if (queue.length < DON_QUEUE_MAX) queue.push(pickDon(rand(donRng)))
+        donAt = t + Math.max(1, Math.floor(donEvery * (0.5 + rand(donRng))))
+      }
+      // 대기열에서 1.5초에 하나 — 넣을 수 있는 것 중 앞의 것
+      if (queue.length > 0 && t >= donNext && s.players[0].alive) {
+        let summoned = 0
+        let boss = false
+        let rage = 0
+        for (const m of s.monsters) {
+          if (m.hp <= 0) continue
+          rage = Math.max(rage, m.rage ?? 0)
+          if (m.sum === undefined) continue
+          summoned++
+          if (MONSTER_LIST[m.kind].boss) boss = true
+        }
+        const me = s.players[0]
+        const i = queue.findIndex(
+          (ev) =>
+            effectFits(ev, me.don, me.donCap ?? DON_CAP_DEFAULT, rage) &&
+            (!SUMMON_IDS.has(ev) || (summoned < SUMMON_CAP - 4 && !((ev === 9 || ev === 10) && boss))),
+        )
+        if (i >= 0) {
+          const ev = queue.splice(i, 1)[0]
+          inputs[0] = { ...inputs[0], cmd: CMD_DONATE, arg: ev | ((donSeq++ & 15) << 4) }
+          dons++
+          donNext = t + DON_GAP
+        }
+      }
       step(s, map, inputs)
       for (const e of s.events) {
         if (e.type === 'death') deaths++
@@ -141,8 +219,9 @@ for (const a of path) {
         }
       }
       if (t % 60 === 0) {
-        const alive = s.monsters.filter((m) => m.hp > 0)
-        if (!alive.some((m) => isBossLike(m)) && alive.length <= start * (1 - CLEAR)) break
+        const alive = s.monsters.filter((m) => m.hp > 0 && m.sum === undefined)
+        const sumBoss = s.monsters.some((m) => m.hp > 0 && m.sum !== undefined && MONSTER_LIST[m.kind].boss)
+        if (!sumBoss && !alive.some((m) => isBossLike(m)) && alive.length <= start * (1 - CLEAR)) break
       }
     }
     if (t >= cap) {
@@ -155,11 +234,12 @@ for (const a of path) {
       console.log(`   ⚠ 상한: 남은 ${JSON.stringify(left)} · 가까운 거리 ${near.join(',')} · 사람 (${Math.round(p.x)},${Math.round(p.y)}) hp ${p.hp}`)
     }
     secs += t / 60
-    killFrac += 1 - s.monsters.filter((m) => m.hp > 0).length / Math.max(1, start)
+    killFrac += 1 - s.monsters.filter((m) => m.hp > 0 && m.sum === undefined).length / Math.max(1, start)
     const p = s.players[0]
     gained += totalXp(p.level, p.xp) - totalXp(lv0.level, lv0.xp)
   }
   carry += gained / SEEDS.length
+  totalDons += dons / SEEDS.length
   const n = SEEDS.length
   const row = { act: a.act, name: `${a.act + 1}막 ${a.name}`, lv: a.level, lvIn: lv0.level, lvOut: fromXp(carry).level, sec: secs / n, deaths: deaths / n, kill: killFrac / n, capped }
   rows.push(row)
@@ -182,4 +262,4 @@ for (let act = 0; act < 4; act++) {
   all += human
   console.log(`${act + 1}막  ${(bot / 60).toFixed(0).padStart(5)}분   ${(human / 60).toFixed(0).padStart(5)}분 (${(human / 3600).toFixed(2)}시간)   ${r.reduce((s, x) => s + x.deaths, 0).toFixed(1)}`)
 }
-console.log(`합계 사람 어림 ${(all / 3600).toFixed(2)}시간`)
+console.log(`합계 사람 어림 ${(all / 3600).toFixed(2)}시간${DON_PER_H ? ` · 판에 들어간 후원 ${totalDons.toFixed(0)}건(시드 평균 · 끝에 대기 ${[...donQueue.values()].reduce((s, q) => s + q.length, 0) / SEEDS.length}건)` : ''}`)

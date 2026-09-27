@@ -12,9 +12,14 @@ export function moveCircle(
   dx: number,
   dy: number,
 ): { x: number; y: number } {
-  // 한 번에 너무 멀리 가면 터널링 → 절반씩 두 번
+  // 한 번에 너무 멀리 가면 터널링 → 한 걸음을 몸 반지름의 0.8 배까지로 나눠 걷는다 (한 틱 걸음은 예전처럼 한 번 · 두 번).
+  // 예전에는 많아야 두 번으로 나눠, 멀리 한 번에 옮기는 것(후원 소환 자리 5 ~ 8칸 · 응원 구슬 · 고기 비 …)이 벽 · 맵 테두리를 건너뛰었다 —
+  // 맵 밖은 온통 벽이라 밀어내기가 더 밖으로 밀어 끝없이 멀어졌다 (2026-09-27 계측: 소환 좀비가 맵 밖에 나와 지역이 끝나지 않았다)
   if (r <= TILE * 0.6) {
-    const steps = Math.abs(dx) > r * 0.8 || Math.abs(dy) > r * 0.8 ? 2 : 1
+    const x0 = x
+    const y0 = y
+    const lim = Math.max(4, r * 0.8)
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / lim))
     for (let s = 0; s < steps; s++) {
       x += dx / steps
       y += dy / steps
@@ -25,6 +30,8 @@ export function moveCircle(
         if (!res.moved) break
       }
     }
+    // 그래도 맵 밖이면 그 움직임은 없던 것으로
+    if (x < 0 || y < 0 || x > map.pw || y > map.ph) return { x: x0, y: y0 }
     return { x, y }
   }
   // 타일보다 큰 몸(거대한 막 보스 — 몸 반지름 2칸 안팎): 반 칸보다 잘게 나눠 움직이고 여러 번 밀어낸다.
