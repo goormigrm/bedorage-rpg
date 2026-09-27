@@ -673,7 +673,7 @@ export class Session {
     const a = areaDef(this.viewArea)
     const targets = [...a.links.filter((l) => !isTown(l))]
     let deep = -1
-    for (const id of WAYPOINTS) if (me && (me.wps & wpBit(id)) && !isTown(id) && areaDef(id).act === a.act) deep = id
+    for (const id of WAYPOINTS) if (me && (me.wps & wpBit(id)) && !isTown(id) && !areaDef(id).retired && areaDef(id).act === a.act) deep = id
     if (deep >= 0 && !targets.includes(deep)) targets.push(deep)
     for (const t of targets) {
       if (!this.maps.has(t)) {

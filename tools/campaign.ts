@@ -16,7 +16,7 @@ import { MONSTER_LIST, isBossLike } from '../src/core/monsters'
 import { makeRng } from '../src/core/rng'
 import { autoAttr, createState, step } from '../src/core/sim'
 import { MAX_RANK, ULT_NODE, defaultBuild, freePoints } from '../src/core/skills'
-import { AREAS, QUESTS, buildAreaMap, questPoints } from '../src/core/world'
+import { ACTS, AREAS, QUESTS, buildAreaMap, questPoints } from '../src/core/world'
 
 const arg = (k: string, d: number) => Number(process.argv.find((a) => a.startsWith(k + '='))?.split('=')[1] ?? d)
 const PARTY = arg('party', 1)
@@ -75,7 +75,23 @@ function build(level: number, bonus: number) {
 
 // boss=1: 막 보스 방만 (2026-09-23 보스 패턴 계측 — 들어갈 때 레벨 = 그 방 레벨)
 const BOSS_ONLY = arg('boss', 0) === 1
-const path = AREAS.filter((a) => a.kind !== 'town' && !a.retired && (ONLY_ACT < 0 || a.act === ONLY_ACT) && (!BOSS_ONLY || a.kind === 'boss')).sort((x, y) => x.act - y.act || x.id - y.id)
+// 막마다 **실제 길 순서**(마을 → links[1] … → 보스 방 — 막마다 한 줄). 번호 순으로 돌면 4막 끓는 구덩이(35)가 보스 뒤에 와서
+// 보스 앞 레벨이 실제보다 낮게 나왔다 (2026-09-27)
+function actPath(act: number): (typeof AREAS)[number][] {
+  const out: (typeof AREAS)[number][] = []
+  let prev = ACTS[act].town
+  let at = AREAS[prev].links[0]
+  while (at !== undefined) {
+    const a = AREAS[at]
+    out.push(a)
+    if (a.kind === 'boss') break
+    const next = a.links.find((l) => l !== prev)
+    prev = at
+    at = next as number
+  }
+  return out
+}
+const path = ACTS.flatMap((_, i) => (ONLY_ACT < 0 || i === ONLY_ACT ? actPath(i) : [])).filter((a) => !BOSS_ONLY || a.kind === 'boss')
 let carry = ONLY_ACT >= 0 ? totalXp(ACT_START[ONLY_ACT], 0) : 0
 const rows: { act: number; name: string; lv: number; lvIn: number; lvOut: number; sec: number; deaths: number; kill: number; capped: number }[] = []
 

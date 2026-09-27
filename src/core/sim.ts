@@ -3529,7 +3529,7 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     if (state.mode !== 'dungeon' || !isActive(p) || arg === p.area) return
     const l = areaLayout(p.area, map)
     const bit = wpBit(arg)
-    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0) return
+    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0 || areaDef(arg).retired) return
     queueMove(p, { to: arg, how: 'wp' })
     return
   }

@@ -124,6 +124,24 @@ describe('이어진 세계', () => {
     expect(hashState(recv)).toBe(hashState(a.s))
   }, 20000) // 다른 일로 바쁠 때 5초를 넘겼다 — 한도만 늘린다
 
+  it('길에서 뺀 지역(거미 숲 · 봉인된 문서고)의 웨이포인트: 예전에 열었어도 건너가지 못한다 · 다른 웨이포인트 비트 자리는 그대로', () => {
+    // 2026-09-27 2 ~ 4막 줄이기 — 웨이포인트 비트는 WAYPOINTS 순서라 뺀 지역도 목록에 남는다
+    expect(AREAS[17].retired && AREAS[26].retired).toBe(true)
+    expect(WAYPOINTS).toContain(17)
+    expect(WAYPOINTS).toContain(26)
+    const { s, mapOf, run } = game(['chim'])
+    const p = s.players[0]
+    const tl = areaLayout(TOWN, mapOf(TOWN))
+    p.wps |= wpBit(17) | wpBit(26) | wpBit(1)
+    p.x = tl.wp!.x
+    p.y = tl.wp!.y
+    run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: 17 }))
+    run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: 26 }))
+    expect(p.area).toBe(TOWN)
+    run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: 1 }))
+    expect(p.area).toBe(1)
+  })
+
   it('웨이포인트: 밟으면 열리고, 곁에서 열린 곳으로만 건너간다', () => {
     const { s, mapOf, run } = game(['chim'])
     const p = s.players[0]

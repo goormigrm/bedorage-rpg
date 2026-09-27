@@ -33,7 +33,8 @@ export class WaypointPanel {
   private render(): void {
     const me = this.me()
     const acts = ACTS.map((act, ai) => {
-      const rows = WAYPOINTS.filter((id) => AREAS[id].act === ai)
+      // 길에서 뺀 지역(retired)의 웨이포인트는 비트 자리만 남았다 — 창에 보이지 않는다
+      const rows = WAYPOINTS.filter((id) => AREAS[id].act === ai && !AREAS[id].retired)
         .map((id) => {
           const known = (me.wps & wpBit(id)) !== 0
           const here = me.area === id

@@ -112,7 +112,7 @@ export const ACTS: ActDef[] = [
     town: 10,
     density: 1.45,
     // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
-    xp: 1.45,
+    xp: 2.5,
     packs: [
       // 늑대 떼 — 빠르게 둘러싼다
       { w: 0.4, groups: [[WOLF, 5, 8]] },
@@ -129,7 +129,7 @@ export const ACTS: ActDef[] = [
     town: 19,
     density: 1.6,
     // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
-    xp: 1.35,
+    xp: 1.9,
     packs: [
       // 방패 줄 뒤에서 토사꾼이 뱉는다 — 옆으로 돌아 들어가라
       { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
@@ -146,7 +146,7 @@ export const ACTS: ActDef[] = [
     town: 28,
     density: 1.5,
     // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
-    xp: 1.5,
+    xp: 2.2,
     packs: [
       // 그림자 떼 — 도망쳐도 등 뒤에 나타난다
       { w: 0.3, groups: [[SHADE, 3, 5]] },
@@ -222,27 +222,32 @@ export const AREAS: AreaDef[] = [
   { id: 11, act: 1, name: '안개 숲', kind: 'field', map: 'forest', level: 9, links: [10, 12], wp: true, lore: '안개 너머에서 무언가 따라온다' },
   { id: 12, act: 1, name: '늑대 굴', kind: 'dungeon', map: 'hollow', level: 10, links: [11, 13], packs: WOLVES, density: 1.2, lore: '뼈가 발목까지 쌓였다' },
   { id: 13, act: 1, name: '늑대 길', kind: 'field', map: 'forest', level: 11, links: [12, 14], packs: WOLVES, unique: { kind: WOLF, name: '회색 갈기' }, lore: '사방에서 울음이 좁혀 온다' },
-  { id: 14, act: 1, name: '포자 늪', kind: 'field', map: 'swamp', level: 12, links: [13, 15], wp: true, packs: SPORES, lore: '쓰러진 것들이 포자를 뒤집어쓰고 다시 일어선다' },
-  { id: 15, act: 1, name: '버섯 동굴 1층', kind: 'dungeon', map: 'hollow', level: 13, links: [14, 16], packs: SPORES },
-  { id: 16, act: 1, name: '버섯 동굴 2층', kind: 'dungeon', map: 'hollow', level: 14, links: [15, 17], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
-  { id: 17, act: 1, name: '거미 숲', kind: 'field', map: 'forest', level: 15, links: [16, 18], wp: true, lore: '나무마다 흰 실이 드리웠다' },
-  { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [17], wp: true, boss: QUEEN, gate: 19, density: 0.5, lore: '여왕이 실을 당긴다' },
+  { id: 14, act: 1, name: '포자 늪', kind: 'field', map: 'swamp', level: 12, links: [13, 16], wp: true, packs: SPORES, lore: '쓰러진 것들이 포자를 뒤집어쓰고 다시 일어선다' },
+  // (2026-09-27 사용자: "2 ~ 4막도 맵 개수를 줄이고 경험치를 늘려 줘 — 후원으로 몹 소환이 많아 플레이 시간이 길어질 수 있다") — 막마다 보스 앞 5지역
+  { id: 15, act: 1, name: '버섯 동굴 1층', kind: 'dungeon', map: 'hollow', level: 13, links: [], packs: SPORES, retired: true },
+  { id: 16, act: 1, name: '버섯 동굴', kind: 'dungeon', map: 'hollow', level: 14, links: [14, 18], packs: SPORES, unique: { kind: SHAMAN, name: '포자 할멈' } },
+  // 17 거미 숲은 웨이포인트 자리(wp — 비트 순서)만 남기고 길에서 뺐다 — 창에 안 보이고 갈 수도 없다
+  { id: 17, act: 1, name: '거미 숲', kind: 'field', map: 'forest', level: 15, links: [], wp: true, retired: true, lore: '나무마다 흰 실이 드리웠다' },
+  { id: 18, act: 1, name: '거미 둥지', kind: 'boss', map: 'nest', level: 16, links: [16], wp: true, boss: QUEEN, gate: 19, density: 0.5, lore: '여왕이 실을 당긴다' },
   // ---------------- 3막 잠긴 지하도 (지역 레벨 17~24) ----------------
   { id: 19, act: 2, name: '수문 야영지', kind: 'town', map: 'town3', level: 0, links: [20], wp: true, lore: '누런 등불 아래, 물 떨어지는 소리만 들린다' },
   { id: 20, act: 2, name: '잠긴 수로', kind: 'field', map: 'sewer', level: 17, links: [19, 21], wp: true, lore: '도시의 오물이 흐르던 길 — 이제는 무언가 거슬러 올라온다' },
   { id: 21, act: 2, name: '저수조', kind: 'dungeon', map: 'cistern', level: 18, links: [20, 22], packs: SPITTERS, density: 1.2, lore: '고인 물이 부글거린다' },
   { id: 22, act: 2, name: '무너진 시장', kind: 'field', map: 'ruins', level: 19, links: [21, 23], packs: GUARDS, unique: { kind: SHIELD, name: '철문 브론' }, lore: '무너진 기둥 사이로 방패가 줄지어 섰다' },
-  { id: 23, act: 2, name: '하수 광장', kind: 'field', map: 'sewer', level: 20, links: [22, 24], wp: true, lore: '광장의 분수가 검은 물을 뿜는다' },
-  { id: 24, act: 2, name: '의식의 회랑 1층', kind: 'dungeon', map: 'rite', level: 21, links: [23, 25], packs: RITES, lore: '촛불이 저절로 켜진다' },
-  { id: 25, act: 2, name: '의식의 회랑 2층', kind: 'dungeon', map: 'rite', level: 22, links: [24, 26], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
-  { id: 26, act: 2, name: '봉인된 문서고', kind: 'dungeon', map: 'archive', level: 23, links: [25, 27], wp: true, lore: '누군가 봉인을 뜯었다' },
-  { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [26], wp: true, boss: WARDEN, gate: 28, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
+  { id: 23, act: 2, name: '하수 광장', kind: 'field', map: 'sewer', level: 20, links: [22, 25], wp: true, lore: '광장의 분수가 검은 물을 뿜는다' },
+  // (2026-09-27 사용자: "2 ~ 4막도 맵 개수를 줄이고 경험치를 늘려 줘 — 후원으로 몹 소환이 많아 플레이 시간이 길어질 수 있다") — 막마다 보스 앞 5지역
+  { id: 24, act: 2, name: '의식의 회랑 1층', kind: 'dungeon', map: 'rite', level: 21, links: [], retired: true, packs: RITES, lore: '촛불이 저절로 켜진다' },
+  { id: 25, act: 2, name: '의식의 회랑', kind: 'dungeon', map: 'rite', level: 22, links: [23, 27], packs: RITES, unique: { kind: NECRO, name: '검은 사제 모르가' } },
+  // 26 봉인된 문서고도 웨이포인트 자리만 남긴다
+  { id: 26, act: 2, name: '봉인된 문서고', kind: 'dungeon', map: 'archive', level: 23, links: [], wp: true, retired: true, lore: '누군가 봉인을 뜯었다' },
+  { id: 27, act: 2, name: '관리인의 방', kind: 'boss', map: 'wardroom', level: 24, links: [25], wp: true, boss: WARDEN, gate: 28, density: 0.5, lore: '열쇠 꾸러미가 짤랑거린다' },
   // ---------------- 4막 심연 (지역 레벨 25~30) ----------------
   { id: 28, act: 3, name: '심연의 문', kind: 'town', map: 'town4', level: 0, links: [29], wp: true, lore: '문틈으로 붉은 빛이 샌다 — 여기가 마지막 불이다' },
   { id: 29, act: 3, name: '불타는 균열', kind: 'field', map: 'rift', level: 25, links: [28, 35], wp: true, lore: '땅이 갈라져 불을 토한다' },
-  { id: 30, act: 3, name: '재의 들판', kind: 'field', map: 'ashen', level: 27, links: [35, 31], packs: FIRES, unique: { kind: DEMON, name: '불꽃 혀 가르' }, lore: '하늘에서 재가 내린다' },
-  { id: 31, act: 3, name: '그림자 미궁 1층', kind: 'dungeon', map: 'maze', level: 27, links: [30, 32], packs: SHADOWS, lore: '벽이 숨을 쉰다' },
-  { id: 32, act: 3, name: '그림자 미궁 2층', kind: 'dungeon', map: 'maze', level: 28, links: [31, 33], wp: true, packs: SHADOWS, unique: { kind: SHADE, name: '속삭이는 자' } },
+  { id: 30, act: 3, name: '재의 들판', kind: 'field', map: 'ashen', level: 27, links: [35, 32], packs: FIRES, unique: { kind: DEMON, name: '불꽃 혀 가르' }, lore: '하늘에서 재가 내린다' },
+  // (2026-09-27 사용자: "2 ~ 4막도 맵 개수를 줄이고 경험치를 늘려 줘 — 후원으로 몹 소환이 많아 플레이 시간이 길어질 수 있다") — 막마다 보스 앞 5지역
+  { id: 31, act: 3, name: '그림자 미궁 1층', kind: 'dungeon', map: 'maze', level: 27, links: [], retired: true, packs: SHADOWS, lore: '벽이 숨을 쉰다' },
+  { id: 32, act: 3, name: '그림자 미궁', kind: 'dungeon', map: 'maze', level: 28, links: [30, 33], wp: true, packs: SHADOWS, unique: { kind: SHADE, name: '속삭이는 자' } },
   { id: 33, act: 3, name: '군주의 계단', kind: 'dungeon', map: 'stair', level: 29, links: [32, 34], lore: '계단은 끝없이 아래로 이어진다' },
   { id: 34, act: 3, name: '심연의 옥좌', kind: 'boss', map: 'throne', level: 30, links: [33], wp: true, boss: LORD, density: 0.4, lore: '종이 처음 울린 곳' },
   { id: 35, act: 3, name: '끓는 구덩이', kind: 'dungeon', map: 'pit', level: 26, links: [29, 30], packs: FIRES, density: 1.2, lore: '바닥이 끓는다' },
@@ -356,14 +361,14 @@ export const QUESTS: QuestDef[] = [
   },
   {
     name: '포자 할멈', act: 1, area: 16, goal: 'kill', legend: true,
-    task: '버섯 동굴 2층의 포자 할멈을 쓰러뜨려라',
+    task: '버섯 동굴의 포자 할멈을 쓰러뜨려라',
     ask: '늪의 버섯은 할멈이 기르는 거요. 쓰러진 것들을 포자로 다시 일으키지. 할멈을 멈추지 않으면 죽은 이가 끝이 없소.',
     thanks: '포자가 가라앉는구려. 할멈의 동굴에서 이것이 나왔소 — 아무나 쥘 물건이 아니오.',
     reward: '전설 아이템 하나',
   },
   {
     name: '거미 여왕', act: 1, area: 18, goal: 'kill', sp: 1, gold: 1500,
-    task: '거미 숲 끝 거미 둥지의 여왕을 쓰러뜨려라',
+    task: '버섯 동굴 너머 거미 둥지의 여왕을 쓰러뜨려라',
     ask: '숲의 심장에 여왕이 있소. 놋쇠 냄새가 나는 실을 잔뜩 감아 두었다지 — 당신들이 찾는 <b>종의 몸통</b>이 거기 있소. 여왕을 끊고 가져오시오.',
     thanks: '종의 몸통이군! 하나 남았소 — 종을 치는 혀. 도시 아래에서 그 소리가 난다는구려. 준비가 되면 말하시오, 지하도 수문까지 길을 내 주겠소.',
     reward: '스킬 포인트 1 · 골드 1500 · 3막',
@@ -385,14 +390,14 @@ export const QUESTS: QuestDef[] = [
   },
   {
     name: '검은 사제', act: 2, area: 25, goal: 'kill', legend: true,
-    task: '의식의 회랑 2층의 검은 사제 모르가를 쓰러뜨려라',
+    task: '의식의 회랑의 검은 사제 모르가를 쓰러뜨려라',
     ask: '회랑에서 종소리가 나는 건 모르가가 의식을 올리기 때문이오. 쓰러진 것들을 일으켜 세우는 의식 — 그를 멈추시오.',
     thanks: '의식이 끊겼구려. 모르가의 제단에서 이것이 나왔소. 조심해서 쓰시오.',
     reward: '전설 아이템 하나',
   },
   {
     name: '관리인', act: 2, area: 27, goal: 'kill', sp: 1, gold: 2500,
-    task: '봉인된 문서고 끝, 관리인의 방의 관리인을 쓰러뜨려라',
+    task: '의식의 회랑 끝, 관리인의 방의 관리인을 쓰러뜨려라',
     ask: '관리인의 열쇠 꾸러미에 <b>종의 혀</b>가 섞여 있소. 쇠붙이를 모으는 버릇이 있는 자지. 그것까지 찾으면 종은 다시 울릴 수 있소.',
     thanks: '이제 종은 갖췄소. 허나 울리지 않는구려 — 소리를 누군가 삼켜 버렸소. 그 목구멍이 이 문 너머, 심연이오. 가겠다면 말하시오, 문 앞까지 데려다 주겠소.',
     reward: '스킬 포인트 1 · 골드 2500 · 4막',
@@ -414,7 +419,7 @@ export const QUESTS: QuestDef[] = [
   },
   {
     name: '속삭이는 자', act: 3, area: 32, goal: 'kill', legend: true,
-    task: '그림자 미궁 2층의 속삭이는 자를 쓰러뜨려라',
+    task: '그림자 미궁의 속삭이는 자를 쓰러뜨려라',
     ask: '미궁에서 누군가 이름을 부른다오. 대답한 자는 모두 그림자가 됐소. 속삭이는 자를 찾아 입을 다물게 하시오.',
     thanks: '속삭임이 그쳤구려. 그가 쥐고 있던 것이오 — 심연에서 온 물건이지만, 당신 손에서는 쓸 만할 거요.',
     reward: '전설 아이템 하나',
