@@ -366,3 +366,36 @@ describe('막 보스는 밀리지 않는다', () => {
     })
   }
 })
+
+// 2026-09-27 사용자: "소환된 막 보스는 모두 즉사기를 빼 줘"
+describe('후원으로 부른 막 보스는 즉사기를 쓰지 않는다', () => {
+  for (const [area, id] of BOSSES) {
+    it(`${MONSTER_LIST.find((m) => m.id === id)!.name}: 즉사기 차례가 와도 쓰지 않고 · 다른 패턴은 그대로`, () => {
+      const { map, s, boss, run } = bossGame(area, 50 + area, ['cheolmyeon', 'chim', 'magic'])
+      boss.sum = 1
+      boss.st = MS_CHASE
+      boss.target = 0
+      boss.kcd = 0
+      boss.scd = 0
+      boss.los = 1
+      let ult = false
+      let kill = false
+      let pats = 0
+      for (let t = 0; t < 40 * 60; t++) {
+        for (const p of s.players) {
+          const at = nearBoss(map, boss, 140)
+          p.x = at.x
+          p.y = at.y
+          if (p.alive) p.hp = p.maxHp
+        }
+        run()
+        ult ||= s.events.some((e) => e.type === 'bossUlt')
+        kill ||= s.zones.some((q) => q.kill)
+        pats += s.events.filter((e) => e.type === 'bzone').length
+      }
+      expect(ult).toBe(false)
+      expect(kill).toBe(false)
+      expect(pats).toBeGreaterThan(2)
+    })
+  }
+})

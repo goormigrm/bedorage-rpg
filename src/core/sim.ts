@@ -3921,8 +3921,10 @@ function bossStage(state: GameState, m: Monster, def: MonsterDef): void {
 function bossThink(state: GameState, map: GameMap, m: Monster, def: MonsterDef, tp: PlayerState, d: number): boolean {
   const plan = BOSS_PLANS[def.id]
   if (!plan || m.scd > 0 || m.los !== 1 || d > 620) return false
-  // 즉사기: 차례와 따로 센다 (처음 깨어 패턴을 쓸 때부터 BOSS_ULT_CD.first 뒤 · 그다음은 단계마다 every)
-  const ult = BOSS_ULT[def.id]
+  // 즉사기: 차례와 따로 센다 (처음 깨어 패턴을 쓸 때부터 BOSS_ULT_CD.first 뒤 · 그다음은 단계마다 every).
+  // 후원으로 부른 막 보스는 즉사기를 쓰지 않는다 — 다른 패턴은 그대로 (2026-09-27 사용자: "소환된 막 보스는 모두 즉사기를 빼 줘" —
+  // 들판에서 다른 괴물과 섞여 피하기 어려워, 후원이 분당 2.5건이면 4막 심연의 군주 소환에 파티가 거듭 쓰러졌다)
+  const ult = m.sum === undefined ? BOSS_ULT[def.id] : undefined
   if (ult) {
     if (m.kcd === undefined) m.kcd = BOSS_ULT_CD.first
     else if (m.kcd <= 0 && bossStart(state, map, m, def, ult, tp)) {
