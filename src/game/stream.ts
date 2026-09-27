@@ -255,6 +255,12 @@ export function drawJoiner(pool: Joiner[], winners: Map<string, number>, now: nu
 
 type Fn<T> = (v: T) => void
 
+/**
+ * 게임 밖(로비 · 불러오는 중)에서 받은 후원 · 게임을 나갈 때 남은 후원을 들고 있는 한도.
+ * 30 → 200 (2026-09-27 — 분당 2 ~ 3건이면 로비에서 10분만 있어도 30건을 넘어 오래된 것부터 버려졌다 · 게임 대기열 상한과 같게)
+ */
+export const HELD_MAX = 200
+
 class StreamHub {
   status: StreamStatus = 'off'
   detail = ''
@@ -273,6 +279,7 @@ class StreamHub {
   private donFns = new Set<Fn<StreamDonation>>()
   /** 받을 세션이 없을 때 온 후원 (다음 판이 가져간다) */
   private held: StreamDonation[] = []
+  private kept: { ev: number; nick: string; text: string }[] = []
 
   /** 표 · 말풍선을 쓸 때인가 (연결됐거나 시험 중) */
   get live(): boolean {
@@ -339,10 +346,24 @@ class StreamHub {
     this.note()
     if (this.donFns.size === 0) {
       this.held.push(d)
-      if (this.held.length > 30) this.held.shift()
+      if (this.held.length > HELD_MAX) this.held.shift()
       return
     }
     for (const f of [...this.donFns]) f(d)
+  }
+
+  /**
+   * 게임이 끝날 때(로비로 · 방이 닫힘) 아직 판에 못 넣은 후원 이벤트를 맡긴다 — 다음 게임에서 먼저 일어난다
+   * (2026-09-27 — 예전에는 게임을 나가면 기다리던 후원이 사라졌다). 금액은 들고 있지 않다 — 고른 이벤트 번호 · 이름 · 글만
+   */
+  keep(list: { ev: number; nick: string; text: string }[]): void {
+    this.kept.push(...list)
+    if (this.kept.length > HELD_MAX) this.kept.splice(0, this.kept.length - HELD_MAX)
+  }
+
+  /** 맡겨 둔 후원 이벤트를 모두 꺼낸다 (새 게임이 시작할 때 — 받은 차례대로) */
+  takeKept(): { ev: number; nick: string; text: string }[] {
+    return this.kept.splice(0)
   }
 
   // ---- 시험 (설정 창) ----

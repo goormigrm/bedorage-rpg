@@ -462,6 +462,8 @@ export class Session {
     this.donTable.className = 'dontable'
     this.donTable.hidden = true
     ;(this.stage.querySelector('.game-ui') as HTMLElement).appendChild(this.donTable)
+    // 앞 게임에서 못 넣고 나간 후원이 먼저 (받은 차례대로) — 그다음 로비에 있는 동안 받은 후원 (listen 이 넘긴다)
+    for (const d of stream.takeKept()) this.donPending.push(d)
     this.unlistenStream = stream.listen(
       (c) => this.onStreamChat(c),
       (d) => this.onStreamDonation(d),
@@ -2759,6 +2761,8 @@ export class Session {
     this.unlistenStream?.()
     this.unlistenCzStatus?.()
     this.unlistenStream = null
+    // 아직 판에 못 넣은 후원은 버리지 않고 맡긴다 — 다음 게임에서 먼저 일어난다 (2026-09-27)
+    if (this.donPending.length > 0) stream.keep(this.donPending.splice(0))
     if (stream.sayBlock) stream.sayBlock = null
     stream.testBlock = null
     for (const f of this.unlistenCz) f()
