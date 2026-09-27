@@ -9,7 +9,7 @@ import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
-import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation } from '../src/game/stream'
+import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation, tiedAmounts } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -555,5 +555,36 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
     // 다섯째가 들어간 뒤: 앞 것들이 줄어든 만큼 이어 붙어 한도 가까이 — 넘는 몫은 없었다
     expect(most).toBeGreaterThan(50 * T)
     expect(p.don![DON_DARK]).toBeGreaterThan(29 * T)
+  })
+})
+
+// 2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋을 것 같다"
+describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', () => {
+  const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) })
+  it('암흑 · 거꾸로 걷기를 둘 다 3천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
+    const cfg = base()
+    const dark = DONATE_EVENTS.findIndex((e) => e.key === 'dark')
+    const inv = DONATE_EVENTS.findIndex((e) => e.key === 'invert')
+    cfg.amounts[inv] = cfg.amounts[dark]
+    expect(tiedAmounts(cfg.amounts)).toEqual(new Set([cfg.amounts[dark]]))
+    expect(eventForAmount(3000, cfg, () => 0)?.key).toBe('dark')
+    expect(eventForAmount(3000, cfg, () => 0.999)?.key).toBe('invert')
+    expect(eventForAmount(4999, cfg, () => 0.5)?.key).toBe('invert')
+    const got = new Set<string>()
+    for (let i = 0; i < 40; i++) got.add(eventForAmount(3500, cfg)!.key)
+    expect(got).toEqual(new Set(['dark', 'invert']))
+    // 더 비싼 칸(정예 5천)이 넘으면 무작위 없이 그것
+    expect(eventForAmount(5000, cfg, () => 0)?.key).toBe('elite')
+  })
+  it('겹치지 않으면 예전과 같다 · 끈 칸(0 원)은 겹쳐도 세지 않는다 · 응원도 같다', () => {
+    const cfg = base()
+    expect(tiedAmounts(cfg.amounts).size).toBe(0)
+    expect(eventForAmount(3000, cfg, () => 0.999)?.key).toBe('dark')
+    cfg.amounts[0] = 0
+    cfg.amounts[1] = 0
+    expect(tiedAmounts(cfg.amounts).size).toBe(0)
+    cfg.cheers[1] = cfg.cheers[0]
+    expect(cheerForAmount(1000, cfg, () => 0)?.id).toBe(CHEER_EVENTS[0].id)
+    expect(cheerForAmount(1000, cfg, () => 0.999)?.id).toBe(CHEER_EVENTS[1].id)
   })
 })

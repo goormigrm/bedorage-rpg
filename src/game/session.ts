@@ -7,7 +7,7 @@ import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, won } from './stream'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -2412,12 +2412,15 @@ export class Session {
       seal: don?.[DON_SEAL] ?? 0,
       rage,
     }
+    // 같은 금액이 둘 이상이면 🎲 — 그중 하나가 무작위로 일어난다 (2026-09-27)
+    const tieE = tiedAmounts(cfg.amounts)
+    const tieC = tiedAmounts(cfg.cheers)
     const rows = eventRows(cfg)
       .map(({ e, amount }) => {
         const t = left[e.key] ?? 0
         const on = t > 0
         // 설명은 넣지 않는다 — 금액 · 이름만 (2026-09-23 사용자). 걸려 있는 효과만 남은 초를 붙인다
-        return `<div class="dr${on ? ' on' : ''}"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt">${on ? `${Math.ceil(t / 60)}초` : ''}</span></div>`
+        return `<div class="dr${on ? ' on' : ''}"><span class="da">${won(amount)}</span><span class="dn">${tieE.has(amount) ? '🎲 ' : ''}${e.name}</span><span class="dt">${on ? `${Math.ceil(t / 60)}초` : ''}</span></div>`
       })
       .join('')
     const held = this.donHeld()
@@ -2429,11 +2432,12 @@ export class Session {
     // 후원 글에 "!응원" — 돕는 후원도 있다는 것을 시청자에게 알린다. 금액마다 단계가 다르다 (2026-09-23)
     const cr = cheerRows(cfg)
     const cheer = cr.length
-      ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${e.name}</span><span class="dt"></span></div>`).join('')
+      ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${tieC.has(amount) ? '🎲 ' : ''}${e.name}</span><span class="dt"></span></div>`).join('')
       : ''
+    const tie = tieE.size > 0 || (cr.length > 0 && tieC.size > 0) ? `<div class="dw tie">🎲 같은 금액은 그중 하나가 무작위로</div>` : ''
     // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7)
     const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름</div>` : ''
-    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${join}${wait}`
+    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${tie}${join}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
     if (el.dataset.h !== html) {
       el.dataset.h = html

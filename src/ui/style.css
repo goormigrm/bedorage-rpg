@@ -1055,6 +1055,7 @@ body { background: var(--bg); }
 .dontable .dh { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; margin-bottom: 3px; letter-spacing: .02em; }
 .dontable .dh.join { margin-top: 5px; color: #8fd8ff; }
 .dontable .dw.hold { color: #ffd24a; font-weight: 800; }
+.dontable .dw.tie { color: #d9c89a; }
 /* 대기실 전체 채팅 숨기기 (방송 중 — 2026-09-26) */
 .lobbychat .lchat-hid { display: none; margin: 10px 4px; font-size: 12px; color: #8a9a90; line-height: 1.5; }
 .lobbychat.hid .lchat { display: none; }

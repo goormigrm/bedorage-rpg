@@ -137,32 +137,47 @@ export function saveStreamCfg(c: StreamCfg): void {
   }
 }
 
-/** 이 금액이면 어떤 이벤트인가: 금액이 넘는 것 중 가장 비싼 것 (끈 것은 빼고). 없으면 undefined */
-export function eventForAmount(amount: number, cfg = loadStreamCfg()): DonateEvent | undefined {
-  let best: DonateEvent | undefined
+/**
+ * 금액이 넘는 것 중 가장 비싼 것 (0 원 = 끈 것은 빼고). **같은 금액이 둘 이상이면 그중 하나를 무작위로**
+ * (2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋겠다" — 예전에는 목록 뒤의 것만 늘 일어났다).
+ * 고르는 것은 후원을 받은 방송인의 세션뿐이고 판에는 고른 번호가 명령으로 들어가므로 Math.random 이어도 모두의 판이 같다
+ */
+function pickByAmount<T>(list: readonly T[], amounts: readonly number[], amount: number, rnd: () => number): T | undefined {
   let bestAmt = -1
-  DONATE_EVENTS.forEach((e, i) => {
-    const a = cfg.amounts[i]
-    if (a > 0 && amount >= a && a >= bestAmt) {
-      best = e
+  const ties: T[] = []
+  list.forEach((e, i) => {
+    const a = amounts[i]
+    if (!(a > 0 && amount >= a) || a < bestAmt) return
+    if (a > bestAmt) {
       bestAmt = a
+      ties.length = 0
     }
+    ties.push(e)
   })
-  return best
+  if (ties.length === 0) return undefined
+  return ties[Math.min(ties.length - 1, Math.floor(rnd() * ties.length))]
 }
 
-/** "!응원" 후원이면 어떤 응원인가: 금액이 넘는 단계 중 가장 비싼 것 (끈 것은 빼고). 없으면 undefined */
-export function cheerForAmount(amount: number, cfg = loadStreamCfg()): CheerDef | undefined {
-  let best: CheerDef | undefined
-  let bestAmt = -1
-  CHEER_EVENTS.forEach((e, i) => {
-    const a = cfg.cheers[i]
-    if (a > 0 && amount >= a && a >= bestAmt) {
-      best = e
-      bestAmt = a
-    }
-  })
-  return best
+/** 이 금액이면 어떤 이벤트인가 (pickByAmount — 같은 금액이면 무작위로 하나). 없으면 undefined */
+export function eventForAmount(amount: number, cfg = loadStreamCfg(), rnd: () => number = Math.random): DonateEvent | undefined {
+  return pickByAmount(DONATE_EVENTS, cfg.amounts, amount, rnd)
+}
+
+/** "!응원" 후원이면 어떤 응원인가 (pickByAmount — 같은 금액이면 무작위로 하나). 없으면 undefined */
+export function cheerForAmount(amount: number, cfg = loadStreamCfg(), rnd: () => number = Math.random): CheerDef | undefined {
+  return pickByAmount(CHEER_EVENTS, cfg.cheers, amount, rnd)
+}
+
+/** 켠 칸 중 금액이 겹치는 금액들 (표에 🎲 — 그중 하나가 무작위로 일어난다) */
+export function tiedAmounts(amounts: readonly number[]): Set<number> {
+  const seen = new Set<number>()
+  const tied = new Set<number>()
+  for (const a of amounts) {
+    if (a <= 0) continue
+    if (seen.has(a)) tied.add(a)
+    seen.add(a)
+  }
+  return tied
 }
 
 /** 표에 보일 응원 줄: 켠 단계를 금액 순으로 */
