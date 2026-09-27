@@ -1081,6 +1081,12 @@ export class MonsterView {
     if (this.corpses.length > CORPSE_MAX) this.corpses.shift()
   }
 
+  /** 시체를 모두 치운다 — 지역을 옮길 때 (2026-09-27 사용자: "보스를 잡은 뒤 다음 맵으로 넘어가도 보스 시체가 남아 있다" —
+   *  시체는 좌표만 들고 24초 남아서, 떠나온 지역의 시체가 새 지역의 같은 자리에 누워 있었다) */
+  clearCorpses(): void {
+    this.corpses = []
+  }
+
   /** 휘두름(공격 직후) */
   swiped(id: number): void {
     const v = this.vis.get(id)

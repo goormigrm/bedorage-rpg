@@ -582,8 +582,9 @@ export class Renderer3D {
   setMap(map: GameMap): void {
     this.emotes.clear()
     this.says.clear()
-    // 핏자국은 떠나온 지역 것 — 새 지역 바닥에 남지 않게
+    // 핏자국 · 시체는 떠나온 지역 것 — 새 지역 바닥에 남지 않게
     this.blood?.clear()
+    this.monsterView.clearCorpses()
     this.hud.clearNotices()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
     this.portalMeshes.clear()
@@ -2067,6 +2068,21 @@ export class Renderer3D {
           ctx.beginPath()
           ctx.arc(n.x / TILE, n.y / TILE, r + (2 + Math.sin(this.t * 4) * 1.2) * rp, 0, Math.PI * 2)
           ctx.stroke()
+          // 점 위에 ! · ? (2026-09-27 — 미니맵에서도 무엇이 있는지 보이게)
+          ctx.save()
+          ctx.font = `900 ${Math.round(11 * rp)}px sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'alphabetic'
+          ctx.lineWidth = 2.5 * rp
+          ctx.strokeStyle = 'rgba(8,7,6,0.9)'
+          const mk = meQ.report ? '?' : '!'
+          // 미니맵은 기울여 그린다 — 글자만 똑바로 세운다
+          ctx.translate(n.x / TILE, n.y / TILE)
+          ctx.rotate(-rot)
+          ctx.strokeText(mk, 0, -r - 3 * rp)
+          ctx.fillStyle = '#ffd84a'
+          ctx.fillText(mk, 0, -r - 3 * rp)
+          ctx.restore()
         }
       }
     }
@@ -3042,10 +3058,28 @@ export class Renderer3D {
       label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · ${F}`, '#e0a8ff')
     }
     const em = elderMarks(me.quests ?? [])
+    const elderMark = em.report ? '?' : em.offer ? '!' : ''
     for (const n of townNpcs(curr.curArea)) {
-      // 촌장 머리 위: 보고할 것이 있으면 ?, 맡을 것이 있으면 ! (디아블로) — 모든 막 공유 · 아직 못 간 막은 빼고
-      const mark = n.id === 'elder' ? (em.report ? '? ' : em.offer ? '! ' : '') : ''
-      label(n.x, n.y - 44, `${mark}${NPC_NAMES[n.id]} · ${F}`, mark ? '#ffd84a' : '#e8d6a8')
+      label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · ${F}`, n.id === 'elder' && elderMark ? '#ffd84a' : '#e8d6a8')
+      // 촌장 머리 위 **큰** ! · ? (2026-09-27 사용자: "촌장 카인의 ! · ? 표시를 더 알아보기 쉽게 크게" — 전에는 이름표 앞 작은 글자였다):
+      // 보고할 것이 있으면 ?, 맡을 것이 있으면 ! — 모든 막 공유 · 금빛으로 빛나며 위아래로 통통 · 멀리서도 보이게 거리 제한 없이
+      if (n.id === 'elder' && elderMark) {
+        const s = this.worldToScreen(n.x * U, 1.6, (n.y - 44) * U)
+        const bob = Math.sin(this.t * 3.2) * 5
+        const k = 1 + 0.06 * Math.sin(this.t * 6.4)
+        ctx.save()
+        ctx.font = `900 ${Math.round(66 * k)}px ${SAY_FONT}`
+        ctx.textBaseline = 'alphabetic'
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = 10
+        ctx.strokeStyle = 'rgba(24,14,0,0.92)'
+        ctx.strokeText(elderMark, s.x, s.y - 20 + bob)
+        ctx.shadowColor = 'rgba(255,190,40,0.95)'
+        ctx.shadowBlur = 28
+        ctx.fillStyle = '#ffd84a'
+        ctx.fillText(elderMark, s.x, s.y - 20 + bob)
+        ctx.restore()
+      }
     }
     for (const o of curr.objects ?? []) {
       if (o.used || o.kind === OBJ_URN || Math.hypot(o.x - me.x, o.y - me.y) > 5 * 32) continue
@@ -3189,7 +3223,16 @@ export class Renderer3D {
     }
     if (e.id === 'broadcast') this.spawnRing(x, z, 0.5, 18, 0.9, 0xb99cff)
     if (e.id === 'curtain') this.spawnRing(x, z, 0.5, 7, 0.8, 0xd0506a)
-    if (e.id === 'pancharge' || e.id === 'catstep' || e.id === 'stunt' || e.id === 'catwalk') {
+    // 버프가 된 셋(2026-09-27 — 전에는 돌진 · 도약): 둘레 고리 + 위로 솟는 불티
+    if (e.id === 'pancharge' || e.id === 'catstep' || e.id === 'catwalk') {
+      const col = SKILL_COLOR[e.id] ?? 0xffffff
+      this.spawnRing(x, z, 0.4, 3, 0.7, col)
+      for (let k = 0; k < 14; k++) {
+        const a = Math.random() * Math.PI * 2
+        this.spawnParticle(x + Math.cos(a) * 0.35, 0.2, z + Math.sin(a) * 0.35, 0, 0.06 + Math.random() * 0.04, 0, 0.7, col, 0.5)
+      }
+    }
+    if (e.id === 'stunt') {
       for (let k = 0; k < 10; k++) {
         const a = Math.random() * Math.PI * 2
         this.spawnParticle(x, 0.3, z, Math.cos(a) * 0.04, 0.05, Math.sin(a) * 0.04, 0.5, 0xd8c8a8, 0.6)

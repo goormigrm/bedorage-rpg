@@ -52,6 +52,11 @@ export interface AreaDef {
   density?: number
   /** 들어설 때 배너 아래 한 줄 */
   lore?: string
+  /**
+   * 길에서 뺀 지역 (2026-09-27 — 1막 줄이기): 어디와도 이어지지 않아 갈 수 없다. 표에서 지우지 않는 것은 **지역 번호가 세이브에 남기 때문**
+   * (웨이포인트 비트 · 퀘스트) — 지우면 뒤 번호가 한 칸씩 당겨져 세이브가 어긋난다. 도는 곳(시험 · 계측 도구)은 이것을 건너뛴다
+   */
+  retired?: boolean
 }
 
 // 몬스터 종류 번호 (monsters.ts 의 MONSTER_LIST 순서)
@@ -81,6 +86,8 @@ export interface ActDef {
    * 막마다 몬스터 수·걸리는 시간이 비슷하게 맞춘다 (D7 계측)
    */
   density: number
+  /** 경험치 배율 (기본 1) — 1막은 지역을 줄여 한 지역에서 더 준다 (2026-09-27) */
+  xp?: number
 }
 
 export const ACTS: ActDef[] = [
@@ -88,6 +95,9 @@ export const ACTS: ActDef[] = [
     name: '무너진 성당',
     town: 0,
     density: 1.15,
+    // 1막을 보스 앞 지역 8 → 5 로 줄였다(2026-09-27 사용자: "1막 보스는 지루해지기 전에 빨리 — 그 뒤는 레벨에 맞게").
+    // 지역이 줄어든 만큼 한 지역에서 경험치를 더 주어, 보스 앞 레벨이 전과 같게(8~9) — 2막부터는 전과 같은 레벨로 들어간다
+    xp: 1.6,
     packs: [
       // 구울 떼 + 궁수 한둘
       { w: 0.55, groups: [[GHOUL, 5, 9], [ARCHER, 0, 2]] },
@@ -101,6 +111,8 @@ export const ACTS: ActDef[] = [
     name: '안개 숲',
     town: 10,
     density: 1.45,
+    // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
+    xp: 1.45,
     packs: [
       // 늑대 떼 — 빠르게 둘러싼다
       { w: 0.4, groups: [[WOLF, 5, 8]] },
@@ -116,6 +128,8 @@ export const ACTS: ActDef[] = [
     name: '잠긴 지하도',
     town: 19,
     density: 1.6,
+    // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
+    xp: 1.35,
     packs: [
       // 방패 줄 뒤에서 토사꾼이 뱉는다 — 옆으로 돌아 들어가라
       { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
@@ -131,6 +145,8 @@ export const ACTS: ActDef[] = [
     name: '심연',
     town: 28,
     density: 1.5,
+    // 경험치 배율 — 보스 방에 들어설 때 레벨이 보스 레벨에 맞게 (2026-09-27 사용자: "그 뒤는 레벨에 맞게 만나도록 배분" · 전에는 2 ~ 3 레벨 모자랐다 — tools/campaign.ts)
+    xp: 1.5,
     packs: [
       // 그림자 떼 — 도망쳐도 등 뒤에 나타난다
       { w: 0.3, groups: [[SHADE, 3, 5]] },
@@ -193,12 +209,13 @@ export const AREAS: AreaDef[] = [
   { id: 0, act: 0, name: '순례자 야영지', kind: 'town', map: 'town1', level: 0, links: [1], wp: true, lore: '눈을 떠 보니 모닥불 곁이었다 — 여기가 어디인지는 아무도 모른다' },
   { id: 1, act: 0, name: '핏빛 들판', kind: 'field', map: 'fields', level: 1, links: [0, 2], wp: true, packs: GHOULS, lore: '성당 종이 멈춘 밤, 시체들이 들판으로 기어 나왔다' },
   { id: 2, act: 0, name: '굶주린 굴', kind: 'dungeon', map: 'cave', level: 2, links: [1, 3], packs: GHOULS, density: 1.2, lore: '굴 속에서 무언가 뼈를 씹는다' },
-  { id: 3, act: 0, name: '묘지 길', kind: 'field', map: 'fields', level: 3, links: [2, 4], wp: true, unique: { kind: GHOUL, name: '묘지기 오스' }, lore: '묘지기는 돌아오지 않았다' },
-  { id: 4, act: 0, name: '지하 묘지 1층', kind: 'dungeon', map: 'crypt', level: 4, links: [3, 5] },
-  { id: 5, act: 0, name: '지하 묘지 2층', kind: 'dungeon', map: 'crypt', level: 5, links: [4, 6] },
-  { id: 6, act: 0, name: '무너진 성당', kind: 'dungeon', map: 'cathedral', level: 5, links: [5, 7], wp: true, packs: ARCHERS, lore: '종은 멈췄고, 기둥 사이로 활시위가 당겨진다' },
-  { id: 7, act: 0, name: '납골당 1층', kind: 'dungeon', map: 'crypt', level: 6, links: [6, 8], packs: ARCHERS },
-  { id: 8, act: 0, name: '납골당 2층', kind: 'dungeon', map: 'crypt', level: 7, links: [7, 9], packs: ARCHERS, unique: { kind: ARCHER, name: '뼈활 레나' } },
+  { id: 3, act: 0, name: '묘지 길', kind: 'field', map: 'fields', level: 3, links: [2, 6], wp: true, unique: { kind: GHOUL, name: '묘지기 오스' }, lore: '묘지기는 돌아오지 않았다' },
+  // 4 · 5 · 7 은 길에서 뺐다 (2026-09-27 — 1막 보스를 빨리: 보스 앞 지역 8 → 5, 사람 어림 45 → 25분쯤). 번호는 세이브 때문에 남긴다
+  { id: 4, act: 0, name: '지하 묘지 1층', kind: 'dungeon', map: 'crypt', level: 4, links: [], retired: true },
+  { id: 5, act: 0, name: '지하 묘지 2층', kind: 'dungeon', map: 'crypt', level: 5, links: [], retired: true },
+  { id: 6, act: 0, name: '무너진 성당', kind: 'dungeon', map: 'cathedral', level: 5, links: [3, 8], wp: true, packs: ARCHERS, lore: '종은 멈췄고, 기둥 사이로 활시위가 당겨진다' },
+  { id: 7, act: 0, name: '납골당 1층', kind: 'dungeon', map: 'crypt', level: 6, links: [], packs: ARCHERS, retired: true },
+  { id: 8, act: 0, name: '납골당', kind: 'dungeon', map: 'crypt', level: 7, links: [6, 9], packs: ARCHERS, unique: { kind: ARCHER, name: '뼈활 레나' } },
   { id: 9, act: 0, name: '도살장', kind: 'boss', map: 'butchery', level: 8, links: [8], wp: true, boss: BUTCHER, gate: 10, density: 0.5, lore: '신선한 고기…!' },
   // ---------------- 2막 안개 숲 (지역 레벨 9~16) ----------------
   { id: 10, act: 1, name: '숲 가장자리 야영지', kind: 'town', map: 'town2', level: 0, links: [11], wp: true, lore: '늑대 울음이 밤새 목책을 두드린다' },
@@ -310,7 +327,7 @@ export const QUESTS: QuestDef[] = [
   },
   {
     name: '뼈활 레나', act: 0, area: 8, goal: 'kill', legend: true,
-    task: '납골당 2층의 뼈활 레나를 쓰러뜨려라',
+    task: '납골당의 뼈활 레나를 쓰러뜨려라',
     ask: '성당 아래 납골당에서 활시위 소리가 끊이질 않소. 레나 — 옛날 이 마을을 지키던 궁수요. 죽어서도 활을 놓지 못하는 모양이오.',
     thanks: '레나의 활이 마침내 쉬는군. 그녀가 지니던 것이오 — 당신이라면 제대로 쓰겠지.',
     reward: '전설 아이템 하나',

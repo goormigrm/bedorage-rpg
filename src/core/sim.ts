@@ -2365,13 +2365,19 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     }
     // ---- 승빠란
-    case 'pancharge':
-      p.dashDx = cosA(p.aim)
-      p.dashDy = sinA(p.aim)
-      p.fx[FX_CHARGE] = 13
-      p.chargeTag = state.nextFxId++
-      p.ads = false
+    // 2026-09-27 사용자: "돌진 관련 스킬은 모두 버프형으로 — 맵 구조물 · 이동에 불편하고 범위도 작아 쓰기 어렵다" →
+    // 후라이팬 돌진 · 고양이 걸음(뒤로 도약) · 런웨이 워크는 자리를 옮기지 않는 버프. 켤 때 둘레를 치는 것은 남긴다(둘러싸였을 때 빠져나올 힘)
+    case 'pancharge': {
+      const t = dun ? 480 : 360
+      buffRate(p, t, 1.4)
+      p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], t)
+      // 받는 피해 -30% 는 던전만 — 투기장 1:1(시드 8)에서 승빠란 52 → 57% 로 올라 뺐다
+      if (dun) {
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], t)
+        aoe(state, map, p, p.x, p.y, 3 * T, 60, { knock: 6, id })
+      }
       break
+    }
     case 'oil':
       aoe(state, map, p, p.x, p.y, 3 * T, 50, { slow: 150, knock: 2, id })
       break
@@ -2380,17 +2386,15 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     // ---- 옥냥란
     case 'catstep':
-      // 던전: 뛰어오르며 원래 자리를 할퀸다 — 추격하던 떼를 2초 묶고, 착지 뒤 2초간 받는 피해 -30% · 재사용 7초
+      // 버프 (전에는 뒤로 4칸 도약): 4초간 이동 +40% · 다음 두 발 2배. 던전: 켤 때 둘레를 할퀴어 떼를 2초 묶고 4초간 받는 피해 -30% · 재사용 7초
+      p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], 240)
+      // 두 발 2배는 던전만 — 투기장 1:1(시드 8)에서 옥냥란이 45 → 63% 로 뛰어 투기장은 전처럼 한 발
+      p.empowerShots = state.mode === 'dungeon' ? 2 : 1
       if (state.mode === 'dungeon') {
         aoe(state, map, p, p.x, p.y, 3 * T, 40, { stun: 120, id })
-        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 11 + 120)
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], 240)
         p.cd[slot] = Math.round((p.cd[slot] * 7) / 9)
       }
-      p.dashDx = -cosA(p.aim)
-      p.dashDy = -sinA(p.aim)
-      p.fx[FX_CHARGE] = 11
-      p.chargeTag = 0
-      p.empowerShots = 1
       break
     case 'railshot': {
       const { x: mx, y: my } = muzzle(map, p)
@@ -2536,15 +2540,19 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     }
     // ---- 우재란
-    case 'catwalk':
-      // 던전: 출발하며 둘레를 밀쳐 낸다 — 둘러싸여도 빠져나간다
-      if (state.mode === 'dungeon') aoe(state, map, p, p.x, p.y, 3 * T, 20, { knock: 10, slow: 90, id, quiet: true })
-      p.dashDx = cosA(p.aim)
-      p.dashDy = sinA(p.aim)
-      p.fx[FX_CHARGE] = 20
-      p.chargeTag = state.nextFxId++
-      p.ads = false
+    case 'catwalk': {
+      // 버프 (전에는 조준 방향 7칸 긴 돌진): 6초간 이동 +40% · 공격 속도 +40% · 공격력 +20%. 던전: 켤 때 둘레를 밀쳐 내고 그동안 받는 피해 -30%
+      const t = 360
+      p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], t)
+      buffRate(p, t, 1.4)
+      if (state.mode === 'dungeon') {
+        // 공격력 +20% 는 던전만 — 투기장 1:1(시드 8)에서 우재란 49 → 57%
+        buffPow(p, t, 1.2)
+        aoe(state, map, p, p.x, p.y, 3 * T, 20, { knock: 10, slow: 90, id, quiet: true })
+        p.fx[FX_PARTYDR] = Math.max(p.fx[FX_PARTYDR], t)
+      }
       break
+    }
     case 'flashbulb': {
       // 던전: 4칸 · 40 피해 (투기장은 3칸 · 20 그대로)
       const fr = (state.mode === 'dungeon' ? 4 : 3) * T
@@ -3341,7 +3349,9 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     if (len(p.x - m.x, p.y - m.y) > SHARE_RANGE) continue
     const unique = (m.elite & EA_UNIQUE) !== 0
     // 레벨 차이: 괴물보다 5 레벨 넘게 높으면 경험치가 확 준다 (xpGapMul — 낮은 곳에서 오래 잡아 올리지 못하게)
-    gainXp(state, p, Math.round(xpFor(m) * xpGapMul(p.level, m.lvl) * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
+    // 막 배율(1막은 지역을 줄여 더 준다 — ACTS.xp)
+    const actXp = state.mode === 'dungeon' ? (ACTS[areaDef(state.curArea).act]?.xp ?? 1) : 1
+    gainXp(state, p, Math.round(xpFor(m) * xpGapMul(p.level, m.lvl) * actXp * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
     // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 아이템 10~16%(일반·마법만) / 정예는 골드 둘 · 아이템 1~2(희귀·전설도) /
     // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상, 신화가 드물게 (items.ts DROP_TABLE).
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)

@@ -10,7 +10,7 @@
 
 import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
-import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
+import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_SWIFT, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
 import { keyLabel, skillKeyLabel } from '../game/keymap'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
@@ -527,7 +527,9 @@ export class D4Hud {
       case 'kitchen': return f[FX_WHIRL] / 300
       case 'ninelives': return f[FX_SNIPE] / 480
       case 'pierce': return me.pierceShots / 6
-      case 'catstep': return me.empowerShots
+      case 'catstep': return me.empowerShots / 2
+      case 'pancharge': return f[FX_SWIFT] / 480
+      case 'catwalk': return f[FX_SWIFT] / 360
       default: return 0
     }
   }

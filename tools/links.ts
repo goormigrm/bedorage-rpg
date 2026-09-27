@@ -36,12 +36,14 @@ while (queue.length) {
   const act = ACTS.findIndex((c) => c.town === id)
   if (act >= 0 && ACTS[act + 1] && !seen.has(ACTS[act + 1].town)) (seen.add(ACTS[act + 1].town), queue.push(ACTS[act + 1].town))
 }
-for (const a of AREAS) if (!seen.has(a.id)) bad(`${a.id} ${a.name}: 마을에서 닿지 않는다`)
+// 길에서 뺀 지역(retired — 1막 줄이기 2026-09-27)은 닿지 않는 것이 맞다
+for (const a of AREAS) if (!seen.has(a.id) && !a.retired) bad(`${a.id} ${a.name}: 마을에서 닿지 않는다`)
 
 // ②~④ 맵마다
 const tileOf = (map: { w: number }, p: { x: number; y: number }) => Math.floor(p.y / TILE) * map.w + Math.floor(p.x / TILE)
 let maps = 0
 for (const a of AREAS) {
+  if (a.retired) continue
   for (const seed of SEEDS) {
     const map = buildAreaMap(seed, a.id)
     const l = areaLayout(a.id, map)
@@ -67,7 +69,7 @@ for (const a of AREAS) {
 const dead = AREAS.filter((a) => a.links.length === 1 && a.kind !== 'boss' && !isTown(a.id))
 for (const a of dead) bad(`${a.id} ${a.name}: 막다른 곳 (← ${AREAS[a.links[0]].name})`)
 for (const a of AREAS) if (a.links.length > 2) bad(`${a.id} ${a.name}: 갈림길 (${a.links.map((l) => AREAS[l].name).join(' · ')})`)
-console.log(`지역 ${AREAS.length}개 · 맵 ${maps}장(시드 ${SEEDS.length}개) 검사`)
+console.log(`지역 ${AREAS.filter((a) => !a.retired).length}개(뺀 지역 ${AREAS.filter((a) => a.retired).length}) · 맵 ${maps}장(시드 ${SEEDS.length}개) 검사`)
 console.log(`보스 방: ${AREAS.filter((a) => a.kind === 'boss').map((a) => `${a.id} ${a.name}`).join(' · ')}`)
 if (problems.length === 0) console.log('문제 없음')
 else {

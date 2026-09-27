@@ -240,15 +240,15 @@ describe('이어진 세계', () => {
     }
     expect(down).toBe(true)
     expect(s.killed).toContain(9)
-    // 다른 지역 넷을 돌아 도살장을 버리게 한 뒤 다시 온다
-    for (const to of [8, 7, 6, 5]) {
+    // 다른 지역 넷을 돌아 도살장을 버리게 한 뒤 다시 온다 (1막 길: … 2 · 3 · 6 · 8 · 9 — 2026-09-27 4 · 5 · 7 을 뺐다)
+    for (const to of [8, 6, 3, 2]) {
       p.area = to === 8 ? 9 : p.area
       standOnExit(s, mapOf, 0, to)
       run(1)
       expect(p.area).toBe(to)
     }
     expect(s.areas.some((a) => a.id === 9)).toBe(false)
-    for (const to of [6, 7, 8, 9]) {
+    for (const to of [3, 6, 8, 9]) {
       standOnExit(s, mapOf, 0, to)
       run(1)
     }
@@ -279,6 +279,7 @@ describe('이어진 세계', () => {
   it('지역 표 (1·2막): 모든 링크가 양쪽으로 이어지고, 모든 지역의 맵과 자리가 만들어진다', () => {
     const mapOf = world(56)
     for (const a of AREAS) {
+      if (a.retired) continue
       for (const to of a.links) expect(AREAS[to].links).toContain(a.id)
       const l = areaLayout(a.id, mapOf(a.id))
       expect(l.exits.length).toBe(a.links.length)
@@ -290,6 +291,7 @@ describe('이어진 세계', () => {
     for (const seed of [3, 777]) {
       const mapOf = world(seed)
       for (const a of AREAS) {
+        if (a.retired) continue
         const map = mapOf(a.id)
         const l = areaLayout(a.id, map)
         const tile = (p: { x: number; y: number }) => Math.floor(p.y / TILE) * map.w + Math.floor(p.x / TILE)
@@ -304,7 +306,7 @@ describe('이어진 세계', () => {
     // 막마다 한 줄 (2026-09-24 사용자 — 갈림길 · 막다른 옆길이 없게): 마을은 출구 하나, 보스 방은 들어온 길 하나, 나머지는 앞 · 뒤 둘.
     // 마을에서 links[1] 을 따라가면 그 막의 모든 지역을 한 번씩 지나 보스 방에 닿는다
     for (const [i, act] of ACTS.entries()) {
-      const areas = AREAS.filter((a) => a.act === i)
+      const areas = AREAS.filter((a) => a.act === i && !a.retired)
       for (const a of areas) expect(a.links.length, a.name).toBe(a.kind === 'town' || a.kind === 'boss' ? 1 : 2)
       const path = [act.town]
       for (let at = AREAS[act.town].links[0]; ; ) {

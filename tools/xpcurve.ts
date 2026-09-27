@@ -23,7 +23,7 @@ const gain = (v: number) => {
   }
 }
 
-const path = AREAS.filter((a) => a.kind !== 'town').sort((x, y) => x.act - y.act || x.id - y.id)
+const path = AREAS.filter((a) => a.kind !== 'town' && !a.retired).sort((x, y) => x.act - y.act || x.id - y.id)
 console.log(`잡는 비율 ${Math.round(KILL * 100)}% · 시드 ${SEEDS.length}개 평균`)
 console.log('지역                    지역Lv  들어갈 때Lv  나올 때Lv  얻은 경험치  몬스터')
 for (const a of path) {

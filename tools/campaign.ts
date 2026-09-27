@@ -75,7 +75,7 @@ function build(level: number, bonus: number) {
 
 // boss=1: 막 보스 방만 (2026-09-23 보스 패턴 계측 — 들어갈 때 레벨 = 그 방 레벨)
 const BOSS_ONLY = arg('boss', 0) === 1
-const path = AREAS.filter((a) => a.kind !== 'town' && (ONLY_ACT < 0 || a.act === ONLY_ACT) && (!BOSS_ONLY || a.kind === 'boss')).sort((x, y) => x.act - y.act || x.id - y.id)
+const path = AREAS.filter((a) => a.kind !== 'town' && !a.retired && (ONLY_ACT < 0 || a.act === ONLY_ACT) && (!BOSS_ONLY || a.kind === 'boss')).sort((x, y) => x.act - y.act || x.id - y.id)
 let carry = ONLY_ACT >= 0 ? totalXp(ACT_START[ONLY_ACT], 0) : 0
 const rows: { act: number; name: string; lv: number; lvIn: number; lvOut: number; sec: number; deaths: number; kill: number; capped: number }[] = []
 
