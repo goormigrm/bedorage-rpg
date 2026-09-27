@@ -220,6 +220,7 @@ function panelHtml(): string {
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
     `<div class="czt">${rows}</div>` +
     `<p class="czn">금액이 넘는 것 중 가장 비싼 이벤트가 일어납니다 · 0 원이면 끔 · 마을에서 받은 후원은 던전에 나가면 일어납니다.</p>` +
+    `<p class="czn">후원으로 부른 <b>막 보스</b>(막 보스 · 지옥문)는 <b>체력 절반 · 즉사기 없음</b> — 다른 패턴은 그대로이고, 잡아도 막 보스 처치 · 퀘스트로 치지 않습니다. 한 번에 하나만 나오고 나머지는 기다립니다.</p>` +
     `</div></div>` +
     safetyHtml(c) +
     (st === 'error' || !login ? `<p class="czn">로그인이 안 되면 치지직 개발자센터 앱의 로그인 리디렉션 URL 이 <code>${esc(redirectUri())}</code> 인지 확인하세요.</p>` : '')

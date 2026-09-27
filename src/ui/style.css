@@ -1151,7 +1151,8 @@ body { background: var(--bg); }
   background: rgba(0,0,0,.45); border: 1px solid #3a3424; border-radius: 4px; text-align: right; }
 .czpanel .czr input:focus { outline: none; border-color: #ffc94a; }
 .czpanel .czr b { color: #f4ead2; font-weight: 800; white-space: nowrap; }
-.czpanel .czr span { color: #8a9a90; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 설명은 잘리지 않게 줄을 바꾼다 (2026-09-27 — 응원 1만 · 3만 원 설명 끝이 … 로 잘렸다) */
+.czpanel .czr span { color: #8a9a90; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; word-break: keep-all; }
 .czpanel .lnk { color: var(--cz); }
 .czn { margin: 8px 0 0; font-size: 11.5px; color: #7a9a8c; line-height: 1.5; }
 .czpanel code { font: 500 11px "IBM Plex Mono", monospace; color: #c8dcd4; word-break: break-all; }

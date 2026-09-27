@@ -26,8 +26,8 @@ export const DONATE_EVENTS: DonateEvent[] = [
   { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 10000 },
   { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 20000 },
   { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 30000 },
-  { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스가 나타난다', amount: 50000 },
-  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스 + 중간보스 둘 + 암흑', amount: 100000 },
+  { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 50000 },
+  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 암흑', amount: 100000 },
 ]
 
 /**
@@ -70,6 +70,11 @@ export const ALLY_SEEK = 9 * 32
 export const cheerEvent = (id: number): CheerDef | undefined => CHEER_EVENTS.find((e) => e.id === id)
 /** 후원 글에 이것이 있으면 응원 */
 export const CHEER_RE = /!\s*(응원|힐|cheer)/i
+/**
+ * 후원으로 부른 막 보스(막 보스 · 지옥문)의 체력 배율 (2026-09-27 사용자: "소환 막 보스는 체력을 반으로" — 즉사기도 쓰지 않는다, sim bossThink).
+ * 분당 2.5건이면 4막 심연의 군주 소환에 파티가 거듭 쓰러져 한 바퀴가 1시간 넘게 늘었다
+ */
+export const SUMMON_BOSS_HP = 0.5
 /** 소환하는 이벤트 (소환 상한에 걸리면 자리가 날 때까지 기다린다) */
 export const SUMMON_KEYS = new Set<DonateEvent['key']>(['horde', 'elite', 'unique', 'boss', 'hell'])
 

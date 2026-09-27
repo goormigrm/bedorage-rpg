@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
 import { GameMap, isWallAt } from '../src/core/map'
 import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
-import { EA_UNIQUE, MONSTER_LIST } from '../src/core/monsters'
+import { EA_UNIQUE, MONSTER_LIST, levelHp, tierOf } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, donateEvent, effectFits } from '../src/core/donate'
+import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
 import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -123,6 +123,10 @@ describe('후원 이벤트 — 소환', () => {
     g.donate(ev('boss', 4))
     const boss = summoned(g.s).find((m) => m.sum === 5)!
     expect(MONSTER_LIST[boss.kind].id).toBe('butcher') // 1막 보스
+    // 체력 절반 (2026-09-27 사용자: "소환 막 보스는 체력을 반으로") — 둘이면 인원 보정 1.6 배
+    const full = MONSTER_LIST[boss.kind].hp * 1.6 * levelHp(boss.lvl) * tierOf(g.s.tier).hp
+    expect(SUMMON_BOSS_HP).toBe(0.5)
+    expect(Math.abs(boss.maxHp - Math.round(full * 0.5))).toBeLessThanOrEqual(1)
     const e = g.s.events.find((x) => x.type === 'donate')
     expect(e && e.type === 'donate' && e.m === boss.id).toBe(true)
   })

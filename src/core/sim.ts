@@ -27,7 +27,7 @@ import {
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent } from './donate'
+import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
@@ -3280,7 +3280,8 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   }
   let lead: Monster
   if (tier === SUM_BOSS && boss !== undefined) {
-    lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul, pow, lvl), 0)
+    // 막 보스는 체력 절반 (SUMMON_BOSS_HP — 2026-09-27 사용자) · 즉사기도 쓰지 않는다 (bossThink)
+    lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul * SUMMON_BOSS_HP, pow, lvl), 0)
   } else if (tier === SUM_UNIQUE) {
     const u = makeMonster(state, kind, at.x, at.y, pack, hpMul * UNIQUE.hp, Math.round(pow * UNIQUE.pow), lvl)
     u.elite = rollAffixes(state.rng, 1 | EA_UNIQUE, Math.min(4, UNIQUE.affixes + tr.affix), affixSkip(kind))
