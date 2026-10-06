@@ -41,6 +41,11 @@
 - This work is based on "Terrifying Hooded Horror Woman" (https://sketchfab.com/3d-models/terrifying-hooded-horror-woman-f59d17be392f4494a5b85d927df48ffd) by PurplePoint (https://sketchfab.com/tyajik) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - This work is based on "PBR Shadowkin Mage (Rigged)" (https://sketchfab.com/3d-models/pbr-shadowkin-mage-rigged-7aab96637055455297d158584b1602cd) by Ferocious Industries (https://sketchfab.com/ferociousindustries.matthias) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 
+## 밝은 분위기 괴물 모델 (CC0 — 2026-10-06)
+
+- Quaternius **"Ultimate Monsters"** — CC0 1.0. https://quaternius.com/packs/ultimatemonsters.html
+  - "☀ 밝게" 분위기의 괴물 16종(말랑 슬라임 · 가시 선인장 · 술래 버섯왕 · 여왕벌 · 파티 드래곤 …). `tools/pack-cute.py` 가 쓰는 동작만 남겨 묶는다. 원본은 `art-src/cute-monsters/`(저장소 밖).
+
 ## 보스 대사 목소리 (2026-09-24)
 
 - `public/voice/boss_*.wav` — 윈도에 들어 있는 한국어 음성 합성 **Microsoft Heami**(SAPI)로 읽힌 대사 넷(`tools/bossvoice.ps1`). 게임 안에서 음을 내리고 메아리 · 잔향을 걸어 쓴다(`audio/sfx.ts bossLine`). 사람 목소리를 녹음한 것은 없다.

@@ -13,6 +13,7 @@
 // 처음 모델을 받을 때 따로 받는다(본체 JS 에 넣지 않는다).
 
 import type * as THREE from 'three'
+import { isBright } from '../game/skin'
 
 export type SegName = 'idle' | 'walk' | 'attack' | 'hit' | 'death'
 export interface Seg {
@@ -181,6 +182,57 @@ MODEL_SPECS[8] = {
   glow: { Eyes: 0xd8a8ff },
 }
 
+// ---------------------------------------------------------------- 밝은 분위기 (2026-10-06)
+// Quaternius "Ultimate Monsters"(CC0) — tools/pack-cute.py 가 public/assets3d/monsters/cute_<이름>.glb 로 묶는다.
+// 괴물 행동은 그대로 · 모습만 귀엽게 (docs/밝은-분위기-개편-계획.md 2 · 3장). 모델 꼴마다 동작 이름이 다르다:
+//  Big(사람 꼴): Idle · Walk · Run · Punch(근접) · Weapon(던지기 · 쏘기) · HitReact · Death
+//  Blob(동글이): Idle · Walk · Bite_Front · HitRecieve · Death
+//  Flying(날개): Flying_Idle · Fast_Flying · Headbutt(박치기) · Punch · HitReact · Death
+// 모두 죽음 동작이 있어 억지로 넘어뜨리지 않는다(monsters3d). 정면은 +z 그대로.
+const big = (attack: 'Punch' | 'Weapon', walk: 'Walk' | 'Run' = 'Walk'): ModelSpec['clips'] => ({
+  idle: { clip: 'Idle', frames: 6 },
+  walk: { clip: walk, frames: 10 },
+  attack: { clip: attack, frames: 8 },
+  hit: { clip: 'HitReact', frames: 3 },
+  death: { clip: 'Death', frames: 6 },
+})
+const blob = (): ModelSpec['clips'] => ({
+  idle: { clip: 'Idle', frames: 6 },
+  walk: { clip: 'Walk', frames: 10 },
+  attack: { clip: 'Bite_Front', frames: 8 },
+  hit: { clip: 'HitRecieve', frames: 3 },
+  death: { clip: 'Death', frames: 6 },
+})
+const fly = (attack: 'Headbutt' | 'Punch'): ModelSpec['clips'] => ({
+  idle: { clip: 'Flying_Idle', frames: 6 },
+  walk: { clip: 'Fast_Flying', frames: 8 },
+  attack: { clip: attack, frames: 8 },
+  hit: { clip: 'HitReact', frames: 3 },
+  death: { clip: 'Death', frames: 6 },
+})
+
+/** 밝은 분위기의 괴물 모델 (종류 번호 → 모델) */
+export const CUTE_SPECS: (ModelSpec | undefined)[] = []
+CUTE_SPECS[0] = { file: 'cute_slime', size: 0.8, clips: blob(), windup: 0.45 } // 구울 → 말랑 슬라임
+CUTE_SPECS[1] = { file: 'cute_cactus', size: 1.0, clips: big('Weapon'), windup: 0.4 } // 해골 궁수 → 가시 선인장
+CUTE_SPECS[2] = { file: 'cute_puffer', size: 0.95, clips: fly('Headbutt'), windup: 0.5 } // 부푼 시체 → 빵빵 복어
+CUTE_SPECS[3] = { file: 'cute_mushking', size: 1.05, clips: big('Punch'), windup: 0.5 } // 도살자 → 술래 버섯왕
+CUTE_SPECS[4] = { file: 'cute_bunny', size: 0.8, clips: big('Punch', 'Run') } // 보물 고블린 → 보물 토끼 (늘 도망 — 뜀)
+CUTE_SPECS[5] = { file: 'cute_dino', size: 0.9, clips: big('Punch', 'Run'), windup: 0.45 } // 늑대 → 꼬마 공룡
+CUTE_SPECS[6] = { file: 'cute_bee', size: 0.8, clips: fly('Punch'), windup: 0.5 } // 독거미 → 꿀벌
+CUTE_SPECS[7] = { file: 'cute_mushnub', size: 1.0, clips: blob(), windup: 0.5 } // 버섯 주술사 → 치유 버섯
+CUTE_SPECS[8] = { file: 'cute_queenbee', size: 1.15, clips: fly('Headbutt'), windup: 0.45 } // 거미 여왕 → 여왕벌
+CUTE_SPECS[9] = { file: 'cute_ninja', size: 1.05, clips: big('Weapon'), windup: 0.45, tint: [1.7, 0.9, 1.2] } // 방패병 → 분홍 진행요원
+CUTE_SPECS[10] = { file: 'cute_wizard', size: 1.0, clips: blob(), windup: 0.4 } // 강령술사 → 꼬마 마법사
+CUTE_SPECS[11] = { file: 'cute_squid', size: 1.0, clips: fly('Punch'), windup: 0.5 } // 산성 토사꾼 → 먹물 오징어
+CUTE_SPECS[12] = { file: 'cute_yeti', size: 1.1, clips: big('Punch'), windup: 0.5, tint: [1.35, 1.0, 1.15] } // 관리인 → 진행요원 반장
+CUTE_SPECS[13] = { file: 'cute_ghost', size: 1.0, clips: fly('Headbutt'), windup: 0.45 } // 그림자 → 장난꾸러기 유령
+CUTE_SPECS[14] = { file: 'cute_imp', size: 0.95, clips: big('Weapon'), windup: 0.4 } // 포격 악마 → 폭죽 꼬마 도깨비
+CUTE_SPECS[15] = { file: 'cute_dragon', size: 1.25, clips: fly('Headbutt'), windup: 0.5 } // 심연의 군주 → 파티 드래곤
+
+/** 지금 분위기의 괴물 모델 (없으면 도형 괴물) */
+export const specOf = (kind: number): ModelSpec | undefined => (isBright() ? CUTE_SPECS[kind] : MODEL_SPECS[kind])
+
 /**
  * 뼈 자리 (2026-09-19): 겹쳐 그리는 도형 부품(투구 · 방패 · 곤봉 …)을 붙일 뼈. 파일마다 뼈 이름이 다르다.
  * 구울 때 프레임마다 그 뼈가 첫 장면(대기 첫 장)에서 얼마나 움직였는지를 적어 두고,
@@ -210,7 +262,7 @@ export interface BakedModel {
 
 /** 종류 하나를 받아 굽는다. 모델이 없는 종류면 null (굽는 코드 · 로더 · 모델 파일을 이때 받는다) */
 export async function loadMonsterModel(kind: number): Promise<BakedModel | null> {
-  const spec = MODEL_SPECS[kind]
+  const spec = specOf(kind)
   if (!spec) return null
   const { bakeModel } = await import('./monsterBake')
   return bakeModel(spec)

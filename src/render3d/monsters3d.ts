@@ -10,7 +10,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GIANT_VIEW, GOBLIN_KIND, GOBLIN_VIEW, MONSTER_LIST, isGiant } from '../core/monsters'
 import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
-import { AnchorName, BakedModel, MODEL_SPECS, loadMonsterModel } from './monsterModels'
+import { AnchorName, BakedModel, loadMonsterModel, specOf } from './monsterModels'
+import { isBright } from '../game/skin'
 
 /** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 마리마다 고른 프레임(aFrame) + 겹쳐 그리는 도형 부품 */
 interface ModelKind {
@@ -909,7 +910,7 @@ export class MonsterView {
    */
   prefetch(kinds: number[]): void {
     for (const k of kinds) {
-      if (!this.real || this.models[k] || !MODEL_SPECS[k] || this.queue.includes(k)) continue
+      if (!this.real || this.models[k] || !specOf(k) || this.queue.includes(k)) continue
       this.queue.push(k)
     }
     this.pump()
@@ -972,7 +973,7 @@ export class MonsterView {
 
   /** 이 종류를 처음 만나면 모델을 받아 굽는다 (그동안은 도형 괴물). done = 다음 것을 구우라는 신호 */
   private want(kind: number, done?: () => void): void {
-    if (!this.real || this.models[kind] || !MODEL_SPECS[kind]) {
+    if (!this.real || this.models[kind] || !specOf(kind)) {
       done?.()
       return
     }
@@ -1004,7 +1005,8 @@ export class MonsterView {
           this.group.add(mesh)
           return mesh
         })
-        const extras = (MODEL_EXTRAS[kind] ?? []).map((e) => {
+        // 겹쳐 그리는 도형 부품(활 · 방패 …)은 실사 모델에만 — 귀여운 모델은 제 모습 그대로 (밝은 분위기)
+        const extras = (isBright() ? [] : (MODEL_EXTRAS[kind] ?? [])).map((e) => {
           const src = this.kinds[kind][e.part < 0 ? this.kinds[kind].length + e.part : e.part]
           const mesh = new THREE.InstancedMesh(src.mesh.geometry, src.mesh.material, CAP) as InstancedMesh
           mesh.count = 0
