@@ -1026,12 +1026,12 @@ export class Renderer3D {
           break
         }
         case 'goblinSeen':
-          this.hud.banner('보물 고블린!', '도망치기 전에 잡아라 — 30초 뒤면 문을 열고 사라진다', '#ffd84a')
+          this.hud.banner(bt('보물 고블린!'), '도망치기 전에 잡아라 — 30초 뒤면 문을 열고 사라진다', '#ffd84a')
           this.spawnRing(e.x * U, e.y * U, 0.2, 2.2, 0.8, 0xffd84a)
           break
         case 'goblinGone':
           this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
-          this.hud.notice('보물 고블린이 도망쳤다…', '#ffd86a')
+          this.hud.notice(bt('보물 고블린이 도망쳤다…'), '#ffd86a')
           break
         case 'mheal':
           // 괴물이 스스로 고친다 — 초록은 우리 편 좋은 효과라 **보라**(적이 세지는 것)로 (2026-09-23)
@@ -1109,7 +1109,7 @@ export class Renderer3D {
           break
         case 'bossDown': {
           const a = areaDef(e.area)
-          if (a.boss !== undefined && a.act === ACTS.length - 1) this.hud.banner('심연이 닫혔다', `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다`, '#ffcf6a')
+          if (a.boss !== undefined && a.act === ACTS.length - 1) this.hud.banner(bt('심연이 닫혔다'), `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다`, '#ffcf6a')
           else if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, bt(`${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 촌장에게 가면 ${a.act + 2}막으로`), '#ffcf6a')
           else this.hud.notice(`우두머리 ${a.unique?.name ?? ''} 쓰러짐!`, '#ffb46a')
           break
@@ -1378,7 +1378,7 @@ export class Renderer3D {
             : id === 'warden' ? ['관리인이 분노한다', '여진 — 퍼지는 고리는 이미 터진 안쪽으로 피하라']
             : e.stage >= 2 ? ['심연의 군주가 마지막 힘을 끌어올린다', '광선이 두 번 · 더 빠르고 더 자주']
             : ['심연의 군주가 분노한다', '그림자가 흘러나온다 · 지옥불 — 가까이가 먼저, 곧 멀리']
-          this.hud.banner(t, sub, '#ff7a4a')
+          this.hud.banner(bt(t), bt(sub), '#ff7a4a')
           break
         }
         case 'bzone':
@@ -3746,10 +3746,10 @@ export class Renderer3D {
         ctx.textAlign = 'center'
         ctx.lineWidth = 4
         ctx.strokeStyle = 'rgba(40,24,0,0.9)'
-        ctx.strokeText('★ 보물 고블린 ★', s0.x, s0.y - 6)
+        ctx.strokeText(bt('★ 보물 고블린 ★'), s0.x, s0.y - 6)
         ctx.globalAlpha = pulse
         ctx.fillStyle = '#ffd84a'
-        ctx.fillText('★ 보물 고블린 ★', s0.x, s0.y - 6)
+        ctx.fillText(bt('★ 보물 고블린 ★'), s0.x, s0.y - 6)
         ctx.globalAlpha = 1
       }
       if (m.elite) {

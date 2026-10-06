@@ -213,7 +213,7 @@ const fly = (attack: 'Headbutt' | 'Punch'): ModelSpec['clips'] => ({
 
 /** 밝은 분위기의 괴물 모델 (종류 번호 → 모델) */
 export const CUTE_SPECS: (ModelSpec | undefined)[] = []
-CUTE_SPECS[0] = { file: 'cute_slime', size: 0.8, clips: blob(), windup: 0.45 } // 구울 → 말랑 슬라임
+CUTE_SPECS[0] = { file: 'cute_slime', size: 0.7, clips: blob(), windup: 0.45, tint: [1.75, 3.2, 2.4] } // 구울 → 말랑 슬라임 (원본 색이 진한 자주라 밝은 분홍으로)
 CUTE_SPECS[1] = { file: 'cute_cactus', size: 1.0, clips: big('Weapon'), windup: 0.4 } // 해골 궁수 → 가시 선인장
 CUTE_SPECS[2] = { file: 'cute_puffer', size: 0.95, clips: fly('Headbutt'), windup: 0.5 } // 부푼 시체 → 빵빵 복어
 CUTE_SPECS[3] = { file: 'cute_mushking', size: 1.05, clips: big('Punch'), windup: 0.5 } // 도살자 → 술래 버섯왕

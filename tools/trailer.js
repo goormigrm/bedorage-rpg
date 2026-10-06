@@ -5,6 +5,8 @@
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
 //   t.status()  → 진행 상황
+//   밝은 분위기 영상 (2026-10-06 — 밝은 분위기 개편 5단계): t.start({ skin: 'bright' })   → trailer_bright.webm · trailer_bright_hq.webm · shot_*_bright.jpg
+//     (보스 목소리 영상은 t.start({ mode: 'ult', skin: 'bright' }) → boss_voice_bright.webm). 자막 · 배경음 · 보스 목소리 · 밝기 보정이 밝은 판으로
 //
 // **오프라인으로 그린다**: 실시간으로 녹화하면 미리보기 창이 가려져 있을 때 페이지가 1초에 한 번꼴로만 돌아 영상이
 // 초당 4장으로 끊겼다. 그래서 시계(performance.now)를 가상으로 돌려 게임을 1/30초씩 직접 진행하고, 장마다
@@ -28,6 +30,10 @@ let g = null
 let running = false
 /** 보스 목소리 영상인가 (start({ mode: 'ult' })) */
 let ULT = false
+/** 밝은 분위기 영상인가 (start({ skin: 'bright' })) */
+let BRIGHT = false
+/** 자막 고르기: 어둡게 · 밝게 */
+const L = (dark, bright) => (BRIGHT ? bright : dark)
 let log = []
 let vt = 0 // 가상 시각 (ms)
 let vid = 0 // 영상에 넣은 장 수
@@ -106,7 +112,7 @@ function drawGame() {
   const dh = ch * s
   // 3D 는 조금 밝게 (밤 들판 · 던전이 영상으로는 너무 어두웠다) · 천천히 다가가기는 3D 만 (HUD 가 잘리지 않게)
   // 2026-09-24 사용자: "트레일러가 실제로 플레이하는 것보다 어둡다" → 1.35 → 1.6 · 가장자리 어둡게 0.55 → 0.32
-  g.filter = 'brightness(1.6) contrast(1.04)'
+  g.filter = BRIGHT ? 'none' : 'brightness(1.6) contrast(1.04)'
   g.drawImage(cvs[0], (W - dw) / 2, (H - dh) / 2, dw, dh)
   g.filter = 'none'
   for (const c of cvs.slice(1)) {
@@ -564,12 +570,19 @@ function ultScenes() {
     t += dt
     A.push({ t, fn })
   }
-  const BOSSES = [
-    [9, 3, '1막 도살자', '도살의 시간 — 멀리 달아나라'],
-    [18, 8, '2막 거미 여왕', '죽음의 거미줄 — 여왕 곁으로'],
-    [27, 12, '3막 관리인', '처형 — 등 뒤로'],
-    [34, 15, '최종 보스 — 심연의 군주', '심연의 심판 — 빛나는 원 안으로'],
-  ]
+  const BOSSES = BRIGHT
+    ? [
+        [9, 3, '1막 술래 버섯왕', '술래 시간 — 멀리 달아나라'],
+        [18, 8, '2막 여왕벌', '꿀단지 폭탄 — 여왕벌 곁으로'],
+        [27, 12, '3막 진행요원 반장', '탈락 판정 — 등 뒤로'],
+        [34, 15, '최종 보스 — 파티 드래곤', '마지막 게임 — 빛나는 원 안으로'],
+      ]
+    : [
+        [9, 3, '1막 도살자', '도살의 시간 — 멀리 달아나라'],
+        [18, 8, '2막 거미 여왕', '죽음의 거미줄 — 여왕 곁으로'],
+        [27, 12, '3막 관리인', '처형 — 등 뒤로'],
+        [34, 15, '최종 보스 — 심연의 군주', '심연의 심판 — 빛나는 원 안으로'],
+      ]
   at(0, () => {
     holding = true
     S().autopilot = true
@@ -623,14 +636,14 @@ function scenes() {
   // 마을 (고르는 화면 다음 — 짧게)
   at(0, () => {
     fadeTo(0, 700)
-    caption('마을에서 떠나는 이어진 세계', '촌장 퀘스트 · 상인 · 대장장이 · 도박꾼 · 보관함 · 용병')
+    caption(...L(['마을에서 떠나는 이어진 세계', '촌장 퀘스트 · 상인 · 대장장이 · 도박꾼 · 보관함 · 용병'], ['대기실에서 떠나는 놀이 섬', '안내원 퀘스트 · 매점 · 수리공 · 뽑기 · 사물함 · 응원단']))
     zoomTo(1.06, 1.0, 4000)
     key('KeyD', true)
   })
   at(1.6, () => {
     key('KeyD', false)
     key('KeyW', true)
-    snap = 'shot_town'
+    snap = 'shot_town' + (BRIGHT ? '_bright' : '')
   })
   at(1.6, () => {
     key('KeyW', false)
@@ -668,11 +681,11 @@ function scenes() {
     cue('hot')
     fadeTo(0, 450)
     zoomTo(1.0, 1.08, 10000)
-    caption('몰려드는 실사 괴물 떼', '막마다 다른 괴물 16종 — 잠든 무리는 총소리에 깬다')
+    caption(...L(['몰려드는 실사 괴물 떼', '막마다 다른 괴물 16종 — 잠든 무리는 총소리에 깬다'], ['몰려드는 귀여운 괴물 떼', '막마다 다른 괴물 16종 — 쓰러지면 "퐁!" 색종이']))
   })
   const horde = t
   every(horde + 1.0, horde + 10, 1.0, () => alive() < 55 && spawn([0, 1, 0, 2], 22, 6, 12))
-  A.push({ t: horde + 4.2, fn: () => (snap = 'shot_fight') })
+  A.push({ t: horde + 4.2, fn: () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')) })
   // 스킬
   at(9.6, () => {})
   cut(at, () => {
@@ -731,7 +744,7 @@ function scenes() {
   })
   // 후원 금액마다 이벤트 — 부른 괴물 머리 위에 보낸 사람 이름표
   at(5.0, () => {
-    caption('후원 금액마다 이벤트', '좀비 떼 · 암흑 · 정예 무리 · 중간보스 · 막 보스 — 부른 괴물에 보낸 사람 이름표')
+    caption('후원 금액마다 이벤트', L('좀비 떼', '괴물 떼') + ' · 암흑 · 정예 무리 · 중간보스 · 막 보스 — 부른 괴물에 보낸 사람 이름표')
     M.stream.fakeDonation(1000)
     M.stream.fakeDonation(1000)
     M.stream.fakeDonation(5000)
@@ -794,15 +807,15 @@ function scenes() {
     at(stay, () => {})
   }
   at(0, () => cue('boss'))
-  boss(9, 3, 180, '막 보스 넷 — 저마다의 보스 방', '1막 도살자 — 돌진 · 회전 베기 · 갈고리', [[0.3, 1], [2.1, 2], [4.0, 0]], 5.4)
-  boss(18, 8, 190, '2막 거미 여왕', '거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', [[0.3, 0], [1.9, 1], [3.6, 3]], 5.4)
-  boss(27, 12, 190, '3막 관리인', '충격파 십자 · 내려찍기 · 방패병', [[0.3, 2], [2.3, 1]], 4.6)
-  boss(34, 15, 210, '최종 보스 — 심연의 군주', '체력이 줄면 분노 — 광선 · 지옥불 · 그림자', [[0.3, 4], [2.4, 3]], 4.8, () => {
+  boss(9, 3, 180, L('막 보스 넷 — 저마다의 보스 방', '놀이 넷 — 저마다의 술래'), L('1막 도살자 — 돌진 · 회전 베기 · 갈고리', '1막 술래 버섯왕 — 돌진 · 회전 베기 · 잠자리채'), [[0.3, 1], [2.1, 2], [4.0, 0]], 5.4)
+  boss(18, 8, 190, L('2막 거미 여왕', '2막 여왕벌'), L('거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', '꿀 부채 · 도약 · 꿀벌 부르기 · 꽃가루 안개'), [[0.3, 0], [1.9, 1], [3.6, 3]], 5.4)
+  boss(27, 12, 190, L('3막 관리인', '3막 진행요원 반장'), L('충격파 십자 · 내려찍기 · 방패병', '충격파 십자 · 내려찍기 · 진행요원 부르기'), [[0.3, 2], [2.3, 1]], 4.6)
+  boss(34, 15, 210, L('최종 보스 — 심연의 군주', '최종 보스 — 파티 드래곤'), L('체력이 줄면 분노 — 광선 · 지옥불 · 그림자', '체력이 줄면 신이 난다 — 무지개 광선 · 축포 · 유령'), [[0.3, 4], [2.4, 3]], 4.8, () => {
     cue('rage')
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
     if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
   })
-  A.push({ t: t - 2.0, fn: () => (snap = 'shot_boss') })
+  A.push({ t: t - 2.0, fn: () => (snap = 'shot_boss' + (BRIGHT ? '_bright' : '')) })
   // ---- 마지막: 크루 12명이 함께 군주를 — 쓰러지면 전리품이 쏟아진다
   cut(at, () => {
     finale()
@@ -1018,7 +1031,11 @@ async function renderAudio(durSec) {
     sx.boss = s.kind === 'boss' ? 1 : s.kind === 'rage' ? 2 : 0
     sx.intensity = s.kind === 'hot' || s.kind === 'boss' || s.kind === 'rage' ? 1 : s.kind === 'win' ? 0.4 : 0
     fakeT = Math.max(0, s.to - 0.4)
-    if (sx.boss) sx.scheduleBoss(fproxy)
+    // 밝은 판: 게임과 같은 고르기(평소 놀이곡 · 보스전 추격 곡 — sfx.scheduleBgm)
+    if (BRIGHT) {
+      sx.bgmStyle = 'bright'
+      sx.scheduleBgm()
+    } else if (sx.boss) sx.scheduleBoss(fproxy)
     else sx.scheduleDark(fproxy)
   }
   const monEv = sfxCues.reduce((n, c) => n + (c.ev ?? []).filter((e) => e.type === 'mdeath' || e.type === 'wake' || e.type === 'windup').length, 0)
@@ -1030,8 +1047,9 @@ async function renderAudio(durSec) {
     let n = 0
     for (const k of [3, 8, 12, 15]) {
       try {
-        const res = await fetch(`/bedorage-rpg/voice/boss_${k}.wav?${Date.now()}`)
-        if (res.ok) sx.lineBufs.set(k, await mctx.decodeAudioData(await res.arrayBuffer()))
+        // 밝은 판은 밝은 대사(boss_<번호>_b.wav) — sfx.lineKey 처럼 1000 을 더한 칸에
+        const res = await fetch(`/bedorage-rpg/voice/boss_${k}${BRIGHT ? '_b' : ''}.wav?${Date.now()}`)
+        if (res.ok) sx.lineBufs.set(k + (BRIGHT ? 1000 : 0), await mctx.decodeAudioData(await res.arrayBuffer()))
       } catch (e) {
         log.push(`목소리 ${k} ` + e)
       }
@@ -1192,7 +1210,7 @@ async function lobbyPhase(ve) {
     const z = ov.zoom
     const k = z.from + (z.to - z.from) * ease((now() - z.at) / z.dur)
     const s = Math.max(W / cv.width, H / cv.height) * k
-    g.filter = 'brightness(1.3)'
+    g.filter = BRIGHT ? 'none' : 'brightness(1.3)'
     g.drawImage(cv, (W - cv.width * s) / 2, (H - cv.height * s) / 2, cv.width * s, cv.height * s)
     g.filter = 'none'
     drawOverlay()
@@ -1218,6 +1236,8 @@ async function startGameFromLobby() {
   if (window.__lobby) window.__lobby.botChars = BOT_CHARS
   btn('게임 만들기')?.click()
   await sleep(700)
+  if (BRIGHT) document.querySelector('#seg-skin button[data-v="bright"]')?.click()
+  await sleep(200)
   btn('만들기')?.click()
   await sleep(1600)
   const cb = document.querySelector('input[type=checkbox]')
@@ -1273,7 +1293,15 @@ export async function start(opts = {}) {
   const LOW_MAX = 38_000_000
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
-  const BASE = ULT ? 'boss_voice' : 'trailer'
+  // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
+  BRIGHT = opts.skin === 'bright'
+  if (BRIGHT) {
+    try {
+      localStorage.setItem('brpg.skin', 'bright')
+    } catch {}
+    ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
+  }
+  const BASE = (ULT ? 'boss_voice' : 'trailer') + (BRIGHT ? '_bright' : '')
   const encs = [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
     { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },

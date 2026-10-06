@@ -53,6 +53,8 @@ describe('분위기', () => {
     expect(QUESTS[3].name).toBe('술래 버섯왕')
     expect(BOSS_PATS.find((p) => p.id === 'slaughter')?.line).toBe('무궁화 꽃이… 피었습니다!')
     expect(bt('마을의 촌장 카인에게 보고하라')).toBe('마을의 안내원 모모에게 보고하라')
+    expect(bt('심연의 군주가 분노한다')).toBe('파티 드래곤이 분노한다')
+    expect(bt('도살자를 쓰러뜨렸습니다')).toBe('술래 버섯왕을 쓰러뜨렸습니다')
     expect(QUESTS.map((q) => [q.reward, q.goal, q.area])).toEqual(before)
     // 모든 퀘스트 · 지역(빠진 것 없이)에 밝은 이름이 있다 — 어두운 낱말이 남지 않게
     for (const q of QUESTS) expect(q.ask).not.toMatch(/종|촌장|시체/)

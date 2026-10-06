@@ -907,6 +907,18 @@ export class MonsterView {
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
     for (const parts of this.kinds) for (const p of parts) this.group.add(p.mesh)
+    // 밝은 분위기: 도형 괴물(귀여운 모델이 구워지기 전 · 실사 끔)도 검게 보이지 않게 파스텔 쪽으로 (그림자 · 도깨비가 새까맸다)
+    if (isBright()) {
+      const done = new Set<THREE.Material>()
+      const white = new THREE.Color(0xffffff)
+      for (const parts of this.kinds)
+        for (const p of parts) {
+          const m = p.mesh.material as THREE.MeshLambertMaterial
+          if (done.has(m) || !m.color) continue
+          done.add(m)
+          m.color.lerp(white, 0.45)
+        }
+    }
     this.mcounts = this.kinds.map(() => 0)
     const c = document.createElement('canvas')
     c.width = c.height = 64

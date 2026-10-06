@@ -34,7 +34,7 @@ import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { ChatBox, cleanChat } from './chat'
-import { SKIN_DESC, SKIN_ICON, SKIN_LABEL, Skin, asSkin, loadSkinPref, saveSkinPref, setSkin } from '../game/skin'
+import { SKIN_DESC, SKIN_ICON, SKIN_LABEL, Skin, asSkin, bt, loadSkinPref, saveSkinPref, setSkin } from '../game/skin'
 import '../game/skinText'
 import '../game/skinThemes'
 import { StreamBadge, openStreamPanel } from './streamPanel'
@@ -226,7 +226,7 @@ export class Lobby {
               <div class="row" id="row-tier"><label>난이도</label><div class="seg" id="seg-tier">
                 ${TIER_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
               </div></div>
-              <p class="hintline" id="tier-desc">${TIER_DESC[0]}</p>
+              <p class="hintline" id="tier-desc">${bt(TIER_DESC[0])}</p>
             </div>
             <div class="arena-only" hidden>
               <div class="row"><label>모드</label><div class="seg" id="seg-room-mode">
@@ -795,7 +795,7 @@ export class Lobby {
       b.classList.toggle('on', t === this.tier)
     })
     const d = this.host.querySelector('#tier-desc') as HTMLElement | null
-    if (d) d.textContent = choice ? TIER_DESC[this.tier] : '난이도는 보통입니다 — 4막의 심연의 군주를 쓰러뜨리면 악몽 난이도가 열립니다.'
+    if (d) d.textContent = bt(choice ? TIER_DESC[this.tier] : '난이도는 보통입니다 — 4막의 심연의 군주를 쓰러뜨리면 악몽 난이도가 열립니다.')
   }
 
   private closeDlg(): void {

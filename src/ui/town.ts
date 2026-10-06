@@ -69,7 +69,7 @@ export class QuestLog {
 function recordHtml(me: PlayerState): string {
   const s = me.stats
   const n = (v: number) => v.toLocaleString('ko-KR')
-  const line = `<p class="rec-line">괴물 <b>${n(s.kills)}</b> · 정예 <b>${n(s.elites)}</b> · 보물 고블린 <b>${n(s.goblins)}</b> · 전설 <b>${n(s.legends)}</b> · 신화 <b>${n(s.mythics)}</b> · 주운 골드 <b>${goldText(s.gold)}</b> · 죽음 <b>${n(s.deaths)}</b></p>`
+  const line = `<p class="rec-line">괴물 <b>${n(s.kills)}</b> · 정예 <b>${n(s.elites)}</b> · ${bt('보물 고블린')} <b>${n(s.goblins)}</b> · 전설 <b>${n(s.legends)}</b> · 신화 <b>${n(s.mythics)}</b> · 주운 골드 <b>${goldText(s.gold)}</b> · 죽음 <b>${n(s.deaths)}</b></p>`
   const done = ACHIEVEMENTS.filter((a) => achieved(a, s, me.level)).length
   const rows = ACHIEVEMENTS.map((a) => {
     const [cur, goal] = a.goal(s, me.level)

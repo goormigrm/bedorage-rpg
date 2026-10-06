@@ -3,6 +3,7 @@
 // sim 은 이 글을 읽지 않는다 — 판정은 두 분위기에서 같다. 어둡게로 돌아가면 원래 글.
 
 import { BOSS_PATS, MONSTER_LIST } from '../core/monsters'
+import { DONATE_EVENTS } from '../core/donate'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS } from '../core/world'
 import { registerText } from './skin'
 
@@ -193,3 +194,7 @@ for (const p of BOSS_PATS) {
   if (t[1] && p.line) registerText(p, 'line', t[1])
   if (t[2] && p.hint) registerText(p, 'hint', t[2])
 }
+
+// ---- 후원 이벤트 이름 (효과 · 금액은 그대로) ----
+const DON_TEXT: Record<string, string> = { horde: '괴물 떼', hell: '깜짝 파티' }
+for (const d of DONATE_EVENTS) if (DON_TEXT[d.key]) registerText(d, 'name', DON_TEXT[d.key])
