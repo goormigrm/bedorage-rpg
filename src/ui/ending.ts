@@ -6,6 +6,17 @@
 
 // 2026-09-24 사용자: "배도라지 멤버들은 MT 를 떠났는데 다 같이 공포체험을 하다가 길을 잃었고, 다 같이 정신을 잃었다가
 // 눈을 떠 보니 야영지였고, 이곳을 벗어나기 위해 모험을 떠난다" — 계란이 된 것 · 종을 되찾는 흐름에 이어 붙였다
+// 밝은 분위기(2026-10-06 — 계획서 6장): 초대장 → 놀이 섬 대기실 → 도장 넷 → 하원 버스. 끝맺음 "…우리 꿈꾼 거 맞지?" 는 그대로.
+import { isBright } from '../game/skin'
+
+const LINES_BRIGHT = [
+  '무궁화 운동장, 달고나 숲, 구슬 골목, 불꽃 축제 — 네 번의 놀이를 모두 이겼다.',
+  '마지막 도장이 쾅 찍히자, 빵빵! 노란 하원 버스가 대기실 앞에 섰다.',
+  '모두 버스에 올라 창밖으로 손을 흔들었다. 놀이 섬이 점점 작아졌다.',
+  '눈을 떠 보니 MT 숙소 앞마당. 손에는 구겨진 초대장, 주머니에는 도장 하나 — "…우리 꿈꾼 거 맞지?"',
+]
+const NEXT_BRIGHT = ['악몽 난이도가 열렸다 — 같은 섬, 더 어려운 놀이', '지옥 난이도가 열렸다 — 마지막 놀이', '지옥까지 모두 끝냈다 — 전설의 참가자가 되었다']
+
 const LINES = [
   '공포체험의 밤, 종소리를 따라 길을 잃은 크루는 계란이 되어 이 땅에서 눈을 떴다.',
   '몸통은 거미 여왕의 실에, 혀는 관리인의 열쇠 꾸러미에, 소리는 심연의 목구멍에 있었다.',
@@ -19,12 +30,14 @@ export function showEnding(parent: HTMLElement, tier: number, onClose: () => voi
   if (parent.querySelector('.ending')) return
   const el = document.createElement('div')
   el.className = 'ending'
+  const b = isBright()
+  const lines = b ? LINES_BRIGHT : LINES
   el.innerHTML = `<div class="ending-box">
-    <h2>종이 울렸다</h2>
-    ${LINES.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
-    <p class="ending-sub" style="animation-delay:${1 + LINES.length * 1.6}s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
-    <p class="ending-hint" style="animation-delay:${1.6 + LINES.length * 1.6}s">${NEXT[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다</p>
-    <button class="btn ending-go" style="animation-delay:${2 + LINES.length * 1.6}s">계속하기</button>
+    <h2>${b ? '도장판을 다 채웠다' : '종이 울렸다'}</h2>
+    ${lines.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
+    <p class="ending-sub" style="animation-delay:${1 + lines.length * 1.6}s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
+    <p class="ending-hint" style="animation-delay:${1.6 + lines.length * 1.6}s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다</p>
+    <button class="btn ending-go" style="animation-delay:${2 + lines.length * 1.6}s">계속하기</button>
   </div>`
   parent.appendChild(el)
   el.querySelector<HTMLButtonElement>('.ending-go')!.onclick = () => {
@@ -32,6 +45,15 @@ export function showEnding(parent: HTMLElement, tier: number, onClose: () => voi
     onClose()
   }
 }
+
+/** 도입 (밝은 분위기): 초대장 → 놀이 섬 대기실 → 도장 넷 */
+const INTRO_BRIGHT = [
+  '배도라지 크루는 MT 를 떠났다. 숙소 문틈에 쪽지 하나가 끼워져 있었다 — <b>"추억의 놀이에 초대합니다."</b>',
+  '다 같이 웃으며 쪽지가 가리키는 대로 따라갔다. 알록달록한 문을 지나자 눈앞이 하얘졌다.',
+  '눈을 떠 보니 거대한 놀이 섬의 대기실 — 모두 동그란 <b>계란</b>이 되어 이층 침대에 굴러 있었다.',
+  '벽에는 커다란 도장판. 빈칸이 넷.',
+  '안내원 모모가 말했다. "놀이 넷을 이기고 <b>도장 넷</b>을 모으면, 집에 가는 버스가 와요!"',
+]
 
 /** 도입: 새 캐릭터로 처음 마을에 섰을 때 한 번 (어쩌다 이 땅에 떨어졌는가) */
 const INTRO = [
@@ -46,11 +68,13 @@ export function showIntro(parent: HTMLElement, onClose: () => void): void {
   if (parent.querySelector('.ending')) return
   const el = document.createElement('div')
   el.className = 'ending intro'
+  const b = isBright()
+  const intro = b ? INTRO_BRIGHT : INTRO
   el.innerHTML = `<div class="ending-box">
-    <h2>종이 멈춘 밤</h2>
-    ${INTRO.map((t, i) => `<p style="animation-delay:${0.6 + i * 1.3}s">${t}</p>`).join('')}
-    <p class="ending-hint" style="animation-delay:${0.6 + INTRO.length * 1.3}s">마을에서 <b>촌장 카인(F)</b> 에게 말을 걸면 할 일을 알려 줍니다 · <b>M</b> 으로 지도를 봅니다</p>
-    <button class="btn ending-go" style="animation-delay:${0.9 + INTRO.length * 1.3}s">시작하기</button>
+    <h2>${b ? '추억의 놀이에 초대합니다' : '종이 멈춘 밤'}</h2>
+    ${intro.map((t, i) => `<p style="animation-delay:${0.6 + i * 1.3}s">${t}</p>`).join('')}
+    <p class="ending-hint" style="animation-delay:${0.6 + intro.length * 1.3}s">${b ? '대기실에서 <b>안내원 모모(F)</b>' : '마을에서 <b>촌장 카인(F)</b>'} 에게 말을 걸면 할 일을 알려 줍니다 · <b>M</b> 으로 지도를 봅니다</p>
+    <button class="btn ending-go" style="animation-delay:${0.9 + intro.length * 1.3}s">시작하기</button>
   </div>`
   parent.appendChild(el)
   const close = () => {

@@ -2,6 +2,7 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
+import { bt } from '../game/skin'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
@@ -21,7 +22,7 @@ export function questList(q: number[], buttons: boolean): string {
   return QUESTS.map((d, i) => {
     const st = q[i] ?? 0
     if (st < 0) return ''
-    const tag = ['아직 모름', '진행 중', '이룸 — 촌장에게 보고', '끝'][st]
+    const tag = ['아직 모름', '진행 중', bt('이룸 — 촌장에게 보고'), '끝'][st]
     const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${i}">보상 받기 — ${d.reward}</button>` : ''
     const say = st === 3 ? d.thanks : d.ask
     return `<div class="q-row q${st}"><div class="q-h"><b>${d.name}</b><span>${tag}</span></div>
@@ -59,7 +60,7 @@ export class QuestLog {
     const reach = actReached(q)
     let body = ''
     for (let act = reach; act >= 0; act--) body += `<p class="tp-line">${act + 1}막 · ${ACTS[act].name}</p>` + questList(q.map((v, i) => (QUESTS[i]?.act === act ? v : -1)), false)
-    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 기록</b><button class="inv-x" data-x>✕</button></div>${body}${recordHtml(me)}<p class="tp-hint">퀘스트는 마을의 촌장 카인이 맡긴다 · J · Esc 로 닫기</p>`
+    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 기록</b><button class="inv-x" data-x>✕</button></div>${body}${recordHtml(me)}<p class="tp-hint">${bt('퀘스트는 마을의 촌장 카인이')} 맡긴다 · J · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
   }
 }

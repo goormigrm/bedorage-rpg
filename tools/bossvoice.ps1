@@ -5,7 +5,7 @@
 # 대사 넷을 짧은 WAV 로 만들어 게임에 싣고(public/voice), 게임(audio/sfx.ts bossLine)과 영상이 **같은 가공**(음 내리기 · 겹치기 ·
 # 거친 맛 · 저음 · 메아리 · 긴 잔향)을 건다. 가공에서 재생 빠르기를 늦춰(음이 내려간다) 여기서는 조금 빠르게 읽힌다.
 #
-#   powershell -ExecutionPolicy Bypass -File tools/bossvoice.ps1      → public/voice/boss_<보스 번호>.wav (24 kHz 모노)
+#   powershell -ExecutionPolicy Bypass -File tools/bossvoice.ps1      → public/voice/boss_<보스 번호>.wav · 밝은 분위기 boss_<번호>_b.wav (24 kHz 모노)
 Add-Type -AssemblyName System.Speech
 $out = Join-Path $PSScriptRoot '..\public\voice'
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -13,12 +13,17 @@ $lines = @(
   @{ kind = 3;  text = '신선한 고기다…!';                pitch = '-20%'; rate = '+15%' },
   @{ kind = 8;  text = '내 곁으로 오너라, 아이들아…';      pitch = '+10%'; rate = '+5%' },
   @{ kind = 12; text = '내 앞에 선 자, 목을 내놓아라!';    pitch = '-25%'; rate = '+15%' },
-  @{ kind = 15; text = '심연이 모두를 삼키리라.';          pitch = '-30%'; rate = '+10%' }
+  @{ kind = 15; text = '심연이 모두를 삼키리라.';          pitch = '-30%'; rate = '+10%' },
+  # 밝은 분위기 (2026-10-06 — 계획서 3장 · game/skinText.ts 의 즉사기 대사) → boss_<번호>_b.wav. 높고 경쾌하게 (가공도 밝게 — sfx.bossLine)
+  @{ kind = 3;  text = '무궁화 꽃이… 피었습니다!';        pitch = '+15%'; rate = '+0%';  tag = '_b' },
+  @{ kind = 8;  text = '이리 오렴, 아가들아… 꿀 줄게!';   pitch = '+25%'; rate = '+5%';  tag = '_b' },
+  @{ kind = 12; text = '규칙 위반! 탈락!';                pitch = '+5%';  rate = '+10%'; tag = '_b' },
+  @{ kind = 15; text = '마지막 게임을 시작하지!';         pitch = '+0%';  rate = '+5%';  tag = '_b' }
 )
 foreach ($l in $lines) {
   $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
   $s.SelectVoice('Microsoft Heami Desktop')
-  $path = Join-Path $out ("boss_{0}.wav" -f $l.kind)
+  $path = Join-Path $out ("boss_{0}{1}.wav" -f $l.kind, $l.tag)
   $fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(24000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
   $s.SetOutputToWaveFile($path, $fmt)
   $ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='ko-KR'><voice name='Microsoft Heami Desktop'><prosody pitch='$($l.pitch)' rate='$($l.rate)'>$($l.text)</prosody></voice></speak>"

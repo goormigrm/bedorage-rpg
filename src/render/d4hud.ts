@@ -8,6 +8,7 @@
 //  - 체력이 낮으면 화면 가장자리가 붉게 맥박친다.
 // 모양은 어두운 쇠 바탕 + 바랜 금테 + 명조체 제목. 수치는 읽기 쉬운 고딕.
 
+import { bt } from '../game/skin'
 import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_SWIFT, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
@@ -578,10 +579,10 @@ export class D4Hud {
         st >= 3
           ? ['✓', '#7f9a78', '끝', '#6a8a64']
           : st === 2
-            ? ['◆', GOLD_HI, '촌장에게 보고', GOLD_HI]
+            ? ['◆', GOLD_HI, bt('촌장에게 보고'), GOLD_HI]
             : st === 1
               ? ['▸', '#e8dcc4', here ? (d.goal === 'clear' ? `남은 ${left}` : '여기') : AREAS[d.area].name, here ? '#ffd88a' : '#9d8f78']
-              : ['○', '#7e7260', '촌장', '#6a5e4c']
+              : ['○', '#7e7260', bt('촌장'), '#6a5e4c']
       // 오른쪽(상태)을 먼저 재고, 이름은 남은 폭에 맞춰 줄인다 — 둘이 겹치거나 칸을 넘지 않게
       c.font = `500 11px ${SANS}`
       const rightT = fitText(c, right, (W - 24) * 0.55)
@@ -625,7 +626,7 @@ export class D4Hud {
       const here = QUESTS.findIndex((d, i) => (q[i] ?? 0) < 2 && d.area === s.curArea)
       const next = QUESTS.findIndex((_, i) => (q[i] ?? 0) < 2)
       // 다음 할 일이 먼저 — 이룬 것(보고만 남은 것)은 할 일이 없을 때만 (2026-09-25 사용자: "완료 건을 안내하지 마")
-      const questLine = here >= 0 ? `◆ ${QUESTS[here].task}` : town && next >= 0 ? `◆ ${QUESTS[next].task}` : report >= 0 ? `◆ 촌장에게 보고 — ${QUESTS[report].name}` : ''
+      const questLine = here >= 0 ? `◆ ${QUESTS[here].task}` : town && next >= 0 ? `◆ ${QUESTS[next].task}` : report >= 0 ? `◆ ${bt('촌장에게 보고')} — ${QUESTS[report].name}` : ''
       const goal = questLine
         ? questLine
         : town

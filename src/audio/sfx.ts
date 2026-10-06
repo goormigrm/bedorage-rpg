@@ -1303,17 +1303,23 @@ export class Sfx {
     }
   }
 
+  /** 대사 소리 칸 번호: 밝은 분위기는 다른 파일(boss_<번호>_b.wav — 밝은 대사)이라 1000 을 더한다 */
+  private lineKey(kind: number): number {
+    return kind + (isBright() ? 1000 : 0)
+  }
+
   /** 보스 대사 소리를 받아 둔다 (한 번만 · 실패하면 다시 받지 않는다 — 그때는 음성 합성으로) */
   private loadLine(kind: number): void {
-    if (!this.ctx || this.lineBufs.has(kind) || this.lineLoading.has(kind)) return
-    this.lineLoading.add(kind)
+    const key = this.lineKey(kind)
+    if (!this.ctx || this.lineBufs.has(key) || this.lineLoading.has(key)) return
+    this.lineLoading.add(key)
     const ctx = this.ctx
-    void fetch(`${import.meta.env.BASE_URL}voice/boss_${kind}.wav`)
+    void fetch(`${import.meta.env.BASE_URL}voice/boss_${kind}${key >= 1000 ? '_b' : ''}.wav`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
       .then((a) => ctx.decodeAudioData(a))
-      .then((b) => this.lineBufs.set(kind, b))
-      .catch(() => this.lineBufs.set(kind, null))
-      .finally(() => this.lineLoading.delete(kind))
+      .then((b) => this.lineBufs.set(key, b))
+      .catch(() => this.lineBufs.set(key, null))
+      .finally(() => this.lineLoading.delete(key))
   }
 
   /**
@@ -1326,12 +1332,15 @@ export class Sfx {
    */
   bossLine(kind: number): boolean {
     if (this.mutedFlag || !this.bossVoiceOn() || !this.ctx) return false
-    const buf = this.lineBufs.get(kind)
+    const buf = this.lineBufs.get(this.lineKey(kind))
     if (!buf) return false
     const ctx = this.ctx
     const id = MONSTER_LIST[kind]?.id
-    const P =
-      id === 'lord' ? { rate: 0.66, echo: 0.38, fb: 0.5, ring: 32, sub: true, low: 9, vol: 0.5 }
+    // 밝은 분위기: 음을 내리지 않고 · 메아리 · 잔향 · 거친 맛을 줄여 또랑또랑하게 (게임 쇼 진행자처럼)
+    const bright = isBright()
+    const P = bright
+      ? { rate: 1.0, echo: 0.16, fb: 0.22, ring: 0, sub: false, low: 0, vol: 0.8 }
+      : id === 'lord' ? { rate: 0.66, echo: 0.38, fb: 0.5, ring: 32, sub: true, low: 9, vol: 0.5 }
       : id === 'warden' ? { rate: 0.74, echo: 0.3, fb: 0.45, ring: 38, sub: true, low: 8, vol: 0.55 }
       : id === 'queen' ? { rate: 0.92, echo: 0.34, fb: 0.5, ring: 0, sub: false, low: 3, vol: 0.75 }
       : { rate: 0.8, echo: 0.26, fb: 0.42, ring: 0, sub: false, low: 7, vol: 0.6 }
@@ -1347,10 +1356,11 @@ export class Sfx {
     const highS = mk(ctx.createBiquadFilter())
     highS.type = 'highshelf'
     highS.frequency.value = 3800
-    highS.gain.value = -6
+    highS.gain.value = bright ? 2 : -6
     const shaper = mk(ctx.createWaveShaper())
     const curve = new Float32Array(1024)
-    for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(2.4 * ((i / (curve.length - 1)) * 2 - 1))
+    const drive = bright ? 1.1 : 2.4
+    for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(drive * ((i / (curve.length - 1)) * 2 - 1))
     shaper.curve = curve
     shaper.oversample = '2x'
     const out = mk(ctx.createGain())
@@ -1373,7 +1383,7 @@ export class Sfx {
     const fb = mk(ctx.createGain())
     fb.gain.value = P.fb
     const echo = mk(ctx.createGain())
-    echo.gain.value = 0.55
+    echo.gain.value = bright ? 0.3 : 0.55
     shaper.connect(dl)
     dl.connect(fbLp)
     fbLp.connect(fb)
@@ -1384,7 +1394,7 @@ export class Sfx {
     const conv = mk(ctx.createConvolver())
     conv.buffer = this.reverbIr()
     const wet = mk(ctx.createGain())
-    wet.gain.value = 0.8
+    wet.gain.value = bright ? 0.28 : 0.8
     shaper.connect(conv)
     conv.connect(wet)
     wet.connect(out)
@@ -1463,7 +1473,8 @@ export class Sfx {
     u.voice = ko
     u.lang = ko.lang
     const id = MONSTER_LIST[kind]?.id
-    const [pitch, rate] = id === 'lord' ? [0.1, 0.72] : id === 'warden' ? [0.25, 0.78] : id === 'butcher' ? [0.35, 0.85] : id === 'queen' ? [1.5, 0.85] : [0.5, 0.8]
+    // 밝은 분위기는 높고 경쾌하게 (게임 쇼 진행자)
+    const [pitch, rate] = isBright() ? [1.3, 1.05] : id === 'lord' ? [0.1, 0.72] : id === 'warden' ? [0.25, 0.78] : id === 'butcher' ? [0.35, 0.85] : id === 'queen' ? [1.5, 0.85] : [0.5, 0.8]
     u.pitch = pitch
     u.rate = rate
     u.volume = volumes().boss

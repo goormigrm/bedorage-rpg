@@ -109,3 +109,15 @@ function applyOne(s: TextSwap, to: Skin): void {
 function applyText(to: Skin): void {
   for (const s of SWAPS) applyOne(s, to)
 }
+
+/** 정의표 밖에 박힌 짧은 글의 낱말 (밝게) — 길이가 긴 것부터 */
+const WORDS: [string, string][] = [
+  ['촌장 카인', '안내원 모모'],
+  ['촌장', '안내원'],
+]
+/** 화면 글 한 줄을 지금 분위기로 (밝게면 촌장 → 안내원). 배너 · HUD · 창 글처럼 코드에 박힌 글에 쓴다 */
+export function bt(s: string): string {
+  if (current !== 'bright') return s
+  for (const [a, b] of WORDS) s = s.split(a).join(b)
+  return s
+}

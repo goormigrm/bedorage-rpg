@@ -1,7 +1,9 @@
 // 분위기(스킨 — game/skin.ts, 2026-10-06): 어둡게 · 밝게. 그림 · 글만 바꿔 끼우고 되돌린다 — 판정(타일)은 그대로
 import { afterEach, describe, expect, it } from 'vitest'
-import { asSkin, registerBrightTheme, registerText, setSkin, skin, skinMap } from '../src/game/skin'
-import { buildAreaMap } from '../src/core/world'
+import { asSkin, bt, registerBrightTheme, registerText, setSkin, skin, skinMap } from '../src/game/skin'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, buildAreaMap } from '../src/core/world'
+import { BOSS_PATS } from '../src/core/monsters'
+import '../src/game/skinText'
 import { MapTheme } from '../src/core/maps'
 
 afterEach(() => setSkin('dark'))
@@ -39,5 +41,26 @@ describe('분위기', () => {
     expect(def.lore).toBe('무궁화 꽃이 피었습니다')
     setSkin('dark')
     expect(def).toEqual({ name: '도살자', lore: '갈고리' })
+  })
+
+  it('밝은 글 (skinText): 막 · 지역 · 우두머리 · 안내원 · 퀘스트 · 즉사기 대사 — 보상 · 목표는 그대로', () => {
+    const before = QUESTS.map((q) => [q.reward, q.goal, q.area])
+    setSkin('bright')
+    expect(ACTS[0].name).toBe('무궁화 운동장')
+    expect(AREAS[1].name).toBe('무궁화 운동장')
+    expect(AREAS[3].unique?.name).toBe('줄넘기 대장 오스')
+    expect(NPC_NAMES.elder).toBe('안내원 모모')
+    expect(QUESTS[3].name).toBe('술래 버섯왕')
+    expect(BOSS_PATS.find((p) => p.id === 'slaughter')?.line).toBe('무궁화 꽃이… 피었습니다!')
+    expect(bt('마을의 촌장 카인에게 보고하라')).toBe('마을의 안내원 모모에게 보고하라')
+    expect(QUESTS.map((q) => [q.reward, q.goal, q.area])).toEqual(before)
+    // 모든 퀘스트 · 지역(빠진 것 없이)에 밝은 이름이 있다 — 어두운 낱말이 남지 않게
+    for (const q of QUESTS) expect(q.ask).not.toMatch(/종|촌장|시체/)
+    setSkin('dark')
+    expect(ACTS[0].name).toBe('무너진 성당')
+    expect(AREAS[1].name).toBe('핏빛 들판')
+    expect(NPC_NAMES.elder).toBe('촌장 카인')
+    expect(bt('촌장')).toBe('촌장')
+    expect(BOSS_PATS.find((p) => p.id === 'slaughter')?.line).toBe('신선한 고기다…!')
   })
 })

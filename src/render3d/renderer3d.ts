@@ -26,6 +26,11 @@ const BOSS_INTRO: Record<string, string> = {
   warden: '지하 감옥의 열쇠를 쥔 자 — 이 문으로 나간 죄수는 없다',
   lord: '옥좌에서 심연이 일어선다 — 마지막 싸움이다',
 }
+// 밝은 분위기 (2026-10-06 — 계획서 3장): 놀이의 술래
+registerText(BOSS_INTRO, 'butcher', '무궁화 운동장의 술래 — 움직이는 게 보이면 바로 달려온다')
+registerText(BOSS_INTRO, 'queen', '벌집 궁전의 여왕벌 — 꿀단지를 지키러 깨어났다')
+registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 반칙하면 바로 탈락이다')
+registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
 import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { keyLabel } from '../game/keymap'
@@ -39,7 +44,7 @@ import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
-import { isBright } from '../game/skin'
+import { bt, isBright, registerText } from '../game/skin'
 import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
@@ -1052,9 +1057,9 @@ export class Renderer3D {
           const qd = QUESTS[e.q]
           const nextAct = e.q === actBossQuest(qd.act) ? qd.act + 1 : -1
           if (nextAct > 0 && nextAct < ACTS.length) {
-            this.hud.banner(`${qd.act + 1}막을 끝냈다 — ${ACTS[nextAct].name}`, '보스가 섰던 자리에 문이 열렸다 · F 로 건너간다 (마을 촌장에게도 부탁할 수 있다)', '#e0a8ff')
+            this.hud.banner(`${qd.act + 1}막을 끝냈다 — ${ACTS[nextAct].name}`, bt('보스가 섰던 자리에 문이 열렸다 · F 로 건너간다 (마을 촌장에게도 부탁할 수 있다)'), '#e0a8ff')
           } else {
-            this.hud.banner(`퀘스트 이룸 — ${qd.name}`, '마을의 촌장 카인에게 보고하라', '#ffd86a')
+            this.hud.banner(`퀘스트 이룸 — ${qd.name}`, bt('마을의 촌장 카인에게 보고하라'), '#ffd86a')
           }
           break
         }
@@ -1105,7 +1110,7 @@ export class Renderer3D {
         case 'bossDown': {
           const a = areaDef(e.area)
           if (a.boss !== undefined && a.act === ACTS.length - 1) this.hud.banner('심연이 닫혔다', `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다`, '#ffcf6a')
-          else if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, `${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 촌장에게 가면 ${a.act + 2}막으로`, '#ffcf6a')
+          else if (a.boss !== undefined) this.hud.banner(`${a.act + 1}막을 끝냈다`, bt(`${MONSTER_LIST[e.kind].name}이(가) 쓰러졌다 · 촌장에게 가면 ${a.act + 2}막으로`), '#ffcf6a')
           else this.hud.notice(`우두머리 ${a.unique?.name ?? ''} 쓰러짐!`, '#ffb46a')
           break
         }
@@ -2149,11 +2154,11 @@ export class Renderer3D {
       const path = areaPath(curr.curArea, g.area)
       const hop = path?.[1]
       const e = hop === undefined ? null : l.exits.find((q) => q.to === hop)
-      return e ? { x: e.x, y: e.y, label: `${g.label} → ${AREAS[hop!].name}` } : null
+      return e ? { x: e.x, y: e.y, label: `${bt(g.label)} → ${AREAS[hop!].name}` } : null
     }
     if (g.npc) {
       const n = townNpcs(curr.curArea).find((q) => q.id === g.npc)
-      return n ? { x: n.x, y: n.y, label: g.label } : null
+      return n ? { x: n.x, y: n.y, label: bt(g.label) } : null
     }
     const qd = g.quest !== undefined ? QUESTS[g.quest] : null
     if (qd?.goal === 'kill' && l.special) return { x: l.special.x, y: l.special.y, label: qd.name }
