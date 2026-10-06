@@ -5,10 +5,12 @@
 //   발판마다 이름패(앞 단은 발판 앞, 뒤 단은 머리 위). 마우스를 올리면 고리·몸이 밝아지고, 누르면 고른다.
 // 오른쪽 패널·아래 캐릭터 카드에 가리지 않게, 카메라는 **비어 있는 칸(frame)** 한가운데에 무대 전체가 들어오도록 맞춘다.
 // 로비의 배경일 뿐 게임 상태와는 무관하다. 로비를 닫을 때 dispose.
+// 밝은 분위기(2026-10-06): 같은 무대를 해질녘 보랏빛 하늘 · 풀밭 · 파스텔 천막과 발판 · 천막 사이 꼬마전구로 (분위기를 바꾸면 바로 바뀐다).
 
 import * as THREE from 'three'
 import { CHARACTERS, CharacterId } from '../core/characters'
 import { CharacterRig, buildCharacter } from '../render3d/character3d'
+import { isBright, onSkin } from '../game/skin'
 
 interface Seat {
   id: CharacterId
@@ -76,6 +78,18 @@ export class BonfireScene {
   private goal = { fw: 1, fh: 1, ox: 0, oy: 0, d: 11 }
   private fitted = false
   private textures: THREE.Texture[] = []
+  /** 분위기마다 바뀌는 것 (어둡게 · 밝게) */
+  private mood!: {
+    ground: THREE.MeshLambertMaterial
+    tents: THREE.MeshLambertMaterial[]
+    stone: THREE.MeshLambertMaterial
+    cap: THREE.MeshLambertMaterial
+    rocks: THREE.MeshLambertMaterial
+    hemi: THREE.HemisphereLight
+    fairy: THREE.Group
+    bulbs: THREE.SpriteMaterial[]
+  }
+  private offSkin: () => void = () => {}
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -93,13 +107,15 @@ export class BonfireScene {
     this.scene.fog = new THREE.Fog(0x030304, 10, 24)
 
     // 땅: 다진 흙 + 모닥불 둘레 돌
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshLambertMaterial({ color: 0x2a241c }))
+    const groundM = new THREE.MeshLambertMaterial({ color: 0x2a241c })
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(14, 48), groundM)
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
     this.scene.add(ground)
+    const rocksM = new THREE.MeshLambertMaterial({ color: 0x55504a, flatShading: true })
     for (let k = 0; k < 11; k++) {
       const a = (k / 11) * Math.PI * 2
-      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16 + (k % 3) * 0.03, 0), new THREE.MeshLambertMaterial({ color: 0x55504a, flatShading: true }))
+      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16 + (k % 3) * 0.03, 0), rocksM)
       s.position.set(Math.cos(a) * 0.62, 0.1, Math.sin(a) * 0.62)
       s.rotation.set(k, k * 2, 0)
       this.scene.add(s)
@@ -111,8 +127,11 @@ export class BonfireScene {
       this.scene.add(log)
     }
     // 뒤편 어둠 속의 천막 · 수레 윤곽 (야영지)
-    const tentM = new THREE.MeshLambertMaterial({ color: 0x3a2e28 })
-    for (const [x, z, s] of [[-5.6, -4.6, 1.2], [5.8, -4.2, 1], [0.6, -7.2, 1.4]] as const) {
+    const tentMs: THREE.MeshLambertMaterial[] = []
+    const TENTS = [[-5.6, -4.6, 1.2], [5.8, -4.2, 1], [0.6, -7.2, 1.4]] as const
+    for (const [x, z, s] of TENTS) {
+      const tentM = new THREE.MeshLambertMaterial({ color: 0x3a2e28 })
+      tentMs.push(tentM)
       const tent = new THREE.Mesh(new THREE.ConeGeometry(1.3 * s, 1.8 * s, 4), tentM)
       tent.position.set(x, 0.9 * s, z)
       tent.rotation.y = 0.4
@@ -124,7 +143,8 @@ export class BonfireScene {
     this.fire.position.set(0, 0.9, 0)
     this.fire.castShadow = true
     this.scene.add(this.fire)
-    this.scene.add(new THREE.HemisphereLight(0x3a4468, 0x100c08, 0.5))
+    const hemi = new THREE.HemisphereLight(0x3a4468, 0x100c08, 0.5)
+    this.scene.add(hemi)
     // 무대를 위앞에서 은은하게 — 뒤 단은 불에서 멀어 이것 없이는 어둠에 묻힌다
     const stage = new THREE.SpotLight(0xffc890, 60, 30, 0.62, 0.8, 1.2)
     stage.position.set(0, 7.5, 6)
@@ -201,12 +221,52 @@ export class BonfireScene {
       this.seats.push({ id, rig, home, front: FRONT_SPOT.clone(), k: 0, ring, plate, glow: 0 })
     })
 
+    // 꼬마전구 (밝게만): 천막 꼭대기 사이에 늘어진 줄 셋 — 전구는 빛 스프라이트 (진짜 빛은 아니다)
+    const fairy = new THREE.Group()
+    const BULB = [0xff8fb8, 0xffd36e, 0x7fdcc0, 0x8fbfff, 0xc6a4ff]
+    const bulbs = BULB.map((c) => new THREE.SpriteMaterial({ map: glow, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
+    const tops = TENTS.map(([x, z, s]) => new THREE.Vector3(x, 1.8 * s, z))
+    for (const [a, b] of [[tops[0], tops[2]], [tops[2], tops[1]], [tops[0], tops[1]]] as const) {
+      const n = 16
+      for (let i = 1; i < n; i++) {
+        const u = i / n
+        const p = new THREE.Vector3().lerpVectors(a, b, u)
+        p.y -= Math.sin(u * Math.PI) * 0.9
+        const sp = new THREE.Sprite(bulbs[i % bulbs.length])
+        sp.position.copy(p)
+        sp.scale.setScalar(0.32)
+        fairy.add(sp)
+      }
+    }
+    this.scene.add(fairy)
+    this.mood = { ground: groundM, tents: tentMs, stone: stoneM, cap: capM, rocks: rocksM, hemi, fairy, bulbs }
+    this.applySkin(isBright())
+    this.offSkin = onSkin((s) => this.applySkin(s === 'bright'))
+
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
     canvas.addEventListener('pointerleave', this.onLeave)
     window.addEventListener('resize', this.resize)
     this.resize()
     this.loop()
+  }
+
+  /** 분위기 입히기: 밝게 = 해질녘 보랏빛 하늘 · 풀밭 · 파스텔 천막과 발판 · 꼬마전구 */
+  private applySkin(bright: boolean): void {
+    const m = this.mood
+    const sky = bright ? 0x6e5c98 : 0x030304
+    this.scene.background = new THREE.Color(sky)
+    ;(this.scene.fog as THREE.Fog).color.setHex(sky)
+    m.ground.color.setHex(bright ? 0x7fae62 : 0x2a241c)
+    m.rocks.color.setHex(bright ? 0xf2e6ff : 0x55504a)
+    const TENT = [0xff9ec4, 0x9fd8ff, 0xffe08a]
+    m.tents.forEach((t, i) => t.color.setHex(bright ? TENT[i % TENT.length] : 0x3a2e28))
+    m.stone.color.setHex(bright ? 0xcdb8ec : 0x4a443d)
+    m.cap.color.setHex(bright ? 0xfff0fa : 0x625a50)
+    m.hemi.color.setHex(bright ? 0xffd8ee : 0x3a4468)
+    m.hemi.groundColor.setHex(bright ? 0x4a5a3a : 0x100c08)
+    m.hemi.intensity = bright ? 1.35 : 0.5
+    m.fairy.visible = bright
   }
 
   select(id: CharacterId): void {
@@ -310,6 +370,7 @@ export class BonfireScene {
       const s = (1.05 - k * 0.12) * (1 + Math.sin(t * 12 + k * 1.7) * 0.1)
       f.scale.set(s * 0.8, s * 1.2, 1)
     })
+    if (this.mood.fairy.visible) this.mood.bulbs.forEach((b, k) => (b.opacity = 0.7 + Math.sin(t * 2.2 + k * 1.3) * 0.3))
     const pa = this.embers.geometry.getAttribute('position') as THREE.BufferAttribute
     const pos = pa.array as Float32Array
     for (let i = 0; i < this.emberV.length; i++) {
@@ -359,6 +420,7 @@ export class BonfireScene {
 
   dispose(): void {
     this.disposed = true
+    this.offSkin()
     cancelAnimationFrame(this.raf)
     this.canvas.removeEventListener('pointerdown', this.onDown)
     this.canvas.removeEventListener('pointermove', this.onMove)

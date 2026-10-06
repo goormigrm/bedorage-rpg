@@ -20,7 +20,7 @@ interface ModelKind {
   /** 마리마다 (프레임 a, 프레임 b, 섞는 비율) — 부품 지오메트리 모두가 같이 쓴다 */
   frame: THREE.InstancedBufferAttribute
   depth: THREE.Material
-  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean }[]
+  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean }[]
   /** 보이게 했나 (처음엔 숨겨 두고 데우기가 끝나거나 괴물이 화면에 나오면 — 2026-09-23) */
   shown: boolean
 }
@@ -74,6 +74,45 @@ function frameShader(mat: THREE.Material): void {
 }
 
 /** 손에 든 부품: 도형 자체의 움직임 없이 (모델의 팔이 휘두른다) */
+/**
+ * 밝은 분위기 (2026-10-06 — 사용자 결정 "진행요원 가면은 우리 기호 ♡ ☆ ◇"): 진행요원 머리 위에 기호 하나.
+ * 위에서 내려다보는 카메라라 얼굴 가면은 거의 안 보인다 → 머리 위에 납작하게 띄워 늘 화면 쪽으로 바로 서게 한다(flat).
+ */
+const BRIGHT_BADGE: Record<number, { shape: 0 | 1 | 2; color: number }> = {
+  9: { shape: 0, color: 0xffffff }, // 분홍 진행요원 ♡
+  12: { shape: 2, color: 0xffe066 }, // 진행요원 반장 ◇
+}
+const badgeGeos: THREE.BufferGeometry[] = []
+/** 기호 모양 (0 = ♡ · 1 = ☆ · 2 = ◇) — 너비 약 0.34, 바닥에 눕혀 위를 본다(위쪽 끝이 화면 위) */
+function badgeGeometry(shape: 0 | 1 | 2): THREE.BufferGeometry {
+  if (badgeGeos[shape]) return badgeGeos[shape]
+  const s = new THREE.Shape()
+  const r = 0.17
+  if (shape === 0) {
+    s.moveTo(0, -r)
+    s.bezierCurveTo(-r * 1.4, r * 0.1, -r * 0.7, r * 1.2, 0, r * 0.4)
+    s.bezierCurveTo(r * 0.7, r * 1.2, r * 1.4, r * 0.1, 0, -r)
+  } else if (shape === 1) {
+    for (let k = 0; k < 10; k++) {
+      const a = Math.PI / 2 + (k * Math.PI) / 5
+      const rr = k % 2 === 0 ? r : r * 0.45
+      if (k === 0) s.moveTo(Math.cos(a) * rr, Math.sin(a) * rr)
+      else s.lineTo(Math.cos(a) * rr, Math.sin(a) * rr)
+    }
+  } else {
+    s.moveTo(0, r)
+    s.lineTo(r * 0.75, 0)
+    s.lineTo(0, -r)
+    s.lineTo(-r * 0.75, 0)
+  }
+  s.closePath()
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: false, curveSegments: 8 })
+  // 눕힌다: 모양의 위(+y)가 화면 위(-z), 두께는 위(+y)로
+  g.rotateX(-Math.PI / 2)
+  badgeGeos[shape] = g
+  return g
+}
+
 const STILL = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }
 const ONE = new THREE.Vector3(1, 1, 1)
 
@@ -852,6 +891,10 @@ export class MonsterView {
   private aq = new THREE.Quaternion()
   private aqa = [0, 0, 0, 1]
   private am = new THREE.Matrix4()
+  /** 납작 기호(flat)의 자리 · 회전 · 크기 (밝은 분위기 진행요원 기호) */
+  private fp = new THREE.Vector3()
+  private fq = new THREE.Quaternion()
+  private fs = new THREE.Vector3()
 
   /**
    * 발밑 그림자 (2026-09-24 최적화): 떼 괴물(실사 모델 · 보스 빼고)은 그림자 맵에 그리지 않고 둥근 그림자 한 장을 깐다.
@@ -1006,7 +1049,7 @@ export class MonsterView {
           return mesh
         })
         // 겹쳐 그리는 도형 부품(활 · 방패 …)은 실사 모델에만 — 귀여운 모델은 제 모습 그대로 (밝은 분위기)
-        const extras = (isBright() ? [] : (MODEL_EXTRAS[kind] ?? [])).map((e) => {
+        const extras: ModelKind['extras'] = (isBright() ? [] : (MODEL_EXTRAS[kind] ?? [])).map((e) => {
           const src = this.kinds[kind][e.part < 0 ? this.kinds[kind].length + e.part : e.part]
           const mesh = new THREE.InstancedMesh(src.mesh.geometry, src.mesh.material, CAP) as InstancedMesh
           mesh.count = 0
@@ -1015,6 +1058,16 @@ export class MonsterView {
           this.group.add(mesh)
           return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
         })
+        // 밝은 분위기: 진행요원 머리 위 기호 (♡ · ◇)
+        const badge = isBright() ? BRIGHT_BADGE[kind] : undefined
+        if (badge) {
+          const mesh = new THREE.InstancedMesh(badgeGeometry(badge.shape), new THREE.MeshBasicMaterial({ color: badge.color }), CAP) as InstancedMesh
+          mesh.count = 0
+          mesh.frustumCulled = false
+          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+          this.group.add(mesh)
+          extras.push({ mesh, pose: () => {}, s: 1, dx: 0, dy: (specOf(kind)?.size ?? 1) + 0.25, dz: 0, still: true, flat: true })
+        }
         const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false }
         this.models[kind] = mk
         // 처음에는 숨겨 둔다: 보이는 순간(괴물 수 0 이어도) 셰이더 컴파일 · 모양 키 텍스처(3~15MB) 만들기가 그 프레임에 몰린다.
@@ -1352,6 +1405,10 @@ export class MonsterView {
         this.am.compose(this.ap, this.aq, ONE)
         this.tmp.multiplyMatrices(this.local, this.am).multiply(this.o.matrix)
       } else this.tmp.multiplyMatrices(this.local, this.o.matrix)
+      if (ex.flat) {
+        this.tmp.decompose(this.fp, this.fq, this.fs)
+        this.tmp.compose(this.fp, this.fq.identity(), this.fs)
+      }
       ex.mesh.setMatrixAt(i, this.tmp)
     }
   }

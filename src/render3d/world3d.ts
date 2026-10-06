@@ -6,6 +6,11 @@
 //   벽에는 횃불 — 가까운 여섯 개만 진짜 빛(성능), 나머지는 불꽃만.
 // 전부 타일 좌표 해시로 정하므로 같은 맵이면 모든 브라우저에서 같은 모습이다(화면만의 일 — sim 과 무관).
 // 덕의 대전 맵(style 없음)은 예전 상자 모습 그대로.
+//
+// 밝은 분위기(2026-10-06 — docs/밝은-분위기-개편-계획.md 3장): 같은 자리 · 같은 크기에 **놀이터 모습**만 바꾼다.
+//   돌벽 → 장난감 블록 · 바위 → 커다란 공 · 관 → 선물 상자 · 도마 → 케이크 탁자 · 통 → 장난감 북,
+//   뼈 → 구슬 · 해골 → 딱지 · 묘비 → 훌라후프 · 핏물 → 물감 · 죽은 나무 → 막대 사탕 나무 · 횃불 → 풍선,
+//   마을 천막 → 숙소(돼지 저금통 · 큰 시계 · 이층 침대). 바닥엔 분필 ♡ ☆ ◇. 판정(sim)은 그대로.
 
 import { isBright } from '../game/skin'
 import * as THREE from 'three'
@@ -47,6 +52,10 @@ export function buildWorld(map: GameMap, floorTex?: THREE.CanvasTexture): World3
 
 // ================================================================ 어두운 지역 (디아블로)
 
+/** 밝은 분위기의 장난감 색 (분홍 · 민트 · 노랑 · 하늘 · 보라 · 살구) */
+const TOY = [0xff8fb8, 0x7fdcc0, 0xffd36e, 0x8fbfff, 0xc6a4ff, 0xffa47a]
+const toy = (tx: number, ty: number, salt: number): number => TOY[Math.floor(hash(tx, ty, salt) * TOY.length) % TOY.length]
+
 /** 테마별 재료 */
 const LOOK: Record<WorldStyle, {
   wall: 'stone' | 'rock' | 'town' | 'tree'
@@ -69,6 +78,7 @@ const LOOK: Record<WorldStyle, {
 function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTexture): World3D {
   const t = map.theme
   const look = LOOK[style]
+  const bright = isBright()
   const group = new THREE.Group()
   const disposables: { dispose(): void }[] = []
   const isFloor = (tx: number, ty: number) => tx >= 0 && ty >= 0 && tx < map.w && ty < map.h && map.tiles[ty * map.w + tx] === TILE_FLOOR
@@ -125,21 +135,28 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     const cap = inst(new THREE.BoxGeometry(1.08, 0.14, 1.08), new THREE.MeshLambertMaterial({ color: 0xffffff }), vis.length)
     const base = new THREE.Color(t.wall)
     const top = new THREE.Color(t.wallTop)
+    const toyCol = new THREE.Color()
     for (const [tx, ty] of vis) {
       const h = h0 + (h1 - h0) * hash(tx, ty, 1)
       const k = 0.82 + 0.3 * hash(tx, ty, 2)
-      put(block, tx + 0.5, h / 2, ty + 0.5, 1, h, 1, 0, col.copy(base).multiplyScalar(k))
+      // 밝게: 칸마다 다른 색의 장난감 블록 (테마 색과 반쯤 섞어 지역 느낌은 남긴다)
+      if (bright) col.copy(base).lerp(toyCol.setHex(toy(tx, ty, 2)), 0.45)
+      else col.copy(base).multiplyScalar(k)
+      put(block, tx + 0.5, h / 2, ty + 0.5, 1, h, 1, 0, col)
       put(cap, tx + 0.5, h + 0.07, ty + 0.5, 1, 1, 1, 0, col.copy(top).multiplyScalar(0.85 + 0.25 * hash(tx, ty, 3)))
     }
-    // 무너진 모서리: 벽 끝(이웃 벽이 하나뿐)에 돌 부스러기
-    const rubble = inst(new THREE.DodecahedronGeometry(0.22, 0), new THREE.MeshLambertMaterial({ color: t.wallTop }), vis.length)
+    // 무너진 모서리: 벽 끝(이웃 벽이 하나뿐)에 돌 부스러기 (밝게: 흩어진 작은 블록)
+    const rubble = bright
+      ? inst(new THREE.BoxGeometry(0.26, 0.26, 0.26), new THREE.MeshLambertMaterial({ color: 0xffffff }), vis.length * 3)
+      : inst(new THREE.DodecahedronGeometry(0.22, 0), new THREE.MeshLambertMaterial({ color: t.wallTop }), vis.length)
     for (const [tx, ty] of vis) {
       let n = 0
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (isWall(tx + dx, ty + dy)) n++
       if (n !== 1 || hash(tx, ty, 4) > 0.6) continue
       for (let k = 0; k < 3; k++) {
         const a = hash(tx, ty, 10 + k) * Math.PI * 2
-        put(rubble, tx + 0.5 + Math.cos(a) * 0.7, 0.1, ty + 0.5 + Math.sin(a) * 0.7, 1, 0.7, 1, a)
+        if (bright) put(rubble, tx + 0.5 + Math.cos(a) * 0.7, 0.13, ty + 0.5 + Math.sin(a) * 0.7, 1, 1, 1, a, col.setHex(toy(tx, ty, 14 + k)))
+        else put(rubble, tx + 0.5 + Math.cos(a) * 0.7, 0.1, ty + 0.5 + Math.sin(a) * 0.7, 1, 0.7, 1, a)
       }
     }
   } else if (look.wall === 'rock') {
@@ -149,8 +166,20 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
       const h = h0 + (h1 - h0) * hash(tx, ty, 1)
       put(rock, tx + 0.5 + (hash(tx, ty, 5) - 0.5) * 0.2, h * 0.42, ty + 0.5 + (hash(tx, ty, 6) - 0.5) * 0.2, 1.05 + hash(tx, ty, 7) * 0.2, h * 0.85, 1.05 + hash(tx, ty, 8) * 0.2, hash(tx, ty, 9) * 6.28, col.copy(base).multiplyScalar(0.75 + 0.45 * hash(tx, ty, 2)))
     }
+    // 들판 (밝게): 바위 사이 막대 사탕 나무 — 흰 막대 + 동그란 사탕
+    if (style === 'fields' && bright) {
+      const stick = inst(new THREE.CylinderGeometry(0.05, 0.06, 1.7, 6).translate(0, 0.85, 0), new THREE.MeshLambertMaterial({ color: 0xfff4ea }), vis.length)
+      const candy = inst(new THREE.SphereGeometry(0.46, 14, 10).scale(1, 1, 0.55).translate(0, 1.95, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), vis.length)
+      for (const [tx, ty] of vis) {
+        if (hash(tx, ty, 20) >= 0.12) continue
+        const s = 0.8 + hash(tx, ty, 21) * 0.6
+        const r = hash(tx, ty, 22) * 6.28
+        put(stick, tx + 0.5, 0, ty + 0.5, 1, s, 1, r)
+        put(candy, tx + 0.5, 0, ty + 0.5, s, s, s, r, col.setHex(toy(tx, ty, 23)))
+      }
+    }
     // 들판: 바위 사이 죽은 나무
-    if (style === 'fields') {
+    else if (style === 'fields') {
       const trunkGeo = mergeGeometries([
         new THREE.CylinderGeometry(0.06, 0.12, 2.2, 5).translate(0, 1.1, 0),
         new THREE.CylinderGeometry(0.03, 0.06, 0.9, 4).rotateZ(0.9).translate(0.32, 1.6, 0),
@@ -162,7 +191,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     }
   } else if (look.wall === 'tree') {
     // 숲: 벽 칸마다 전나무 (줄기 + 겹친 잎 원뿔 셋). 높이·색이 저마다
-    const trunk = inst(new THREE.CylinderGeometry(0.1, 0.16, 1, 6).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: 0x2e2218 }), vis.length)
+    const trunk = inst(new THREE.CylinderGeometry(0.1, 0.16, 1, 6).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: bright ? 0xa8764c : 0x2e2218 }), vis.length)
     const leafGeo = mergeGeometries([
       new THREE.ConeGeometry(0.72, 1.1, 7).translate(0, 1.0, 0),
       new THREE.ConeGeometry(0.58, 0.95, 7).translate(0, 1.55, 0),
@@ -180,16 +209,34 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   } else {
     // 마을: 테두리는 목책(끝이 뾰족한 말뚝), 안쪽 벽 덩어리는 천막
     const stakeGeo = mergeGeometries([new THREE.CylinderGeometry(0.13, 0.15, 1.7, 6).translate(0, 0.85, 0), new THREE.ConeGeometry(0.13, 0.35, 6).translate(0, 1.87, 0)])!
-    const stakes = inst(stakeGeo, new THREE.MeshLambertMaterial({ color: 0x5a4330 }), vis.length * 3)
+    // 밝게: 흰색 · 분홍 줄무늬 울타리
+    const stakes = inst(stakeGeo, new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0x5a4330 }), vis.length * 3)
     const clusters = wallClusters(map)
     for (const [tx, ty] of vis) {
       const border = tx <= 3 || ty <= 3 || tx >= map.w - 4 || ty >= map.h - 4
       if (!border && clusters.has(ty * map.w + tx)) continue
-      for (let k = 0; k < 3; k++) put(stakes, tx + 0.2 + k * 0.3, 0, ty + 0.5 + (hash(tx, ty, k) - 0.5) * 0.3, 1, 0.85 + hash(tx, ty, 10 + k) * 0.3, 1, hash(tx, ty, 20 + k) * 6)
+      for (let k = 0; k < 3; k++) put(stakes, tx + 0.2 + k * 0.3, 0, ty + 0.5 + (hash(tx, ty, k) - 0.5) * 0.3, 1, 0.85 + hash(tx, ty, 10 + k) * 0.3, 1, hash(tx, ty, 20 + k) * 6, bright ? col.setHex((tx + ty + k) % 2 ? 0xffffff : 0xffc2da) : undefined)
     }
     // 천막: 덩어리마다 하나 — 천 벽 + 박공 지붕 + 꼭대기 깃발
+    // (밝게: 숙소 — 가장 큰 덩어리는 돼지 저금통, 다음은 큰 시계, 나머지는 이층 침대)
     const cloths = [0x6a4a3a, 0x4a4a3a, 0x5a3a3a, 0x4a3e52, 0x3e4a44]
     let ci = 0
+    if (bright) {
+      const inner = [...new Set(clusters.values())]
+        .filter((c) => !(c.x0 <= 3 || c.y0 <= 3 || c.x1 >= map.w - 4 || c.y1 >= map.h - 4))
+        .sort((a, b) => (b.x1 - b.x0 + 1) * (b.y1 - b.y0 + 1) - (a.x1 - a.x0 + 1) * (a.y1 - a.y0 + 1))
+      inner.forEach((c, i) => {
+        c.done = true
+        const obj = i === 0 ? piggyBank(c) : i === 1 ? bigClock(c) : bunkBed(c, i)
+        group.add(obj)
+        obj.traverse((o) => {
+          if (o instanceof THREE.Mesh) {
+            o.castShadow = true
+            disposables.push(o.geometry, o.material as THREE.Material)
+          }
+        })
+      })
+    }
     for (const c of clusters.values()) {
       if (c.done) continue
       c.done = true
@@ -222,7 +269,51 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const fire = MAPS[map.id]?.fire
   const isFire = (tx: number, ty: number) => !!fire && tx >= fire[0] && tx < fire[0] + 2 && ty >= fire[1] && ty < fire[1] + 2
   const cc = new THREE.Color(t.crate)
-  if (look.crate === 'coffin') {
+  if (bright && look.crate === 'coffin') {
+    // 선물 상자: 색 상자 + 흰 리본 두 줄 + 나비 매듭
+    const box = inst(new THREE.BoxGeometry(0.66, 0.52, 0.66).translate(0, 0.26, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
+    const ribbonGeo = mergeGeometries([
+      new THREE.BoxGeometry(0.14, 0.545, 0.685).translate(0, 0.2725, 0),
+      new THREE.BoxGeometry(0.685, 0.545, 0.14).translate(0, 0.2725, 0),
+      new THREE.TorusGeometry(0.09, 0.03, 6, 12).translate(-0.08, 0.6, 0),
+      new THREE.TorusGeometry(0.09, 0.03, 6, 12).translate(0.08, 0.6, 0),
+    ])!
+    const ribbon = inst(ribbonGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
+    for (const [tx, ty] of crates) {
+      const r = hash(tx, ty, 1) * 0.8
+      const s = 0.85 + hash(tx, ty, 2) * 0.25
+      put(box, tx + 0.5, 0, ty + 0.5, s, s, s, r, col.setHex(toy(tx, ty, 3)))
+      put(ribbon, tx + 0.5, 0, ty + 0.5, s, s, s, r, col.setHex(hash(tx, ty, 4) < 0.5 ? 0xffffff : 0xffe680))
+    }
+  } else if (bright && look.crate === 'table') {
+    // 케이크 탁자: 하얀 탁자 + 분홍 케이크 (도마 · 고기 대신)
+    const table = inst(new THREE.BoxGeometry(0.95, 0.12, 0.8), new THREE.MeshLambertMaterial({ color: 0xfff6ee }), crates.length)
+    const leg = inst(new THREE.BoxGeometry(0.1, 0.62, 0.1), new THREE.MeshLambertMaterial({ color: 0xffd3e4 }), crates.length * 2)
+    const cakeGeo = mergeGeometries([new THREE.CylinderGeometry(0.24, 0.24, 0.2, 14).translate(0, 0.1, 0), new THREE.CylinderGeometry(0.25, 0.25, 0.05, 14).translate(0, 0.22, 0), new THREE.SphereGeometry(0.05, 8, 6).translate(0, 0.28, 0)])!
+    const cake = inst(cakeGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
+    for (const [tx, ty] of crates) {
+      put(table, tx + 0.5, 0.68, ty + 0.5, 1, 1, 1)
+      put(leg, tx + 0.12, 0.31, ty + 0.5, 1, 1, 6)
+      put(leg, tx + 0.88, 0.31, ty + 0.5, 1, 1, 6)
+      if (hash(tx, ty, 1) < 0.7) put(cake, tx + 0.45, 0.74, ty + 0.5, 1, 1, 1, 0, col.setHex(toy(tx, ty, 5)))
+    }
+  } else if (bright && look.crate === 'barrel') {
+    // 장난감 북: 같은 통 모양에 색만
+    const drum = inst(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 12).translate(0, 0.3, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length * 2)
+    for (const [tx, ty] of crates) {
+      if (isFire(tx, ty)) continue
+      put(drum, tx + 0.32, 0, ty + 0.4, 1, 1, 1, 0, col.setHex(toy(tx, ty, 6)))
+      if (hash(tx, ty, 1) < 0.6) put(drum, tx + 0.7, 0, ty + 0.62, 0.9, 0.9, 0.9, 0, col.setHex(toy(tx, ty, 7)))
+    }
+  } else if (bright) {
+    // 커다란 공 (바위 · 돌무더기 대신) — 놀이터 공
+    const ball = inst(new THREE.SphereGeometry(0.42, 16, 12), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length * 2)
+    for (const [tx, ty] of crates) {
+      const s = 0.95 + hash(tx, ty, 1) * 0.25
+      put(ball, tx + 0.5, 0.42 * s, ty + 0.5, s, s, s, hash(tx, ty, 2) * 6, col.setHex(toy(tx, ty, 3)))
+      if (hash(tx, ty, 4) < 0.5) put(ball, tx + 0.2 + hash(tx, ty, 5) * 0.6, 0.2, ty + 0.2 + hash(tx, ty, 6) * 0.6, 0.48, 0.48, 0.48, 0, col.setHex(toy(tx, ty, 8)))
+    }
+  } else if (look.crate === 'coffin') {
     const box = inst(new THREE.BoxGeometry(0.62, 0.5, 0.95), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
     const lid = inst(new THREE.BoxGeometry(0.7, 0.1, 1.02), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
     for (const [tx, ty] of crates) {
@@ -266,32 +357,44 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const candles: { x: number; z: number }[] = []
   const P = new Set(look.props)
   const boneGeo = mergeGeometries([new THREE.CylinderGeometry(0.03, 0.03, 0.34, 4).rotateZ(Math.PI / 2), new THREE.SphereGeometry(0.05, 5, 4).translate(0.17, 0, 0), new THREE.SphereGeometry(0.05, 5, 4).translate(-0.17, 0, 0)])!
-  const bones = P.has('bone') ? inst(boneGeo, new THREE.MeshLambertMaterial({ color: 0xcfc6ae }), floors.length, false) : null
-  const skulls = P.has('skull') ? inst(new THREE.SphereGeometry(0.11, 8, 6).scale(1, 0.85, 1.1), new THREE.MeshLambertMaterial({ color: 0xd8cfb6 }), floors.length, false) : null
-  const candleM = P.has('candle') ? inst(new THREE.CylinderGeometry(0.04, 0.045, 0.22, 6).translate(0, 0.11, 0), new THREE.MeshLambertMaterial({ color: 0xe8e0c8 }), floors.length, false) : null
-  const grass = P.has('grass') ? inst(grassGeometry(), new THREE.MeshLambertMaterial({ color: style === 'town' ? 0x4a4a2a : 0x3e4a2a, side: THREE.DoubleSide }), floors.length, false) : null
+  // 밝게: 뼈 → 구슬 셋 · 해골 → 딱지 · 양초는 색 양초 · 풀은 연두
+  const marbleGeo = mergeGeometries([new THREE.SphereGeometry(0.06, 8, 6).translate(0, 0.06, 0), new THREE.SphereGeometry(0.06, 8, 6).translate(0.15, 0.06, 0.05), new THREE.SphereGeometry(0.06, 8, 6).translate(0.04, 0.06, 0.16)])!
+  const bones = P.has('bone') ? (bright ? inst(marbleGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : inst(boneGeo, new THREE.MeshLambertMaterial({ color: 0xcfc6ae }), floors.length, false)) : null
+  const skulls = P.has('skull') ? (bright ? inst(new THREE.BoxGeometry(0.24, 0.04, 0.24).translate(0, 0.02, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : inst(new THREE.SphereGeometry(0.11, 8, 6).scale(1, 0.85, 1.1), new THREE.MeshLambertMaterial({ color: 0xd8cfb6 }), floors.length, false)) : null
+  const candleM = P.has('candle') ? inst(new THREE.CylinderGeometry(0.04, 0.045, 0.22, 6).translate(0, 0.11, 0), new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0xe8e0c8 }), floors.length, false) : null
+  const grass = P.has('grass') ? inst(grassGeometry(), new THREE.MeshLambertMaterial({ color: bright ? 0x78d65e : style === 'town' ? 0x4a4a2a : 0x3e4a2a, side: THREE.DoubleSide }), floors.length, false) : null
   const shroomGeo = mergeGeometries([new THREE.CylinderGeometry(0.03, 0.04, 0.16, 5).translate(0, 0.08, 0), new THREE.SphereGeometry(0.11, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1).translate(0, 0.16, 0)])!
-  const shrooms = P.has('shroom') ? inst(shroomGeo, new THREE.MeshBasicMaterial({ color: 0x8ad8a8 }), floors.length, false) : null
-  const straw = P.has('straw') ? inst(new THREE.CylinderGeometry(0.3, 0.38, 0.28, 8).translate(0, 0.14, 0), new THREE.MeshLambertMaterial({ color: 0x8a7a42 }), floors.length, false) : null
+  const shrooms = P.has('shroom') ? inst(shroomGeo, new THREE.MeshBasicMaterial({ color: bright ? 0xff9ec4 : 0x8ad8a8 }), floors.length, false) : null
+  // 밝게: 짚더미 → 빈백 쿠션
+  const straw = P.has('straw') ? (bright ? inst(new THREE.SphereGeometry(0.34, 12, 8).scale(1, 0.55, 1).translate(0, 0.16, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : inst(new THREE.CylinderGeometry(0.3, 0.38, 0.28, 8).translate(0, 0.14, 0), new THREE.MeshLambertMaterial({ color: 0x8a7a42 }), floors.length, false)) : null
   const tombGeo = mergeGeometries([new THREE.BoxGeometry(0.42, 0.6, 0.1).translate(0, 0.3, 0), new THREE.CylinderGeometry(0.21, 0.21, 0.1, 10, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).translate(0, 0.6, 0)])!
-  const tombs = P.has('tomb') ? inst(tombGeo, new THREE.MeshLambertMaterial({ color: 0x6a6a64 }), floors.length) : null
-  const bloodM = P.has('blood') ? inst(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3a0606, transparent: true, opacity: 0.8, depthWrite: false }), floors.length, false) : null
+  // 밝게: 묘비 → 벽에 기댄 훌라후프 · 핏물 → 물감
+  const hoopGeo = new THREE.TorusGeometry(0.34, 0.035, 6, 24).rotateX(-0.25).translate(0, 0.34, 0)
+  const tombs = P.has('tomb') ? (bright ? inst(hoopGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length) : inst(tombGeo, new THREE.MeshLambertMaterial({ color: 0x6a6a64 }), floors.length)) : null
+  const bloodM = P.has('blood') ? inst(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: bright ? 0xffffff : 0x3a0606, transparent: true, opacity: bright ? 0.7 : 0.8, depthWrite: false }), floors.length, false) : null
   for (const [tx, ty] of floors) {
     const r = hash(tx, ty, 30)
     const wallSide = nearWall(tx, ty)
     const x = tx + 0.2 + hash(tx, ty, 31) * 0.6
     const z = ty + 0.2 + hash(tx, ty, 32) * 0.6
     const rot = hash(tx, ty, 33) * 6.28
-    if (bones && r < 0.035) put(bones, x, 0.04, z, 1, 1, 1, rot)
-    else if (skulls && r < 0.05) put(skulls, x, 0.09, z, 1, 1, 1, rot)
-    else if (candleM && wallSide && r < 0.09) {
-      put(candleM, x, 0, z, 1, 0.7 + hash(tx, ty, 34) * 0.8, 1)
+    if (bones && r < 0.035) {
+      if (bright) put(bones, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 42)))
+      else put(bones, x, 0.04, z, 1, 1, 1, rot)
+    } else if (skulls && r < 0.05) {
+      // 딱지: 파랑 · 빨강 (접은 종이)
+      if (bright) put(skulls, x, 0, z, 1, 1, 1, rot, col.setHex(hash(tx, ty, 43) < 0.5 ? 0x4a7bd8 : 0xe8606a))
+      else put(skulls, x, 0.09, z, 1, 1, 1, rot)
+    } else if (candleM && wallSide && r < 0.09) {
+      put(candleM, x, 0, z, 1, 0.7 + hash(tx, ty, 34) * 0.8, 1, 0, bright ? col.setHex(toy(tx, ty, 44)) : undefined)
       candles.push({ x, z })
     } else if (grass && r < 0.2) put(grass, x, 0, z, 0.8 + hash(tx, ty, 35) * 0.6, 0.7 + hash(tx, ty, 36) * 0.8, 1, rot)
-    else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1)
+    else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1, 0, bright ? col.setHex(toy(tx, ty, 45)) : undefined)
     else if (shrooms && r < 0.24) put(shrooms, x, 0, z, 0.8 + hash(tx, ty, 40) * 1.4, 0.8 + hash(tx, ty, 41) * 1.6, 0.8 + hash(tx, ty, 40) * 1.4, rot)
-    else if (tombs && wallSide && r < 0.26) put(tombs, x, 0, z, 1, 0.8 + hash(tx, ty, 37) * 0.5, 1, rot)
-    else if (bloodM && r < 0.3) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39))
+    else if (tombs && wallSide && r < 0.26) {
+      if (bright) put(tombs, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 46)))
+      else put(tombs, x, 0, z, 1, 0.8 + hash(tx, ty, 37) * 0.5, 1, rot)
+    } else if (bloodM && r < 0.3) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39), 0, bright ? col.setHex(toy(tx, ty, 47)) : undefined)
   }
   for (const m of group.children) if (m instanceof THREE.InstancedMesh) {
     m.instanceMatrix.needsUpdate = true
@@ -301,7 +404,31 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   // ---- 불: 벽 횃불 · 양초 · 모닥불 ----
   const flames: { x: number; y: number; z: number; s: number; phase: number }[] = []
   const torchSpots: { x: number; y: number; z: number }[] = []
-  if (look.torches > 0) {
+  if (look.torches > 0 && bright) {
+    // 밝게: 벽마다 풍선 (끈 + 동그란 풍선) — 불도 빛도 없다(낮이라 밝다 · 빛 수만큼 셰이더가 무거워진다)
+    const string = inst(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 3).translate(0, 0.45, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), 400, false)
+    const balloon = inst(mergeGeometries([new THREE.SphereGeometry(0.2, 12, 9).scale(1, 1.2, 1).translate(0, 1.12, 0), new THREE.ConeGeometry(0.04, 0.06, 6).rotateX(Math.PI).translate(0, 0.89, 0)])!, new THREE.MeshLambertMaterial({ color: 0xffffff }), 400, false)
+    let last: [number, number][] = []
+    let n = 0
+    for (const [tx, ty] of vis) {
+      if (hash(tx, ty, 40) > look.torches || n >= 400) continue
+      const dirs: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]]
+      const d = dirs.find(([dx, dy]) => isFloor(tx + dx, ty + dy))
+      if (!d) continue
+      if (last.some(([lx, ly]) => Math.abs(lx - tx) + Math.abs(ly - ty) < 6)) continue
+      last.push([tx, ty])
+      if (last.length > 30) last = last.slice(-30)
+      const x = tx + 0.5 + d[0] * 0.62
+      const z = ty + 0.5 + d[1] * 0.62
+      const lean = (hash(tx, ty, 41) - 0.5) * 0.3
+      put(string, x, 1.0, z, 1, 1, 1, lean)
+      put(balloon, x, 1.0, z, 1, 1, 1, lean, col.setHex(toy(tx, ty, 48)))
+      n++
+    }
+    string.instanceMatrix.needsUpdate = true
+    balloon.instanceMatrix.needsUpdate = true
+    if (balloon.instanceColor) balloon.instanceColor.needsUpdate = true
+  } else if (look.torches > 0) {
     const bracket = inst(new THREE.CylinderGeometry(0.04, 0.06, 0.45, 5).rotateX(0.5), new THREE.MeshLambertMaterial({ color: 0x3a2a1e }), 400, false)
     let last: [number, number][] = []
     for (const [tx, ty] of vis) {
@@ -521,6 +648,8 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
           g.fill()
         }
       }
+      // 분필 기호 ♡ ☆ ◇ (밝은 분위기 — 운동장 낙서)
+      if (bright && hash(tx, ty, 97) < 0.012) chalkSymbol(g, x + px / 2, y + px / 2, 7 + hash(tx, ty, 98) * 4, Math.floor(hash(tx, ty, 99) * 3))
       // 이끼 (밝은 분위기: 노란 · 흰 꽃무리)
       if (hash(tx, ty, 90) < look.decal.moss) {
         g.fillStyle = bright ? (hash(tx, ty, 96) < 0.5 ? 'rgba(255,226,120,0.55)' : 'rgba(255,255,255,0.5)') : 'rgba(60,78,40,0.45)'
@@ -534,6 +663,141 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 8
   return tex
+}
+
+/** 분필로 그린 기호 하나 (0 = ♡ · 1 = ☆ · 2 = ◇) — 밝은 분위기 바닥 낙서 */
+function chalkSymbol(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, kind: number): void {
+  g.strokeStyle = 'rgba(255,255,255,0.7)'
+  g.lineWidth = 1.6
+  g.beginPath()
+  if (kind === 0) {
+    g.moveTo(cx, cy + r)
+    g.bezierCurveTo(cx - r * 1.4, cy - r * 0.1, cx - r * 0.7, cy - r * 1.2, cx, cy - r * 0.4)
+    g.bezierCurveTo(cx + r * 0.7, cy - r * 1.2, cx + r * 1.4, cy - r * 0.1, cx, cy + r)
+  } else if (kind === 1) {
+    for (let k = 0; k <= 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5
+      const rr = k % 2 === 0 ? r : r * 0.45
+      if (k === 0) g.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr)
+      else g.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr)
+    }
+  } else {
+    g.moveTo(cx, cy - r)
+    g.lineTo(cx + r * 0.75, cy)
+    g.lineTo(cx, cy + r)
+    g.lineTo(cx - r * 0.75, cy)
+    g.closePath()
+  }
+  g.stroke()
+}
+
+type Cluster = { x0: number; y0: number; x1: number; y1: number }
+const lam = (color: number) => new THREE.MeshLambertMaterial({ color })
+
+/** 밝은 마을: 돼지 저금통 (가장 큰 천막 자리 — 우리 숙소의 귀여운 저금통) */
+function piggyBank(c: Cluster): THREE.Group {
+  const w = c.x1 - c.x0 + 1
+  const d = c.y1 - c.y0 + 1
+  const s = Math.min(w, d) * 0.5
+  const g = new THREE.Group()
+  const pink = lam(0xffa6c9)
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), pink)
+  body.scale.set((w / 2) * 0.95, s * 0.9, (d / 2) * 0.95)
+  body.position.y = s * 0.95
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.28, s * 0.3, s * 0.22, 14).rotateX(Math.PI / 2), lam(0xff8fb8))
+  snout.position.set(0, s * 0.95, (d / 2) * 0.95 + s * 0.06)
+  const nostrilM = lam(0xd45a8a)
+  const nl = new THREE.Mesh(new THREE.SphereGeometry(s * 0.05, 8, 6), nostrilM)
+  nl.position.set(-s * 0.09, s * 0.97, (d / 2) * 0.95 + s * 0.17)
+  const nr = new THREE.Mesh(nl.geometry.clone(), nostrilM)
+  nr.position.set(s * 0.09, s * 0.97, (d / 2) * 0.95 + s * 0.17)
+  const eyeM = lam(0x3a2a3a)
+  const el = new THREE.Mesh(new THREE.SphereGeometry(s * 0.07, 8, 6), eyeM)
+  el.position.set(-s * 0.35, s * 1.35, (d / 2) * 0.82)
+  const er = new THREE.Mesh(el.geometry.clone(), eyeM)
+  er.position.set(s * 0.35, s * 1.35, (d / 2) * 0.82)
+  const ea = new THREE.Mesh(new THREE.ConeGeometry(s * 0.2, s * 0.32, 4), pink)
+  ea.position.set(-s * 0.45, s * 1.75, (d / 2) * 0.35)
+  ea.rotation.z = 0.35
+  const eb = new THREE.Mesh(new THREE.ConeGeometry(s * 0.2, s * 0.32, 4), pink)
+  eb.position.set(s * 0.45, s * 1.75, (d / 2) * 0.35)
+  eb.rotation.z = -0.35
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(s * 0.5, s * 0.05, s * 0.08), lam(0x8a3a5a))
+  slot.position.set(0, s * 1.84, 0)
+  const coin = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.2, s * 0.2, s * 0.05, 16).rotateX(Math.PI / 2), lam(0xffd34a))
+  coin.position.set(0, s * 2.0, 0)
+  g.add(body, snout, nl, nr, el, er, ea, eb, slot, coin)
+  for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.16, s * 0.18, s * 0.4, 10), pink)
+    leg.position.set(lx * (w / 2) * 0.5, s * 0.2, lz * (d / 2) * 0.5)
+    g.add(leg)
+  }
+  g.position.set(c.x0 + w / 2, 0, c.y0 + d / 2)
+  return g
+}
+
+/** 밝은 마을: 큰 시계 (놀이 시간을 알리는 시계탑) */
+function bigClock(c: Cluster): THREE.Group {
+  const w = c.x1 - c.x0 + 1
+  const d = c.y1 - c.y0 + 1
+  const g = new THREE.Group()
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w - 0.2, 1.1, d - 0.2), lam(0x9fd8ff))
+  base.position.y = 0.55
+  const r = Math.min(w, d) * 0.42
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(r * 1.6, r * 1.9, r * 0.9), lam(0xffd6e8))
+  tower.position.set(0, 1.1 + r * 0.95, 0)
+  const face = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.7, 0.08, 28).rotateX(Math.PI / 2), lam(0xffffff))
+  face.position.set(0, 1.1 + r * 1.05, r * 0.46)
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.7, 0.06, 6, 28), lam(0xff8fb8))
+  rim.position.set(0, face.position.y, r * 0.5)
+  const handM = lam(0x3a3a5a)
+  const hh = new THREE.Mesh(new THREE.BoxGeometry(0.07, r * 0.4, 0.04).translate(0, r * 0.2, 0), handM)
+  hh.position.set(0, face.position.y, r * 0.52)
+  hh.rotation.z = -0.9
+  const mh = new THREE.Mesh(new THREE.BoxGeometry(0.05, r * 0.58, 0.04).translate(0, r * 0.29, 0), handM)
+  mh.position.set(0, face.position.y, r * 0.53)
+  mh.rotation.z = 0.5
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.15, r * 0.9, 4).rotateY(Math.PI / 4), lam(0xff8fb8))
+  roof.position.set(0, 1.1 + r * 1.9 + r * 0.45, 0)
+  g.add(base, tower, face, rim, hh, mh, roof)
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), handM)
+    dot.position.set(Math.sin(a) * r * 0.58, face.position.y + Math.cos(a) * r * 0.58, r * 0.52)
+    g.add(dot)
+  }
+  g.position.set(c.x0 + w / 2, 0, c.y0 + d / 2)
+  return g
+}
+
+/** 밝은 마을: 이층 침대 (천막 대신 — 참가자 숙소) */
+function bunkBed(c: Cluster, i: number): THREE.Group {
+  const w = c.x1 - c.x0 + 1
+  const d = c.y1 - c.y0 + 1
+  const g = new THREE.Group()
+  const frameM = lam(i % 2 ? 0x9fd8ff : 0xc6a4ff)
+  const along = w >= d
+  const L = (along ? w : d) - 0.2
+  const S = (along ? d : w) - 0.2
+  for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.0, 0.12).translate(0, 1.0, 0), frameM)
+    p.position.set(along ? (a * L) / 2 : (b * S) / 2, 0, along ? (b * S) / 2 : (a * L) / 2)
+    g.add(p)
+  }
+  const sheet = [0xffffff, 0xffe6f0, 0xfff3c4, 0xe0f4ff]
+  for (const [y, k] of [[0.45, 0], [1.45, 1]] as const) {
+    const slab = new THREE.Mesh(along ? new THREE.BoxGeometry(L, 0.14, S) : new THREE.BoxGeometry(S, 0.14, L), frameM)
+    slab.position.y = y
+    const bed = new THREE.Mesh(along ? new THREE.BoxGeometry(L - 0.1, 0.18, S - 0.1) : new THREE.BoxGeometry(S - 0.1, 0.18, L - 0.1), lam(sheet[(i + k) % sheet.length]))
+    bed.position.y = y + 0.16
+    const pillow = new THREE.Mesh(new THREE.BoxGeometry(along ? 0.4 : S * 0.6, 0.12, along ? S * 0.6 : 0.4), lam(0xffffff))
+    pillow.position.set(along ? -L / 2 + 0.3 : 0, y + 0.3, along ? 0 : -L / 2 + 0.3)
+    const blanket = new THREE.Mesh(new THREE.BoxGeometry(along ? L * 0.55 : S - 0.08, 0.06, along ? S - 0.08 : L * 0.55), lam(TOY[(i + k * 2) % TOY.length]))
+    blanket.position.set(along ? L * 0.18 : 0, y + 0.27, along ? 0 : L * 0.18)
+    g.add(slab, bed, pillow, blanket)
+  }
+  g.position.set(c.x0 + w / 2, 0, c.y0 + d / 2)
+  return g
 }
 
 /** 풀 한 포기: 엇갈린 잎 셋 */
