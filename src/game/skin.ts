@@ -14,11 +14,12 @@ import type { MapTheme } from '../core/maps'
 
 export type Skin = 'dark' | 'bright'
 
-export const SKIN_LABEL: Record<Skin, string> = { dark: '어둡게', bright: '밝게' }
+// 화면 이름 (2026-10-07 사용자: "어둡게 · 밝게 말고 공포스러움 · 철면수심전용 이렇게 나눠줘") — 안쪽 값(dark · bright)은 그대로
+export const SKIN_LABEL: Record<Skin, string> = { dark: '공포스러움', bright: '철면수심전용' }
 export const SKIN_ICON: Record<Skin, string> = { dark: '🌙', bright: '☀' }
 export const SKIN_DESC: Record<Skin, string> = {
   dark: '어두운 던전 · 실사 괴물 — 처음 분위기 그대로',
-  bright: '파스텔 놀이 섬 · 귀여운 괴물 · 물감 · 색종이 — 무섭지 않게',
+  bright: '파스텔 놀이 섬 · 귀여운 괴물 · 물감 · 색종이 — 무섭지 않게 (철면수심 방송용)',
 }
 
 const PREF_KEY = 'brpg.skin'

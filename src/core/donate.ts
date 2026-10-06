@@ -20,14 +20,15 @@ export interface DonateEvent {
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
   { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 2000 },
-  { id: 3, key: 'dark', name: '암흑', desc: '30초 동안 코앞만 보인다', amount: 3000 },
+  // 이름 암흑 → 시야 축소 (2026-10-07 사용자) — 효과 · 금액 · 번호는 그대로
+  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 3000 },
   { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 5000 },
   { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 7000 },
   { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 10000 },
   { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 20000 },
   { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 30000 },
   { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 50000 },
-  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 암흑', amount: 100000 },
+  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 100000 },
 ]
 
 /**

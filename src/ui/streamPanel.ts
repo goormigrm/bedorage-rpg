@@ -165,7 +165,7 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     toggle('holdBoss', '보스전 중에는 방해 이벤트 대기', c.holdBoss) +
     `<p class="czn">멈춘 동안 받은 방해 후원은 버리지 않고 기다렸다가 풀면 차례로 일어납니다. 응원(!응원)은 그대로 들어갑니다. 멈춤은 페이지를 새로 열면 풀립니다.</p>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
-    `<p class="czn">화면 흔들림 · 암흑 · 거꾸로 걷기 · 스킬 봉인이 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (화면 흔들림은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — 광폭화는 끝난 뒤에.</p>` +
+    `<p class="czn">화면 흔들림 · 시야 축소 · 거꾸로 걷기 · 스킬 봉인이 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (화면 흔들림은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — 광폭화는 끝난 뒤에.</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
     (isDev() ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` : '') +
     `<p class="czn">채팅에 <b>!참여</b> → 최근 15분 안에 참여한 사람 중 <b>추첨</b>으로 한 명씩, 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +

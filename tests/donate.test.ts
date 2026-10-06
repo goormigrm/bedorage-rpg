@@ -131,7 +131,7 @@ describe('후원 이벤트 — 소환', () => {
     expect(e && e.type === 'donate' && e.m === boss.id).toBe(true)
   })
 
-  it('지옥문: 막 보스 + 중간보스 둘 + 암흑', () => {
+  it('지옥문: 막 보스 + 중간보스 둘 + 시야 축소', () => {
     const g = game()
     toField(g)
     g.donate(ev('hell', 5))
@@ -350,7 +350,7 @@ describe('후원 이벤트 — 응원', () => {
 
 // 2026-09-24 사용자: "후원은 스트리머 한 명에게만 온다 — 소환 말고 다른 효과는 파티원 모두에게"
 describe('후원 효과는 파티 모두에게', () => {
-  it('손 떨림 · 암흑은 곁의 동료도 · 다른 지역(마을)에 있는 동료도 받는다 · 공격 강화도 모두', () => {
+  it('손 떨림 · 시야 축소는 곁의 동료도 · 다른 지역(마을)에 있는 동료도 받는다 · 공격 강화도 모두', () => {
     const g = game(88)
     toField(g)
     const [a, b] = g.s.players
@@ -379,7 +379,7 @@ describe('같은 방해 효과가 이어 붙는 한도', () => {
     return g.s.players.map((q) => Math.round((q.don?.[DON_DARK] ?? 0) / 60))
   }
 
-  it('처음은 60초 — 암흑(30초)이 여섯 번 와도 60초 · 동료도 같다', () => {
+  it('처음은 60초 — 시야 축소(30초)가 여섯 번 와도 60초 · 동료도 같다', () => {
     expect(DON_CAP_DEFAULT).toBe(60)
     expect(darkFor()).toEqual([60, 60])
   })
@@ -505,7 +505,7 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
     d[slot] = sec * T
     return d
   }
-  it('남은 길이 + 이번 길이가 한도 안일 때만 들어간다 (암흑 30초 · 한도 60초)', () => {
+  it('남은 길이 + 이번 길이가 한도 안일 때만 들어간다 (시야 축소 30초 · 한도 60초)', () => {
     expect(effectFits(ev('dark'), undefined, 60, 0)).toBe(true)
     expect(effectFits(ev('dark'), don(DON_DARK, 30), 60, 0)).toBe(true)
     expect(effectFits(ev('dark'), don(DON_DARK, 31), 60, 0)).toBe(false)
@@ -516,7 +516,7 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
     expect(effectFits(ev('seal'), don(DON_SEAL, 1), 30, 0)).toBe(false)
     expect(effectFits(ev('invert'), don(DON_INVERT, 10), 30, 0)).toBe(true)
   })
-  it('화면 흔들림은 15초까지 · 지옥문은 암흑 20초 몫을 본다 · 광폭화는 끝난 뒤에', () => {
+  it('화면 흔들림은 15초까지 · 지옥문은 시야 축소 20초 몫을 본다 · 광폭화는 끝난 뒤에', () => {
     expect(effectFits(ev('shake'), don(DON_SHAKE, 10), 120, 0)).toBe(true)
     expect(effectFits(ev('shake'), don(DON_SHAKE, 11), 120, 0)).toBe(false)
     expect(effectFits(ev('hell'), don(DON_DARK, 41), 60, 0)).toBe(false)
@@ -561,7 +561,7 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
 // 2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋을 것 같다"
 describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', () => {
   const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) })
-  it('암흑 · 거꾸로 걷기를 둘 다 3천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
+  it('시야 축소 · 거꾸로 걷기를 둘 다 3천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
     const cfg = base()
     const dark = DONATE_EVENTS.findIndex((e) => e.key === 'dark')
     const inv = DONATE_EVENTS.findIndex((e) => e.key === 'invert')
