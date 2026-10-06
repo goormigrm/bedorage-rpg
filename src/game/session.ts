@@ -25,6 +25,7 @@ import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
 import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
+import { Skin, asSkin, setSkin, skinMap } from './skin'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -66,6 +67,8 @@ export interface SessionConfig {
   deathRule?: DeathRule
   /** 난이도 0 보통 · 1 악몽 · 2 지옥 */
   tier?: number
+  /** 분위기 (어둡게 · 밝게 — game/skin.ts). 방장이 정하고 모두가 같이 본다. 그림 · 소리 · 글만 다르다(sim 밖) */
+  skin?: Skin
   /** 판 종류: 던전(협동) · 투기장(PvP — 덕의 대전 규칙). 기본 던전 */
   kind?: GameMode
   /** 자리별 캐릭터 기록 (레벨·장비·가방). 내 것은 세이브에서, 남의 것은 방 메시지로 온다 */
@@ -94,7 +97,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; tier?: number; kind?: string }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; tier?: number; kind?: string; skin?: string }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -286,6 +289,8 @@ export class Session {
     host: HTMLElement,
     private cfg: SessionConfig,
   ) {
+    // 분위기: 방장이 고른 것 (그림 · 소리 · 글만 — 맵 · 렌더러 · 글을 만들기 전에 정한다)
+    setSkin(this.arena ? 'dark' : asSkin(cfg.skin))
     this.state = createState(this.matchCfg(cfg.seed), this.mapOf)
     // 재접속: 호스트가 보내 준 판으로 갈아 끼운다. 맵의 모래주머니 상태도 그때로 맞춘다 (지역 맵은 시드로 다시 만든다)
     if (cfg.resumeState) {
@@ -578,6 +583,7 @@ export class Session {
         deathRule: info.deathRule,
         tier: info.tier,
         kind: info.kind,
+        skin: info.skin,
         count,
         max: info.size,
         state: this.state.phase === 'over' || count >= info.size ? 'full' : 'playing',
@@ -624,6 +630,8 @@ export class Session {
     let m = this.maps.get(area)
     if (!m) {
       m = this.arena ? buildMap(this.mapIdFor(), this.cfg.mapScale ?? scaleForPlayers(this.cfg.chars.length), this.cfg.seed) : buildAreaMap(this.cfg.seed, area)
+      // 분위기 테마(색 · 빛 · 안개)를 입힌다 — 그림만 바뀌고 타일 · 판정은 그대로 (game/skin.ts)
+      skinMap(m)
       this.maps.set(area, m)
     }
     return m
@@ -2561,6 +2569,7 @@ export class Session {
         deathRule: this.cfg.deathRule ?? 0,
         tier: this.cfg.tier ?? 0,
         kind: this.cfg.kind ?? 'dungeon',
+        skin: this.cfg.skin ?? 'dark',
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
         scale: this.arena ? this.mapOf(0).scale : 1,

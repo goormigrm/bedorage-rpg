@@ -34,6 +34,7 @@ import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { ChatBox, cleanChat } from './chat'
+import { SKIN_DESC, SKIN_ICON, SKIN_LABEL, Skin, asSkin, loadSkinPref, saveSkinPref, setSkin } from '../game/skin'
 import { StreamBadge, openStreamPanel } from './streamPanel'
 import { loadStreamCfg, maskShown } from '../game/stream'
 import { SessionConfig } from '../game/session'
@@ -81,6 +82,8 @@ export class Lobby {
   private deathRule: DeathRule = 0
   /** 난이도 (0 보통 · 1 악몽 · 2 지옥) — 방장 캐릭터가 연 것만 */
   private tier = 0
+  /** 분위기 (어둡게 · 밝게) — 방장이 정한다. 처음 값은 지난번에 고른 것 */
+  private skin: Skin = loadSkinPref()
   private previewTimer = 0
   private roomMode: RoomMode = 'ffa'
   /** 방 정원 (호스트가 방 만들 때 정한다). 2명만 모여도 시작할 수 있고, 나머지 자리는 난입으로 채운다 */
@@ -135,6 +138,7 @@ export class Lobby {
     } catch {
       /* 저장소 없음 */
     }
+    setSkin(this.skin)
     this.render()
     this.openLobbyList()
   }
@@ -205,6 +209,10 @@ export class Lobby {
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>
+<div class="row"><label>분위기</label><div class="seg" id="seg-skin">
+              ${(['dark', 'bright'] as Skin[]).map((k) => `<button data-v="${k}" class="${k === this.skin ? 'on' : ''}" title="${SKIN_DESC[k]}">${SKIN_ICON[k]} ${SKIN_LABEL[k]}</button>`).join('')}
+            </div></div>
+            <p class="hintline" id="skin-desc">${SKIN_DESC[this.skin]}</p>
 <div class="row"><label>종류</label><div class="seg" id="seg-kind">
               <button data-v="dungeon" class="on">던전 (협동)</button><button data-v="arena">투기장 (PvP)</button>
             </div></div>
@@ -300,6 +308,7 @@ export class Lobby {
       this.hostChanged()
     }
     this.seg('#seg-death', onDeath)
+    this.seg('#seg-skin', (v) => this.changeSkin(asSkin(v)))
     this.seg('#seg-tier', (v) => {
       const t = Number(v) || 0
       if (!tierOpen(sheetOf(this.char), t)) return
@@ -466,6 +475,17 @@ export class Lobby {
   }
 
   /** 호스트 설정(맵·목표·모드)이 바뀌면 방송·목록 갱신 */
+  /** 분위기 바꾸기 (게임 만들기 창 · 대기실의 방장). 기억하고 · 로비 미리보기도 바꾸고 · 방에 알린다 */
+  private changeSkin(s: Skin): void {
+    this.skin = s
+    saveSkinPref(s)
+    setSkin(s)
+    const d = this.host.querySelector('#skin-desc') as HTMLElement | null
+    if (d) d.textContent = SKIN_DESC[s]
+    this.host.querySelectorAll<HTMLButtonElement>('#seg-skin button').forEach((b) => b.classList.toggle('on', b.dataset.v === s))
+    this.hostChanged()
+  }
+
   private hostChanged(): void {
     if (this.role !== 'host') return
     this.members.forEach((m) => (m.ready = false))
@@ -695,7 +715,7 @@ export class Lobby {
         // 1줄 "○○의 방 [상태]" · 2줄 "던전 · 보통 · 죽음 없음 · 맵 · 1/4명" · 오른쪽에 참가 단추
         const rule = arenaRoom
           ? [ROOM_MODE_LABEL[r.mode] ?? r.mode, `${r.targetKills}킬`]
-          : [TIER_LABEL[r.tier ?? 0] ?? '보통', `죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`]
+          : [`${SKIN_ICON[asSkin(r.skin)]} ${SKIN_LABEL[asSkin(r.skin)]}`, TIER_LABEL[r.tier ?? 0] ?? '보통', `죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`]
         // 레벨 · 템 수준 (2026-09-20 요청 — 난입할 때 내게 맞는 방인지 보라고)
         const power = r.lv ? [`Lv ${r.lv}`, `템 ${r.gs ?? 0}`] : []
         const meta = [arenaRoom ? '투기장' : '던전', ...rule, ...power, m, `${r.count}/${r.max}명`]
@@ -792,6 +812,7 @@ export class Lobby {
       deathRule: this.deathRule,
       tier: this.tier,
       kind: this.kind,
+      skin: this.skin,
       count: this.members.length,
       max: this.roomSize,
       // 목록에서 "나와 비슷한 방인가" 를 보라고 (2026-09-20 요청). 봇 자리는 빼고 사람만 센다
@@ -994,6 +1015,7 @@ export class Lobby {
           deathRule?: number
           tier?: number
           kind?: string
+          skin?: string
           seed: number
           map: string
           scale: number
@@ -1021,6 +1043,7 @@ export class Lobby {
           deathRule: (c.deathRule === 1 || c.deathRule === 2 ? c.deathRule : 0) as DeathRule,
           tier: Math.max(0, Math.min(2, Number(c.tier) || 0)),
           kind: c.kind === 'arena' ? 'arena' : 'dungeon',
+          skin: asSkin(c.skin),
           resumeState: m.state,
           resumeTick: m.tick,
         })
@@ -1052,6 +1075,8 @@ export class Lobby {
         this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
         this.tier = Math.max(0, Math.min(2, Number(m.tier) || 0))
         this.kind = m.kind === 'arena' ? 'arena' : 'dungeon'
+        this.skin = asSkin(m.skin)
+        setSkin(this.skin)
         // 정원은 호스트가 정한다 — 안 받으면 게스트 화면에 제 기본값(4)이 보인다
         if (typeof m.size === 'number') this.roomSize = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, m.size))
         if (isMapId(m.map)) {
@@ -1083,6 +1108,7 @@ export class Lobby {
           this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
           this.tier = Math.max(0, Math.min(2, Number(m.tier) || 0))
           this.kind = m.kind === 'arena' ? 'arena' : 'dungeon'
+          this.skin = asSkin(m.skin)
           this.launchFrom(m.players, m.seed, m.delay, m.mode, m.map, m.targetKills, m.scale, m.botDiff)
         }
         break
@@ -1148,7 +1174,7 @@ export class Lobby {
 
   private broadcastRoom(): void {
     if (this.role !== 'host' || !this.link) return
-    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind })
+    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin })
   }
 
   private sendHello(to?: string): void {
@@ -1230,7 +1256,7 @@ export class Lobby {
     const mode = this.roomMode
     const scale = MAPS[map].fixedScale ? 1 : scaleForPlayers(players.length)
     const botDiff = players.some((p) => p.bot) ? this.botDiff : undefined
-    link.sendCtl({ t: 'start', seed, targetKills: kills, delay, map, scale, mode, players, botDiff, deathRule: this.deathRule, tier: this.tier, kind: this.kind })
+    link.sendCtl({ t: 'start', seed, targetKills: kills, delay, map, scale, mode, players, botDiff, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin })
     this.announce('playing')
     setTimeout(() => this.launchFrom(players, seed, delay, mode, map, kills, scale, botDiff), 150)
   }
@@ -1295,6 +1321,7 @@ export class Lobby {
       difficulty: botDiff === 'easy' || botDiff === 'hard' ? botDiff : 'normal',
       deathRule: this.deathRule,
       tier: this.kind === 'arena' ? 0 : this.tier,
+      skin: this.skin,
     })
   }
 
@@ -1311,7 +1338,7 @@ export class Lobby {
         cfg = {
           ...cfg,
           lobby: this.lobbyLink,
-          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, tier: this.tier, kind: this.kind },
+          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin },
         }
       } else if (!this.sharedLobby) {
         this.lobbyLink.leave()
@@ -1363,7 +1390,7 @@ export class Lobby {
       <div class="setrow">
         ${this.kind === 'arena'
           ? `<span><b>투기장</b>${MAPS[this.arenaMap].name}</span><span><b>모드</b>${ROOM_MODE_LABEL[this.roomMode]}</span><span><b>목표</b>${this.killsRoom}킬</span>`
-          : `<span><b>던전</b>방장이 연 막의 마을에서 시작</span><span><b>난이도</b>${TIER_LABEL[this.tier] ?? '보통'}</span><span><b>죽음 규칙</b>${DEATH_RULE_LABEL[this.deathRule]}</span>`}
+          : `<span><b>던전</b>방장이 연 막의 마을에서 시작</span><span><b>분위기</b>${this.role === 'host' ? `<span class="seg small" id="seg-skin-room">${(['dark', 'bright'] as Skin[]).map((k) => `<button type="button" data-v="${k}" class="${k === this.skin ? 'on' : ''}" title="${SKIN_DESC[k]}">${SKIN_ICON[k]} ${SKIN_LABEL[k]}</button>`).join('')}</span>` : `${SKIN_ICON[this.skin]} ${SKIN_LABEL[this.skin]}`}</span><span><b>난이도</b>${TIER_LABEL[this.tier] ?? '보통'}</span><span><b>죽음 규칙</b>${DEATH_RULE_LABEL[this.deathRule]}</span>`}
         <span><b>인원</b>${this.members.length}/${this.roomSize}명</span>
         ${connected && link.peers.size > 0 ? `<span><b>핑</b>${link.rtt} ms</span>` : ''}
       </div>
@@ -1404,6 +1431,9 @@ export class Lobby {
               : '준비를 누르세요.'
     this.status(st, connected ? 'ok' : '', html)
     this.bindCancel()
+    this.host.querySelectorAll<HTMLButtonElement>('#seg-skin-room button').forEach((b) => {
+      b.onclick = () => this.changeSkin(asSkin(b.dataset.v))
+    })
     const setBtn = this.host.querySelector('#btn-settings-room') as HTMLButtonElement | null
     if (setBtn) setBtn.onclick = () => this.openSettings()
     this.host.querySelectorAll<HTMLButtonElement>('[data-kick]').forEach((b) => {

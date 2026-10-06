@@ -55,6 +55,8 @@ export interface RoomInfo {
   tier?: number
   /** 판 종류: dungeon(협동) · arena(투기장 PvP) */
   kind?: string
+  /** 분위기 (dark · bright — game/skin.ts). 그림만 다르다 */
+  skin?: string
   /** 방 사람들의 평균 레벨 · 평균 템 수준 (2026-09-20 — 목록에서 내게 맞는 방을 고르라고) */
   lv?: number
   gs?: number
@@ -204,11 +206,11 @@ export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string; skin?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */
-  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; tier?: number; kind?: string }
+  | { t: 'start'; seed: number; targetKills: number; delay: number; map: string; scale: number; mode: RoomMode; players: Member[]; botDiff?: string; deathRule?: number; tier?: number; kind?: string; skin?: string }
   | { t: 'ping'; s: number }
   | { t: 'pong'; s: number }
   | { t: 'hash'; tick: number; h: number }
