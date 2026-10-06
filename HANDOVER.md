@@ -508,4 +508,9 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
   RPG 폴더에서 세션을 열면 이 저장소의 `.claude/launch.json` `dev` 로 된다.
 - **확인은 배포 사이트에서**(2026-09-23 사용자: "노트북 사양이 좋지 않으니 localhost 로 접속하지 말고, 반영한 후에 https://goormigrm.github.io/bedorage-rpg/ 에서 테스트하고, 잘못되면 수정 반영"). 작업 규칙의 3 · 4 는 → 푸시 · 배포 뒤 배포 사이트에서 확인 · 탭 닫기.
   - 노트북 작업 폴더: `C:\Users\tkdrm\Workspace\personal\bedorage-rpg`.
+- **2026-10-06 노트북에서 공지 영상 · 사진을 다시 떴다**(v0.72.4 — 사용자: "공지글 멘트 · 트레일러 영상 · 사진 파일을 이 노트북에서 생성"). `docs/img/` 는 git 밖이라 PC 마다 따로 떠야 한다.
+  - 이때만 노트북에서 개발 서버를 띄웠다: `npx vite --port 5174 --strictPort`(백그라운드) → `preview_start({url:'http://localhost:5174/bedorage-rpg/?shot=1'})` → **새 탭(tabs_create)** 에서 `resize_window` 1920×1080 · `bd.nick` 철면수심 → 로비에서 `t.start()`. 녹화 약 3.5분 + 소리 · 저장 1분(노트북). 끝나면 창 크기 되돌리고 탭 닫고 서버 멈춤.
+  - ⚠ 창 크기 흉내는 **턴이 끝나면 풀린다** — 녹화하는 동안 턴을 끝내지 말고 `status()` 를 들여다보며 기다린다.
+  - 빈 세이브(1 레벨)로 뜨면 레벨업 알림 글이 보스 사진을 가렸다 → `trailer.js` 가 녹화 중 레벨업 알림 글을 거른다(빛 고리는 그대로).
+  - 영상 장면 확인은 ffmpeg 없이: 같은 페이지에서 `<video>` 로 열어 시각마다 그려 `/__shot` → `.frames/shots/trailer-sheet*.jpg`.
 - 브라우저 확인 요령: `window.__bd.state()` · `__bd.map()` 으로 판을 만질 수 있다(플레이어 옮기기·무적 `invuln`·몬스터 깨우기 `st = 1`).

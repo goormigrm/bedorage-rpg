@@ -1370,6 +1370,14 @@ export async function start(opts = {}) {
   for (const q of st().players) q.autoPick = 0
   // 영상용: 카메라를 가깝게 (캐릭터가 크게 보이게)
   sess.renderer.setDebugZoom(0.74)
+  // 레벨업 알림 글은 영상에 넣지 않는다 (빛 고리 · 불티는 그대로) — 빈 세이브(1 레벨)로 뜨면 보스 장면 위에
+  // "단군란 레벨 5 · 침착란 레벨 5 · 레벨 5!" 가 세 줄 겹쳐 메인 사진을 가렸다 (2026-10-06 노트북에서 처음 뜰 때)
+  const hud = sess.renderer.hud
+  const notice0 = hud.notice.bind(hud)
+  hud.notice = (text, color, life) => {
+    if (/(^|\s)레벨 \d+/.test(text) && !text.includes('지역 레벨')) return
+    notice0(text, color, life)
+  }
   // 소리는 모아 두었다가 따로 그린다 (라이브 소리는 내지 않는다)
   const sfx = sess.sfx
   sfx.onEvents = (ev, s, lp) => {
