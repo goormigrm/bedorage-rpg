@@ -25,6 +25,8 @@ export interface MapTheme {
    * lantern = 플레이어마다 드는 등불 세기 (디아블로의 '빛 반경' — 시야 제한과 겹쳐 분위기를 만든다)
    */
   dark?: { sun: number; hemi: number; fogAlpha: number; lantern: number }
+  /** 시야 밖을 덮는 색 (없으면 검정 — 밝은 분위기는 흐린 파스텔 안개, game/skinThemes.ts). 그림만 */
+  visionFog?: number
   /**
    * 3D 모습 (render3d/world3d.ts): 돌벽·바위·목책/천막, 장애물·소품·횃불의 종류. 없으면 덕의 상자 모습(투기장 맵)
    */

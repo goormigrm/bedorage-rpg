@@ -25,7 +25,8 @@ import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { Voice } from '../net/voice'
 import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
-import { Skin, asSkin, setSkin, skinMap } from './skin'
+import { Skin, asSkin, isBright, setSkin, skinMap } from './skin'
+import './skinThemes'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
@@ -490,7 +491,7 @@ export class Session {
     syncMute()
     this.syncMute = syncMute
     // 던전은 어두운 음악, 투기장은 덕의 추격 음악
-    this.sfx.setBgmStyle(cfg.kind === 'arena' ? 'chase' : 'dark')
+    this.sfx.setBgmStyle(cfg.kind === 'arena' ? 'chase' : isBright() ? 'bright' : 'dark')
     this.sfx.startBgm()
 
     this.names = this.computeNames()

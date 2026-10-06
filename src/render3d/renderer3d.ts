@@ -17,6 +17,9 @@ function armsBaseY(rig: { arms: THREE.Object3D }): number {
 }
 
 /** 보스 등장 배너의 한 줄 (막 보스 넷) */
+/** 밝은 분위기의 색종이 (맞음 · 쓰러짐 — 피 대신) */
+const CONFETTI = [0xff6fa8, 0x4fd6b0, 0xffc845, 0x6aa8ff, 0xb98cff, 0xffffff]
+
 const BOSS_INTRO: Record<string, string> = {
   butcher: '성당 지하의 푸줏간 — 갈고리에 걸린 것은 모두 고기가 된다',
   queen: '늪 깊은 둥지에서 여왕이 깨어났다 — 알이 터지기 전에',
@@ -36,6 +39,7 @@ import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
+import { isBright } from '../game/skin'
 import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
 
 export { VIEW_W, VIEW_H }
@@ -894,6 +898,8 @@ export class Renderer3D {
   // ---------- 이벤트 → 이펙트 ----------
   onEvents(events: SimEvent[], state: GameState, localPlayer: number, names?: string[]): void {
     this.ensureRigs(state)
+    // 밝은 분위기: 피 · 뼈 대신 색종이 · 별 (game/skin.ts)
+    const bright = isBright()
     // 이름이 없는 자리(영상용 손님 등)는 캐릭터 이름으로 — "undefined 레벨 7" 이 떴다
     const nm = state.players.map((p, i) => names?.[i] ?? CHARACTERS[p.char].name)
     for (const e of events) {
@@ -1175,7 +1181,7 @@ export class Renderer3D {
               const fx = dir.x * ca - dir.z * sa
               const fz = dir.x * sa + dir.z * ca
               const sp = (head ? 0.11 : 0.07) + Math.random() * 0.1
-              const col = head ? (k % 3 === 0 ? 0xfff3c0 : k % 3 === 1 ? 0xffd84a : 0x8a1010) : k % 2 === 0 ? 0x7a1010 : 0x3a0a0a
+              const col = bright ? CONFETTI[(k + e.m) % CONFETTI.length] : head ? (k % 3 === 0 ? 0xfff3c0 : k % 3 === 1 ? 0xffd84a : 0x8a1010) : k % 2 === 0 ? 0x7a1010 : 0x3a0a0a
               this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
             }
             // 바닥 핏자국: 내 치명타는 늘, 내 명중은 가끔 (쏜 방향 뒤쪽에)
@@ -1210,6 +1216,16 @@ export class Renderer3D {
           if (e.kind !== 1) {
             this.addBlood(e.x * U + dir.x * 0.25, e.y * U + dir.z * 0.25, rank >= 1 ? 0.8 : 0.48, SPLAT_POOL)
             this.addBlood(e.x * U + dir.x * 0.85, e.y * U + dir.z * 0.85, rank >= 1 ? 0.7 : 0.42, SPLAT_SPRAY, dir)
+          }
+          if (bright) {
+            // 밝은 분위기: "퐁!" — 색종이가 위로 터지고 노란 별 고리 (피 · 뼈 대신)
+            for (let k = 0; k < 16; k++) {
+              const a = Math.random() * Math.PI * 2
+              const sp = 0.03 + Math.random() * 0.08
+              this.spawnParticle(e.x * U, 0.7, e.y * U, Math.cos(a) * sp, 0.12 + Math.random() * 0.12, Math.sin(a) * sp, 1.0, CONFETTI[k % CONFETTI.length], 0.75)
+            }
+            this.spawnRing(e.x * U, e.y * U, 0.2, 1.3, 0.35, 0xffe066)
+            break
           }
           // 검붉은 피 · 뼛조각이 튀고 바닥에 얼룩 링
           const bone = e.kind === 1

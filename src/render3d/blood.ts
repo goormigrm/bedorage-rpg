@@ -5,6 +5,7 @@
 //   6~7 작은 방울 무리 (명중)
 // 모양은 고정 시드로 그린다 — 늘 같은 여덟 개. 색은 인스턴스 색(검붉게)이 곱해진다.
 
+import { isBright } from '../game/skin'
 import * as THREE from 'three'
 
 const COLS = 4
@@ -162,6 +163,9 @@ interface Splat {
 }
 
 /** 바닥 핏자국 묶음 (renderer3d 가 들고 있다) */
+/** 밝은 분위기의 물감 색 */
+const PAINT = [0xff6fa8, 0x4fd6b0, 0xffc845, 0x6aa8ff, 0xb98cff]
+
 export class BloodDecals {
   readonly mesh: THREE.InstancedMesh
   private data: (Splat | undefined)[] = []
@@ -199,9 +203,14 @@ export class BloodDecals {
     this.data[i] = { x, z, s: size * 2.6 * (0.85 + Math.random() * 0.35), r, life: BLOOD_LIFE, age: 0 }
     this.tile.setX(i, kinds[Math.floor(Math.random() * kinds.length)])
     this.tile.needsUpdate = true
-    // 검붉게 (등불 아래서도 물감처럼 튀지 않게 — 2026-09-24 브라우저 확인: 0.16~0.26 은 마을 등불 곁에서 새빨갰다)
-    const shade = 0.11 + Math.random() * 0.07
-    this.mesh.setColorAt(i, this.col.setRGB(shade * 1.2, shade * 0.07, shade * 0.06))
+    if (isBright()) {
+      // 밝은 분위기: 물감 얼룩 (분홍 · 민트 · 노랑 · 하늘 — 2026-10-06 사용자 "피 대신 물감 · 색종이")
+      this.mesh.setColorAt(i, this.col.setHex(PAINT[Math.floor(Math.random() * PAINT.length)]))
+    } else {
+      // 검붉게 (등불 아래서도 물감처럼 튀지 않게 — 2026-09-24 브라우저 확인: 0.16~0.26 은 마을 등불 곁에서 새빨갰다)
+      const shade = 0.11 + Math.random() * 0.07
+      this.mesh.setColorAt(i, this.col.setRGB(shade * 1.2, shade * 0.07, shade * 0.06))
+    }
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true
     this.mesh.count = Math.max(this.mesh.count, i + 1)
   }

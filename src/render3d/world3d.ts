@@ -7,6 +7,7 @@
 // 전부 타일 좌표 해시로 정하므로 같은 맵이면 모든 브라우저에서 같은 모습이다(화면만의 일 — sim 과 무관).
 // 덕의 대전 맵(style 없음)은 예전 상자 모습 그대로.
 
+import { isBright } from '../game/skin'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GameMap, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
@@ -439,6 +440,9 @@ function wallClusters(map: GameMap): Map<number, { x0: number; y0: number; x1: n
   return out
 }
 
+/** 밝은 분위기의 물감 색 (바닥 얼룩) */
+const PAINT_RGBA = ['rgba(255,120,170,0.45)', 'rgba(90,210,180,0.45)', 'rgba(255,205,80,0.5)', 'rgba(110,170,255,0.45)']
+
 /** 바닥 그림을 한 번에 */
 function paintFloor(map: GameMap, style: WorldStyle): THREE.CanvasTexture {
   const g = paintFloorSteps(map, style, map.h)
@@ -453,6 +457,7 @@ function paintFloor(map: GameMap, style: WorldStyle): THREE.CanvasTexture {
  * rows 줄마다 한 번 쉰다(yield) — 2016×1488 캔버스에 칸 5천 개를 그려 한 번에 하면 화면이 멈춘다(마을에서 나눠 그린다, 2026-09-23)
  */
 export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number): Generator<void, THREE.CanvasTexture> {
+  const bright = isBright()
   const t = map.theme
   const look = LOOK[style]
   const px = 24
@@ -492,9 +497,9 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         }
       }
       if (map.tiles[ty * map.w + tx] !== TILE_FLOOR) continue
-      // 금
+      // 금 (밝은 분위기: 운동장 분필 선)
       if (hash(tx, ty, 70) < look.decal.crack) {
-        g.strokeStyle = 'rgba(0,0,0,0.55)'
+        g.strokeStyle = bright ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)'
         g.lineWidth = 1.2
         g.beginPath()
         let cx = x + hash(tx, ty, 71) * px
@@ -507,18 +512,18 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         }
         g.stroke()
       }
-      // 핏자국
+      // 핏자국 (밝은 분위기: 물감 방울 — 분홍 · 민트 · 노랑)
       if (hash(tx, ty, 80) < look.decal.blood) {
-        g.fillStyle = 'rgba(70,6,6,0.6)'
+        g.fillStyle = bright ? PAINT_RGBA[Math.floor(hash(tx, ty, 95) * PAINT_RGBA.length)] : 'rgba(70,6,6,0.6)'
         for (let s = 0; s < 4; s++) {
           g.beginPath()
           g.arc(x + px / 2 + (hash(tx, ty, 81 + s) - 0.5) * px, y + px / 2 + (hash(tx, ty, 85 + s) - 0.5) * px, 3 + hash(tx, ty, 89 + s) * 7, 0, Math.PI * 2)
           g.fill()
         }
       }
-      // 이끼
+      // 이끼 (밝은 분위기: 노란 · 흰 꽃무리)
       if (hash(tx, ty, 90) < look.decal.moss) {
-        g.fillStyle = 'rgba(60,78,40,0.45)'
+        g.fillStyle = bright ? (hash(tx, ty, 96) < 0.5 ? 'rgba(255,226,120,0.55)' : 'rgba(255,255,255,0.5)') : 'rgba(60,78,40,0.45)'
         g.beginPath()
         g.arc(x + hash(tx, ty, 91) * px, y + hash(tx, ty, 92) * px, 5 + hash(tx, ty, 93) * 8, 0, Math.PI * 2)
         g.fill()

@@ -93,7 +93,14 @@ export class Vision {
     this.px = pxFor(map)
     // 던전은 시야 밖이 더 캄캄하다 (디아블로의 빛 반경 느낌)
     const fogAlpha = map.theme.dark ? map.theme.dark.fogAlpha : 0.78
-    const fogColor = map.theme.dark ? new THREE.Vector3(3 / 255, 3 / 255, 5 / 255) : new THREE.Vector3(6 / 255, 8 / 255, 5 / 255)
+    // 밝은 분위기는 검정 대신 흐린 파스텔 안개 (시야 제한은 그대로 — 괴물은 여전히 안 보인다)
+    const vf = map.theme.visionFog
+    const fogColor =
+      vf !== undefined
+        ? new THREE.Vector3(((vf >> 16) & 255) / 255, ((vf >> 8) & 255) / 255, (vf & 255) / 255)
+        : map.theme.dark
+          ? new THREE.Vector3(3 / 255, 3 / 255, 5 / 255)
+          : new THREE.Vector3(6 / 255, 8 / 255, 5 / 255)
     const cover = (side: boolean) =>
       new THREE.ShaderMaterial({
         uniforms: { mask: { value: null }, color: { value: fogColor }, alpha: { value: fogAlpha } },

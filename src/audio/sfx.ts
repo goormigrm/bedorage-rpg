@@ -2,6 +2,7 @@
 // sim 을 바꾸지 않는다: SimEvent 를 받아 소리만 낸다. 나중에 public/sfx/ 에 파일이 생기면 여기서 교체하면 된다.
 // 브라우저 자동재생 정책: 첫 클릭/키 입력 전에는 소리가 나지 않는다 (그 전 이벤트는 버린다).
 
+import { isBright } from '../game/skin'
 import { GameState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
@@ -983,6 +984,11 @@ export class Sfx {
     const { node, t0 } = this.bus(s, def.boss ? vol : vol * 1.5, 'mon')
     const r = (a: number, b: number) => a + Math.random() * (b - a)
     const big = act === 'wake' || act === 'ult'
+    // 밝은 분위기: 신음 · 포효 대신 장난감 소리 (뿅 · 삑 · 꽥 · 미끄럼 피리)
+    if (isBright()) {
+      this.toyVoice(node, t0, def, act)
+      return
+    }
     switch (def.id) {
       case 'ghoul': {
         // 좀비: 목이 떨리는 그르릉 (growl — 예전 낮은 톱니 하나는 "방귀 새는 소리 같다"는 말을 들었다, 2026-09-24)
@@ -1091,6 +1097,45 @@ export class Sfx {
         break
       default:
         this.growl(s, vol)
+        break
+    }
+  }
+
+  /**
+   * 장난감 소리 (밝은 분위기 — 2026-10-06): 몸이 클수록 낮게. 깨면 미끄럼 피리가 오르고, 때리면 삑!,
+   * 쓰러지면 피리가 내려가다 퐁, 가만히 있으면 작게 뾱. 보스는 바람 빠지는 나팔 같은 "우와앙".
+   */
+  private toyVoice(node: AudioNode, t0: number, def: { r: number; boss?: boolean; id: string }, act: 'wake' | 'attack' | 'death' | 'idle' | 'ult'): void {
+    const r = (a: number, b: number) => a + Math.random() * (b - a)
+    const k = Math.max(0.45, Math.min(1.6, 13 / def.r)) // 작을수록 높게
+    if (def.boss) {
+      const len = act === 'ult' ? 1.4 : act === 'idle' ? 0.45 : 0.9
+      this.vox(node, t0, len, 210 * r(0.95, 1.05), act === 'death' ? 90 : 260, 900, 1300, act === 'idle' ? 0.2 : 0.38, 0.03, 6, 0.06)
+      this.tone(node, t0, len * 0.8, 'triangle', 420, act === 'death' ? 160 : 520, act === 'idle' ? 0.06 : 0.12, 0.02)
+      if (act === 'death') this.tone(node, t0 + len, 0.12, 'sine', 1400, 1900, 0.2, 0.003)
+      return
+    }
+    switch (act) {
+      case 'wake':
+        // 미끄럼 피리가 오른다 (휘이익↑)
+        this.tone(node, t0, 0.26, 'sine', 520 * k, 1150 * k, 0.24, 0.01)
+        this.tone(node, t0, 0.26, 'triangle', 1040 * k, 2300 * k, 0.05, 0.01)
+        break
+      case 'attack':
+        // 삑! + 통
+        this.tone(node, t0, 0.07, 'square', 1250 * k, 980 * k, 0.1, 0.002)
+        this.tone(node, t0 + 0.02, 0.12, 'sine', 330 * k, 220 * k, 0.18, 0.003)
+        break
+      case 'death':
+        // 피리가 내려가다(휘유우↓) 퐁
+        this.tone(node, t0, 0.32, 'sine', 1300 * k, 380 * k, 0.22, 0.01)
+        this.tone(node, t0 + 0.3, 0.09, 'sine', 900, 1500, 0.2, 0.002)
+        this.noiseBurst(node, t0 + 0.3, 0.06, 'bandpass', 3000, 2400, 0.1, 2)
+        break
+      case 'ult':
+      case 'idle':
+        // 작게 뾱
+        this.tone(node, t0, 0.08, 'sine', 700 * k, 960 * k, 0.12, 0.004)
         break
     }
   }
@@ -1539,10 +1584,10 @@ export class Sfx {
     880, 0, 0, 987.8, 0, 830.6, 0, 0, 659.3, 0, 739.99, 0, 880, 0, 0, 0,
   ]
 
-  /** 배경음 결: 'chase' = 덕의 132BPM 추격(투기장) · 'dark' = 느리고 어두운 던전 */
-  private bgmStyle: 'chase' | 'dark' = 'chase'
+  /** 배경음 결: 'chase' = 덕의 132BPM 추격(투기장) · 'dark' = 느리고 어두운 던전 · 'bright' = 밝은 분위기의 놀이곡(2026-10-06) */
+  private bgmStyle: 'chase' | 'dark' | 'bright' = 'chase'
 
-  setBgmStyle(style: 'chase' | 'dark'): void {
+  setBgmStyle(style: 'chase' | 'dark' | 'bright'): void {
     this.bgmStyle = style
   }
 
@@ -1608,6 +1653,80 @@ export class Sfx {
       this.bgmNextBeat += step16
       this.bgmBeatIndex++
     }
+  }
+
+  // ---------- 밝은 분위기 놀이곡 (2026-10-06 사용자: "밝고 귀엽게") ----------
+  // 112 BPM · C 장조(C → Am → F → G). 통통 튀는 마림바 반주 · 높은 종소리 선율(휘파람 느낌) · 가벼운 셰이커 · 낮은 통통 베이스.
+  // 교전이 붙으면 킥 · 손뼉이 더해져 신이 난다. 코드로 합성 — 저작권 없음.
+  private static readonly PLAY = [
+    { root: 65.41, notes: [261.6, 329.6, 392.0, 523.3] }, // C
+    { root: 55.0, notes: [220.0, 261.6, 329.6, 440.0] }, // Am
+    { root: 43.65, notes: [174.6, 220.0, 261.6, 349.2] }, // F
+    { root: 49.0, notes: [196.0, 246.9, 293.7, 392.0] }, // G
+  ]
+  /** 선율 (16분 위치 → 음 · 0 쉼표) — 네 마디 */
+  private static readonly PLAY_TUNE = [
+    [784, 0, 659.3, 0, 784, 0, 880, 0, 784, 0, 659.3, 0, 523.3, 0, 0, 0],
+    [659.3, 0, 587.3, 0, 523.3, 0, 587.3, 0, 659.3, 0, 0, 0, 440, 0, 0, 0],
+    [698.5, 0, 659.3, 0, 587.3, 0, 523.3, 0, 587.3, 0, 659.3, 0, 698.5, 0, 0, 0],
+    [784, 0, 0, 0, 659.3, 0, 587.3, 0, 523.3, 0, 587.3, 0, 493.9, 0, 0, 0],
+  ]
+
+  private scheduleBright(ctx: AudioContext): void {
+    const step16 = 60 / 112 / 4
+    this.intensity = Math.max(0, this.intensity - 0.0014)
+    while (this.bgmNextBeat < ctx.currentTime + 0.3) {
+      const t = this.bgmNextBeat
+      const step = this.bgmBeatIndex % 64
+      const b = (step / 16) | 0
+      const s16 = step % 16
+      const ch = Sfx.PLAY[b]
+      const hot = this.intensity > 0.3
+      // 통통 베이스 (한 박에 하나 · 넷째 박은 위로 튄다)
+      if (s16 % 4 === 0) this.bgmMallet(t, ch.root * (s16 === 12 ? 4 : 2), 0.16, 0.32, 0.5)
+      // 마림바 반주 (엇박 펼침화음)
+      if (s16 % 2 === 1) this.bgmMallet(t, ch.notes[((s16 / 2) | 0) % 4], 0.07, 0.28, 3)
+      // 선율: 종소리 + 휘파람 같은 사인 (2 · 4 마디 · 교전 중엔 늘)
+      const f = Sfx.PLAY_TUNE[b][s16]
+      if (f && (b % 2 === 0 || hot)) {
+        this.bgmMallet(t, f, hot ? 0.07 : 0.055, 0.45, 4)
+        this.bgmNote(t, f * 2, 'sine', step16 * 2.4, hot ? 0.035 : 0.025, 6000)
+      }
+      // 셰이커 · 교전이면 킥 · 손뼉
+      if (s16 % 2 === 0) this.bgmHat(t, s16 % 4 === 2 ? 0.035 : 0.018)
+      if (hot && (s16 === 0 || s16 === 8)) this.bgmKick(t)
+      if (hot && (s16 === 4 || s16 === 12)) this.bgmSnare(t, 0.14)
+      this.bgmNextBeat += step16
+      this.bgmBeatIndex++
+    }
+  }
+
+  /** 마림바 · 실로폰 같은 통통 튀는 음 (사인 + 높은 배음이 빨리 사라진다) */
+  private bgmMallet(t0: number, f: number, peak: number, dur: number, bright: number): void {
+    const ctx = this.ctx!
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.004)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    g.connect(this.bgmGain!)
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.value = f
+    osc.connect(g)
+    const hi = ctx.createOscillator()
+    hi.type = 'sine'
+    hi.frequency.value = f * bright
+    const hg = ctx.createGain()
+    hg.gain.setValueAtTime(0.35, t0)
+    hg.gain.exponentialRampToValueAtTime(0.001, t0 + Math.min(dur, 0.08))
+    hi.connect(hg)
+    hg.connect(g)
+    this.finish(osc, [g], null, false)
+    this.finish(hi, [hg], null, false)
+    osc.start(t0)
+    osc.stop(t0 + dur + 0.05)
+    hi.start(t0)
+    hi.stop(t0 + dur + 0.05)
   }
 
   /** 잔향 (배경음만): 소음을 줄여 가며 만든 응답 · 컨텍스트마다 하나 (영상 녹화는 다른 컨텍스트 — 녹화 도구의 가짜 컨텍스트와도 맞춘다) */
@@ -1833,6 +1952,11 @@ export class Sfx {
     if (this.bgmStyle === 'dark') {
       if (this.boss > 0) this.scheduleBoss(ctx)
       else this.scheduleDark(ctx)
+      return
+    }
+    // 밝은 분위기: 평소엔 놀이곡, 보스전은 아래의 빠른 추격 곡(게임 쇼 같은 긴장)
+    if (this.bgmStyle === 'bright' && this.boss <= 0) {
+      this.scheduleBright(ctx)
       return
     }
     const step16 = 60 / 132 / 4 // 16분음표 길이
