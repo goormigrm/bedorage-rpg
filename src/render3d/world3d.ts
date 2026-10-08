@@ -44,6 +44,89 @@ function hash(tx: number, ty: number, salt = 0): number {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296
 }
 
+/**
+ * 바닥에 닿은 쪽을 어둡게 하는 정점 색 (2026-10-08 퀄리티 2차 2단계 G4 — 바위 · 나무 · 말뚝이 바닥에 떠 보이지 않게).
+ * y 가 from 아래면 dark, to 위면 1, 그 사이는 부드럽게. 재질에 vertexColors 를 켠다(인스턴스 색과 곱해진다)
+ */
+function groundShade(geo: THREE.BufferGeometry, from: number, to: number, dark: number): THREE.BufferGeometry {
+  const pos = geo.getAttribute('position')
+  const c = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const k = Math.min(1, Math.max(0, (pos.getY(i) - from) / (to - from)))
+    const v = dark + (1 - dark) * k * k * (3 - 2 * k)
+    c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = v
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(c, 3))
+  return geo
+}
+
+/**
+ * 돌벽 옆면 무늬 (손으로 칠한 듯한 벽돌 — 툰 그림체 쪽, 2026-10-08 G3). 흰 바탕의 밝기만 그린다 — 색은 칸마다의 인스턴스 색이 입힌다.
+ * 벽 상자는 높이로 늘어나므로(1 × 2 남짓) 세로로 긴 그림에 일곱 줄. 아래쪽은 그늘(바닥에 닿은 쪽).
+ * 밝은 분위기는 장난감 블록: 줄눈 대신 가장자리 빛 · 그늘(플라스틱 모서리)
+ */
+function wallTexture(bright: boolean): THREE.CanvasTexture {
+  const W = 128
+  const H = 256
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const g = c.getContext('2d')!
+  const grey = (v: number) => {
+    const n = Math.round(Math.max(0, Math.min(1, v)) * 255)
+    return `rgb(${n},${n},${n})`
+  }
+  if (bright) {
+    g.fillStyle = grey(0.9)
+    g.fillRect(0, 0, W, H)
+    g.fillStyle = grey(1)
+    g.fillRect(0, 0, W, 10)
+    g.fillRect(0, 0, 8, H)
+    g.fillStyle = grey(0.74)
+    g.fillRect(W - 8, 0, 8, H)
+    g.fillRect(0, H - 14, W, 14)
+  } else {
+    const rows = 7
+    const rh = H / rows
+    g.fillStyle = grey(0.5)
+    g.fillRect(0, 0, W, H)
+    for (let r = 0; r < rows; r++) {
+      const off = r % 2 === 0 ? 0 : -32
+      for (let b = 0; b < 3; b++) {
+        const x = off + b * 64 + 2
+        const y = r * rh + 2
+        const w = 60
+        const h = rh - 4
+        const k = 0.8 + 0.2 * hash(b, r, 300)
+        g.fillStyle = grey(k)
+        g.fillRect(x, y, w, h)
+        // 윗모서리 빛 · 아랫모서리 그늘 (칠한 듯한 돌 덩어리)
+        g.fillStyle = grey(Math.min(1, k + 0.12))
+        g.fillRect(x, y, w, 3)
+        g.fillStyle = grey(k * 0.72)
+        g.fillRect(x, y + h - 4, w, 4)
+        // 얼룩 · 깨진 자리
+        for (let s = 0; s < 3; s++) {
+          g.fillStyle = `rgba(0,0,0,${0.08 + 0.1 * hash(b, r, 310 + s)})`
+          g.beginPath()
+          g.arc(x + hash(b, r, 320 + s) * w, y + hash(b, r, 330 + s) * h, 2 + hash(b, r, 340 + s) * 5, 0, Math.PI * 2)
+          g.fill()
+        }
+      }
+    }
+    // 바닥 쪽 그늘 (텍스처 아래 = 벽 아래)
+    const grd = g.createLinearGradient(0, H, 0, H * 0.6)
+    grd.addColorStop(0, 'rgba(0,0,0,0.55)')
+    grd.addColorStop(1, 'rgba(0,0,0,0)')
+    g.fillStyle = grd
+    g.fillRect(0, H * 0.6, W, H * 0.4)
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  return tex
+}
+
 /** floorTex = 미리 그려 둔 바닥 그림 (paintFloorSteps — 마을에서 나눠 그린 것). 없으면 여기서 그린다 */
 export function buildWorld(map: GameMap, floorTex?: THREE.CanvasTexture): World3D {
   const style = map.theme.style
@@ -80,6 +163,8 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const look = LOOK[style]
   const bright = isBright()
   const group = new THREE.Group()
+  /** 풀 흔들림 시간 (update 가 넣는다) */
+  const swayT = { value: 0 }
   const disposables: { dispose(): void }[] = []
   const isFloor = (tx: number, ty: number) => tx >= 0 && ty >= 0 && tx < map.w && ty < map.h && map.tiles[ty * map.w + tx] === TILE_FLOOR
   const isWall = (tx: number, ty: number) => tx < 0 || ty < 0 || tx >= map.w || ty >= map.h || map.tiles[ty * map.w + tx] === TILE_WALL
@@ -133,7 +218,9 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   }
   const vis = walls.filter(([tx, ty]) => touching(tx, ty))
   if (look.wall === 'stone') {
-    const side = new THREE.MeshLambertMaterial({ color: 0xffffff })
+    const wtex = wallTexture(bright)
+    disposables.push(wtex)
+    const side = new THREE.MeshLambertMaterial({ color: 0xffffff, map: wtex })
     const block = inst(new THREE.BoxGeometry(1, 1, 1), side, vis.length)
     const cap = inst(new THREE.BoxGeometry(1.08, 0.14, 1.08), new THREE.MeshLambertMaterial({ color: 0xffffff }), vis.length)
     const base = new THREE.Color(t.wall)
@@ -163,7 +250,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
       }
     }
   } else if (look.wall === 'rock') {
-    const rock = inst(new THREE.IcosahedronGeometry(0.62, 1), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), vis.length)
+    const rock = inst(groundShade(new THREE.IcosahedronGeometry(0.62, 1), -0.62, 0.3, 0.42), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: true }), vis.length)
     const base = new THREE.Color(t.wall)
     for (const [tx, ty] of vis) {
       const h = h0 + (h1 - h0) * hash(tx, ty, 1)
@@ -189,18 +276,16 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
         new THREE.CylinderGeometry(0.03, 0.05, 0.8, 4).rotateZ(-1.0).translate(-0.3, 1.35, 0),
         new THREE.CylinderGeometry(0.02, 0.04, 0.6, 4).rotateX(0.8).translate(0, 1.85, 0.2),
       ])!
-      const trees = inst(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x2a221c }), vis.length)
+      const trees = inst(groundShade(trunkGeo, 0, 1.2, 0.5), new THREE.MeshLambertMaterial({ color: 0x2a221c, vertexColors: true }), vis.length)
       for (const [tx, ty] of vis) if (hash(tx, ty, 20) < 0.12) put(trees, tx + 0.5, 0, ty + 0.5, 1, 0.8 + hash(tx, ty, 21) * 0.6, 1, hash(tx, ty, 22) * 6.28)
     }
   } else if (look.wall === 'tree') {
     // 숲: 벽 칸마다 전나무 (줄기 + 겹친 잎 원뿔 셋). 높이·색이 저마다
-    const trunk = inst(new THREE.CylinderGeometry(0.1, 0.16, 1, 6).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: bright ? 0xa8764c : 0x2e2218 }), vis.length)
-    const leafGeo = mergeGeometries([
-      new THREE.ConeGeometry(0.72, 1.1, 7).translate(0, 1.0, 0),
-      new THREE.ConeGeometry(0.58, 0.95, 7).translate(0, 1.55, 0),
-      new THREE.ConeGeometry(0.4, 0.8, 7).translate(0, 2.05, 0),
-    ])!
-    const leaves = inst(leafGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), vis.length)
+    const trunk = inst(groundShade(new THREE.CylinderGeometry(0.1, 0.16, 1, 6).translate(0, 0.5, 0), 0, 0.7, 0.45), new THREE.MeshLambertMaterial({ color: bright ? 0xa8764c : 0x2e2218, vertexColors: true }), vis.length)
+    // 잎은 층마다 아래 가장자리가 어둡다 (겹친 층이 또렷하게 — 툰 그림체의 단 나뉨)
+    const tier = (r: number, h: number, y: number) => groundShade(new THREE.ConeGeometry(r, h, 7).translate(0, y, 0), y - h / 2, y + h * 0.1, bright ? 0.72 : 0.55)
+    const leafGeo = mergeGeometries([tier(0.72, 1.1, 1.0), tier(0.58, 0.95, 1.55), tier(0.4, 0.8, 2.05)])!
+    const leaves = inst(leafGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: true }), vis.length)
     const base = new THREE.Color(t.wall)
     for (const [tx, ty] of vis) {
       const h = (h0 + (h1 - h0) * hash(tx, ty, 1)) / 2.4
@@ -213,7 +298,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     // 마을: 테두리는 목책(끝이 뾰족한 말뚝), 안쪽 벽 덩어리는 천막
     const stakeGeo = mergeGeometries([new THREE.CylinderGeometry(0.13, 0.15, 1.7, 6).translate(0, 0.85, 0), new THREE.ConeGeometry(0.13, 0.35, 6).translate(0, 1.87, 0)])!
     // 밝게: 흰색 · 분홍 줄무늬 울타리
-    const stakes = inst(stakeGeo, new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0x5a4330 }), vis.length * 3)
+    const stakes = inst(groundShade(stakeGeo, 0, 1.0, bright ? 0.7 : 0.5), new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0x5a4330, vertexColors: true }), vis.length * 3)
     const clusters = wallClusters(map)
     for (const [tx, ty] of vis) {
       const border = tx <= 3 || ty <= 3 || tx >= map.w - 4 || ty >= map.h - 4
@@ -365,7 +450,23 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const bones = P.has('bone') ? (bright ? inst(marbleGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : inst(boneGeo, new THREE.MeshLambertMaterial({ color: 0xcfc6ae }), floors.length, false)) : null
   const skulls = P.has('skull') ? (bright ? inst(new THREE.BoxGeometry(0.24, 0.04, 0.24).translate(0, 0.02, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : inst(new THREE.SphereGeometry(0.11, 8, 6).scale(1, 0.85, 1.1), new THREE.MeshLambertMaterial({ color: 0xd8cfb6 }), floors.length, false)) : null
   const candleM = P.has('candle') ? inst(new THREE.CylinderGeometry(0.04, 0.045, 0.22, 6).translate(0, 0.11, 0), new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0xe8e0c8 }), floors.length, false) : null
-  const grass = P.has('grass') ? inst(grassGeometry(), new THREE.MeshLambertMaterial({ color: bright ? 0x78d65e : style === 'town' ? 0x4a4a2a : 0x3e4a2a, side: THREE.DoubleSide }), floors.length, false) : null
+  // 풀은 바람에 흔들린다 (2026-10-08 G7 — 정점 셰이더: 끝으로 갈수록 크게 · 자리마다 다른 박자)
+  const grassMat = new THREE.MeshLambertMaterial({ color: bright ? 0x78d65e : style === 'town' ? 0x4a4a2a : 0x3e4a2a, side: THREE.DoubleSide })
+  grassMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uSway = swayT
+    sh.vertexShader = 'uniform float uSway;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        float bend = max(position.y, 0.0) / 0.34;
+        float ph = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z * 1.3;
+        transformed.x += (sin(uSway * 1.9 + ph) * 0.09 + sin(uSway * 4.3 + ph * 2.0) * 0.025) * bend;
+        transformed.z += cos(uSway * 1.6 + ph) * 0.05 * bend;
+      #endif`,
+    )
+  }
+  grassMat.customProgramCacheKey = () => 'grass-sway'
+  const grass = P.has('grass') ? inst(grassGeometry(), grassMat, floors.length, false) : null
   const shroomGeo = mergeGeometries([new THREE.CylinderGeometry(0.03, 0.04, 0.16, 5).translate(0, 0.08, 0), new THREE.SphereGeometry(0.11, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1).translate(0, 0.16, 0)])!
   const shrooms = P.has('shroom') ? inst(shroomGeo, new THREE.MeshBasicMaterial({ color: bright ? 0xff9ec4 : 0x8ad8a8 }), floors.length, false) : null
   // 밝게: 짚더미 → 빈백 쿠션
@@ -498,6 +599,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     breakSandbag() {},
     setSandbagHealth() {},
     update(time: number, x: number, z: number) {
+      swayT.value = time
       for (let i = 0; i < sprites.length; i++) {
         const f = flames[i]
         const k = 1 + Math.sin(time * 11 + f.phase) * 0.08 + Math.sin(time * 23 + f.phase * 2) * 0.05
@@ -679,6 +781,13 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         g.strokeStyle = line
         g.lineWidth = 2
         g.strokeRect(x + 1, y + 1, px - 2, px - 2)
+        // 칠한 듯한 판석: 위 · 왼쪽 모서리는 밝게, 아래 · 오른쪽은 어둡게 (2026-10-08 G3 — 전에는 선만 그은 평판)
+        g.fillStyle = bright ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'
+        g.fillRect(x + 2, y + 2, px - 4, 2)
+        g.fillRect(x + 2, y + 2, 2, px - 4)
+        g.fillStyle = 'rgba(0,0,0,0.16)'
+        g.fillRect(x + 2, y + px - 4, px - 4, 2)
+        g.fillRect(x + px - 4, y + 2, 2, px - 4)
       } else {
         // 흙·바위·다진 땅: 얼룩덜룩하게 (격자 없음)
         g.fillStyle = shade(r < 0.3 ? alt : base, k)
@@ -691,6 +800,23 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         }
       }
       if (map.tiles[ty * map.w + tx] !== TILE_FLOOR) continue
+      // 구석 그늘 (G4): 벽 · 상자에 닿은 변을 안쪽으로 어둡게 — 벽이 바닥에 서 있어 보이게 (빛을 굽는 셈 · 그릴 때 한 번)
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+        const nx = tx + dx
+        const ny = ty + dy
+        if (nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) continue
+        const nt = map.tiles[ny * map.w + nx]
+        if (nt === TILE_FLOOR) continue
+        const a = (nt === TILE_WALL ? 0.5 : 0.3) * (bright ? 0.55 : 1)
+        const d = px * 0.5
+        const x0 = dx > 0 ? x + px : x
+        const y0 = dy > 0 ? y + px : y
+        const grd = g.createLinearGradient(x0, y0, x0 - dx * d, y0 - dy * d)
+        grd.addColorStop(0, `rgba(0,0,0,${a})`)
+        grd.addColorStop(1, 'rgba(0,0,0,0)')
+        g.fillStyle = grd
+        g.fillRect(dx < 0 ? x : dx > 0 ? x + px - d : x, dy < 0 ? y : dy > 0 ? y + px - d : y, dx !== 0 ? d : px, dy !== 0 ? d : px)
+      }
       // 금 (밝은 분위기: 운동장 분필 선)
       if (hash(tx, ty, 70) < look.decal.crack) {
         g.strokeStyle = bright ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)'

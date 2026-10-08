@@ -35,6 +35,7 @@ import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, area
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
 import { PostFx, gradeFor } from './post'
+import { AmbientFx, ambientFor } from './ambient'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
@@ -275,6 +276,9 @@ export class Renderer3D {
   private puff!: SpriteFx
   /** 화면 후처리 — 빛 번짐 · 막마다 색감 (post.ts — 2026-10-08 퀄리티 2차 2단계) */
   private post!: PostFx
+  /** 공중에 떠다니는 것 — 먼지 · 반딧불 · 불티 · 반짝이 (ambient.ts — G7). 보던 지역이 바뀌면 종류를 바꾼다 */
+  private ambient!: AmbientFx
+  private ambientArea = -2
   private readonly partDummy = new THREE.Object3D()
   private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
   private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
@@ -516,6 +520,8 @@ export class Renderer3D {
     this.glow = new SpriteFx(900, true)
     this.puff = new SpriteFx(360, false)
     this.scene.add(this.puff.mesh, this.glow.mesh)
+    this.ambient = new AmbientFx(ambientFor(0, false, isBright()))
+    this.scene.add(this.ambient.points)
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -1834,6 +1840,14 @@ export class Renderer3D {
     this.updateGiantLight(curr)
     this.updateCamera(curr, pos, dt, opts)
     this.world.update(this.t, this.camTarget.x, this.camTarget.z)
+    // 떠다니는 것: 던전만 (투기장은 끈다) · 지역이 바뀌면 그 막 · 분위기의 종류로
+    const amb = curr.mode === 'dungeon' && curr.curArea >= 0
+    if (amb && curr.curArea !== this.ambientArea) {
+      this.ambientArea = curr.curArea
+      const a = areaDef(curr.curArea)
+      this.ambient.set(ambientFor(a.act, a.kind === 'town', isBright()))
+    }
+    this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
 
     // 색감: 지역(막 · 마을) · 보스가 깨어 있나에 따라 서서히 바뀐다
@@ -4705,6 +4719,7 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.ambient.dispose()
     this.post.dispose()
     this.glow.dispose()
     this.puff.dispose()
