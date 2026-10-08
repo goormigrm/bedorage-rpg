@@ -59,8 +59,9 @@ export const setBossVoice = (on: boolean): void => set(BOSSVOICE_KEY, on ? '1' :
 /**
  * 화면 흔들림 세기 (2026-10-08 퀄리티 2차 5단계 — 멀미 · 방송 화면): 0 끔 · 0.5 약하게 · 1 보통. 후원 "화면 흔들림" 이벤트는 그대로다
  */
-let shakeK = Number(get(SHAKE_KEY) ?? '1')
-if (![0, 0.5, 1].includes(shakeK)) shakeK = 1
+// 처음 값은 끔 (2026-10-08 사용자: "화면 흔들림은 기본값이 끔으로") — 고른 적이 있으면 그 값
+let shakeK = Number(get(SHAKE_KEY) ?? '0')
+if (![0, 0.5, 1].includes(shakeK)) shakeK = 0
 export const shakeScale = (): number => shakeK
 export const setShakeScale = (k: number): void => {
   shakeK = k

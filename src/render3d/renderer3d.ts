@@ -2360,13 +2360,17 @@ export class Renderer3D {
       ctx.fill()
     }
     ctx.globalAlpha = 1
-    // 회복 구슬: 분홍 점 · 힐팩(투기장): 흰 네모에 빨간 십자
+    // 회복 구슬: 초록 십자 (흰 테두리) · 힐팩(투기장): 흰 네모에 빨간 십자
     for (const g of curr.globes) {
       if (g.share) {
-        ctx.fillStyle = '#ff7a8a'
-        ctx.beginPath()
-        ctx.arc(g.x / TILE, g.y / TILE, 2.4 * rp, 0, Math.PI * 2)
-        ctx.fill()
+        const px = g.x / TILE
+        const py = g.y / TILE
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(px - 3 * rp, py - 1.2 * rp, 6 * rp, 2.4 * rp)
+        ctx.fillRect(px - 1.2 * rp, py - 3 * rp, 2.4 * rp, 6 * rp)
+        ctx.fillStyle = '#1fc85a'
+        ctx.fillRect(px - 2.3 * rp, py - 0.6 * rp, 4.6 * rp, 1.2 * rp)
+        ctx.fillRect(px - 0.6 * rp, py - 2.3 * rp, 1.2 * rp, 4.6 * rp)
       } else {
         const px = g.x / TILE
         const py = g.y / TILE
@@ -4043,7 +4047,11 @@ export class Renderer3D {
     for (let i = n; i < this.auras.length; i++) this.auras[i].visible = false
   }
 
-  /** 회복 구슬: 붉게 빛나는 구가 떠서 맥박치듯 흔들린다 — 디아블로의 체력 구슬 */
+  /**
+   * 회복 구슬: **흰 테두리를 두른 초록 십자**가 떠서 맥박치듯 흔들린다 — 늘 화면 쪽을 본다 (2026-10-08 사용자: "체력 구슬은 알아보기 쉽게
+   * 병원 표시나 초록 십자가 표시로" — 붉은 구슬은 괴물의 붉은 투사체 · 피와 헷갈렸다). 도형 · 재질은 모두 같이 쓴다
+   */
+  private globeRes: { white: THREE.BoxGeometry[]; green: THREE.BoxGeometry[]; wm: THREE.MeshBasicMaterial; gm: THREE.MeshBasicMaterial } | null = null
   private updateGlobes(curr: GameState): void {
     const live = new Set<number>()
     for (const g0 of curr.globes) {
@@ -4052,10 +4060,20 @@ export class Renderer3D {
       if (!g) {
         g = new THREE.Group()
         if (g0.share) {
-          const core = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff3a4a }))
-          const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff4a5a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
-          halo.scale.setScalar(0.9)
-          g.add(core, halo)
+          this.globeRes ??= {
+            white: [new THREE.BoxGeometry(0.5, 0.2, 0.05), new THREE.BoxGeometry(0.2, 0.5, 0.05)],
+            green: [new THREE.BoxGeometry(0.4, 0.12, 0.05).translate(0, 0, 0.03), new THREE.BoxGeometry(0.12, 0.4, 0.05).translate(0, 0, 0.03)],
+            wm: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+            gm: new THREE.MeshBasicMaterial({ color: 0x1fc85a }),
+          }
+          const res = this.globeRes
+          const cross = new THREE.Group()
+          for (const geo of res.white) cross.add(new THREE.Mesh(geo, res.wm))
+          for (const geo of res.green) cross.add(new THREE.Mesh(geo, res.gm))
+          cross.name = 'cross'
+          const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x4aff8a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7 }))
+          halo.scale.setScalar(0.95)
+          g.add(halo, cross)
         } else {
           const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.42), new THREE.MeshLambertMaterial({ color: 0xf2f4f0 }))
           box.castShadow = true
@@ -4074,6 +4092,8 @@ export class Renderer3D {
       const k = 1 + Math.sin(this.t * 6 + g0.id) * 0.08
       g.scale.setScalar(k)
       g.position.set(g0.x * U, 0.35 + Math.sin(this.t * 3 + g0.id) * 0.06, g0.y * U)
+      // 초록 십자는 늘 화면을 본다
+      if (g0.share) g.getObjectByName('cross')?.quaternion.copy(this.camera.quaternion)
     }
     for (const [id, g] of this.globeMeshes) {
       if (live.has(id)) continue
