@@ -102,8 +102,10 @@ export class ItemTip {
     const op = this.el.offsetParent as HTMLElement | null
     const pr = op?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
     const scale = r.width / anchor.offsetWidth || 1
-    const w = this.el.offsetWidth * scale
-    const h = this.el.offsetHeight * scale
+    // 실제 화면 크기로 잰다 (offsetWidth × 배율은 테두리 · 여백만큼 어긋났다 — 2026-10-08 화면 시험: 오른쪽 끝 칸을 3px 덮었다)
+    const tr0 = this.el.getBoundingClientRect()
+    const w = tr0.width
+    const h = tr0.height
     const M = 8
     const GAP = 10
     // 보이는 칸: 게임 화면과 브라우저 창이 겹치는 곳
@@ -118,6 +120,14 @@ export class ItemTip {
     if (y < T) y = T
     this.el.style.left = `${(x - pr.left) / scale}px`
     this.el.style.top = `${(y - pr.top) / scale}px`
+    // 놓인 자리를 다시 재서 어긋난 만큼 바로잡는다 (부모의 테두리 · 여백 · 배율)
+    const got = this.el.getBoundingClientRect()
+    const dx = x - got.left
+    const dy = y - got.top
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      this.el.style.left = `${(x - pr.left + dx) / scale}px`
+      this.el.style.top = `${(y - pr.top + dy) / scale}px`
+    }
   }
 
   hide(): void {
