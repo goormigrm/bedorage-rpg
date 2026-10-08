@@ -150,6 +150,8 @@ export class TownPanel {
     this.el.hidden = true
     parent.appendChild(this.el)
     this.tip = new ItemTip(parent)
+    // 창을 굴리면 칸이 움직인다 — 풍선이 옛 자리에 남지 않게 (2026-10-08 자잘한 편의)
+    this.el.addEventListener('scroll', () => this.tip.hide(), { passive: true })
   }
 
   /** 세션이 벼리기 결과를 알려 준다 (sim 이벤트) */

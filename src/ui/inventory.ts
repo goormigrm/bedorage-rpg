@@ -7,7 +7,7 @@ import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
+  affixText, affixValue, armorBase, baseName, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -53,6 +53,19 @@ export function itemHtml(it: Item, me?: PlayerState): string {
 }
 
 /**
+ * 가방 칸에 쓰는 짧은 이름 (위 작은 글은 부위). 무기는 무기 이름 그대로(소총 · 고기 바이올린),
+ * 방어구 · 장신구는 바탕의 앞말(사슬 · 판금 · 구리 — 한 낱말 바탕이면 그대로).
+ * 2026-10-08 사용자: "아이템 창에서 일반 아이템의 이름이 안 보인다" — 예전에는 **전체 이름의 둘째 낱말**을 썼다(v0.4.0 이름 짓기 때의 것).
+ * 일반 아이템은 이름이 바탕 하나라(소총 · 투구) 둘째 낱말이 없어 빈칸이 됐고, 희귀는 바탕 대신 옵션 앞말이 나왔다.
+ */
+function cellTag(it: Item): string {
+  const base = baseName(it)
+  if (it.slot === SLOT_WEAPON) return base
+  const words = base.split(' ')
+  return words.length > 1 ? words[0] : base
+}
+
+/**
  * 가방 칸 하나. **보관함 창도 같은 것을 쓴다** — 보관함을 가방처럼 칸으로 본다(2026-09-25 요청).
  * `attr` 은 누를 때 알아볼 표(data-bag="3" 같은 것), `me` 를 주면 못 끼는 무기를 흐리게 한다.
  */
@@ -61,7 +74,7 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
   const col = itemColor(it)
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
-  const tag = it.set !== undefined ? SETS[it.set]?.tag ?? '' : itemName(it).split(' ')[1] ?? ''
+  const tag = it.set !== undefined ? SETS[it.set]?.tag ?? '' : cellTag(it)
   return `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
 }
 
@@ -82,11 +95,29 @@ export class ItemTip {
     this.el.innerHTML = `<div class="tip-main" style="--rc:${itemColor(it)}">${itemHtml(it, me)}${compare ? compareHtml(it, me) : ''}</div>
       ${compare && eq && eq !== it ? `<div class="tip-eq"><div class="tip-t">끼고 있는 것</div>${itemHtml(eq)}</div>` : ''}`
     this.el.hidden = false
+    // 자리 (2026-10-08 사용자: "아이템에 마우스를 올렸을 때 설명이 가려진다"): 예전에는 늘 칸 왼쪽 250px · 칸 위에 맞춰 띄워
+    // 비교 풍선(두 장)이면 둘째 장이 그 칸과 옆 칸을 덮었고, 아래쪽 칸이면 풍선이 화면 밖으로 잘렸다.
+    // → 풍선 크기를 재서 **칸을 덮지 않는 쪽**(왼쪽 먼저, 모자라면 오른쪽)에 두고, 위아래 · 좌우를 화면 안으로 당긴다.
     const r = anchor.getBoundingClientRect()
-    const pr = (this.el.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? { left: 0, top: 0 }
+    const op = this.el.offsetParent as HTMLElement | null
+    const pr = op?.getBoundingClientRect() ?? { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
     const scale = r.width / anchor.offsetWidth || 1
-    this.el.style.left = `${(r.left - pr.left) / scale - 250}px`
-    this.el.style.top = `${(r.top - pr.top) / scale}px`
+    const w = this.el.offsetWidth * scale
+    const h = this.el.offsetHeight * scale
+    const M = 8
+    const GAP = 10
+    // 보이는 칸: 게임 화면과 브라우저 창이 겹치는 곳
+    const L = Math.max(0, pr.left) + M
+    const T = Math.max(0, pr.top) + M
+    const R = Math.min(window.innerWidth, pr.right) - M
+    const B = Math.min(window.innerHeight, pr.bottom) - M
+    let x = r.left - GAP - w
+    if (x < L) x = r.right + GAP <= R - w ? r.right + GAP : Math.max(L, R - w)
+    let y = r.top
+    if (y + h > B) y = B - h
+    if (y < T) y = T
+    this.el.style.left = `${(x - pr.left) / scale}px`
+    this.el.style.top = `${(y - pr.top) / scale}px`
   }
 
   hide(): void {
