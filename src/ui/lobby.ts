@@ -84,7 +84,7 @@ export class Lobby {
   private deathRule: DeathRule = 0
   /** 난이도 (0 보통 · 1 악몽 · 2 지옥) — 방장 캐릭터가 연 것만 */
   private tier = 0
-  /** 분위기 (어둡게 · 밝게) — 방장이 정한다. 처음 값은 지난번에 고른 것 */
+  /** 분위기 (dark = 공포스러움 · bright = 철면수심전용) — 방장이 정한다. 처음 값은 지난번에 고른 것 */
   private skin: Skin = loadSkinPref()
   private previewTimer = 0
   private roomMode: RoomMode = 'ffa'

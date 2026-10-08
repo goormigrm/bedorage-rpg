@@ -44,7 +44,7 @@
 ## 밝은 분위기 괴물 모델 (CC0 — 2026-10-06)
 
 - Quaternius **"Ultimate Monsters"** — CC0 1.0. https://quaternius.com/packs/ultimatemonsters.html
-  - "☀ 밝게" 분위기의 괴물 16종(말랑 슬라임 · 가시 선인장 · 술래 버섯왕 · 여왕벌 · 파티 드래곤 …). `tools/pack-cute.py` 가 쓰는 동작만 남겨 묶는다. 원본은 `art-src/cute-monsters/`(저장소 밖).
+  - "☀ 철면수심전용" 분위기의 괴물 16종(말랑 슬라임 · 가시 선인장 · 술래 버섯왕 · 여왕벌 · 파티 드래곤 …). `tools/pack-cute.py` 가 쓰는 동작만 남겨 묶는다. 원본은 `art-src/cute-monsters/`(저장소 밖).
 
 ## 보스 대사 목소리 (2026-09-24)
 

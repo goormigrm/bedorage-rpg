@@ -1866,7 +1866,7 @@ export class Renderer3D {
     }
     if (viewers.length > 0) this.lastViewer = { x: me.alive ? me.x : viewers[0].x, y: me.alive ? me.y : viewers[0].y }
     else if (this.lastViewer) viewers.push(this.lastViewer) // 죽어 있는 동안은 마지막 자리에서 본다
-    // 후원 "암흑" (core/donate.ts): 보는 사람에게 걸려 있으면 코앞만 보인다 — 동료 시야도 같이 좁힌다(함께 보면 암흑이 풀려 버린다)
+    // 후원 "시야 축소"(옛 이름 암흑 · key dark — core/donate.ts): 보는 사람에게 걸려 있으면 코앞만 보인다 — 동료 시야도 같이 좁힌다(함께 보면 암흑이 풀려 버린다)
     const dark = (me.don?.[DON_DARK] ?? 0) > 0
     const radius = dark ? DARK_VIEW_TILES : VIEW_RADIUS_TILES * (this.scoped ? 1.8 : 1)
     this.vision.update(viewers, radius)

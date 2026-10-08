@@ -78,7 +78,7 @@ export class BonfireScene {
   private goal = { fw: 1, fh: 1, ox: 0, oy: 0, d: 11 }
   private fitted = false
   private textures: THREE.Texture[] = []
-  /** 분위기마다 바뀌는 것 (어둡게 · 밝게) */
+  /** 분위기마다 바뀌는 것 (dark = 공포스러움 · bright = 철면수심전용) */
   private mood!: {
     ground: THREE.MeshLambertMaterial
     tents: THREE.MeshLambertMaterial[]

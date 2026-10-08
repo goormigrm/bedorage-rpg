@@ -70,7 +70,7 @@ export interface SessionConfig {
   deathRule?: DeathRule
   /** 난이도 0 보통 · 1 악몽 · 2 지옥 */
   tier?: number
-  /** 분위기 (어둡게 · 밝게 — game/skin.ts). 방장이 정하고 모두가 같이 본다. 그림 · 소리 · 글만 다르다(sim 밖) */
+  /** 분위기 (dark = 🌙 공포스러움 · bright = ☀ 철면수심전용 — game/skin.ts). 방장이 정하고 모두가 같이 본다. 그림 · 소리 · 글만 다르다(sim 밖) */
   skin?: Skin
   /** 판 종류: 던전(협동) · 투기장(PvP — 덕의 대전 규칙). 기본 던전 */
   kind?: GameMode
