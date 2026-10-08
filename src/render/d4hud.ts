@@ -22,7 +22,7 @@ import { DON_SEAL } from '../core/donate'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
-import { koWords } from '../ui/koBreak'
+import { koLines } from '../ui/koBreak'
 
 const SERIF = '"Nanum Myeongjo", "Batang", serif'
 const SANS = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
@@ -929,24 +929,13 @@ function fitText(c: CanvasRenderingContext2D, text: string, maxW: number): strin
 
 /** 낱말(띄어쓰기) 단위로 접는다 — 한 낱말이 폭보다 길면 글자로. max 줄을 넘으면 마지막 줄을 줄인다 */
 function wrapWords(c: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
+  // 문장 단위 먼저 (2026-10-08 사용자: "칸이 충분하면 문장 자체를 줄바꿈") · 가운뎃점 · 줄표는 앞 낱말에 — ui/koBreak.ts koLines
+  const fits = (t: string) => c.measureText(t).width <= maxW
   const out: string[] = []
-  let cur = ''
-  // 가운뎃점 · 줄표는 앞 낱말에 붙여 줄 머리에 오지 않게 (2026-10-08 — ui/koBreak.ts)
-  for (const w of koWords(text)) {
-    const next = cur ? `${cur} ${w}` : w
-    if (c.measureText(next).width <= maxW) {
-      cur = next
-      continue
-    }
-    if (cur) out.push(cur)
-    if (c.measureText(w).width <= maxW) cur = w
-    else {
-      const parts = wrap(c, w, maxW)
-      cur = parts.pop() ?? ''
-      out.push(...parts)
-    }
+  for (const line of koLines(text, fits)) {
+    if (fits(line)) out.push(line)
+    else out.push(...wrap(c, line, maxW)) // 한 낱말이 폭보다 길면 글자로
   }
-  if (cur) out.push(cur)
   if (out.length > max) {
     const keep = out.slice(0, max)
     keep[max - 1] = fitText(c, `${keep[max - 1]} ${out.slice(max).join(' ')}`, maxW)
