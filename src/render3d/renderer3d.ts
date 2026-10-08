@@ -36,6 +36,7 @@ import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
 import { PostFx, gradeFor } from './post'
 import { AmbientFx, ambientFor } from './ambient'
+import { FxAt, SkillFx } from './skillfx'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
@@ -279,6 +280,8 @@ export class Renderer3D {
   /** 공중에 떠다니는 것 — 먼지 · 반딧불 · 불티 · 반짝이 (ambient.ts — G7). 보던 지역이 바뀌면 종류를 바꾼다 */
   private ambient!: AmbientFx
   private ambientArea = -2
+  /** 스킬마다 고유 연출 (skillfx.ts — 2026-10-08 퀄리티 2차 2.5단계) */
+  private skillFx!: SkillFx
   /**
    * 시작 준비가 끝났나 (prepareStart). 그전에는 3D 를 그리지 않는다 — 첫 그림에서 마을의 모든 재질 셰이더를 한꺼번에 **동기로**
    * 컴파일하느라 내장 GPU(윈도우 크롬 = ANGLE · D3D)에서 몇 초 동안 화면이 멈춘 채 까맸다 (2026-10-08 사용자: "방을 만들고 들어가면 5초쯤 까맸다").
@@ -528,6 +531,17 @@ export class Renderer3D {
     this.scene.add(this.puff.mesh, this.glow.mesh)
     this.ambient = new AmbientFx(ambientFor(0, false, isBright()))
     this.scene.add(this.ambient.points)
+    this.skillFx = new SkillFx(this.scene, {
+      glow: (x, y, z, vx, vy, vz, life, color, size) => this.spawnGlow(x, y, z, vx, vy, vz, life, color, size),
+      puff: (x, y, z, vx, vy, vz, life, color, size, alpha) => this.spawnPuff(x, y, z, vx, vy, vz, life, color, size, alpha),
+      impact: (x, y, z, color, size) => this.spawnImpact(x, y, z, color, size),
+      light: (x, y, z, color, intensity, dist, life) => {
+        const l = this.takeLight(color, intensity, dist, 1.5)
+        l.position.set(x, y, z)
+        this.flashes.push({ light: l, mesh: null, life })
+      },
+      shake: (k) => (this.shake = Math.max(this.shake, k)),
+    })
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -648,6 +662,7 @@ export class Renderer3D {
     this.blood?.clear()
     this.monsterView.clearCorpses()
     this.hud.clearNotices()
+    this.skillFx?.clear()
     for (const g of this.portalMeshes.values()) this.scene.remove(g)
     this.portalMeshes.clear()
     for (const g of this.objMeshes.values()) this.scene.remove(g)
@@ -3535,7 +3550,10 @@ export class Renderer3D {
     const z = e.y * U
     const ult = e.slot === 2
     const color = SKILL_COLOR[e.id] ?? 0xffffff
-    this.spawnRing(x, z, ult ? 2.2 : 1.4, 0.3, ult ? 0.5 : 0.35, color)
+    // 스킬마다 고유 연출 (범위 원 대신 — 2026-10-08 사용자). 없는 것만 예전처럼 모이는 고리
+    const at: FxAt = { x, z, aim: angleToRad(e.aim), tx: e.tx * U, tz: e.ty * U, r: 0, ult }
+    const own = this.skillFx.cast(e.id, at)
+    if (!own || ult) this.spawnRing(x, z, ult ? 2.2 : 1.4, 0.3, ult ? 0.5 : 0.35, color)
     if (ult) {
       this.spawnImpact(x, 1.2, z, color, 4)
       const light = this.takeLight(color, 14, 9, 1.5)
@@ -3548,21 +3566,13 @@ export class Renderer3D {
         v.vsy += 0.45
       }
     }
-    if (e.id === 'broadcast') this.spawnRing(x, z, 0.5, 18, 0.9, 0xb99cff)
-    if (e.id === 'curtain') this.spawnRing(x, z, 0.5, 7, 0.8, 0xd0506a)
-    // 버프가 된 셋(2026-09-27 — 전에는 돌진 · 도약): 둘레 고리 + 위로 솟는 불티
-    if (e.id === 'pancharge' || e.id === 'catstep' || e.id === 'catwalk') {
+    // 아래 셋은 고유 연출이 없을 때(예전 판)만 — 이제는 skillFx 가 그린다
+    if (!own && (e.id === 'pancharge' || e.id === 'catstep' || e.id === 'catwalk')) {
       const col = SKILL_COLOR[e.id] ?? 0xffffff
       this.spawnRing(x, z, 0.4, 3, 0.7, col)
       for (let k = 0; k < 14; k++) {
         const a = Math.random() * Math.PI * 2
         this.spawnGlow(x + Math.cos(a) * 0.35, 0.2, z + Math.sin(a) * 0.35, 0, 0.06 + Math.random() * 0.04, 0, 0.7, col, 0.6)
-      }
-    }
-    if (e.id === 'stunt') {
-      for (let k = 0; k < 10; k++) {
-        const a = Math.random() * Math.PI * 2
-        this.spawnPuff(x, 0.25, z, Math.cos(a) * 0.03, 0.01, Math.sin(a) * 0.03, 0.8, 0xd8c8a8, 0.35, 0.45)
       }
     }
     void state
@@ -3574,6 +3584,7 @@ export class Renderer3D {
     const z = e.y * U
     const r = e.r * U
     const color = SKILL_COLOR[e.id] ?? 0xffffff
+    if (this.skillFx.aoe(e.id, { x, z, aim: 0, tx: x, tz: z, r, ult: false })) return
     this.spawnRing(x, z, 0.3, r, 0.45, color)
     const n = Math.min(40, Math.round(r * 6))
     for (let k = 0; k < n; k++) {
@@ -4504,6 +4515,7 @@ export class Renderer3D {
   }
 
   private updateEffects(dt: number): void {
+    this.skillFx.update(dt)
     this.glow.update(dt)
     this.puff.update(dt)
     // 파편: 산 것만 앞으로 모으며(순서 유지 — 넘칠 때 앞의 오래된 것을 버린다) 인스턴스 하나에 적는다
@@ -4762,6 +4774,7 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.skillFx.dispose()
     this.ambient.dispose()
     this.post.dispose()
     this.glow.dispose()
