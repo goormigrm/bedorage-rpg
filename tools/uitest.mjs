@@ -193,12 +193,13 @@ async function openGame(skin) {
     const w = [...document.querySelectorAll('.tp')].find((e) => !e.hidden)
     if (!w) return null
     const r = w.getBoundingClientRect()
-    return { go: !!w.querySelector('.tr-go'), text: w.textContent.slice(0, 60), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }
+    return { go: !!w.querySelector('.tr-go'), face: !!w.querySelector('.tp-talk img.tp-face'), text: w.textContent.slice(0, 60), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }
   })
   const why = tr ? tr.text : await page.evaluate(() => `창 없음 · 메뉴 ${!document.getElementById('overlay').hidden} · ${JSON.stringify((({ x, y, area }) => ({ x, y, area }))(window.__bd.state().players[window.__bd.me()]))}`)
   check(!!tr && tr.go, `시련의 문 곁에서 F — 단계를 고르는 창이 열린다 (${why})`)
   if (tr?.go) {
     check(tr.inside, '시련의 문 창이 화면 안에 있다')
+    check(tr.face, 'NPC 창 위에 초상 · 대사 상자가 있다')
     await page.locator('.tr-go').click()
     await page.waitForTimeout(2500)
     const area = await page.evaluate(() => window.__bd.state().players[window.__bd.me()].area)

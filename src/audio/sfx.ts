@@ -1853,6 +1853,61 @@ export class Sfx {
     g.gain.setTargetAtTime(base, t + 0.7, 0.5)
   }
 
+  /** 엔딩 곡 (2026-10-08 퀄리티 2차 7단계 U6): 엔딩 창이 열려 있는 동안 — 닫히면 지역 곡으로 돌아간다 */
+  private ending = false
+  setEnding(on: boolean): void {
+    if (on === this.ending) return
+    this.ending = on
+    const ctx = this.ctx
+    const g = this.bgmGain
+    if (!ctx || !g) return
+    const base = BGM_LEVEL * volumes().bgm
+    const t = ctx.currentTime
+    g.gain.cancelScheduledValues(t)
+    g.gain.setTargetAtTime(base * 0.1, t, 0.2)
+    g.gain.setTargetAtTime(base, t + 1.0, 0.6)
+    // 곡 머리부터 (박 위치가 다른 곡에서 이어지지 않게)
+    this.bgmNextBeat = Math.max(this.bgmNextBeat, t + 0.9)
+    this.bgmBeatIndex = 0
+  }
+
+  /**
+   * 엔딩 곡: F 장조 I – V – vi – IV (66 BPM) — 따뜻한 지속음 · 8분 뜯는 아르페지오 · 종소리 선율. 공포 곡의 D 단조와 나란한 조라
+   * 넘어갈 때 튀지 않는다. 철면수심전용은 온음 위로 밝게
+   */
+  private static readonly ENDING = [
+    { root: 87.31, arp: [174.6, 220.0, 261.6, 349.2], mel: [698.5, 0, 784.0, 0, 880.0, 0, 0, 0] },
+    { root: 65.41, arp: [130.8, 196.0, 261.6, 329.6], mel: [784.0, 0, 659.3, 0, 523.3, 0, 0, 0] },
+    { root: 73.42, arp: [146.8, 220.0, 293.7, 349.2], mel: [587.3, 0, 698.5, 0, 880.0, 0, 784.0, 0] },
+    { root: 58.27, arp: [116.5, 174.6, 233.1, 293.7], mel: [698.5, 0, 0, 0, 587.3, 0, 523.3, 0] },
+  ]
+
+  private scheduleEnding(ctx: AudioContext): void {
+    const bar = (60 / 66) * 4
+    const step16 = bar / 16
+    const tr = this.bgmStyle === 'bright' ? 1.1225 : 1
+    while (this.bgmNextBeat < ctx.currentTime + 0.4) {
+      const t = this.bgmNextBeat
+      const step = this.bgmBeatIndex % 64
+      const b = (step / 16) | 0
+      const s16 = step % 16
+      const ch = Sfx.ENDING[b]
+      if (s16 === 0) {
+        this.bgmPad(t, [ch.root * 2 * tr, ch.root * 3 * tr], bar + 1.4, 0.06, 700, { attack: 1.0, release: 1.6 })
+        this.bgmPad(t + 0.15, ch.arp.slice(1, 4).map((f) => f * tr), bar + 1.4, 0.016, 1600, { attack: 1.4, release: 1.8, detune: 4 })
+      }
+      if (s16 % 2 === 0) {
+        const k = (s16 / 2) % 4
+        this.pluck(this.bgmGain!, t, ch.arp[k] * tr * (s16 >= 8 ? 2 : 1), 0.045)
+        // 두 바퀴째부터 종소리 선율 (처음 한 바퀴는 반주만 — 크레딧이 흐르기 시작할 때 선율이 들어온다)
+        const f = ch.mel[s16 / 2]
+        if (f > 0 && this.bgmBeatIndex >= 64) this.bgmBell(t, f * tr, 0.03)
+      }
+      this.bgmNextBeat += step16
+      this.bgmBeatIndex++
+    }
+  }
+
   setBgmStyle(style: 'chase' | 'dark' | 'bright'): void {
     this.bgmStyle = style
   }
@@ -2316,6 +2371,10 @@ export class Sfx {
   private scheduleBgm(): void {
     const ctx = this.ctx
     if (!ctx || !this.bgmGain || ctx.state !== 'running') return
+    if (this.ending) {
+      this.scheduleEnding(ctx)
+      return
+    }
     if (this.bgmStyle !== 'chase' && this.boss <= 0 && !this.lite) this.scheduleAmb(ctx)
     if (this.bgmStyle === 'dark') {
       if (this.boss > 0) this.scheduleBoss(ctx)

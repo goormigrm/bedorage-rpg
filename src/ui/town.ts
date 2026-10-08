@@ -4,7 +4,8 @@
 
 import { itemIconUrl } from './itemIcons'
 import { clickSuppressed, makeDraggable } from './dragItem'
-import { bt } from '../game/skin'
+import { bt, isBright } from '../game/skin'
+import { npcPortrait } from './portrait'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
@@ -169,6 +170,10 @@ export class TownPanel {
   private query = ''
   /** 시련의 문에서 고른 단계 (0 = 아직 — 열 수 있는 가장 높은 단계로) */
   private riftStage = 0
+  /** 대사 상자 (U6): 한 글자씩 — 누구의 말을 몇 글자까지 보였나 · 타이머 */
+  private talkFor: NpcId | null = null
+  private talkN = 0
+  private talkTimer = 0
   /** 아이템 설명 풍선 — 보관함 · 도박 결과의 칸에 마우스를 올리면 (가방 창과 같은 것) */
   private tip: ItemTip
 
@@ -204,6 +209,13 @@ export class TownPanel {
   }
 
   show(npc: NpcId | null): void {
+    // 대사는 창을 새로 열 때만 한 글자씩 (같은 창을 다시 그릴 때는 이어서)
+    if (npc !== this.talkFor) {
+      clearInterval(this.talkTimer)
+      this.talkFor = npc
+      this.talkN = 0
+      if (npc) this.talkTimer = window.setInterval(() => this.typeOn(), 24)
+    }
     this.sellArmed = false
     this.lastForge = null
     this.lastGamble = null
@@ -497,6 +509,26 @@ export class TownPanel {
     return `${rules}${open}${pick}`
   }
 
+  /** 대사 한 글자 더 (다 보이면 멈춘다) */
+  private typeOn(): void {
+    const npc = this.talkFor
+    if (!npc) return clearInterval(this.talkTimer)
+    const line = bt(LINES[npc])
+    this.talkN = Math.min(line.length, this.talkN + 1)
+    const el = this.el.querySelector<HTMLElement>('.tp-said')
+    if (el) el.textContent = line.slice(0, this.talkN)
+    if (this.talkN >= line.length) clearInterval(this.talkTimer)
+  }
+
+  /**
+   * 대사 상자 (2026-10-08 퀄리티 2차 7단계 U6 — 전에는 따옴표 한 줄): 왼쪽에 둥근 초상(portrait.ts) · 이름 · 한 글자씩 나오는 대사.
+   * 누르면 다 보인다
+   */
+  private talkHtml(npc: NpcId): string {
+    const line = bt(LINES[npc])
+    return `<div class="tp-talk" data-talk><img class="tp-face" src="${npcPortrait(npc, isBright())}" alt=""><div class="tp-say"><b>${NPC_NAMES[npc]}</b><span class="tp-said">${line.slice(0, this.talkN)}</span></div></div>`
+  }
+
   /** 창을 그리고 단추를 잇는다 (모든 NPC 공용) */
   private paint(npc: NpcId, me: PlayerState, body: string): void {
     // 다시 그려도 굴리던 자리 그대로 (2026-10-08 — 보관함에서 하나 옮길 때마다 칸 목록이 맨 위로 튀었다)
@@ -506,7 +538,7 @@ export class TownPanel {
     const typing = !!qEl && document.activeElement === qEl
     const caret = typing ? [qEl!.selectionStart ?? 0, qEl!.selectionEnd ?? 0] : null
     this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${myGoldText(me.gold)}</span><button class="inv-x" data-x>✕</button></div>
-      ${npc === 'stash' ? '' : `<p class="tp-line">"${LINES[npc]}"</p>`}${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
+      ${npc === 'stash' ? '' : this.talkHtml(npc)}${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
     this.el.classList.toggle('wide', npc === 'gambler')
     this.el.classList.toggle('stashp', npc === 'stash')
     // 보관함 · 상인은 가방 창이 오른쪽에 같이 열린다 — 이 창은 왼쪽에 붙는다 (디아블로)
@@ -547,6 +579,12 @@ export class TownPanel {
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
     this.el.classList.toggle('smith', npc === 'smith')
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
+    const talk = this.el.querySelector<HTMLElement>('[data-talk]')
+    if (talk)
+      talk.onclick = () => {
+        this.talkN = 1e4
+        this.typeOn()
+      }
     this.el.querySelectorAll<HTMLElement>('.st-grid').forEach((g, k) => (g.scrollTop = tops[k] ?? 0))
     this.wireCells(me)
     this.el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {

@@ -1870,7 +1870,7 @@ export class Session {
         // 최종 보스: 엔딩 (따라잡는 중에 본 것이면 띄우지 않는다)
         else if (e.type === 'bossDown' && e.kind === LORD_KIND && !this.joiningIn) {
           this.saveMine(false)
-          showEnding(this.stage.querySelector('.game-ui') as HTMLElement, this.state.tier ?? 0, () => this.sfx.blip())
+          showEnding(this.stage.querySelector('.game-ui') as HTMLElement, this.state.tier ?? 0, () => this.sfx.blip(), (on) => this.sfx.setEnding(on))
         }
         // 마을에 들어설 때 저장 (하드코어는 이때만 저장된다)
         else if (e.type === 'areaEnter' && e.p === this.cfg.localPlayer && isTown(e.area)) this.saveMine(false)

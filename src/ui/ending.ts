@@ -10,6 +10,41 @@
 import { isBright } from '../game/skin'
 import { NPC_NAMES, RIFT_TEXT } from '../core/world'
 import { LEVEL_CAP } from '../core/items'
+import { CHARACTERS, PLAYABLE } from '../core/characters'
+
+/**
+ * 엔딩 크레딧 (2026-10-08 퀄리티 2차 7단계 U6): 이야기 줄이 다 뜬 뒤 아래에서 위로 흐른다 — 출연(계란이 된 크루) · 괴물 모델을 만든
+ * 작가들(CC BY 4.0 — CREDITS.md 와 같은 표) · 무료 자료 · 소리. 건너뛰기 단추가 늘 있다(여럿이 하는 판은 뒤에서 게임이 돈다)
+ */
+const MODEL_CREDITS: [string, string, string][] = [
+  ['구울 · 부푼 시체', 'Zombie (Rigged & Animated)', 'Aiden Studios'],
+  ['해골 궁수', 'Skeleton animated', 'danielmclogan'],
+  ['굶주린 늑대', 'Grey Wolf (Rigged and Animated)', 'rhcreations'],
+  ['독거미', 'Wolf Spider (Rigged)', 'Dreaming In Alternation 27'],
+  ['거미 여왕', 'Amethystine Blight Queen', 'HighPolyDensity'],
+  ['도살자', 'Pig Demon', 'Lexington Dath'],
+  ['관리인 · 보물 고블린', 'Overlord · Minion', 'DJMaesen'],
+  ['심연의 군주 · 포격 악마', 'balrog demon rig', 'KrazyKaijus'],
+  ['방패병', 'Cursed Undead Soldier Rig', 'DM-913'],
+  ['버섯 주술사', 'Witch', 'LxNazarov'],
+  ['산성 토사꾼', 'Crawling mutated human', 'Elisey'],
+  ['그림자', 'Terrifying Hooded Horror Woman', 'PurplePoint'],
+  ['강령술사', 'PBR Shadowkin Mage (Rigged)', 'Ferocious Industries'],
+]
+
+function creditsHtml(): string {
+  const sec = (title: string, rows: string) => `<div class="cr-sec"><h4>${title}</h4>${rows}</div>`
+  const cast = PLAYABLE.map((id) => `<div class="cr-row"><span>${CHARACTERS[id].name}</span><em>${CHARACTERS[id].basedOn ?? ''}</em></div>`).join('')
+  const models = MODEL_CREDITS.map(([who, model, by]) => `<div class="cr-row"><span>${who}</span><em>"${model}" — ${by}</em></div>`).join('')
+  return `<div class="cr-title">배도라지 <span class="egg">알</span>PG</div>
+    <p class="cr-note">비공식 · 비상업 팬 게임</p>
+    ${sec('출연 — 계란이 된 크루', cast)}
+    ${sec('괴물 모델 (Sketchfab · CC BY 4.0)', models)}
+    ${sec('무료 자료 (CC0)', '<div class="cr-row"><span>귀여운 괴물</span><em>Quaternius "Ultimate Monsters"</em></div><div class="cr-row"><span>옮겨 붙인 동작</span><em>Quaternius "Universal Animation Library"</em></div>')}
+    ${sec('목소리 · 소리', '<div class="cr-row"><span>보스 대사</span><em>Microsoft Heami 음성 합성</em></div><div class="cr-row"><span>음악 · 효과음</span><em>모두 코드로 만든 소리 — 방송에 마음껏</em></div>')}
+    ${sec('도구 · 글꼴', '<div class="cr-row"><span>3D</span><em>three.js (MIT)</em></div><div class="cr-row"><span>글꼴</span><em>나눔명조 · IBM Plex Sans KR (SIL OFL)</em></div>')}
+    <div class="cr-end">그리고 — 끝까지 함께해 준 당신</div>`
+}
 
 const LINES_BRIGHT = [
   '무궁화 운동장, 달고나 숲, 구슬 골목, 불꽃 축제 — 네 번의 놀이를 모두 이겼다.',
@@ -28,22 +63,61 @@ const LINES = [
 
 const NEXT = ['악몽 난이도가 열렸다 — 같은 세계, 더 깊은 어둠', '지옥 난이도가 열렸다 — 마지막 어둠', '지옥까지 모두 끝냈다 — 전설이 되었다']
 
-export function showEnding(parent: HTMLElement, tier: number, onClose: () => void): void {
+/**
+ * 엔딩: 이야기 줄 → 크레딧이 아래에서 위로(약 30초) → 끝맺음 · 다음 난이도 · 시련 안내 · 계속하기.
+ * music = 엔딩 곡을 켜고 끄기 (audio/sfx.ts endingMusic — 창이 닫히면 원래 곡으로)
+ */
+export function showEnding(parent: HTMLElement, tier: number, onClose: () => void, music?: (on: boolean) => void): void {
   if (parent.querySelector('.ending')) return
   const el = document.createElement('div')
   el.className = 'ending'
   const b = isBright()
   const lines = b ? LINES_BRIGHT : LINES
-  el.innerHTML = `<div class="ending-box">
+  el.innerHTML = `<div class="ending-box story">
     <h2>${b ? '도장판을 다 채웠다' : '종이 울렸다'}</h2>
     ${lines.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
-    <p class="ending-sub" style="animation-delay:${1 + lines.length * 1.6}s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
-    <p class="ending-hint" style="animation-delay:${1.6 + lines.length * 1.6}s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다<br>마을의 <b>${NPC_NAMES.trial}</b>이 열렸다 — 끝없이 깊어지는 ${RIFT_TEXT.name} · 레벨 ${LEVEL_CAP} 뒤에는 숙련 점수</p>
-    <button class="btn ending-go" style="animation-delay:${2 + lines.length * 1.6}s">계속하기</button>
-  </div>`
+  </div>
+  <div class="credits" hidden><div class="cr-roll">${creditsHtml()}</div></div>
+  <div class="ending-box final" hidden>
+    <p class="ending-sub" style="animation-delay:0.2s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
+    <p class="ending-hint" style="animation-delay:0.8s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다<br>마을의 <b>${NPC_NAMES.trial}</b>이 열렸다 — 끝없이 깊어지는 ${RIFT_TEXT.name} · 레벨 ${LEVEL_CAP} 뒤에는 숙련 점수</p>
+    <button class="btn ending-go" style="animation-delay:1.4s">계속하기</button>
+  </div>
+  <button class="btn secondary ending-skip">건너뛰기</button>`
   parent.appendChild(el)
+  music?.(true)
+  const story = el.querySelector<HTMLElement>('.story')!
+  const credits = el.querySelector<HTMLElement>('.credits')!
+  const roll = el.querySelector<HTMLElement>('.cr-roll')!
+  const final = el.querySelector<HTMLElement>('.final')!
+  const skip = el.querySelector<HTMLButtonElement>('.ending-skip')!
+  let stage = 0
+  const toFinal = () => {
+    if (stage >= 2) return
+    stage = 2
+    story.hidden = true
+    credits.hidden = true
+    skip.hidden = true
+    final.hidden = false
+  }
+  const toCredits = () => {
+    if (stage >= 1) return
+    stage = 1
+    story.classList.add('gone')
+    window.setTimeout(() => {
+      if (stage !== 1) return
+      story.hidden = true
+      credits.hidden = false
+    }, 900)
+  }
+  roll.addEventListener('animationend', toFinal)
+  // 이야기 줄이 다 뜨고 조금 읽을 틈 뒤에 크레딧
+  window.setTimeout(toCredits, (1 + lines.length * 1.6 + 3) * 1000)
+  skip.onclick = () => (stage === 0 ? toCredits() : toFinal())
   el.querySelector<HTMLButtonElement>('.ending-go')!.onclick = () => {
+    stage = 3
     el.remove()
+    music?.(false)
     onClose()
   }
 }

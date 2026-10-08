@@ -1377,3 +1377,32 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .tr-scale { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 12px; color: #cfc2e8; font-size: 13px; }
 .tr-scale b { color: #fff; }
 .tr-go { width: 100%; }
+
+/* NPC 대사 상자 (2026-10-08 퀄리티 2차 7단계 U6): 둥근 초상 + 이름 + 한 글자씩 나오는 대사 */
+.tp-talk { display: flex; gap: 12px; align-items: flex-start; margin: 8px 0 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(180deg, rgba(40, 30, 20, 0.55), rgba(16, 12, 8, 0.55)); border: 1px solid rgba(201, 162, 74, 0.35); }
+.tp-face { width: 64px; height: 64px; flex: none; border-radius: 50%; border: 2px solid rgba(241, 213, 138, 0.7); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+.tp-say { display: flex; flex-direction: column; gap: 4px; min-height: 56px; }
+.tp-say b { font: 800 13px "Nanum Myeongjo", serif; color: #f1d58a; }
+.tp-said { font: 500 14px/1.65 "Nanum Myeongjo", serif; color: #e2d4b4; }
+.skin-bright .tp-talk { background: linear-gradient(180deg, rgba(255, 240, 250, 0.12), rgba(120, 90, 160, 0.18)); border-color: rgba(255, 170, 210, 0.5); }
+
+/* 엔딩 크레딧 (2026-10-08 퀄리티 2차 7단계 U6): 이야기 → 아래에서 위로 흐르는 크레딧(30초) → 끝맺음. 건너뛰기는 늘 오른쪽 아래 */
+.ending-box.story.gone { animation: ending-out 0.9s ease forwards; }
+.ending-box.final p, .ending-box.final .ending-go { opacity: 0; animation: ending-line 1.4s ease forwards; }
+.credits { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
+.cr-roll { position: absolute; left: 50%; top: 100%; width: min(640px, 90vw); transform: translateX(-50%); text-align: center; color: #e2d4b4;
+  font: 500 15px/1.8 "Nanum Myeongjo", serif; animation: cr-roll 30s linear forwards; }
+@keyframes cr-roll { from { transform: translate(-50%, 0); } to { transform: translate(-50%, calc(-100% - 100vh)); } }
+@keyframes ending-out { to { opacity: 0; transform: translateY(-12px); } }
+.cr-title { font: 800 40px "Nanum Myeongjo", serif; color: #ffcf6a; margin-bottom: 4px; }
+.cr-title .egg { font-size: 40px; }
+.cr-note { color: #9a8c74; font-size: 13px; margin: 0 0 40px; }
+.cr-sec { margin: 0 0 44px; }
+.cr-sec h4 { font: 800 17px "Nanum Myeongjo", serif; color: #f1d58a; letter-spacing: .12em; margin: 0 0 12px; }
+.cr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cr-row span { text-align: right; color: #e8dcc4; }
+.cr-row em { text-align: left; font-style: normal; color: #b8aa90; }
+.cr-end { margin-top: 60px; font: 800 22px "Nanum Myeongjo", serif; color: #ffcf6a; }
+.ending-skip { position: absolute; right: 28px; bottom: 28px; opacity: 0.75; }
+.ending-skip:hover { opacity: 1; }
