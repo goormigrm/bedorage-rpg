@@ -1,6 +1,7 @@
 // 소개 영상 (2026-09-23 사용자: "공지글에 들어갈 webm — 1분 정도 주요 장면, 자막 · 효과를 넣은 게임 소개 영상").
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
+//   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 네 편: t.start({ part: 1 ~ 4, lowMax: 11_500_000 })
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -1021,7 +1022,7 @@ function partEndgame() {
   })
   at(0.4, () => {
     cue('boss')
-    caption('시련의 수호자', '막대가 차면 그 막의 보스가 — 잡으면 다음 단계가 열린다')
+    caption(...L(['시련의 수호자', '막대가 차면 그 막의 보스가 — 잡으면 다음 단계가 열린다'], ['도전 놀이 수호자', '막대가 차면 그 놀이의 술래가 — 이기면 다음 단계가 열린다']))
     const g0 = st().monsters.find((m) => m.rg === 1 && m.hp > 0)
     if (g0) {
       g0.target = 0
@@ -1533,7 +1534,8 @@ export async function start(opts = {}) {
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
-  BRIGHT = opts.skin === 'bright'
+  // 2026-10-08 사용자: "트레일러는 이제 철면수심전용 버전에서만 만들어" — 기본이 밝은 분위기 (공포스러움은 skin: 'dark' 일 때만)
+  BRIGHT = opts.skin !== 'dark'
   if (BRIGHT) {
     try {
       localStorage.setItem('brpg.skin', 'bright')

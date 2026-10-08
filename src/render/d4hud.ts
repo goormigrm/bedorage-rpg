@@ -804,7 +804,7 @@ export class D4Hud {
     c.textBaseline = 'alphabetic'
     c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
     const who = boss.sum !== undefined ? this.summonLabel?.(boss.sumBy ?? -1, boss.sum - 1) : undefined
-    const name = boss.rg ? `시련의 수호자 · ${MONSTER_LIST[boss.kind].name}` : who ? `${who} ${MONSTER_LIST[boss.kind].name}${unique ? ' · 중간보스' : ''}` : unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name
+    const name = boss.rg ? `${bt('시련의 수호자')} · ${MONSTER_LIST[boss.kind].name}` : who ? `${who} ${MONSTER_LIST[boss.kind].name}${unique ? ' · 중간보스' : ''}` : unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name
     c.fillText(name, h.W / 2, y + 8)
   }
 
@@ -829,7 +829,7 @@ export class D4Hud {
       c.font = `800 13px ${SERIF}`
       c.textAlign = 'center'
       c.fillStyle = 'rgba(8,6,12,0.7)'
-      const msg = r.boss === 2 ? (r.ok ? `시련 ${r.stage}단계 성공 — 다음 단계가 열렸다` : `시련 ${r.stage}단계 끝 — 시간 초과`) : `시련 ${r.stage}단계 · 남은 시간 ${time}`
+      const msg = bt(r.boss === 2 ? (r.ok ? `시련 ${r.stage}단계 성공 — 다음 단계가 열렸다` : `시련 ${r.stage}단계 끝 — 시간 초과`) : `시련 ${r.stage}단계 · 남은 시간 ${time}`)
       const tw = c.measureText(msg).width + 24
       rr(c, h.W / 2 - tw / 2, y - 15, tw, 21, 6)
       c.fill()
@@ -851,7 +851,7 @@ export class D4Hud {
     c.font = `800 14px ${SERIF}`
     c.textAlign = 'left'
     c.fillStyle = '#e8d8ff'
-    c.fillText(`시련 ${r.stage}단계 · 진행 ${Math.floor(k * 100)}%`, x, y + 8)
+    c.fillText(bt(`시련 ${r.stage}단계 · 진행 ${Math.floor(k * 100)}%`), x, y + 8)
     c.textAlign = 'right'
     c.font = `700 13px ${SANS}`
     c.fillStyle = over ? '#ff8a7a' : left < 60 * 60 ? '#ffd27a' : '#cfc2e8'

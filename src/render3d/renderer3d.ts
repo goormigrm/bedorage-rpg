@@ -1235,15 +1235,15 @@ export class Renderer3D {
           else this.hud.notice(`${nm[e.p]} — ${RIFT_TEXT.name} ${e.stage}단계를 열었다 · 마을의 ${NPC_NAMES.trial}으로 들어간다`, '#c8a8ff')
           break
         case 'riftBoss':
-          this.hud.banner('시련의 수호자가 나타났다', '쓰러뜨리면 시련이 끝난다', '#c8a8ff')
+          this.hud.banner(bt('시련의 수호자가 나타났다'), bt('쓰러뜨리면 시련이 끝난다'), '#c8a8ff')
           this.spawnRing(e.x * U, e.y * U, 0.4, 4, 1.1, 0xb47aff)
           this.spawnImpact(e.x * U, 1.2, e.y * U, 0xb47aff, 6)
           break
         case 'riftDone': {
           const mm = Math.floor(e.t / 3600)
           const ss = String(Math.floor((e.t % 3600) / 60)).padStart(2, '0')
-          if (e.ok) this.hud.banner(`시련 ${e.stage}단계 성공`, `${mm}:${ss} · 다음 단계가 열렸다 · 수호자 자리의 문으로 마을에`, '#d8b8ff')
-          else this.hud.banner(`시련 ${e.stage}단계 끝`, `시간 초과(${mm}:${ss}) — 단계는 그대로 · 수호자 자리의 문으로 마을에`, '#ff9a8a')
+          if (e.ok) this.hud.banner(bt(`시련 ${e.stage}단계 성공`), `${mm}:${ss} · 다음 단계가 열렸다 · 수호자 자리의 문으로 마을에`, '#d8b8ff')
+          else this.hud.banner(bt(`시련 ${e.stage}단계 끝`), `시간 초과(${mm}:${ss}) — 단계는 그대로 · 수호자 자리의 문으로 마을에`, '#ff9a8a')
           break
         }
         case 'mastery': {

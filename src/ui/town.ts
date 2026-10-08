@@ -480,7 +480,7 @@ export class TownPanel {
    */
   private trialBody(me: PlayerState, s: GameState): string {
     const sec = Math.round(RIFT_TICKS / 60 / 60)
-    const rules = `<ul class="tr-rules"><li>괴물을 잡아 <b>진행 막대</b>를 채우면 <b>시련의 수호자</b>가 나온다</li><li><b>${sec}분 안에</b> 수호자를 잡으면 다음 단계가 열린다</li><li>마을로는 수호자 자리에 열리는 문 · 타운 포털로</li></ul>`
+    const rules = `<ul class="tr-rules"><li>괴물을 잡아 <b>진행 막대</b>를 채우면 <b>${bt('시련의 수호자')}</b>가 나온다</li><li><b>${sec}분 안에</b> 수호자를 잡으면 다음 단계가 열린다</li><li>마을로는 수호자 자리에 열리는 문 · 타운 포털로</li></ul>`
     if (!riftOpen(me, s.tier)) return `${rules}<p class="tp-note warn">보통 난이도에서 <b>${bt('심연의 군주')}</b>를 쓰러뜨리면 열린다.</p>`
     const r = s.rift
     const inside = !!r && s.players.some((q) => !q.left && q.area === r.area)
@@ -492,7 +492,7 @@ export class TownPanel {
     let open = ''
     if (r && r.boss < 2) {
       const k = Math.min(100, Math.round((r.kills / Math.max(1, r.need)) * 100))
-      open = `<div class="tr-open"><b>${r.stage}단계</b> 시련이 열려 있다 — 진행 ${r.boss > 0 ? '수호자' : `${k}%`}<button class="btn" data-cmd="${CMD_TRIAL}" data-arg="0">들어가기</button></div>`
+      open = `<div class="tr-open"><b>${r.stage}단계</b> ${bt('시련이')} 열려 있다 — 진행 ${r.boss > 0 ? '수호자' : `${k}%`}<button class="btn" data-cmd="${CMD_TRIAL}" data-arg="0">들어가기</button></div>`
     }
     const pick = `<div class="tr-pick">
         <button class="btn secondary" data-rstage="${st - 1}" ${st > 1 ? '' : 'disabled'}>−</button>
@@ -505,7 +505,7 @@ export class TownPanel {
         <span>경험치 <b>${x(sc.xp)}</b></span><span>골드 <b>${x(sc.gold)}</b></span><span>좋은 등급 <b>+${Math.round(sc.loot * 100)}%</b></span>
       </div>
       <button class="btn tr-go" data-cmd="${CMD_TRIAL}" data-arg="${st}" ${inside ? 'disabled' : ''}>${st}단계 열고 들어가기</button>
-      ${inside ? '<p class="tp-note">지금 시련 안에 사람이 있다 — 끝나고 나오면 새로 열 수 있다</p>' : r && r.boss < 2 ? '<p class="tp-note">새로 열면 지금 열린 시련은 닫힌다</p>' : ''}`
+      ${inside ? `<p class="tp-note">${bt('지금 시련 안에 사람이 있다 — 끝나고 나오면 새로 열 수 있다')}</p>` : r && r.boss < 2 ? `<p class="tp-note">${bt('새로 열면 지금 열린 시련은 닫힌다')}</p>` : ''}`
     return `${rules}${open}${pick}`
   }
 
