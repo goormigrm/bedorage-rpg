@@ -1282,3 +1282,10 @@ body { background: var(--bg); }
 .errbox p { margin: 6px 0 10px; color: #b8a67e; }
 .errbox textarea { width: 100%; height: 220px; box-sizing: border-box; background: #0a0806; color: #d8cfbf; border: 1px solid #5a4a30; border-radius: 4px; font: 12px ui-monospace, Consolas, monospace; padding: 8px; resize: vertical; }
 .errrow { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+
+/* 창이 열릴 때 툭 나타나지 않게 — 살짝 떠오르며 나타난다 (2026-10-08 퀄리티 2차 1단계 · 0.14초). [hidden] → 보임이 될 때마다 다시 돈다 */
+@keyframes winInC { from { opacity: 0; transform: translate(-50%, 8px) scale(.985); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes winInR { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.tp:not([hidden]), .wpp:not([hidden]) { animation: winInC .14s ease-out; }
+.inv:not([hidden]) { animation: winInR .14s ease-out; }
+@media (prefers-reduced-motion: reduce) { .tp:not([hidden]), .wpp:not([hidden]), .inv:not([hidden]) { animation: none; } }

@@ -389,9 +389,9 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      () => {
+      (open: boolean) => {
         this.syncUi()
-        this.sfx.blip()
+        this.sfx.ui(open)
       },
       () => tierOf(this.state.tier).lvl,
     )
@@ -400,38 +400,38 @@ export class Session {
       () => this.state,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      () => {
+      (open: boolean) => {
         this.syncUi()
-        this.sfx.blip()
+        this.sfx.ui(open)
       },
     )
     this.skills = new SkillPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      () => {
+      (open: boolean) => {
         this.syncUi()
-        this.sfx.blip()
+        this.sfx.ui(open)
       },
     )
     this.chars = new CharSheet(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      () => {
+      (open: boolean) => {
         this.syncUi()
-        this.sfx.blip()
+        this.sfx.ui(open)
       },
     )
     if (!this.arena) this.tutor = new Tutor(this.stage.querySelector('.game-ui') as HTMLElement)
-    this.quests = new QuestLog(this.stage.querySelector('.game-ui') as HTMLElement, () => this.state.players[this.cfg.localPlayer], () => this.sfx.blip())
+    this.quests = new QuestLog(this.stage.querySelector('.game-ui') as HTMLElement, () => this.state.players[this.cfg.localPlayer], (open) => this.sfx.ui(open))
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      () => {
+      (open: boolean) => {
         this.syncUi()
-        this.sfx.blip()
+        this.sfx.ui(open)
       },
     )
     this.bindWinButtons()
@@ -1005,7 +1005,10 @@ export class Session {
     }
     // 전체 지도: M (2026-09-20 — 미니맵은 주변만 보여 준다)
     if (isKey(e, 'map') && !this.arena) {
-      if (this.overlay.hidden) this.renderer.mapOpen = !this.renderer.mapOpen
+      if (this.overlay.hidden) {
+        this.renderer.mapOpen = !this.renderer.mapOpen
+        this.sfx.ui(this.renderer.mapOpen)
+      }
       this.applyKeys()
       e.preventDefault()
       return
@@ -1150,6 +1153,7 @@ export class Session {
       quest: () => this.openCenter('quests'),
       map: () => {
         this.renderer.mapOpen = !this.renderer.mapOpen
+        this.sfx.ui(this.renderer.mapOpen)
         this.applyKeys()
       },
     }
@@ -1161,9 +1165,8 @@ export class Session {
       }
       b.onclick = () => {
         if (!this.overlay.hidden) return
-        // 다른 창이 열려 있으면 닫고 연다 (창끼리 겹치지 않게 — 키로 열 때와 같다)
+        // 다른 창이 열려 있으면 닫고 연다 (창끼리 겹치지 않게 — 키로 열 때와 같다). 소리는 창이 낸다(sfx.ui)
         open[w]?.()
-        this.sfx.blip()
       }
     })
   }
@@ -1811,6 +1814,7 @@ export class Session {
           if (this.achSeen) {
             // 한꺼번에 여럿이면 한 배너에 (배너는 한 칸뿐이라 따로 띄우면 마지막 것만 보인다)
             const fresh = ACHIEVEMENTS.filter((a) => now.has(a.id) && !this.achSeen!.has(a.id))
+            if (fresh.length > 0) this.sfx.achieve()
             if (fresh.length === 1) this.renderer.hud.banner(`업적 — ${fresh[0].name}`, fresh[0].desc, '#ffd84a')
             else if (fresh.length > 1) this.renderer.hud.banner(`업적 ${fresh.length}개`, fresh.map((a) => a.name).join(' · '), '#ffd84a')
           }

@@ -33,6 +33,7 @@ registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 
 registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
 import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
+import { SpriteFx } from './spritefx'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
@@ -268,6 +269,9 @@ export class Renderer3D {
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
   private particles: Particle[] = []
   private partMesh!: THREE.InstancedMesh
+  /** 빛 알갱이(불꽃 · 마법 — 더하기 빛) · 연기와 먼지 (spritefx.ts — 2026-10-08 퀄리티 2차 1단계). 위 partMesh 는 피 · 뼈 · 색종이 · 탄피 같은 조각만 */
+  private glow!: SpriteFx
+  private puff!: SpriteFx
   private readonly partDummy = new THREE.Object3D()
   private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
   private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
@@ -310,6 +314,11 @@ export class Renderer3D {
   /** 이번 프레임에 놓인 바닥 이름표 (지역 · 아이템 — 겹치면 비킨다) · 그 밑에 그리지 않을 반투명 DOM 자리 */
   private labelRects: UiRect[] = []
   private uiRects: UiRect[] = []
+  /**
+   * 지역을 넘을 때 화면이 툭 바뀌지 않게: 새 지역이 검게(웨이포인트 · 포털은 푸른 빛으로) 시작해 0.45초에 걸쳐 밝아진다
+   * (2026-10-08 퀄리티 2차 1단계). 세계 · 이름표만 덮고 HUD 패널은 그 위에 그린다
+   */
+  private fade = { t: 0, max: 0.45, rgb: '0,0,0' }
   private flashes: Flash[] = []
   private rings: Ring[] = []
   private slashes: Slash[] = []
@@ -496,6 +505,9 @@ export class Renderer3D {
     this.partMesh.count = 0
     this.partMesh.frustumCulled = false
     this.scene.add(this.partMesh)
+    this.glow = new SpriteFx(900, true)
+    this.puff = new SpriteFx(360, false)
+    this.scene.add(this.puff.mesh, this.glow.mesh)
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -645,6 +657,7 @@ export class Renderer3D {
     for (const g of this.globeMeshes.values()) this.scene.remove(g)
     this.globeMeshes.clear()
     this.camInit = false
+    this.fade = { t: 0.45, max: 0.45, rgb: '0,0,0' }
   }
 
   /**
@@ -962,6 +975,8 @@ export class Renderer3D {
           rig.gunTip.getWorldPosition(tip)
           const big = w.family === 'sniper' || w.boom !== undefined
           this.spawnFlash(tip, big ? 2.6 : w.pellets > 1 ? 1.6 : 1)
+          // 총구 연기 한 줄기 (내 총만 — 2026-10-08 퀄리티 2차 1단계)
+          if (e.p === localPlayer && !w.melee && w.id !== 'flamer') this.spawnPuff(tip.x, tip.y, tip.z, 0, 0.008, 0, 0.55, 0xb8b0a0, big ? 0.3 : 0.17, big ? 0.35 : 0.22)
           v.vsx -= big ? 0.3 : 0.12
           v.vsy += big ? 0.2 : 0.08
           if (e.p === localPlayer) {
@@ -1006,7 +1021,8 @@ export class Renderer3D {
             const a = rad + Math.PI + (Math.random() - 0.5) * 1.8
             const sp = 0.05 + Math.random() * 0.13
             const spark = i % 2 === 0
-            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.09, Math.sin(a) * sp, spark ? 0.2 : 0.35, spark ? 0xffe8a8 : 0xc9c0ae, spark ? 0.35 : 0.55)
+            if (spark) this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.09, Math.sin(a) * sp, 0.22, 0xffd890, 0.45)
+            else this.spawnPuff(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp * 0.4, 0.01, Math.sin(a) * sp * 0.4, 0.5, 0xc9c0ae, 0.16, 0.35)
           }
           this.spawnImpact(e.x * U, GUN_H, e.y * U, 0xffe8b0, 0.8)
           break
@@ -1031,7 +1047,7 @@ export class Renderer3D {
             const a = Math.random() * Math.PI * 2
             const sp = (head ? 0.1 : 0.07) + Math.random() * 0.13
             const col = head ? (k % 3 === 0 ? 0xfff3c0 : 0xffd84a) : k % 3 === 0 ? 0xff9a6a : 0xff4a3a
-            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.12, Math.sin(a) * sp, 0.24 + Math.random() * 0.12, col, head ? 0.5 : 0.44)
+            this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.12, Math.sin(a) * sp, 0.24 + Math.random() * 0.12, col, head ? 0.5 : 0.44)
           }
           this.spawnImpact(e.x * U, GUN_H, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.8 : 1.7)
           if (e.by === localPlayer) this.hud.hitMark(head)
@@ -1075,7 +1091,7 @@ export class Renderer3D {
           this.spawnRing(e.x2 * U, e.y2 * U, 0.1, 0.8, 0.3, 0x9ad8ff)
           for (let k = 0; k <= 6; k++) {
             const t = k / 6
-            this.spawnParticle((e.x + (e.x2 - e.x) * t) * U, 0.9, (e.y + (e.y2 - e.y) * t) * U, 0, 0.01, 0, 0.25, 0xbfe8ff, 0.5)
+            this.spawnGlow((e.x + (e.x2 - e.x) * t) * U, 0.9, (e.y + (e.y2 - e.y) * t) * U, 0, 0.01, 0, 0.25, 0xbfe8ff, 0.7)
           }
           break
         }
@@ -1136,6 +1152,7 @@ export class Renderer3D {
             for (let k = 0; k < 6; k++) {
               const a = Math.random() * Math.PI * 2
               this.spawnParticle(e.x * U, 0.3, e.y * U, Math.cos(a) * 0.05, 0.08, Math.sin(a) * 0.05, 0.7, 0x8a6a4a, 0.6)
+              if (k % 2 === 0) this.spawnPuff(e.x * U, 0.25, e.y * U, Math.cos(a) * 0.015, 0.006, Math.sin(a) * 0.015, 0.8, 0xa89070, 0.3)
             }
           } else this.spawnRing(e.x * U, e.y * U, 0.2, 1.6, 0.6, e.kind === OBJ_GOLDCHEST ? 0xffd86a : 0xd8c8a8)
           break
@@ -1155,11 +1172,13 @@ export class Renderer3D {
           this.spawnRing(e.x * U, e.y * U, 0.2, 1.4, 1.5, 0x5a8cff)
           break
         case 'portalOpen':
-          if (e.p === localPlayer) this.hud.notice('타운 포털 — F 로 마을에 드나든다', '#7ab8ff')
+          if (e.p === localPlayer) this.hud.notice(`타운 포털 — ${keyLabel('use')} 로 마을에 드나든다`, '#7ab8ff')
           else this.hud.notice(`${nm[e.p]} 의 타운 포털`, '#7ab8ff')
           break
         case 'areaEnter':
           if (e.p !== localPlayer && e.how !== 'follow') this.hud.notice(`${nm[e.p]} — ${areaDef(e.area).name}`, '#a89878')
+          // 웨이포인트 · 포털로 왔으면 검은 페이드 대신 푸른 빛에서 밝아진다
+          if (e.p === localPlayer && (e.how === 'wp' || e.how === 'portal') && this.fade.t > 0) this.fade.rgb = '170,205,255'
           break
         case 'bossDown': {
           const a = areaDef(e.area)
@@ -1176,7 +1195,7 @@ export class Renderer3D {
           this.spawnImpact(p.x * U, 1.2, p.y * U, 0xffd86a, 4)
           for (let k = 0; k < 24; k++) {
             const a = (k / 24) * Math.PI * 2
-            this.spawnParticle(p.x * U, 0.4, p.y * U, Math.cos(a) * 0.06, 0.14 + Math.random() * 0.06, Math.sin(a) * 0.06, 1.1, k % 2 ? 0xffd86a : 0xfff3c0, 0.6)
+            this.spawnGlow(p.x * U, 0.4, p.y * U, Math.cos(a) * 0.06, 0.14 + Math.random() * 0.06, Math.sin(a) * 0.06, 1.1, k % 2 ? 0xffd86a : 0xfff3c0, 0.8)
           }
           this.hud.notice(e.p === localPlayer ? `레벨 ${e.level}!` : `${nm[e.p]} 레벨 ${e.level}`, '#ffd86a')
           break
@@ -1272,7 +1291,9 @@ export class Renderer3D {
               const fz = dir.x * sa + dir.z * ca
               const sp = (head ? 0.11 : 0.07) + Math.random() * 0.1
               const col = bright ? CONFETTI[(k + e.m) % CONFETTI.length] : head ? (k % 3 === 0 ? 0xfff3c0 : k % 3 === 1 ? 0xffd84a : 0x8a1010) : k % 2 === 0 ? 0x7a1010 : 0x3a0a0a
-              this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
+              // 치명타의 금빛 불티는 빛 알갱이로 (피 · 색종이는 조각 그대로)
+              if (!bright && head && k % 3 !== 2) this.spawnGlow(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, 0.6)
+              else this.spawnParticle(e.x * U, 0.8, e.y * U, fx * sp, 0.04 + Math.random() * 0.09, fz * sp, 0.3 + Math.random() * 0.2, col, head ? 0.45 : 0.4)
             }
             // 바닥 핏자국: 내 치명타는 늘, 내 명중은 가끔 (쏜 방향 뒤쪽에)
             if (mine && (head || Math.random() < 0.25)) this.addBlood(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.36 : 0.22, head ? SPLAT_SPRAY : SPLAT_DROPS, dir)
@@ -1357,7 +1378,9 @@ export class Renderer3D {
             const a = Math.random() * Math.PI * 2
             const sp = 0.05 + Math.random() * 0.1
             const col = k % 3 === 0 ? 0xff8a5a : k % 3 === 1 ? 0x8a4a3a : 0x4a2a1a
-            this.spawnParticle(e.x * U, 0.6, e.y * U, Math.cos(a) * sp, 0.1 + Math.random() * 0.12, Math.sin(a) * sp, 0.55, col, 0.9)
+            if (k % 3 === 0) this.spawnGlow(e.x * U, 0.6, e.y * U, Math.cos(a) * sp, 0.1 + Math.random() * 0.12, Math.sin(a) * sp, 0.45, 0xff9a4a, 1.1)
+            else if (k % 3 === 1) this.spawnPuff(e.x * U, 0.5, e.y * U, Math.cos(a) * sp * 0.35, 0.012, Math.sin(a) * sp * 0.35, 1.1, 0x3a2e28, 0.45, 0.55)
+            else this.spawnParticle(e.x * U, 0.6, e.y * U, Math.cos(a) * sp, 0.1 + Math.random() * 0.12, Math.sin(a) * sp, 0.55, col, 0.9)
           }
           this.spawnImpact(e.x * U, 0.8, e.y * U, 0xff7a4a, e.r * U * 2.4)
           this.spawnRing(e.x * U, e.y * U, 0.4, e.r * U, 0.45, ENEMY_AOE)
@@ -1424,6 +1447,15 @@ export class Renderer3D {
           const v = this.vis[e.p]
           v.vsx += 0.35
           v.vsy -= 0.3
+          // 구르기 먼지 (2026-10-08 퀄리티 2차 1단계)
+          const pl = state.players[e.p]
+          if (pl && !this.hidden[e.p]) {
+            const dust = this.dustColor()
+            for (let k = 0; k < 5; k++) {
+              const a = Math.random() * Math.PI * 2
+              this.spawnPuff(pl.x * U + Math.cos(a) * 0.2, 0.15, pl.y * U + Math.sin(a) * 0.2, Math.cos(a) * 0.012, 0.006, Math.sin(a) * 0.012, 0.6 + Math.random() * 0.3, dust, 0.35, 0.4)
+            }
+          }
           break
         }
         case 'break': {
@@ -1434,7 +1466,8 @@ export class Renderer3D {
           for (let i = 0; i < 10; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.03 + Math.random() * 0.07
-            this.spawnParticle(cx, 0.3, cz, Math.cos(a) * sp, 0.06 + Math.random() * 0.07, Math.sin(a) * sp, 0.7, 0xc7ad76, 0.9)
+            if (i % 2 === 0) this.spawnPuff(cx, 0.3, cz, Math.cos(a) * sp * 0.4, 0.01, Math.sin(a) * sp * 0.4, 1, 0xc7ad76, 0.4, 0.5)
+            else this.spawnParticle(cx, 0.3, cz, Math.cos(a) * sp, 0.06 + Math.random() * 0.07, Math.sin(a) * sp, 0.7, 0xc7ad76, 0.9)
           }
           this.spawnRing(cx, cz, 0.2, 1.2, 0.4, 0xd6bc84)
           break
@@ -1451,7 +1484,7 @@ export class Renderer3D {
           for (let i = 0; i < 8; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.02 + Math.random() * 0.05
-            this.spawnParticle(e.x * U, 0.5, e.y * U, Math.cos(a) * sp, 0.07 + Math.random() * 0.05, Math.sin(a) * sp, 0.7, 0x7ef0a0, 0.7)
+            this.spawnGlow(e.x * U, 0.5, e.y * U, Math.cos(a) * sp, 0.07 + Math.random() * 0.05, Math.sin(a) * sp, 0.8, 0x7ef0a0, 0.8)
           }
           break
         }
@@ -1461,7 +1494,8 @@ export class Renderer3D {
             for (let i = 0; i < 10; i++) {
               const a = Math.random() * Math.PI * 2
               const sp = 0.02 + Math.random() * 0.05
-              this.spawnParticle(x * U, 0.6, y * U, Math.cos(a) * sp, 0.03 + Math.random() * 0.05, Math.sin(a) * sp, 0.6, 0x8a5ac0, 0.8)
+              if (i % 3 === 0) this.spawnGlow(x * U, 0.6, y * U, Math.cos(a) * sp, 0.03 + Math.random() * 0.05, Math.sin(a) * sp, 0.5, 0xb88aff, 0.8)
+              else this.spawnPuff(x * U, 0.6, y * U, Math.cos(a) * sp * 0.5, 0.01, Math.sin(a) * sp * 0.5, 0.8, 0x5a3a8a, 0.4, 0.5)
             }
           }
           this.spawnRing(e.x * U, e.y * U, 0.2, 1.4, 0.4, 0xd89aff)
@@ -1515,7 +1549,7 @@ export class Renderer3D {
           for (let i = 0; i < 4; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.04 + Math.random() * 0.08
-            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.06, Math.sin(a) * sp, 0.25, 0xffe0a0, 0.6)
+            this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.06, Math.sin(a) * sp, 0.25, 0xffd890, 0.6)
           }
           this.spawnImpact(e.x * U, GUN_H, e.y * U, 0xffd080, 0.9)
           break
@@ -1524,7 +1558,7 @@ export class Renderer3D {
           for (let i = 0; i < 5; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.04 + Math.random() * 0.08
-            this.spawnParticle(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.06, Math.sin(a) * sp, 0.3, 0xbfd8ff, 0.7)
+            this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.06, Math.sin(a) * sp, 0.3, 0xbfd8ff, 0.7)
           }
           this.texts.push({ x: e.x * U, z: e.y * U, y: 1.6, text: '막음', life: 0.5, max: 0.5, color: '#9fe0ff', big: false })
           this.spawnImpact(e.x * U, GUN_H, e.y * U, 0x9fe0ff, 1.3)
@@ -1615,6 +1649,21 @@ export class Renderer3D {
     this.scene.remove(r.mesh)
     ;(r.thin ? this.thinPool : this.ringPool).push(r.mesh)
     this.rings.splice(i, 1)
+  }
+
+  /** 빛 알갱이 (불꽃 · 마법 · 번개) — size 는 지난 상자 파편과 같은 눈금이라 자리만 바꿔 부른다 */
+  private spawnGlow(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number): void {
+    this.glow.spawn(x, y, z, vx, vy, vz, life, color, size * 0.32, { gravity: 0.1 })
+  }
+
+  /** 바닥 먼지 색 — 이 지역 바닥색을 밝힌 것 */
+  private dustColor(): number {
+    return this.tmpColor.setHex(this.map.theme.floor).lerp(new THREE.Color(0xe8e0d0), 0.45).getHex()
+  }
+
+  /** 연기 · 먼지 한 뭉치 — 커지며 옅어진다 */
+  private spawnPuff(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number, alpha = 0.45): void {
+    this.puff.spawn(x, y, z, vx, vy, vz, life, color, size, { alpha })
   }
 
   private spawnParticle(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number): void {
@@ -1825,6 +1874,14 @@ export class Renderer3D {
     }
     this.drawDowned(curr, pos, opts)
     this.drawDownedNav(curr, pos, opts)
+    if (this.fade.t > 0) {
+      // 실제 시간으로 (느린 화면 · 멈칫과 상관없이)
+      this.fade.t = Math.max(0, this.fade.t - Math.min(0.05, this.lastDt))
+      const k = this.fade.t / this.fade.max
+      const ctx = this.hud.ctx
+      ctx.fillStyle = `rgba(${this.fade.rgb},${(k * k * (3 - 2 * k)).toFixed(3)})`
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    }
     this.hud.drawMain(curr, { ...opts, cursorOn })
     if (opts.showHud) this.drawMinimap(curr, opts)
     if (opts.showHud && this.mapOpen && curr.mode === 'dungeon') this.drawFullMap(curr, opts)
@@ -3393,13 +3450,13 @@ export class Renderer3D {
       this.spawnRing(x, z, 0.4, 3, 0.7, col)
       for (let k = 0; k < 14; k++) {
         const a = Math.random() * Math.PI * 2
-        this.spawnParticle(x + Math.cos(a) * 0.35, 0.2, z + Math.sin(a) * 0.35, 0, 0.06 + Math.random() * 0.04, 0, 0.7, col, 0.5)
+        this.spawnGlow(x + Math.cos(a) * 0.35, 0.2, z + Math.sin(a) * 0.35, 0, 0.06 + Math.random() * 0.04, 0, 0.7, col, 0.6)
       }
     }
     if (e.id === 'stunt') {
       for (let k = 0; k < 10; k++) {
         const a = Math.random() * Math.PI * 2
-        this.spawnParticle(x, 0.3, z, Math.cos(a) * 0.04, 0.05, Math.sin(a) * 0.04, 0.5, 0xd8c8a8, 0.6)
+        this.spawnPuff(x, 0.25, z, Math.cos(a) * 0.03, 0.01, Math.sin(a) * 0.03, 0.8, 0xd8c8a8, 0.35, 0.45)
       }
     }
     void state
@@ -3418,7 +3475,9 @@ export class Renderer3D {
       const d = Math.random() * r
       const sp = 0.03 + Math.random() * 0.06
       const col = e.id === 'flame' ? (k % 2 === 0 ? 0xff8a3a : 0xffd26a) : e.id === 'oil' ? 0xe8d060 : e.id === 'grenade' ? (k % 2 === 0 ? 0xffb050 : 0x3a3530) : color
-      this.spawnParticle(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp, 0.06 + Math.random() * 0.1, Math.sin(a) * sp, 0.5 + Math.random() * 0.3, col, 0.7)
+      if (e.id === 'grenade' && k % 2 === 1) this.spawnPuff(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp * 0.3, 0.012, Math.sin(a) * sp * 0.3, 1.1, 0x3a3530, 0.5, 0.5)
+      else if (e.id === 'oil') this.spawnParticle(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp, 0.06 + Math.random() * 0.1, Math.sin(a) * sp, 0.5 + Math.random() * 0.3, col, 0.7)
+      else this.spawnGlow(x + Math.cos(a) * d, 0.4, z + Math.sin(a) * d, Math.cos(a) * sp, 0.06 + Math.random() * 0.1, Math.sin(a) * sp, 0.5 + Math.random() * 0.3, col, 0.8)
     }
     if (e.id === 'grenade' || e.id === 'roar' || e.id === 'supernova' || e.id === 'trap') {
       this.spawnImpact(x, 0.8, z, color, r * 2.2)
@@ -3472,7 +3531,7 @@ export class Renderer3D {
           const d = zn.r * U * (0.5 + Math.random() * 0.5)
           const px = zn.x * U + Math.cos(a) * d
           const pz = zn.y * U + Math.sin(a) * d
-          this.spawnParticle(px, 0.3 + Math.random() * 0.8, pz, -Math.cos(a) * 0.06 - Math.sin(a) * 0.05, 0.02, -Math.sin(a) * 0.06 + Math.cos(a) * 0.05, 0.5, 0xc0f0ff, 0.5)
+          this.spawnGlow(px, 0.3 + Math.random() * 0.8, pz, -Math.cos(a) * 0.06 - Math.sin(a) * 0.05, 0.02, -Math.sin(a) * 0.06 + Math.cos(a) * 0.05, 0.5, 0xc0f0ff, 0.6)
         }
         continue
       }
@@ -3485,7 +3544,7 @@ export class Renderer3D {
         if (Math.random() < 0.15) {
           const a = Math.random() * Math.PI * 2
           const d = Math.random() * zn.r * U * 0.8
-          this.spawnParticle(zn.x * U + Math.cos(a) * d, 0.05, zn.y * U + Math.sin(a) * d, 0, 0.03 + Math.random() * 0.03, 0, 0.5, 0xff7a4a, 0.5)
+          this.spawnGlow(zn.x * U + Math.cos(a) * d, 0.05, zn.y * U + Math.sin(a) * d, 0, 0.03 + Math.random() * 0.03, 0, 0.6, 0xff7a4a, 0.6)
         }
         continue
       }
@@ -3590,7 +3649,8 @@ export class Renderer3D {
       for (let k = 0; k < n; k++) {
         const a = Math.random() * Math.PI * 2
         const sp = 0.04 + Math.random() * 0.08
-        this.spawnParticle(px, 0.5, pz, Math.cos(a) * sp, 0.08 + Math.random() * 0.1, Math.sin(a) * sp, 0.5, k % 2 === 0 ? 0xff8a5a : 0x6a2a1a, 0.8)
+        if (k % 2 === 0) this.spawnGlow(px, 0.5, pz, Math.cos(a) * sp, 0.08 + Math.random() * 0.1, Math.sin(a) * sp, 0.5, 0xff8a5a, 1)
+        else this.spawnPuff(px, 0.4, pz, Math.cos(a) * sp * 0.3, 0.012, Math.sin(a) * sp * 0.3, 1, 0x3a2420, 0.45, 0.5)
       }
     }
     if (e.shape === ZS_LINE) {
@@ -4338,6 +4398,8 @@ export class Renderer3D {
   }
 
   private updateEffects(dt: number): void {
+    this.glow.update(dt)
+    this.puff.update(dt)
     // 파편: 산 것만 앞으로 모으며(순서 유지 — 넘칠 때 앞의 오래된 것을 버린다) 인스턴스 하나에 적는다
     let live = 0
     const pm = this.partMesh
@@ -4362,7 +4424,8 @@ export class Renderer3D {
       q.rz += q.spin * dt
       d.position.set(q.x, q.y, q.z)
       d.rotation.set(q.rx, 0, q.rz)
-      d.scale.setScalar(q.size)
+      // 끝날 때 툭 사라지지 않고 작아지며 사라진다 (마지막 0.25초)
+      d.scale.setScalar(q.size * Math.min(1, q.life / Math.min(0.25, q.max * 0.5)))
       d.updateMatrix()
       pm.setMatrixAt(live, d.matrix)
       pc.setXYZ(live, q.r, q.g, q.b)
@@ -4593,6 +4656,8 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.glow.dispose()
+    this.puff.dispose()
     this.monsterView.dispose()
     void this.lastKiller
     this.vision.dispose()

@@ -3,7 +3,7 @@
 // 브라우저 자동재생 정책: 첫 클릭/키 입력 전에는 소리가 나지 않는다 (그 전 이벤트는 버린다).
 
 import { isBright } from '../game/skin'
-import { GameState, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
+import { GameState, OBJ_GOLDCHEST, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
@@ -46,7 +46,7 @@ const OTHER_PER_SEC = 36
 /** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
 const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
-const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop'])
+const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen'])
 /**
  * 괴물 소리(깸 · 공격 준비 · 쓰러짐)는 남의 소리 몫(토큰)을 쓰지 않는다 — 제 되풀이 제한(아무 괴물 90ms · 같은 종류 0.35초 · 쓰러지는 질척임 50ms)만 거친다.
  * 2026-09-24 사용자: "몬스터 잡는데 몬스터 소리는 안 들린다" — 봇 총소리 · 맞는 소리가 초당 36개 몫을 다 써서, 괴물 단서 922개 중 66개만 소리가 났다.
@@ -90,6 +90,8 @@ export class Sfx {
   private lastMelee = 0
   private lastKill = 0
   private lastCasing = 0
+  /** 금화 짤랑 되풀이 제한 (금화 분수 · 한꺼번에 줍기) */
+  private lastCoin = 0
   /** 심장 소리 (체력 30% 아래 — 2026-10-08 손맛) 다음 시각 */
   private nextBeat = 0
   /** 괴물 목소리 되풀이 제한 (ms 시각): 아무 괴물 · 종류마다 · 보스 · 곁의 괴물 옆 소리 */
@@ -455,6 +457,78 @@ export class Sfx {
         case 'equip':
           if (e.p === localPlayer) this.blip()
           break
+        // ---- 2026-10-08 퀄리티 2차 1단계: 소리가 없던 일들 ----
+        case 'gold':
+          if (e.p === localPlayer) this.coins(1)
+          break
+        case 'trade':
+          if (e.p === localPlayer) this.coins(3)
+          break
+        case 'gamble': {
+          if (e.p !== localPlayer) break
+          // 주사위 구르는 딸깍 다섯 + 짤랑
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
+          for (let i = 0; i < 5; i++) this.noiseBurst(b.node, b.t0 + i * 0.045 + Math.random() * 0.02, 0.025, 'bandpass', 2600 + Math.random() * 1400, 2200, 0.35, 4)
+          this.coins(2, 0.26)
+          break
+        }
+        case 'bagFull':
+          if (e.p === localPlayer) {
+            const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
+            this.tone(b.node, b.t0, 0.09, 'square', 220, 200, 0.18, 0.004)
+            this.tone(b.node, b.t0 + 0.11, 0.12, 'square', 196, 170, 0.18, 0.004)
+          }
+          break
+        case 'questDone': {
+          // 퀘스트 이룸: 짧은 팡파르 (솔 · 도 · 미 → 도 화음)
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
+          for (const [i, f] of [392, 523, 659].entries()) this.tone(b.node, b.t0 + i * 0.1, 0.22, 'triangle', f, f, 0.3, 0.006)
+          for (const f of [523, 659, 784, 1047]) this.tone(b.node, b.t0 + 0.32, 0.9, 'triangle', f, f, 0.2, 0.012)
+          this.tone(b.node, b.t0 + 0.32, 0.9, 'square', 262, 262, 0.05, 0.02)
+          break
+        }
+        case 'questReward':
+          if (e.p === localPlayer) this.coins(4, 0.1)
+          break
+        case 'wpFound':
+          if (e.p === localPlayer) this.shimmer(0.8, 1)
+          break
+        case 'portalCast': {
+          // 문을 여는 동안 웅 — 올라가는 낮은 울림 (1.5초 시전의 앞부분)
+          const b = this.bus(at(e.p), 0.55)
+          this.tone(b.node, b.t0, 1.2, 'sine', 180, 360, 0.25, 0.25)
+          this.noiseBurst(b.node, b.t0, 1.2, 'bandpass', 500, 1800, 0.12, 2)
+          break
+        }
+        case 'portalOpen': {
+          const b = this.bus(sp(e.x, e.y), 0.7)
+          this.noiseBurst(b.node, b.t0, 0.45, 'bandpass', 400, 2400, 0.3, 1.5)
+          this.shimmer(0.6, 0.8)
+          break
+        }
+        case 'areaEnter':
+          // 웨이포인트 · 포털로 건너왔다: 빨려 들어가는 소리 (화면은 푸른 빛에서 밝아진다)
+          if (e.p === localPlayer && (e.how === 'wp' || e.how === 'portal')) {
+            const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
+            this.noiseBurst(b.node, b.t0, 0.4, 'bandpass', 2600, 300, 0.3, 1.2)
+            this.tone(b.node, b.t0 + 0.05, 0.35, 'sine', 880, 330, 0.12, 0.02)
+          }
+          break
+        case 'shrine': {
+          // 제단: 종 세 개가 겹쳐 울린다
+          const b = this.bus(sp(e.x, e.y), 0.8)
+          for (const [i, f] of [523, 784, 1047].entries()) this.tone(b.node, b.t0 + i * 0.05, 1.4, 'sine', f, f, 0.22, 0.004)
+          this.shimmer(0.5, 1.2)
+          break
+        }
+        case 'objOpen': {
+          // 상자 뚜껑: 나무 삐걱 + 쿵 (금빛 상자는 짤랑까지)
+          const b = this.bus(sp(e.x, e.y), 0.6)
+          this.noiseBurst(b.node, b.t0, 0.16, 'bandpass', 380, 620, 0.3, 6)
+          this.tone(b.node, b.t0 + 0.14, 0.14, 'sine', 130, 60, 0.45, 0.003)
+          if (e.kind === OBJ_GOLDCHEST) this.coins(3, 0.2)
+          break
+        }
         case 'hit':
           // 투기장: 플레이어가 플레이어를 맞힘 (덕 그대로)
           this.hit(sp(e.x, e.y), e.part === 0)
@@ -1621,6 +1695,44 @@ export class Sfx {
       this.tone(node, t0, 1.6, 'sine', 82, 66, 0.6, 0.01)
       this.noiseBurst(node, t0, 0.7, 'lowpass', 500, 120, 0.3)
     }
+  }
+
+  /** 금화 짤랑 (n 번 — 줍기 · 거래 · 보상). 80ms 안에 다시 부르면 건너뛴다 */
+  private coins(n: number, delay = 0): void {
+    const now = performance.now()
+    if (delay === 0 && now - this.lastCoin < 80) return
+    this.lastCoin = now
+    const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.4)
+    for (let i = 0; i < n; i++) {
+      const t = b.t0 + delay + i * 0.055 + Math.random() * 0.015
+      const f = 2400 + Math.random() * 900
+      this.tone(b.node, t, 0.07, 'triangle', f, f * 0.98, 0.22, 0.001)
+      this.tone(b.node, t + 0.012, 0.11, 'sine', f * 1.5, f * 1.48, 0.1, 0.001)
+    }
+  }
+
+  /** 반짝이는 소리 (웨이포인트 · 포털 · 제단) — 빠르게 올라가는 높은 음들 */
+  private shimmer(vol: number, len: number): void {
+    const b = this.bus({ gain: 1, pan: 0, far: 0 }, vol)
+    const notes = [1047, 1175, 1319, 1568, 1760, 2093]
+    notes.forEach((f, i) => this.tone(b.node, b.t0 + i * 0.05 * len, 0.35 * len, 'sine', f, f, 0.12, 0.004))
+    this.tone(b.node, b.t0, 0.6 * len, 'sine', 262, 262, 0.08, 0.05)
+  }
+
+  /** 창 열기 · 닫기: 종이가 스치는 소리 + 올라가는(열기) · 내려가는(닫기) 음 — 전에는 모든 창이 같은 "삑" (2026-10-08) */
+  ui(open: boolean): void {
+    if (!this.ready()) return
+    const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
+    this.noiseBurst(node, t0, 0.08, 'bandpass', open ? 900 : 2600, open ? 2600 : 900, 0.2, 1.4)
+    this.tone(node, t0 + 0.01, 0.07, 'sine', open ? 660 : 880, open ? 990 : 587, 0.22, 0.005)
+  }
+
+  /** 업적: 밝은 팡파르 + 반짝 */
+  achieve(): void {
+    if (!this.ready()) return
+    const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
+    for (const [i, f] of [523, 659, 784, 1047, 1319].entries()) this.tone(node, t0 + i * 0.07, 0.6, 'triangle', f, f, 0.24, 0.006)
+    this.shimmer(0.5, 1)
   }
 
   /** 짧은 알림음 (창 열기·줍기 등 UI) */

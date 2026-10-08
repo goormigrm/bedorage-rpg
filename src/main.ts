@@ -53,14 +53,37 @@ function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
   if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session
 }
 
+/**
+ * 글꼴을 받고 시작한다 (2026-10-08 퀄리티 2차 1단계): 전에는 기본 글꼴로 그렸다가 웹 글꼴이 오면 바뀌어(깜빡임) 캔버스 HUD 는
+ * 처음 몇 프레임을 엉뚱한 글꼴로 그렸다. 한글 글꼴은 글자 묶음별로 나뉘어 있어 자주 쓰는 낱말로 그 묶음들을 부른다. 늦으면 3초에서 그냥 간다
+ */
+async function fontsReady(): Promise<void> {
+  if (!document.fonts?.load) return
+  const sample = '배도라지 알PG 게임 만들기 방 목록 설정 가방 스킬 능력치 퀘스트 지도 체력 집중 골드 레벨 마을 던전 상인 대장장이 0123456789'
+  const want = ['400 16px "Black Han Sans"', '800 16px "Nanum Myeongjo"', '700 16px "Nanum Myeongjo"', '500 16px "IBM Plex Sans KR"', '700 16px "IBM Plex Sans KR"', '500 12px "IBM Plex Mono"']
+  await Promise.race([Promise.all(want.map((f) => document.fonts.load(f, sample).catch(() => []))), new Promise((r) => setTimeout(r, 3000))])
+}
+
+/** 첫 화면(index.html #boot)을 걷는다 — 0.35초 흐려지며 */
+function hideBoot(): void {
+  const boot = document.getElementById('boot')
+  if (!boot) return
+  boot.classList.add('done')
+  setTimeout(() => boot.remove(), 400)
+}
+// 무슨 일이 있어도 첫 화면이 게임을 막지 않게
+setTimeout(hideBoot, 8000)
+
 setFavicon()
 // 세이브 거울(IndexedDB): localStorage 가 비었으면 되살린 뒤 로비를 연다 (2026-09-25 — 캐릭터가 통째로 사라지지 않게)
-void restoreFromMirror()
-  .catch(() => false)
-  .then((restored) => {
+const bootMsg = document.getElementById('boot-msg')
+if (bootMsg) bootMsg.textContent = '글꼴 · 세이브 준비 중…'
+void Promise.all([restoreFromMirror().catch(() => false), fontsReady().catch(() => undefined)])
+  .then(([restored]) => {
     showLobby()
     if (restored) console.info('[세이브] 브라우저 저장소가 비어 있어 IndexedDB 의 한 벌로 되살렸습니다')
   })
+  .finally(() => requestAnimationFrame(() => hideBoot()))
 
 // 치지직 방송 연동 (2026-09-23): 로그인에서 돌아왔으면(?code=) 토큰으로 바꾸고 연결, 전에 연결해 두었으면 다시 연결
 void (async () => {

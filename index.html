@@ -11,10 +11,24 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="description" content="종소리에 끌려 낯선 땅에 떨어진 배도라지 크루가 집에 돌아가려고 종을 되찾는 쿼터뷰 슈팅 RPG. 최대 4인 협동 · 서버 없는 P2P · 비공식 팬게임" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Nanum+Myeongjo:wght@700;800&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="/src/ui/style.css" />
+  <!-- 첫 화면 (2026-10-08 퀄리티 2차 1단계): 게임 묶음(약 0.45 MB)과 글꼴을 받는 동안 빈 화면 대신. 스크립트 없이 바로 그려지게 여기에 둔다 — main.ts 가 다 받으면 걷는다 -->
+  <style>
+    #boot { position: fixed; inset: 0; z-index: 100000; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 55%, #1f1710 0%, #0b0907 62%, #050403 100%); transition: opacity .35s ease; }
+    #boot.done { opacity: 0; pointer-events: none; }
+    #boot .bi { display: grid; justify-items: center; gap: 18px; transform: translateY(-4vh); }
+    #boot .bl { font: 400 56px "Black Han Sans", "Malgun Gothic", sans-serif; letter-spacing: .02em; color: #d8c08a; text-shadow: 0 2px 0 #3a2a10, 0 0 24px rgba(201,162,74,.25); }
+    #boot .bl b { font-weight: 400; margin: 0 4px; background: linear-gradient(180deg, #fff6c2 0%, #ffc61a 32%, #ff8a00 66%, #ff5400 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 10px rgba(255,110,0,.7)); }
+    #boot .bb { width: 260px; height: 4px; border-radius: 2px; background: rgba(201,162,74,.16); overflow: hidden; }
+    #boot .bb i { display: block; height: 100%; width: 38%; border-radius: 2px; background: linear-gradient(90deg, transparent, #f1d58a, transparent); animation: bootbar 1.1s ease-in-out infinite; }
+    #boot .bm { font: 500 13px "Malgun Gothic", sans-serif; color: #8d8170; letter-spacing: .04em; }
+    @keyframes bootbar { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
+  </style>
 </head>
 <body>
+  <div id="boot"><div class="bi"><div class="bl">배도라지<b>알</b>PG</div><div class="bb"><i></i></div><div class="bm" id="boot-msg">불러오는 중…</div></div></div>
   <div id="app"></div>
   <div id="rotate">
     <div class="icon">📱</div>

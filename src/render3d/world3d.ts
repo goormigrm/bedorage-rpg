@@ -92,7 +92,10 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   floor.position.set(map.w / 2, 0, map.h / 2)
   floor.receiveShadow = true
   group.add(floor)
-  const outside = new THREE.Mesh(new THREE.PlaneGeometry(map.w * 4, map.h * 4), new THREE.MeshLambertMaterial({ color: t.outside }))
+  // 맵 밖: 바닥이 이어지다 안개로 사라진다 (2026-10-08 퀄리티 2차 1단계 — 전에는 한 색 판이라 밝은 분위기에서 하늘에 뜬 섬 같았다)
+  const outTex = paintOutside(map)
+  disposables.push(outTex)
+  const outside = new THREE.Mesh(new THREE.PlaneGeometry(map.w * 4, map.h * 4), new THREE.MeshBasicMaterial({ map: outTex }))
   outside.rotation.x = -Math.PI / 2
   outside.position.set(map.w / 2, -0.02, map.h / 2)
   group.add(outside)
@@ -571,6 +574,70 @@ function wallClusters(map: GameMap): Map<number, { x0: number; y0: number; x1: n
 const PAINT_RGBA = ['rgba(255,120,170,0.45)', 'rgba(90,210,180,0.45)', 'rgba(255,205,80,0.5)', 'rgba(110,170,255,0.45)']
 
 /** 바닥 그림을 한 번에 */
+/**
+ * 맵 밖 판(맵의 4배 · 맵은 가운데)의 그림: 맵 가장자리에서 바닥색이 얼룩지며 이어지다 12칸쯤에서 하늘 · 어둠(outside)으로 사라진다.
+ * 맵 밖은 늘 시야 밖이므로 시야 안개(vision.ts 와 같은 색 · 진하기)를 미리 씌운다 — 벽 너머 맵 안 바닥과 같은 어둠이 된다.
+ * 빛을 받지 않는 그림(MeshBasic)이라 조명 세기만큼 미리 어둡게 한다. 256 칸 그림(작다 — 얼룩은 크고 가장자리는 벽이 덮는다)
+ */
+function paintOutside(map: GameMap): THREE.CanvasTexture {
+  const t = map.theme
+  const N = 256
+  const c = document.createElement('canvas')
+  c.width = N
+  c.height = N
+  const g = c.getContext('2d')!
+  const img = g.createImageData(N, N)
+  const fl = new THREE.Color(t.floor)
+  const alt = new THREE.Color(t.floorAlt)
+  const out = new THREE.Color(t.outside)
+  const vf = t.visionFog
+  const fog = vf !== undefined ? new THREE.Color(vf) : new THREE.Color(t.dark ? 0x030305 : 0x060805)
+  const fa = t.dark ? t.dark.fogAlpha : 0.78
+  // 조명 어림: 어두운 던전은 해 · 하늘빛이 약하다 (sun + hemi 를 밝은 낮 ≈ 1 로)
+  const light = t.dark ? Math.min(1, (t.dark.sun + t.dark.hemi) * 0.42) : 0.9
+  const W = map.w * 4
+  const H = map.h * 4
+  // 큰 얼룩: 4칸 격자 값 잡음을 부드럽게 (같은 맵이면 같은 모습)
+  const noise = (x: number, y: number) => {
+    const gx = Math.floor(x / 4)
+    const gy = Math.floor(y / 4)
+    const fx = x / 4 - gx
+    const fy = y / 4 - gy
+    const sx = fx * fx * (3 - 2 * fx)
+    const sy = fy * fy * (3 - 2 * fy)
+    const a = hash(gx, gy, 71)
+    const b = hash(gx + 1, gy, 71)
+    const cc = hash(gx, gy + 1, 71)
+    const d = hash(gx + 1, gy + 1, 71)
+    return a + (b - a) * sx + (cc - a) * sy + (a - b - cc + d) * sx * sy
+  }
+  const col = new THREE.Color()
+  for (let py = 0; py < N; py++) {
+    for (let px = 0; px < N; px++) {
+      // 타일 좌표 (맵은 0..w · 0..h)
+      const tx = ((px + 0.5) / N) * W - 1.5 * map.w
+      const ty = ((py + 0.5) / N) * H - 1.5 * map.h
+      const dx = Math.max(0, -tx, tx - map.w)
+      const dy = Math.max(0, -ty, ty - map.h)
+      const d = Math.hypot(dx, dy)
+      const n = noise(tx, ty)
+      col.copy(fl).lerp(alt, n).multiplyScalar((0.72 + n * 0.3) * light)
+      const k = Math.min(1, Math.max(0, (d - 2) / 12))
+      col.lerp(out, k * k * (3 - 2 * k))
+      col.lerp(fog, fa)
+      const i = (py * N + px) * 4
+      img.data[i] = Math.round(col.r * 255)
+      img.data[i + 1] = Math.round(col.g * 255)
+      img.data[i + 2] = Math.round(col.b * 255)
+      img.data[i + 3] = 255
+    }
+  }
+  g.putImageData(img, 0, 0)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
 function paintFloor(map: GameMap, style: WorldStyle): THREE.CanvasTexture {
   const g = paintFloorSteps(map, style, map.h)
   for (;;) {

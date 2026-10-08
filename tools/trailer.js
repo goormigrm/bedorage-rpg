@@ -483,7 +483,7 @@ function faceBoss(kind, dist) {
   b.hitTick = s.tick
 }
 
-/** 정예 무리: 금빛 이름표 · 접두 능력 (빠름 · 폭발 · 분열 · 흡혈 · 단단함) */
+/** 정예 무리: 금빛 이름표 · 특수 능력 (빠름 · 폭발 · 분열 · 흡혈 · 단단함) */
 function elites() {
   const s = st()
   const map = window.__bd.map()
@@ -699,7 +699,7 @@ function scenes() {
   at(8.2, () => {})
   cut(at, () => {
     gatherBots()
-    caption('정예 · 접두 능력', '금빛 이름표 — 빠름 · 단단함 · 폭발 · 분열 · 흡혈')
+    caption('정예 · 특수 능력', '금빛 이름표 — 빠름 · 단단함 · 폭발 · 분열 · 흡혈')
     elites()
     spawn([0, 0, 2], 36, 6, 11)
   })
