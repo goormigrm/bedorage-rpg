@@ -84,20 +84,19 @@ async function openGame(skin) {
   const cell = page.locator('.inv .cell:not(.empty)').last()
   await cell.hover()
   await page.waitForTimeout(300)
-  const tip = await page.evaluate(() => {
+  const box = await cell.boundingBox()
+  const tip = await page.evaluate((c) => {
     // 풍선은 가방용 · 마을용 둘이다 — 지금 보이는 것
     const t = [...document.querySelectorAll('.inv-tip')].find((e) => !e.hidden)
     if (!t) return null
     const r = t.getBoundingClientRect()
-    const cs = [...document.querySelectorAll('.inv .cell:not(.empty)')]
-    const c = cs[cs.length - 1].getBoundingClientRect()
-    const overlap = !(r.right <= c.left || r.left >= c.right || r.bottom <= c.top || r.top >= c.bottom)
-    return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight, overlap }
-  })
+    const overlap = !(r.right <= c.x || r.left >= c.x + c.width || r.bottom <= c.y || r.top >= c.y + c.height)
+    return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight, overlap, cell: `${Math.round(c.x)},${Math.round(c.y)} ~ ${Math.round(c.x + c.width)},${Math.round(c.y + c.height)}` }
+  }, box)
   check(!!tip, '아이템에 마우스를 올리면 설명 풍선이 뜬다')
   if (tip) {
     check(tip.l >= 0 && tip.t >= 0 && tip.r <= tip.w && tip.b <= tip.h, `설명 풍선이 화면 안에 있다 (${Math.round(tip.l)},${Math.round(tip.t)} ~ ${Math.round(tip.r)},${Math.round(tip.b)})`)
-    check(!tip.overlap, '설명 풍선이 마우스를 올린 칸을 덮지 않는다')
+    check(!tip.overlap, `설명 풍선이 마우스를 올린 칸을 덮지 않는다 (칸 ${tip.cell})`)
   }
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
