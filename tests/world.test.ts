@@ -1,6 +1,7 @@
 // 이어진 세계 (GUIDE 5·12장): 마을에서 시작 · 출구로 건너가기 · 지역마다 따로 도는 sim · 웨이포인트 · 타운 포털 ·
 // 쓰러뜨린 보스 기억 · 얼린 지역 버리기 · 용병 따라오기 · 난입은 마을에서.
 import { describe, expect, it } from 'vitest'
+import { MAPS } from '../src/core/maps'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
@@ -226,7 +227,9 @@ describe('이어진 세계', () => {
       const map = mapOf(town)
       const tl = areaLayout(town, map)
       const spots = [0, 1, 2, 3].map((o) => townPortalSpot(tl, o)!)
-      const fire = { x: 23 * TILE, y: 17 * TILE }
+      // 모닥불 가운데 (마을마다 자리가 다르다 — 2026-10-08 D4 막마다 다른 마을)
+      const f = MAPS[map.id].fire!
+      const fire = { x: (f[0] + 1) * TILE, y: (f[1] + 1) * TILE }
       for (const [i, a] of spots.entries()) {
         // 모닥불에서 4.5칸 안 (전에는 서쪽 아래로 7칸 남짓 — 처음 자리 · 성문 사이 길에서 벗어나 있었다)
         expect(Math.hypot(a.x - fire.x, a.y - fire.y)).toBeLessThan(4.5 * TILE)

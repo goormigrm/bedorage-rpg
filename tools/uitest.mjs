@@ -181,6 +181,11 @@ async function openGame(skin) {
     p.x = 30 * 32 + 16 + 30
     p.y = 20 * 32 + 16
   })
+  // 앞 시험의 Esc 두 번이 메뉴를 열어 두었으면 닫는다 (메뉴가 열려 있으면 F 가 NPC 창을 열지 않는다)
+  if (await page.evaluate(() => !document.getElementById('overlay').hidden)) {
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+  }
   await page.waitForTimeout(500)
   await page.keyboard.press('KeyF')
   await page.waitForTimeout(700)
@@ -188,9 +193,10 @@ async function openGame(skin) {
     const w = [...document.querySelectorAll('.tp')].find((e) => !e.hidden)
     if (!w) return null
     const r = w.getBoundingClientRect()
-    return { go: !!w.querySelector('.tr-go'), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }
+    return { go: !!w.querySelector('.tr-go'), text: w.textContent.slice(0, 60), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }
   })
-  check(!!tr && tr.go, '시련의 문 곁에서 F — 단계를 고르는 창이 열린다')
+  const why = tr ? tr.text : await page.evaluate(() => `창 없음 · 메뉴 ${!document.getElementById('overlay').hidden} · ${JSON.stringify((({ x, y, area }) => ({ x, y, area }))(window.__bd.state().players[window.__bd.me()]))}`)
+  check(!!tr && tr.go, `시련의 문 곁에서 F — 단계를 고르는 창이 열린다 (${why})`)
   if (tr?.go) {
     check(tr.inside, '시련의 문 창이 화면 안에 있다')
     await page.locator('.tr-go').click()

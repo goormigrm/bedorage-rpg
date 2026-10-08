@@ -46,7 +46,7 @@ const OTHER_PER_SEC = 36
 /** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
 const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
-const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger', 'riftOpen', 'riftBoss', 'riftDone', 'mastery'])
+const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger', 'riftOpen', 'riftBoss', 'riftDone', 'mastery', 'curse'])
 /**
  * 괴물 소리(깸 · 공격 준비 · 쓰러짐)는 남의 소리 몫(토큰)을 쓰지 않는다 — 제 되풀이 제한(아무 괴물 90ms · 같은 종류 0.35초 · 쓰러지는 질척임 50ms)만 거친다.
  * 2026-09-24 사용자: "몬스터 잡는데 몬스터 소리는 안 들린다" — 봇 총소리 · 맞는 소리가 초당 36개 몫을 다 써서, 괴물 단서 922개 중 66개만 소리가 났다.
@@ -506,6 +506,18 @@ export class Sfx {
         case 'questReward':
           if (e.p === localPlayer) this.coins(4, 0.1)
           break
+        // ---- 저주받은 상자 (2026-10-08 D4): 물결마다 북 두 번 + 낮은 울림 · 풀리면 짤랑 ----
+        case 'curse': {
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
+          if (e.wave <= 3) {
+            for (let i = 0; i < 2; i++) this.tone(b.node, b.t0 + i * 0.22, 0.35, 'sine', 70, 40, 0.6, 0.004)
+            this.tone(b.node, b.t0, 1.0, 'sawtooth', 110 - e.wave * 8, 90 - e.wave * 8, 0.12, 0.05)
+          } else {
+            this.shimmer(1, 1)
+            this.coins(4, 0.2)
+          }
+          break
+        }
         // ---- 시련 (2026-10-08 퀄리티 2차 7단계 D3) ----
         case 'riftOpen':
           if (e.p === localPlayer) this.shimmer(1.2, 0.8)

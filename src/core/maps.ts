@@ -107,6 +107,86 @@ function town1Rows(): string[] {
   return g.map((r) => r.join(''))
 }
 
+/**
+ * 막마다 다른 마을 (2026-10-08 퀄리티 2차 7단계 D4 — 전에는 네 마을이 1막 야영지 배치를 그대로 썼다).
+ * 크기는 같다(46×34). 테두리에 붙은 벽 덩어리는 목책, 안쪽 덩어리는 천막(밝게: 숙소)으로 그려진다(world3d). 자리는 world.ts TOWNS.
+ */
+function townRows(cut: number, build: (box: (x0: number, y0: number, w: number, h: number, ch: string) => void) => void): string[] {
+  const W = 46
+  const H = 34
+  const g: string[][] = []
+  for (let y = 0; y < H; y++) g.push(Array.from({ length: W }, (_, x) => (x === 0 || y === 0 || x === W - 1 || y === H - 1 ? '#' : '.')))
+  const box = (x0: number, y0: number, w: number, h: number, ch: string) => {
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) g[y][x] = ch
+  }
+  box(1, 1, cut, cut, '#')
+  box(W - 1 - cut, 1, cut, cut, '#')
+  box(1, H - 1 - cut, cut, cut, '#')
+  box(W - 1 - cut, H - 1 - cut, cut, cut, '#')
+  build(box)
+  return g.map((r) => r.join(''))
+}
+
+/** 2막 숲 가장자리 야영지: 숲이 왼쪽 위 · 오른쪽 아래를 먹어 들어온 빈터. 모닥불은 왼쪽 · 출구는 위(숲길) */
+const town2Rows = () =>
+  townRows(4, (box) => {
+    box(1, 1, 10, 6, '#')
+    box(1, 1, 5, 10, '#')
+    box(35, 25, 10, 8, '#')
+    box(40, 20, 5, 13, '#')
+    box(13, 4, 5, 3, '#')
+    box(27, 4, 4, 3, '#')
+    box(7, 13, 4, 3, '#')
+    box(9, 25, 4, 3, '#')
+    box(30, 18, 5, 3, '#')
+    box(20, 6, 2, 1, 'c')
+    box(34, 9, 1, 2, 'c')
+    box(6, 21, 2, 1, 'c')
+    box(24, 27, 2, 1, 'c')
+    box(38, 14, 1, 2, 'c')
+    box(16, 16, 2, 2, 'c')
+  })
+
+/** 3막 수문 야영지: 가운데를 가르는 수로 둑 둘 사이의 다리 — 위는 장터 · 아래는 숙소. 출구는 오른쪽 아래 수문 */
+const town3Rows = () =>
+  townRows(3, (box) => {
+    box(1, 14, 16, 2, '#')
+    box(29, 14, 16, 2, '#')
+    box(6, 5, 4, 3, '#')
+    box(18, 4, 5, 3, '#')
+    box(33, 5, 4, 3, '#')
+    box(6, 24, 4, 3, '#')
+    box(33, 24, 5, 3, '#')
+    box(20, 27, 4, 3, '#')
+    box(26, 9, 2, 1, 'c')
+    box(12, 10, 1, 2, 'c')
+    box(39, 19, 1, 2, 'c')
+    box(13, 20, 2, 1, 'c')
+    box(28, 22, 1, 2, 'c')
+    box(22, 19, 2, 2, 'c')
+  })
+
+/** 4막 심연의 문: 위가 좁고 아래가 넓은 마지막 진지 — 모닥불은 위 가운데 · 출구는 아래 가운데(심연으로 내려가는 문길) */
+const town4Rows = () =>
+  townRows(3, (box) => {
+    box(1, 1, 12, 8, '#')
+    box(33, 1, 12, 8, '#')
+    box(1, 27, 18, 6, '#')
+    box(27, 27, 18, 6, '#')
+    box(15, 3, 4, 3, '#')
+    box(27, 3, 4, 3, '#')
+    box(5, 12, 4, 3, '#')
+    box(37, 12, 4, 3, '#')
+    box(6, 21, 5, 3, '#')
+    box(35, 21, 5, 3, '#')
+    box(21, 4, 2, 1, 'c')
+    box(14, 18, 1, 2, 'c')
+    box(31, 18, 1, 2, 'c')
+    box(20, 25, 1, 1, 'c')
+    box(25, 25, 1, 1, 'c')
+    box(22, 11, 2, 2, 'c')
+  })
+
 /** 테두리만 있는 빈 격자 (크기 정의용) */
 function frame(w: number, h: number): string[] {
   const rows: string[] = []
@@ -242,9 +322,9 @@ export const MAPS: Record<MapId, MapDef> = {
     id: 'town2',
     name: '숲 가장자리 야영지',
     desc: '안개 숲 어귀의 사냥꾼 야영지. 늑대 울음이 밤새 목책을 두드린다.',
-    rows: town1Rows(),
+    rows: town2Rows(),
     fixedScale: true,
-    fire: [22, 16],
+    fire: [16, 16],
     gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
     theme: {
       floor: 0x56603f, floorAlt: 0x4e583a, floorLine: 0x3a4230,
@@ -319,9 +399,9 @@ export const MAPS: Record<MapId, MapDef> = {
     id: 'town3',
     name: '수문 야영지',
     desc: '지하도로 내려가는 수문 옆 야영지. 누런 등불 아래 물 떨어지는 소리만 들린다.',
-    rows: town1Rows(),
+    rows: town3Rows(),
     fixedScale: true,
-    fire: [22, 16],
+    fire: [22, 19],
     gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
     theme: {
       floor: 0x686052, floorAlt: 0x60584a, floorLine: 0x484238,
@@ -426,9 +506,9 @@ export const MAPS: Record<MapId, MapDef> = {
     id: 'town4',
     name: '심연의 문',
     desc: '심연으로 내려가는 문 앞의 마지막 야영지. 문틈으로 붉은 빛이 샌다.',
-    rows: town1Rows(),
+    rows: town4Rows(),
     fixedScale: true,
-    fire: [22, 16],
+    fire: [22, 11],
     gen: { style: 'fixed', density: 0, crates: 0, sandbags: 0, maxLen: 0, forts: false },
     theme: {
       floor: 0x6a5850, floorAlt: 0x625048, floorLine: 0x4a3a36,

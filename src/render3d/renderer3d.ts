@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { Ally, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
+import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
@@ -1222,6 +1222,13 @@ export class Renderer3D {
         case 'questReward':
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
+        // ---- 저주받은 상자 (2026-10-08 D4) ----
+        case 'curse':
+          if (e.wave === 1) this.hud.banner(bt('저주받은 상자!'), `괴물 물결 ${CURSE_WAVES}개를 막아라 — 다 잡으면 상자가 열린다`, '#c88aff')
+          else if (e.wave <= CURSE_WAVES) this.hud.notice(`물결 ${e.wave} / ${CURSE_WAVES}`, '#c88aff')
+          else this.hud.banner(bt('저주가 풀렸다'), '상자가 열렸다 — 희귀 이상 하나는 꼭 들어 있다', '#ffd86a')
+          this.spawnRing(e.x * U, e.y * U, 0.4, e.wave > CURSE_WAVES ? 3 : 4.5, 0.9, e.wave > CURSE_WAVES ? 0xffd86a : 0xb47aff)
+          break
         // ---- 시련 (2026-10-08 퀄리티 2차 7단계 D3) ----
         case 'riftOpen':
           if (e.p === localPlayer) this.hud.banner(`${RIFT_TEXT.name} ${e.stage}단계`, `괴물을 잡아 막대를 채우면 수호자가 나온다 · ${Math.round(RIFT_TICKS / 3600)}분 안에`, '#c8a8ff')
@@ -1268,7 +1275,10 @@ export class Renderer3D {
               this.spawnParticle(e.x * U, 0.3, e.y * U, Math.cos(a) * 0.05, 0.08, Math.sin(a) * 0.05, 0.7, 0x8a6a4a, 0.6)
               if (k % 2 === 0) this.spawnPuff(e.x * U, 0.25, e.y * U, Math.cos(a) * 0.015, 0.006, Math.sin(a) * 0.015, 0.8, 0xa89070, 0.3)
             }
-          } else this.spawnRing(e.x * U, e.y * U, 0.2, 1.6, 0.6, e.kind === OBJ_GOLDCHEST ? 0xffd86a : 0xd8c8a8)
+          } else {
+            this.spawnRing(e.x * U, e.y * U, 0.2, 1.6, 0.6, e.kind === OBJ_GOLDCHEST || e.kind === OBJ_SECRET ? 0xffd86a : e.kind === OBJ_CURSED ? 0xb47aff : 0xd8c8a8)
+            if (e.kind === OBJ_SECRET && e.p === localPlayer) this.hud.notice('숨은 보물을 찾았다!', '#ffd86a')
+          }
           break
         case 'shrine':
           this.spawnRing(e.x * U, e.y * U, 0.3, 2.8, 0.8, [0xff5a3a, 0x5aa8ff, 0xd8a8ff, 0x7aff9a][e.kind] ?? 0xffffff)
@@ -1930,7 +1940,7 @@ export class Renderer3D {
     this.updateDrops(curr, opts.localPlayer)
     this.updateMarkers(curr, opts.localPlayer)
     this.updatePortals(curr)
-    this.updateObjects(curr)
+    this.updateObjects(curr, opts.localPlayer)
     this.updateZones(curr, opts.localPlayer)
     this.updateThrows(curr)
     this.updateAuras(curr, pos)
@@ -3322,15 +3332,58 @@ export class Renderer3D {
   /**
    * 지역 물건: 상자(나무 + 쇠테, 열리면 뚜껑이 젖혀진다) · 금빛 상자 · 항아리(깨지면 사라진다) · 제단(색 빛 — 쓰면 꺼진다)
    */
-  private updateObjects(curr: GameState): void {
+  private updateObjects(curr: GameState, lp = -1): void {
     const live = new Set<number>()
+    const me = lp >= 0 ? curr.players[lp] : undefined
     for (const o of curr.objects ?? []) {
       if (o.kind === OBJ_URN && o.used) continue
       live.add(o.id)
       let g = this.objMeshes.get(o.id)
       if (!g) {
         g = new THREE.Group()
-        if (o.kind === OBJ_CHEST || o.kind === OBJ_GOLDCHEST) {
+        if (o.kind === OBJ_CURSED) {
+          // 저주받은 상자 (2026-10-08 D4): 검보라 궤짝 + 쇠사슬 띠 + 둘레를 도는 보랏빛 룬 고리 (물결 중에는 빨라지고 붉어진다)
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.46, 0.52), new THREE.MeshLambertMaterial({ color: 0x2e1e36 }))
+          body.position.y = 0.23
+          body.castShadow = true
+          const chain = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.07, 0.56), new THREE.MeshLambertMaterial({ color: 0x6a6670 }))
+          chain.position.y = 0.34
+          const chain2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.56), new THREE.MeshLambertMaterial({ color: 0x6a6670 }))
+          chain2.position.y = 0.25
+          const lid = new THREE.Group()
+          const lidM = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.8, 10, 1, false, 0, Math.PI), new THREE.MeshLambertMaterial({ color: 0x3a2444 }))
+          lidM.rotation.z = Math.PI / 2
+          lidM.position.z = 0.26
+          lid.add(lidM)
+          lid.position.set(0, 0.46, -0.26)
+          lid.userData.lid = true
+          const skull = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xd8c8ff }))
+          skull.position.set(0, 0.3, 0.27)
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 24, 1), new THREE.MeshBasicMaterial({ color: 0xb47aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+          ring.rotation.x = -Math.PI / 2
+          ring.position.y = 0.05
+          ring.userData.curseRing = true
+          const glow = new THREE.PointLight(0x9a5aff, 4, 3.5, 1.6)
+          glow.position.y = 0.9
+          glow.userData.orb = true
+          g.add(body, chain, chain2, lid, skull, ring, glow)
+        } else if (o.kind === OBJ_SECRET) {
+          // 숨은 보물 (2026-10-08 D4): 금화 더미 + 반짝임 — 가까이 가야 보인다
+          const pile = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.26, 10), new THREE.MeshLambertMaterial({ color: 0xc8962a }))
+          pile.position.y = 0.13
+          pile.castShadow = true
+          g.add(pile)
+          for (let k = 0; k < 5; k++) {
+            const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.02, 10), new THREE.MeshLambertMaterial({ color: 0xffd86a, emissive: 0x3a2a00 }))
+            coin.position.set(Math.cos(k * 1.3) * 0.32, 0.02, Math.sin(k * 1.3) * 0.32)
+            coin.rotation.x = 0.3 * k
+            g.add(coin)
+          }
+          const spark = new THREE.Mesh(new THREE.OctahedronGeometry(0.08), new THREE.MeshBasicMaterial({ color: 0xfff3c0 }))
+          spark.position.y = 0.45
+          spark.userData.orb = true
+          g.add(spark)
+        } else if (o.kind === OBJ_CHEST || o.kind === OBJ_GOLDCHEST) {
           const gold = o.kind === OBJ_GOLDCHEST
           const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.46), new THREE.MeshLambertMaterial({ color: gold ? 0xa87a1a : 0x5a3a20 }))
           body.position.y = 0.2
@@ -3373,10 +3426,26 @@ export class Renderer3D {
         this.scene.add(g)
         this.objMeshes.set(o.id, g)
       }
+      // 숨은 보물은 5칸 안에 들어서야 보인다 (열린 뒤에는 금화가 흩어지니 치운다)
+      if (o.kind === OBJ_SECRET) g.visible = !o.used && !!me && Math.hypot(o.x - me.x, o.y - me.y) < 5 * 32
       if (o.used) {
         for (const c of g.children) {
           if (c.userData.lid) c.rotation.x = Math.max(-1.9, c.rotation.x - 0.12)
-          if (c.userData.orb) c.visible = false
+          if (c.userData.orb || c.userData.curseRing) c.visible = false
+        }
+      } else if (o.kind === OBJ_CURSED) {
+        const busy = o.v > 0
+        for (const c of g.children) {
+          if (!c.userData.curseRing) continue
+          c.rotation.z += busy ? 0.09 : 0.015
+          const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial
+          m.color.setHex(busy ? 0xff4a6a : 0xb47aff)
+          m.opacity = busy ? 0.65 + 0.3 * Math.sin(this.t * 9) : 0.55 + 0.15 * Math.sin(this.t * 2 + o.id)
+        }
+      } else if (o.kind === OBJ_SECRET) {
+        for (const c of g.children) if (c.userData.orb) {
+          c.rotation.y = this.t * 3
+          c.scale.setScalar(0.7 + 0.5 * Math.abs(Math.sin(this.t * 4 + o.id)))
         }
       } else if (o.kind === OBJ_SHRINE) {
         for (const c of g.children) if (c.userData.orb && c instanceof THREE.Mesh) c.position.y = 1.3 + Math.sin(this.t * 2 + o.id) * 0.06
@@ -3466,7 +3535,10 @@ export class Renderer3D {
     }
     for (const o of curr.objects ?? []) {
       if (o.used || o.kind === OBJ_URN || Math.hypot(o.x - me.x, o.y - me.y) > 5 * 32) continue
-      label(o.x, o.y, o.kind === OBJ_SHRINE ? `${SHRINE_NAMES[o.v]} · ${F}` : o.kind === OBJ_GOLDCHEST ? `금빛 상자 · ${F}` : `상자 · ${F}`, o.kind === OBJ_GOLDCHEST ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : '#d8cfbf')
+      if (o.kind === OBJ_CURSED && o.v > 0) continue
+      const name = o.kind === OBJ_SHRINE ? SHRINE_NAMES[o.v] : o.kind === OBJ_GOLDCHEST ? '금빛 상자' : o.kind === OBJ_CURSED ? bt('저주받은 상자') : o.kind === OBJ_SECRET ? '숨은 보물' : '상자'
+      const col = o.kind === OBJ_GOLDCHEST || o.kind === OBJ_SECRET ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : o.kind === OBJ_CURSED ? '#c88aff' : '#d8cfbf'
+      label(o.x, o.y, `${name} · ${F}`, col)
     }
     if (l.wp) label(l.wp.x, l.wp.y, `웨이포인트 · ${F}`, '#9ac8ff')
     if (isTown(curr.curArea)) {

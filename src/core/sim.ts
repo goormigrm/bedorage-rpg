@@ -38,7 +38,7 @@ import { variantKind,
 } from './skills'
 import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
-  COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
+  COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, CURSE_WAVES, CURSE_WAVE_TICKS, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, Ally, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL, TICK_RATE,
@@ -388,6 +388,78 @@ function riftDone(state: GameState, m: Monster): void {
   state.portals = state.portals.filter((q) => q.owner >= 0)
   state.portals.push({ owner: -1, area: r.area, x: m.x, y: m.y })
   state.events.push({ type: 'riftDone', stage: r.stage, ok: r.ok, t: r.t })
+}
+
+/**
+ * 저주받은 상자의 물결 (2026-10-08 D4): 열면 둘레 4 ~ 6칸에 이 막 괴물이 깨어 나온다 — 6 · 7 · 6(정예 하나). 한 물결을 다 잡거나
+ * CURSE_WAVE_TICKS 가 지나면 다음 물결, 셋째 물결까지 모두 잡으면 상자가 열린다(가까운 파티원 모두 각자의 전리품)
+ */
+function stepCurses(state: GameState, map: GameMap): void {
+  for (const o of state.objects) {
+    if (o.kind !== OBJ_CURSED || o.v < 1 || o.v > CURSE_WAVES) continue
+    const pack = 7000 + o.id
+    if ((o.t ?? 0) < 0) {
+      curseWave(state, map, o, pack)
+      o.t = 0
+      continue
+    }
+    o.t = (o.t ?? 0) + 1
+    const alive = state.monsters.some((m) => m.pack === pack && m.hp > 0)
+    if (o.v < CURSE_WAVES && (!alive || o.t >= CURSE_WAVE_TICKS)) {
+      o.v++
+      o.t = 0
+      curseWave(state, map, o, pack)
+      state.events.push({ type: 'curse', x: o.x, y: o.y, wave: o.v })
+    } else if (o.v === CURSE_WAVES && !alive) {
+      o.v = 9
+      const by = state.players.find((q) => isActive(q) && len(q.x - o.x, q.y - o.y) <= SHARE_RANGE)
+      if (by) openObject(state, o, by)
+      else o.used = true
+      state.events.push({ type: 'curse', x: o.x, y: o.y, wave: CURSE_WAVES + 1 })
+    }
+  }
+}
+
+function curseWave(state: GameState, map: GameMap, o: MapObj, pack: number): void {
+  const act = areaDef(state.curArea).act
+  const pool = summonPool(act)
+  if (pool.length === 0) return
+  const lvl = areaLevel(state.curArea, state.tier)
+  const tr = tierOf(state.tier)
+  const rs = state.rift && state.rift.area === state.curArea ? riftScale(state.rift.stage) : null
+  const seats = state.players.length
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp * (rs?.hp ?? 1)
+  const pow = Math.round(levelPow(lvl) * tr.pow * (rs?.pow ?? 1))
+  // 노리는 사람: 상자에서 가장 가까운 사람 (번호가 작은 쪽)
+  let target = -1
+  let bd = Infinity
+  for (const q of state.players) {
+    if (!isActive(q)) continue
+    const d = len(q.x - o.x, q.y - o.y)
+    if (d < bd) {
+      bd = d
+      target = q.id
+    }
+  }
+  const n = [0, 6, 7, 6][o.v] ?? 6
+  const a0 = randInt(state.rng, 0, 1024)
+  for (let i = 0; i < n; i++) {
+    const kind = pool[randInt(state.rng, 0, pool.length)]
+    const ang = (a0 + Math.round((i * 1024) / n)) & 1023
+    const d = 4 * TILE + randInt(state.rng, 0, 2 * TILE)
+    const at = moveCircle(map, o.x, o.y, MONSTER_LIST[kind].r, cosA(ang) * d, sinA(ang) * d)
+    const elite = o.v === CURSE_WAVES && i === 0
+    const def = MONSTER_LIST[kind]
+    const m = makeMonster(state, kind, at.x, at.y, pack, hpMul * (elite ? (def.eliteHp ?? ELITE.hp) : 1), Math.round(pow * (elite ? ELITE.pow : 1)), lvl)
+    if (elite) m.elite = rollAffixes(state.rng, 1, Math.min(4, affixCount(lvl) + 1 + tr.affix), affixSkip(kind))
+    m.st = MS_CHASE
+    m.target = target
+    m.cd = 40 + i * 8
+    m.aim = atan2A(o.y - m.y, o.x - m.x)
+    state.monsters.push(m)
+    state.monstersTotal++
+    state.events.push({ type: 'summon', m: m.id, x: at.x, y: at.y })
+  }
 }
 
 /** 지역이 없으면 만들어 채운다 (처음 들어설 때 · 버린 뒤 다시 올 때) */
@@ -911,6 +983,8 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
 function useObject(state: GameState, p: PlayerState): boolean {
   for (const o of state.objects) {
     if (o.used || len(o.x - p.x, o.y - p.y) > 44) continue
+    // 물결이 시작된 저주받은 상자는 다시 열 수 없다 (다 막으면 저절로 열린다)
+    if (o.kind === OBJ_CURSED && o.v > 0) continue
     openObject(state, o, p)
     return true
   }
@@ -919,6 +993,14 @@ function useObject(state: GameState, p: PlayerState): boolean {
 
 /** 물건이 열린다. 상자·항아리는 가까운 파티원 모두에게 각자의 전리품 (개인 전리품) */
 function openObject(state: GameState, o: MapObj, by: PlayerState): void {
+  if (o.kind === OBJ_CURSED && o.v === 0) {
+    // 저주가 깨어난다: 물결은 다음 틱에 stepCurses 가 부른다 (맵이 있어야 둘레 자리를 잡는다)
+    if (state.mode !== 'dungeon') return
+    o.v = 1
+    o.t = -1
+    state.events.push({ type: 'curse', x: o.x, y: o.y, wave: 1 })
+    return
+  }
   o.used = true
   if (o.kind === OBJ_SHRINE) {
     by.shrine = o.v
@@ -934,6 +1016,9 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
     // 상자는 일반·마법 · 금빛 상자는 희귀 이상 하나 확정("비워라" 던전 · 보스 방 앞의 보상) · 항아리는 드물게 하나
     const up = tierOf(state.tier).loot
     if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 'goldchest', up, 2)
+    // 숨은 보물: 금화 더미 + 희귀 이상 하나 · 저주받은 상자(물결을 다 막았다): 금빛 상자보다 조금 더
+    else if (o.kind === OBJ_SECRET) spill(state, q, o.x, o.y, lvl, 6, 3, 2, 'goldchest', up, 2)
+    else if (o.kind === OBJ_CURSED) spill(state, q, o.x, o.y, lvl, 6, 2.5, 3 + (rand(state.rng) < 0.6 ? 1 : 0), 'goldchest', up + 0.05, 2)
     else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 'chest', up, 0)
     else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.04 ? 1 : 0, 'chest', up, 0)
   }
@@ -962,10 +1047,12 @@ function placeObjects(state: GameState, map: GameMap, id: number, seed: number, 
     }
   }
   if (spots.length === 0) return
+  // 맞는 자리만 먼저 추린 뒤 뽑는다 — 드문 자리(막다른 곳)를 아무 자리에서 40번 뽑아 맞히려 하면 거의 못 찾는다
   const pick = (want: (s: { wall: number }) => boolean) => {
+    const cand = spots.filter(want)
+    if (cand.length === 0) return null
     for (let t = 0; t < 40; t++) {
-      const s = spots[randInt(rng, 0, spots.length)]
-      if (!want(s)) continue
+      const s = cand[randInt(rng, 0, cand.length)]
       if (state.objects.some((o) => (o.x - s.x) ** 2 + (o.y - s.y) ** 2 < (4 * TILE) ** 2)) continue
       return s
     }
@@ -985,6 +1072,11 @@ function placeObjects(state: GameState, map: GameMap, id: number, seed: number, 
     for (let j = 0; j < n; j++) state.objects.push({ id: state.nextObjId++, kind: OBJ_URN, x: c.x + (j % 2) * 20 - 10, y: c.y + Math.floor(j / 2) * 20 - 10, used: false, v: 0 })
   }
   if (rand(rng) < 0.45) add(OBJ_SHRINE, pick((s) => s.wall === 0), randInt(rng, 0, 4))
+  // 지역 이벤트 (2026-10-08 D4): 저주받은 상자는 트인 곳 · 숨은 보물은 막다른 곳(벽 셋 — 없으면 구석) — 보스 방에는 없다
+  if (def.kind !== 'boss') {
+    if (rand(rng) < 0.4) add(OBJ_CURSED, pick((s) => s.wall === 0))
+    if (rand(rng) < 0.5) add(OBJ_SECRET, pick((s) => s.wall === 3) ?? pick((s) => s.wall === 2))
+  }
   // 보스 방 · 보스 방 바로 앞 층 · "비워라" 퀘스트 던전에는 금빛 상자
   const deepest = def.kind === 'boss' || GOLD_CHEST_AREAS.includes(id)
   if (def.kind !== 'field' && deepest) add(OBJ_GOLDCHEST, pick((s) => s.wall >= 2) ?? pick((s) => s.wall >= 1))
@@ -1536,6 +1628,7 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   }
   if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
   if (state.rift) stepRift(state, map)
+  if (state.mode === 'dungeon' && state.phase === 'playing') stepCurses(state, map)
   if (state.allies?.length) stepAllies(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)

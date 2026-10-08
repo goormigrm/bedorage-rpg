@@ -628,8 +628,26 @@ const CAMP: TownSpots = {
   fieldGate: [17, 11],
   npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23], trial: [30, 20] },
 }
-/** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
-const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP, 19: CAMP, 28: CAMP }
+/**
+ * 막마다 다른 마을 (2026-10-08 퀄리티 2차 7단계 D4 — 전에는 넷이 CAMP 배치를 같이 썼다). 맵은 maps.ts town2Rows ~ town4Rows.
+ * 타운 포털은 모닥불 둘레(아래 · 오른쪽 · 왼쪽 · 위) · 들판 문은 웨이포인트의 화면 오른쪽(+2, −2) · NPC 는 천막 앞
+ */
+const FOREST: TownSpots = {
+  spawn: [4, 18], wp: [21, 12], exits: [[24, 1]], portals: [[19, 18], [19, 14], [14, 19], [14, 14]],
+  fieldGate: [23, 10],
+  npcs: { merchant: [9, 17], smith: [15, 8], gambler: [29, 8], stash: [17, 22], elder: [11, 23], captain: [32, 22], trial: [25, 21] },
+}
+const SLUICE: TownSpots = {
+  spawn: [6, 19], wp: [22, 10], exits: [[44, 29]], portals: [[25, 22], [25, 17], [20, 23], [20, 17]],
+  fieldGate: [24, 8],
+  npcs: { merchant: [8, 9], smith: [20, 8], gambler: [35, 9], stash: [17, 20], elder: [8, 22], captain: [35, 22], trial: [30, 19] },
+}
+const LASTGATE: TownSpots = {
+  spawn: [23, 7], wp: [17, 15], exits: [[22, 32]], portals: [[25, 14], [25, 10], [20, 14], [20, 10]],
+  fieldGate: [19, 13],
+  npcs: { merchant: [17, 7], smith: [29, 7], gambler: [7, 16], stash: [28, 12], elder: [39, 16], captain: [8, 19], trial: [29, 17] },
+}
+const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: FOREST, 19: SLUICE, 28: LASTGATE }
 
 /** 마을이면 NPC 자리 (px) */
 export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {

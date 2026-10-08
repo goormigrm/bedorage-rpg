@@ -553,13 +553,24 @@ export interface MapObj {
   y: number
   /** 이미 열었다·깨졌다·썼다 */
   used: boolean
-  /** 제단 종류 등 */
+  /** 제단 종류 등 · 저주받은 상자는 물결 (0 아직 · 1 ~ 3 물결 · 9 끝) */
   v: number
+  /** 저주받은 상자: 이번 물결이 시작된 뒤 흐른 틱 (-1 = 다음 틱에 물결을 부른다) */
+  t?: number
 }
 export const OBJ_CHEST = 0
 export const OBJ_GOLDCHEST = 1
 export const OBJ_URN = 2
 export const OBJ_SHRINE = 3
+/**
+ * 지역 이벤트 (2026-10-08 퀄리티 2차 7단계 D4): **저주받은 상자** — 열면 둘레에 괴물 물결 셋. 다 막으면 상자가 열린다(희귀 이상 확정) ·
+ * **숨은 보물** — 막다른 곳에 숨은 금화 더미(가까이 가야 보인다)
+ */
+export const OBJ_CURSED = 4
+export const OBJ_SECRET = 5
+/** 저주받은 상자: 물결 수 · 한 물결을 기다리는 가장 긴 틱 (다 잡으면 곧장 다음 물결) */
+export const CURSE_WAVES = 3
+export const CURSE_WAVE_TICKS = 60 * 12
 /** 제단 축복: 전투(피해 +25%) · 수호(받는 피해 -25%) · 지혜(경험치 +50%) · 신속(이동 +20%) */
 export const SHRINE_NAMES = ['전투의 제단', '수호의 제단', '지혜의 제단', '신속의 제단']
 export const SHRINE_TICKS = 60 * 30
@@ -666,6 +677,8 @@ export type SimEvent =
   | { type: 'potion'; p: number }
   /** 상자를 열었다 · 항아리가 깨졌다 · 제단의 축복 */
   | { type: 'objOpen'; p: number; kind: number; x: number; y: number }
+  /** 저주받은 상자: 물결 시작 (1 ~ 3) · 끝 (4 — 상자가 열렸다) */
+  | { type: 'curse'; x: number; y: number; wave: number }
   | { type: 'shrine'; p: number; kind: number; x: number; y: number }
   /** 마을 NPC 와 거래했다 (what: sell · buy · gamble · stash · stashAll · bagUp · stashUp · shopNew) */
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }

@@ -13,7 +13,7 @@ import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_SWIFT, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
 import { keyLabel, skillKeyLabel } from '../game/keymap'
-import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
+import { CURSE_WAVES, DEATH_RULE_LABEL, GameState, OBJ_CURSED, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
 import { AREAS, QUESTS, RIFT_TICKS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
@@ -748,6 +748,27 @@ export class D4Hud {
     const boss = s.monsters.find((m) => m.hp > 0 && isBossLike(m) && m.st !== 0)
     const rift = s.rift && s.rift.area === s.curArea ? s.rift : null
     if (rift) this.drawRift(h, rift, !!boss)
+    // 저주받은 상자 물결 (2026-10-08 D4): 보스 · 시련 막대가 없을 때 위 가운데 한 줄
+    else if (!boss) {
+      const cur = s.objects?.find((o) => o.kind === OBJ_CURSED && o.v >= 1 && o.v <= CURSE_WAVES)
+      if (cur) {
+        const pack = 7000 + cur.id
+        const left = s.monsters.filter((m) => m.pack === pack && m.hp > 0).length
+        const c = h.ctx
+        c.save()
+        c.font = `800 14px ${SERIF}`
+        c.textAlign = 'center'
+        c.textBaseline = 'alphabetic'
+        const msg = `${bt('저주받은 상자')} · 물결 ${cur.v} / ${CURSE_WAVES} · 남은 괴물 ${left}`
+        const tw = c.measureText(msg).width + 28
+        c.fillStyle = 'rgba(14,6,20,0.75)'
+        rr(c, h.W / 2 - tw / 2, 16, tw, 24, 7)
+        c.fill()
+        c.fillStyle = '#e0b8ff'
+        c.fillText(msg, h.W / 2, 33)
+        c.restore()
+      }
+    }
     if (!boss) return
     const unique = (boss.elite & EA_UNIQUE) !== 0
     const c = h.ctx
