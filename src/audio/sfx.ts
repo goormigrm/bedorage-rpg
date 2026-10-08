@@ -46,7 +46,7 @@ const OTHER_PER_SEC = 36
 /** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
 const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
-const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen'])
+const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger'])
 /**
  * 괴물 소리(깸 · 공격 준비 · 쓰러짐)는 남의 소리 몫(토큰)을 쓰지 않는다 — 제 되풀이 제한(아무 괴물 90ms · 같은 종류 0.35초 · 쓰러지는 질척임 50ms)만 거친다.
  * 2026-09-24 사용자: "몬스터 잡는데 몬스터 소리는 안 들린다" — 봇 총소리 · 맞는 소리가 초당 36개 몫을 다 써서, 괴물 단서 922개 중 66개만 소리가 났다.
@@ -470,6 +470,14 @@ export class Sfx {
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
           for (let i = 0; i < 5; i++) this.noiseBurst(b.node, b.t0 + i * 0.045 + Math.random() * 0.02, 0.025, 'bandpass', 2600 + Math.random() * 1400, 2200, 0.35, 4)
           this.coins(2, 0.26)
+          break
+        }
+        case 'stagger': {
+          // 보스 경직: 묵직한 쿵 + 종 (기회다!)
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)
+          this.tone(b.node, b.t0, 0.5, 'sine', 90, 40, 0.7, 0.004)
+          this.noiseBurst(b.node, b.t0, 0.25, 'lowpass', 900, 200, 0.4, 0.7)
+          for (const [i, f] of [784, 1047, 1319].entries()) this.tone(b.node, b.t0 + 0.08 + i * 0.06, 0.9, 'triangle', f, f, 0.22, 0.004)
           break
         }
         case 'bagFull':

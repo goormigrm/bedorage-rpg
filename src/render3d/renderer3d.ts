@@ -1432,6 +1432,16 @@ export class Renderer3D {
         case 'swipe':
           this.monsterView.swiped(e.m)
           break
+        case 'stagger': {
+          // 보스 경직: 금빛 충격파 · 번쩍 · 흔들림 · 알림 (2026-10-08 F2)
+          this.skillFx.wave(e.x * U, e.y * U, 0xffd86a, 5, 0.6, 0.5, 2)
+          this.spawnImpact(e.x * U, 1.6, e.y * U, 0xfff0b0, 6)
+          this.skillFx.sparks(e.x * U, 1.4, e.y * U, 0xffe080, 30, 0.2, 0.6, 0.9)
+          this.shake = Math.max(this.shake, 0.5)
+          this.hitStop = Math.max(this.hitStop, 0.12)
+          this.hud.notice('경직! 3초 — 받는 피해 +25%', '#ffd86a', 2.4)
+          break
+        }
         case 'boom': {
           // 폭발: 붉은 섬광 + 파편 + 링 + 흔들림. 적의 범위 공격은 빨강(초록은 우리 편 좋은 효과 — 2026-09-23)
           const light = this.takeLight(0xff5a2a, 18, e.r * U * 3, 1.5)
@@ -4026,6 +4036,31 @@ export class Renderer3D {
           ctx.lineTo(to.x, to.y)
           ctx.stroke()
         }
+        ctx.restore()
+      }
+      if (m.st === MS_WINDUP && def.attack === 'melee' && m.mode === 0 && !def.boss && def.arc) {
+        // 근접 공격 예고 (2026-10-08 퀄리티 2차 3단계 F1 — 전에는 몸짓뿐이었다): 휘두를 부채꼴이 바닥에 붉게 차오른다.
+        // 다 차면 맞는다 — 그 전에 부채꼴 밖으로 구르거나 비키면 된다
+        const k = Math.max(0, Math.min(1, 1 - m.t / def.windup))
+        const reach = (bodyR(m) + PLAYER_RADIUS + def.range + 8) * U
+        // arc 는 반각(1024 단계 — sim 이 |조준과의 차이| > arc 면 안 맞는다)
+        const half = (def.arc / 1024) * Math.PI * 2
+        const a0 = (m.aim / 1024) * Math.PI * 2
+        ctx.save()
+        ctx.beginPath()
+        const o = this.worldToScreen(at.x, 0.05, at.z)
+        ctx.moveTo(o.x, o.y)
+        for (let i = 0; i <= 10; i++) {
+          const a = a0 - half + (i / 10) * half * 2
+          const pnt = this.worldToScreen(at.x + Math.cos(a) * reach, 0.05, at.z + Math.sin(a) * reach)
+          ctx.lineTo(pnt.x, pnt.y)
+        }
+        ctx.closePath()
+        ctx.fillStyle = `rgba(255,60,40,${(0.1 + 0.28 * k).toFixed(3)})`
+        ctx.fill()
+        ctx.strokeStyle = `rgba(255,90,70,${(0.35 + 0.5 * k).toFixed(3)})`
+        ctx.lineWidth = 1.5
+        ctx.stroke()
         ctx.restore()
       }
       if (m.st === MS_WINDUP && ((def.attack === 'ranged' && m.mode === 0) || m.mode === 1)) {

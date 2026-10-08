@@ -4,6 +4,7 @@
 import * as THREE from 'three'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { FILE_ANCHORS, type AnchorName, type BakedModel, type ModelSpec, type SegName } from './monsterModels'
+import { toonMat } from './toon'
 
 const SEG_ORDER: SegName[] = ['idle', 'walk', 'attack', 'hit', 'death']
 
@@ -282,9 +283,12 @@ function skinFrame(mesh: THREE.Mesh, fat: number): [Float32Array, Float32Array] 
   return [outP, outN]
 }
 
-/** glTF 의 PBR 재질을 이 게임의 Lambert 로 (다른 괴물 · 조명과 맞추고 가볍게) */
+/**
+ * glTF 의 PBR 재질을 이 게임의 툰 재질로 (2026-10-08 G8 — 사용자 결정 "둘 다 툰으로": 사실적인 괴물이 계란 · 도형 괴물과 따로 놀았다).
+ * 명암 3단 + 먹선 (toon.ts). 가볍기는 Lambert 와 같다
+ */
 function toLambert(src: THREE.MeshStandardMaterial, spec: ModelSpec): THREE.Material {
-  const mat = new THREE.MeshLambertMaterial({
+  const mat = toonMat({
     map: src.map ?? null,
     normalMap: src.normalMap ?? null,
     color: src.color ? src.color.clone() : new THREE.Color(1, 1, 1),

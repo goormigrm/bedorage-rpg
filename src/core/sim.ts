@@ -112,6 +112,13 @@ const WP_R = 44
 const PORTAL_R = 40
 /** 타운 포털 시전 (틱) */
 export const PORTAL_CAST = 90
+/**
+ * 보스 경직 (2026-10-08 퀄리티 2차 3단계 F2 — 디아블로 4): 최대 체력의 12% 를 깎으면(또는 기절 시도로) 막대가 가득 → 3초 경직 ·
+ * 그동안 받는 피해 +25%. 보스전이 "피하기만" 에서 "기회를 노리기" 로
+ */
+const STAGGER_HP = 0.12
+const STAGGER_TICKS = 180
+const STAGGER_DMG = 1.25
 /** 사람이 없는 지역을 얼려 두는 수 (넘으면 가장 오래된 것부터 버린다 — 다시 가면 새로 채워진다) */
 const FROZEN_KEEP = 3
 
@@ -2942,6 +2949,11 @@ function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit
   if (hitter && hitter.st[ST_ELITEDMG] > 0 && (m.elite || MONSTER_LIST[m.kind].boss)) dmg = Math.round(dmg * (1 + hitter.st[ST_ELITEDMG] / 100))
   // 약화(생중계·스포트라이트): 받는 피해 증가
   if (m.vuln > 0 && m.vulnPct > 0) dmg = Math.round(dmg * (1 + m.vulnPct / 100))
+  // 보스 경직: 경직 중이면 받는 피해 +25%, 아니면 받은 만큼 경직 막대가 찬다 (치명타는 1.5배로)
+  if (state.mode === 'dungeon' && MONSTER_LIST[m.kind].boss) {
+    if ((m.stagT ?? 0) > 0) dmg = Math.round(dmg * STAGGER_DMG)
+    else addStagger(state, m, Math.floor(((crit ? 1.5 : 1) * dmg * 1000) / Math.max(1, m.maxHp * STAGGER_HP)))
+  }
   if (m.elite & EA_STOUT) dmg = Math.max(1, Math.round(dmg * AFFIX_TUNE.stout))
   const shooter = by >= 0 ? state.players[by] : null
   if (shooter) {
@@ -3706,6 +3718,16 @@ function stepMonsters(state: GameState, map: GameMap): void {
     }
     // 보스는 상태 이상이 먹히지 않는다 (틱 끝에도 한 번 더 지운다 — bossImmune)
     if (def.boss) clearCc(m)
+    // 보스 경직 (경직 막대가 가득 찼다): 하던 준비를 끊고 가만히 — 즉사기 준비도 끊긴다
+    if ((m.stagT ?? 0) > 0) {
+      m.stagT!--
+      if (m.st === MS_WINDUP || m.st === MS_CHARGE) {
+        m.st = MS_CHASE
+        m.mode = 0
+        m.cd = Math.max(m.cd, 40)
+      }
+      continue
+    }
     if (m.slow > 0) m.slow--
     if (m.taunt > 0) m.taunt--
     // 넉백: 벽에 막히며 밀리고 금방 줄어든다
@@ -3957,7 +3979,22 @@ function clearCc(m: Monster): void {
 
 /** 틱 끝: 이번 틱에 탄 · 스킬 · 폭발이 건 상태 이상을 보스에게서 지운다 (화면에 한 틱도 남지 않게) */
 function bossImmune(state: GameState): void {
-  for (const m of state.monsters) if (m.hp > 0 && MONSTER_LIST[m.kind].boss) clearCc(m)
+  for (const m of state.monsters) {
+    if (m.hp <= 0 || !MONSTER_LIST[m.kind].boss) continue
+    // 보스는 기절하지 않는다 — 걸린 기절은 경직 막대로 (1초 기절 ≈ 막대 12%)
+    if (m.stun > 0 && state.mode === 'dungeon' && (m.stagT ?? 0) <= 0) addStagger(state, m, m.stun * 2)
+    clearCc(m)
+  }
+}
+
+/** 보스 경직: 막대가 1000 ‰ 에 닿으면 STAGGER_TICKS 동안 경직 · 막대는 비운다 */
+function addStagger(state: GameState, m: Monster, add: number): void {
+  if (add <= 0) return
+  m.stag = (m.stag ?? 0) + add
+  if (m.stag < 1000) return
+  m.stag = 0
+  m.stagT = STAGGER_TICKS
+  state.events.push({ type: 'stagger', m: m.id, x: m.x, y: m.y })
 }
 
 /** 보스 단계: 체력이 정한 비율 아래로 내려가는 순간 분노 — 차례가 길어지고 간격이 짧아진다. 여왕 · 관리인 · 군주는 졸개를 부른다 */

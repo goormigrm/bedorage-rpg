@@ -757,6 +757,21 @@ export class D4Hud {
     g.addColorStop(1, '#d8382a')
     c.fillStyle = g
     c.fillRect(x, y + 14, W * k, 10)
+    // 경직 막대 (막 보스 · 2026-10-08 — 디아블로 4): 체력 아래 가는 금빛 막대. 차면 3초 경직 — 막대가 번쩍이며 "경직"
+    if (MONSTER_LIST[boss.kind].boss && s.mode === 'dungeon') {
+      const st = boss.stagT ?? 0
+      const sk = st > 0 ? 1 : Math.min(1, (boss.stag ?? 0) / 1000)
+      c.fillStyle = 'rgba(255,255,255,0.07)'
+      c.fillRect(x, y + 27, W, 4)
+      c.fillStyle = st > 0 ? (Math.floor(h.t * 8) % 2 ? '#fff4c0' : '#ffc84a') : '#e8b84a'
+      c.fillRect(x, y + 27, W * (st > 0 ? st / 180 : sk), 4)
+      if (st > 0) {
+        c.font = `800 12px ${SERIF}`
+        c.textAlign = 'right'
+        c.fillStyle = '#ffe680'
+        c.fillText(`경직 ${Math.ceil(st / 60)}초 · 받는 피해 +25%`, x + W, y + 8)
+      }
+    }
     c.font = `800 15px ${SERIF}`
     c.textAlign = 'center'
     c.textBaseline = 'alphabetic'

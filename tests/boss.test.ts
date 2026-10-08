@@ -1,7 +1,7 @@
 // 막 보스 패턴 (2026-09-23 사용자: "보스는 각자 가진 특별한 패턴 · 퍼센트 데미지로 탱커든 딜러든 힐러든 동일하게 ·
 // 넉백을 포함한 모든 상태 이상이 먹히지 않게 · 보스 방은 구조물 없이 넓게 · 각 막 보스는 적어도 3가지 일정한 패턴").
 import { describe, expect, it } from 'vitest'
-import { Input } from '../src/core/input'
+import { BTN_FIRE, Input } from '../src/core/input'
 import { GameMap, TILE, TILE_FLOOR, walkField } from '../src/core/map'
 import { BOSS_PATS, BOSS_PLANS, BOSS_SWIPE_PM, BOSS_ULT, BOSS_ULT_CD, BossPatId, MONSTER_LIST, MonsterKindId } from '../src/core/monsters'
 import { CharacterId } from '../src/core/characters'
@@ -398,4 +398,39 @@ describe('후원으로 부른 막 보스는 즉사기를 쓰지 않는다', () =
       expect(pats).toBeGreaterThan(2)
     })
   }
+})
+
+describe('보스 경직 (2026-10-08 — 디아블로 4)', () => {
+  it('받은 피해로 경직 막대가 차고, 가득 차면 3초 경직 — 그동안 준비가 끊기고 받는 피해 +25%', () => {
+    const { map, s, boss } = bossGame(9, 95)
+    const p = s.players[0]
+    const at = nearBoss(map, boss, 170)
+    p.x = at.x
+    p.y = at.y
+    const aim = () => Math.round((Math.atan2(boss.y - p.y, boss.x - p.x) / (Math.PI * 2)) * 1024) & 1023
+    const fire = (): Input => ({ ...idle(), aim: aim(), aimDist: 170, buttons: BTN_FIRE })
+    // 쏘면 막대가 찬다
+    for (let t = 0; t < 60; t++) {
+      p.hp = p.maxHp
+      step(s, map, [fire()])
+    }
+    expect(boss.stag ?? 0).toBeGreaterThan(0)
+    // 거의 찬 막대에서 마저 쏘면 경직
+    boss.stag = 995
+    let staggered = false
+    for (let t = 0; t < 120 && !staggered; t++) {
+      p.hp = p.maxHp
+      step(s, map, [fire()])
+      if (s.events.some((e) => e.type === 'stagger')) staggered = true
+    }
+    expect(staggered).toBe(true)
+    expect(boss.stagT).toBeGreaterThan(150)
+    expect(boss.stag).toBe(0)
+    // 경직 동안은 공격 준비를 하지 않는다
+    for (let t = 0; t < 100; t++) {
+      p.hp = p.maxHp
+      step(s, map, [idle()])
+      expect(boss.st).not.toBe(MS_WINDUP)
+    }
+  })
 })

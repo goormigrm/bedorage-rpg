@@ -470,6 +470,12 @@ export interface Monster {
   pat?: number
   /** 돌진 중에 이미 친 사람 (자리 번호 비트) — 한 번 돌진에 한 번만 */
   hitMask?: number
+  /**
+   * 보스 경직 막대 (‰ — 2026-10-08 퀄리티 2차 3단계 F2 · 디아블로 4): 받은 피해(최대 체력의 STAGGER_HP 마다 가득)와
+   * 기절 시도(보스는 기절 면역 — 대신 여기 쌓인다)로 찬다. 가득 차면 stagT 동안 경직(패턴 준비가 끊기고 받는 피해 +25%)
+   */
+  stag?: number
+  stagT?: number
 }
 
 /** 몬스터 상태 */
@@ -692,6 +698,8 @@ export type SimEvent =
   | { type: 'wake'; pack: number; x: number; y: number; kind?: number }
   /** 몬스터 공격 예고 시작 (소리·연출) */
   | { type: 'windup'; m: number; kind: number; x: number; y: number }
+  /** 보스가 경직했다 (경직 막대가 가득 — 3초 · 받는 피해 +25%) */
+  | { type: 'stagger'; m: number; x: number; y: number }
   /** 몬스터 근접 공격이 휘둘러짐 */
   | { type: 'swipe'; m: number; x: number; y: number; aim: number }
   /** 몬스터 투사체 발사 */

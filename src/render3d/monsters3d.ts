@@ -12,6 +12,7 @@ import { GameState, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
 import { AnchorName, BakedModel, loadMonsterModel, specOf } from './monsterModels'
 import { isBright } from '../game/skin'
+import { toonMat } from './toon'
 
 /** 실사 모델 한 종류: 부품(재질)마다 InstancedMesh + 마리마다 고른 프레임(aFrame) + 겹쳐 그리는 도형 부품 */
 interface ModelKind {
@@ -54,7 +55,11 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
  * 정점마다 읽기가 40번 → 4번, 매 프레임 올리던 가중치 텍스처(마리 × 장 수)도 없어진다. 그림자(깊이) 재질도 같이 바꾼다.
  */
 function frameShader(mat: THREE.Material): void {
-  mat.onBeforeCompile = (sh) => {
+  // 툰 먹선(toon.ts addInk)처럼 앞서 단 것이 있으면 이어 부른다 (2026-10-08 — 덮어쓰면 먹선이 사라졌다)
+  const prev = mat.onBeforeCompile
+  const prevKey = mat.customProgramCacheKey.bind(mat)
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aFrame;')
       .replace(
@@ -70,7 +75,7 @@ function frameShader(mat: THREE.Material): void {
 #endif`,
       )
   }
-  mat.customProgramCacheKey = () => 'monster-frame'
+  mat.customProgramCacheKey = () => `${prevKey()}|monster-frame`
 }
 
 /** 손에 든 부품: 도형 자체의 움직임 없이 (모델의 팔이 휘두른다) */
@@ -168,6 +173,9 @@ interface Corpse {
   /** 날아가는 속도 (쏜 쪽 반대로 — 손맛) */
   vx: number
   vz: number
+  /** 튀어 오른 높이 · 위로 속도 (2026-10-08 F3 — 전에는 바닥을 미끄러지기만 했다) */
+  y: number
+  vy: number
   /** 정예·우두머리였나 (시체도 큰 몸 그대로) */
   elite?: boolean
   unique?: boolean
@@ -190,7 +198,8 @@ const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45, 14: 0.3, 
 /** 시체가 바닥에 남는 시간 (초) — 디아블로 2 처럼 싸운 자리에 시체가 쌓인다. 끝 1초 동안 가라앉는다 */
 const CORPSE_LIFE = 24
 const CORPSE_MAX = 90
-const lambert = (color: number) => new THREE.MeshLambertMaterial({ color })
+/** 도형 괴물 부품: 툰 명암 + 먹선 (2026-10-08 G8 — 실사 모델 · 계란과 한 그림체) */
+const lambert = (color: number) => toonMat({ color })
 const glow = (color: number) => new THREE.MeshBasicMaterial({ color })
 
 function cap(r: number, len: number): THREE.BufferGeometry {
@@ -715,7 +724,7 @@ function wardenParts(): Part[] {
 
 /** 그림자: 떠다니는 검보랏빛 두건 망령 · 보랏빛 눈 · 긴 발톱 팔. 순간이동 예고 때 오그라들며 흐려진다 */
 function shadeParts(): Part[] {
-  const cloak = new THREE.MeshLambertMaterial({ color: 0x2a1e34, transparent: true, opacity: 0.88 })
+  const cloak = toonMat({ color: 0x2a1e34, transparent: true, opacity: 0.88 })
   const claw = lambert(0x4a3a56)
   const eye = glow(0xd89aff)
   const fade = (a: Anim) => 1 - a.wind * 0.75
@@ -794,7 +803,7 @@ function lordParts(): Part[] {
   const bone = lambert(0xd8ccb0)
   const crack = glow(0xff5a2a)
   const eye = glow(0xffd24a)
-  const wing = new THREE.MeshLambertMaterial({ color: 0x7a2a30, side: THREE.DoubleSide })
+  const wing = toonMat({ color: 0x7a2a30, side: THREE.DoubleSide })
   const wingGeo = new THREE.BufferGeometry()
   wingGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0.9, 0.5, 0, 0.8, -0.35, 0, 0, 0, 0, 0.8, -0.35, 0, 0.35, -0.5, 0], 3))
   wingGeo.computeVertexNormals()
@@ -913,7 +922,7 @@ export class MonsterView {
       const white = new THREE.Color(0xffffff)
       for (const parts of this.kinds)
         for (const p of parts) {
-          const m = p.mesh.material as THREE.MeshLambertMaterial
+          const m = p.mesh.material as THREE.MeshToonMaterial
           if (done.has(m) || !m.color) continue
           done.add(m)
           m.color.lerp(white, 0.45)
@@ -1144,7 +1153,9 @@ export class MonsterView {
     const s = this.shown.get(m.m)
     // 쏜 사람을 바라보게 두면 "뒤로" 넘어지는 쪽이 곧 쏜 쪽 반대다
     const yaw = dx !== 0 || dz !== 0 ? Math.atan2(-dz, -dx) : v ? v.yaw : 0
-    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw, t: 0, vx: dx * power, vz: dz * power, elite: v?.elite, unique: v?.unique, giant: v?.giant })
+    // 졸개는 포물선으로 튀어 오른다(세게 맞을수록 높이) · 정예는 낮게 · 우두머리 · 거대한 보스는 그 자리에 무너진다
+    const vy = v?.giant || v?.unique ? 0 : (v?.elite ? 0.5 : 1) * Math.min(3.2, 0.9 + power * 0.7)
+    this.corpses.push({ kind: m.kind, x: s ? s.x : m.x * U, z: s ? s.z : m.y * U, yaw, t: 0, vx: dx * power, vz: dz * power, y: 0, vy, elite: v?.elite, unique: v?.unique, giant: v?.giant })
     if (this.corpses.length > CORPSE_MAX) this.corpses.shift()
   }
 
@@ -1233,6 +1244,15 @@ export class MonsterView {
         c.vz *= slow
         if (Math.abs(c.vx) + Math.abs(c.vz) < 0.01) c.vx = c.vz = 0
       }
+      // 튀어 올랐다 떨어진다 (한 번 작게 되튄다)
+      if (c.vy !== 0 || c.y > 0) {
+        c.y += c.vy * dt
+        c.vy -= 14 * dt
+        if (c.y <= 0) {
+          c.y = 0
+          c.vy = c.vy < -2 ? -c.vy * 0.28 : 0
+        }
+      }
       dead.elite = c.elite
       dead.unique = c.unique
       dead.giant = c.giant
@@ -1241,7 +1261,7 @@ export class MonsterView {
       const mk = this.real ? this.models[c.kind] : undefined
       dead.dead = Math.min(1, c.t / (mk && typeof mk !== 'string' && mk.baked.seg.death ? 0.8 : 0.35))
       dead.flash = Math.max(0, 1 - c.t * 6)
-      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)))
+      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)), c.y)
     }
     this.corpses = still
     this.blob.count = this.blobN
@@ -1275,7 +1295,7 @@ export class MonsterView {
     })
   }
 
-  private put(kind: number, counts: number[], x: number, z: number, yaw: number, a: Anim, corpseT: number): void {
+  private put(kind: number, counts: number[], x: number, z: number, yaw: number, a: Anim, corpseT: number, lift = 0): void {
     const mk = this.real ? this.models[kind] : undefined
     const model = mk && typeof mk !== 'string' ? mk : null
     const i = model ? this.mcounts[kind] : counts[kind]
@@ -1295,7 +1315,7 @@ export class MonsterView {
       this.blob.setMatrixAt(this.blobN++, this.o.matrix)
     }
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
-    this.o.position.set(x, -Math.max(0, corpseT - 0.5) * 0.9, z)
+    this.o.position.set(x, lift - Math.max(0, corpseT - 0.5) * 0.9, z)
     this.o.rotation.set(0, Math.PI / 2 - yaw, 0)
     this.o.scale.setScalar(size)
     this.o.updateMatrix()

@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { CharacterDef, Look } from '../core/characters'
 import { WEAPONS, WeaponDef } from '../core/weapons'
 import { bodyTexture, labelTexture } from './faceTexture'
+import { toonMat } from './toon'
 
 const OUTLINE = 0x2b2412
 
@@ -17,8 +18,9 @@ const XRAY_OPACITY = 0.7
 const EGG_TAPER = 0.1
 const LEG_H = 0.14
 
-function mat(color: number, opts: Partial<THREE.MeshLambertMaterialParameters> = {}): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ color, ...opts })
+/** 계란 캐릭터 재질: 툰 명암 + 먹선 (2026-10-08 G8) */
+function mat(color: number, opts: Partial<THREE.MeshToonMaterialParameters> = {}): THREE.MeshToonMaterial {
+  return toonMat({ color, ...opts })
 }
 
 /** 몸 반지름: 대두·덩치가 둘 다 달걀 크기에 반영된다 */
@@ -105,7 +107,7 @@ export interface CharacterRig {
   /** 가려진 몸 윤곽 (판 안에서만 켠다 — enableXray) */
   xray: THREE.Mesh
   /** 피격 플래시용 재질 목록 */
-  flashMats: THREE.MeshLambertMaterial[]
+  flashMats: THREE.MeshToonMaterial[]
   /** 피격 플래시. tint 는 색(기본 흰색) — 몸통은 빨강, 머리는 금색 */
   setFlash(k: number, tint?: number): void
   /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 …) */
@@ -117,8 +119,8 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   const root = new THREE.Group()
   const body = new THREE.Group()
   root.add(body)
-  const flashMats: THREE.MeshLambertMaterial[] = []
-  const track = (m: THREE.MeshLambertMaterial) => {
+  const flashMats: THREE.MeshToonMaterial[] = []
+  const track = (m: THREE.MeshToonMaterial) => {
     flashMats.push(m)
     return m
   }
@@ -152,7 +154,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   const head = new THREE.Group() // 머리 장식이 붙는 그룹 (몸통 중심)
   head.position.y = centerY
   body.add(head)
-  const bodyM = track(new THREE.MeshLambertMaterial({ map: bodyTexture(def) }))
+  const bodyM = track(toonMat({ map: bodyTexture(def) }))
   const egg = new THREE.Mesh(eggify(new THREE.SphereGeometry(R, 40, 28), R), bodyM)
   egg.castShadow = true
   head.add(egg)
@@ -273,7 +275,7 @@ function buildGun(w: WeaponDef, R: number): { group: THREE.Group; tip: THREE.Obj
  * 후라이팬. 총과 같은 막대 모양으로 만들면 위에서 보면 그냥 검은 막대다(2026-09-06 제보).
  * 판을 **바닥과 나란히 눕혀** 쿼터뷰에서 둥근 판이 보이게 한다: 손잡이 끝에 넓은 원판 + 테두리 + 안쪽 밝은 면.
  */
-function buildPan(len: number, bodyM: THREE.MeshLambertMaterial, darkM: THREE.MeshLambertMaterial): { group: THREE.Group; tip: THREE.Object3D } {
+function buildPan(len: number, bodyM: THREE.MeshToonMaterial, darkM: THREE.MeshToonMaterial): { group: THREE.Group; tip: THREE.Object3D } {
   const g = new THREE.Group()
   const handleLen = len * 0.62
   const handle = capsuleZ(0.028, handleLen, darkM)
@@ -391,8 +393,8 @@ function buildHair(
   L: Look,
   def: CharacterDef,
   R: number,
-  hairM: THREE.MeshLambertMaterial,
-  track: (m: THREE.MeshLambertMaterial) => THREE.MeshLambertMaterial,
+  hairM: THREE.MeshToonMaterial,
+  track: (m: THREE.MeshToonMaterial) => THREE.MeshToonMaterial,
 ): void {
   const top = R * EGG_Y
   switch (L.hair) {
@@ -472,7 +474,7 @@ function buildHair(
     head.add(brim)
     // 라벨 ("침착")
     if (L.capText) {
-      const labelM = new THREE.MeshLambertMaterial({ map: labelTexture(L.capText, L.capBand ?? 0xf4f4f0, def.accentColor) })
+      const labelM = toonMat({ map: labelTexture(L.capText, L.capBand ?? 0xf4f4f0, def.accentColor) })
       const label = new THREE.Mesh(new THREE.PlaneGeometry(R * 0.62, R * 0.31), labelM)
       const ly = brimY + R * 0.28
       label.position.set(0, ly, eggRadiusAt(R * 1.08, ly / 1.0) + 0.01)
@@ -539,7 +541,7 @@ export function setRigOpacity(rig: CharacterRig, opacity: number): void {
         ;(mm as THREE.ShaderMaterial).uniforms.opacity.value = XRAY_OPACITY * opacity
         continue
       }
-      mm.transparent = opacity < 1 || (mm as THREE.MeshLambertMaterial).map !== undefined
+      mm.transparent = opacity < 1 || (mm as THREE.MeshToonMaterial).map !== undefined
       mm.opacity = opacity
     }
   })

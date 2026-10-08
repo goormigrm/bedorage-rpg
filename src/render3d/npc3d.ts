@@ -7,12 +7,14 @@
 
 import * as THREE from 'three'
 import type { NpcId } from '../core/world'
+import { toonMat } from './toon'
 
 const R = 0.4
 const CY = 0.62
 const EGG_Y = 1.25
 
-const lam = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) => new THREE.MeshLambertMaterial({ color, ...extra })
+/** 마을 사람 재질: 툰 명암 + 먹선 (2026-10-08 G8 — 계란 캐릭터와 같다) */
+const lam = (color: number, extra: THREE.MeshToonMaterialParameters = {}) => toonMat({ color, ...extra })
 
 function mesh(geo: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {
   const o = new THREE.Mesh(geo, m)
@@ -65,7 +67,7 @@ function faceTexture(cloth: number, beard: boolean): THREE.CanvasTexture {
 
 /** 계란 몸 + 발 + 손 (공통) */
 function eggBody(f: THREE.Group, cloth: number, beard = false): { handL: THREE.Vector3; handR: THREE.Vector3 } {
-  const egg = mesh(new THREE.SphereGeometry(R, 32, 22), new THREE.MeshLambertMaterial({ map: faceTexture(cloth, beard) }), 0, CY, 0)
+  const egg = mesh(new THREE.SphereGeometry(R, 32, 22), toonMat({ map: faceTexture(cloth, beard) }), 0, CY, 0)
   egg.scale.set(1, EGG_Y, 1)
   f.add(egg)
   const shoe = lam(0x3a2e26)
