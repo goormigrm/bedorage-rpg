@@ -140,14 +140,19 @@ export class ChatBox {
       el.appendChild(b)
     }
     el.appendChild(document.createTextNode(line.text))
+    // 열어 두고 위로 올려 읽는 중이면 새 줄이 와도 끌어내리지 않는다 (맨 아래 근처일 때만 따라간다)
+    const near = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 40
     this.log.appendChild(el)
     this.lines.push({ line, el })
     while (this.lines.length > KEEP) this.lines.shift()!.el.remove()
-    this.fade()
+    this.fade(!this.open || near)
   }
 
-  /** 닫혀 있으면 오래된 줄을 흐리게 · 감춘다. 열려 있으면 다 보인다 */
-  private fade(): void {
+  /**
+   * 닫혀 있으면 오래된 줄을 흐리게 · 감춘다. 열려 있으면 다 보인다.
+   * stick = 맨 아래로 내린다 — 열려 있을 때는 내리지 않는다 (2026-10-08: 0.5초마다 내려서 열어 둔 채 지난 글을 올려 읽을 수 없었다)
+   */
+  private fade(stick = !this.open): void {
     const now = performance.now()
     for (const { line, el } of this.lines) {
       const age = now - line.at
@@ -155,7 +160,7 @@ export class ChatBox {
       el.classList.toggle('gone', gone)
       el.classList.toggle('old', !this.open && age > SHOW_MS - 2000)
     }
-    this.log.scrollTop = this.log.scrollHeight
+    if (stick) this.log.scrollTop = this.log.scrollHeight
   }
 
   dispose(): void {

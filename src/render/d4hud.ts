@@ -17,7 +17,7 @@ import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
 import { AREAS, QUESTS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
-import { myGoldText, xpNeed } from '../core/items'
+import { myGoldText, xpNeed, ST_CDR } from '../core/items'
 import { DON_SEAL } from '../core/donate'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
@@ -381,7 +381,7 @@ export class D4Hud {
     // 칸들: Q · E · R · 구르기 · 무기(좌클릭)
     const x0 = bx + 20
     const slotX = (i: number) => x0 + i * (S + GAP)
-    const rects: { x: number; y: number; id?: SkillId; i: number }[] = []
+    const rects: { x: number; y: number; id?: SkillId; i: number; cd: number }[] = []
     // 칸 순서: Q · E · 1 · 2 · R (스킬 칸 번호 0 · 1 · 3 · 4 · 2) — 궁극기는 오른쪽 끝
     const order = [0, 1, 3, 4, 2]
     // 후원 "스킬 봉인" 남은 틱 (궁극기 · 구르기는 된다 — 스킬 칸만 막는다)
@@ -421,7 +421,7 @@ export class D4Hud {
       const active = this.activeFor(id, me)
       slot(h, slotX(pos), by, S, skillKeyLabel(k), poor && cdK <= 0 ? 1 : cdK, (me.cd[k] ?? 0) / 60, (dim) => drawSkillIcon(c, id, slotX(pos) + S / 2, by + S / 2, S * 0.62, dim || poor), def.ult === true, active)
       if (seal > 0 && !def.ult) sealMark(c, slotX(pos), by, S, h.t)
-      rects.push({ x: slotX(pos), y: by, id, i: k })
+      rects.push({ x: slotX(pos), y: by, id, i: k, cd: (cdTotal * (1 - (me.st[ST_CDR] ?? 0) / 100)) / 60 })
     })
     // 봉인 중: 바 위에 붉은 띠 "스킬 봉인 12초 · 궁극기 · 구르기는 됩니다" (2026-09-26 사용자: "눌렀는데 안 나가니까 버그 같아 보인다")
     if (seal > 0) {
@@ -488,7 +488,7 @@ export class D4Hud {
     c.textAlign = 'right'
     c.font = `600 10px ${SANS}`
     c.fillStyle = '#9a8a70'
-    c.fillText(`${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (I)`, bx + barW - 20, xpY + 14)
+    c.fillText(`${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (${keyLabel('bag')})`, bx + barW - 20, xpY + 14)
     c.restore()
 
     // ---- 체력 오브 (왼쪽)
@@ -511,10 +511,10 @@ export class D4Hud {
       this.hoverSlot = over
       this.hoverT = 0
     } else if (over >= 0) this.hoverT += dt
-    if (over >= 0 && this.hoverT > 0.35) {
-      const r = rects[over]
-      this.tooltip(h, SKILLS[r.id!], r.x + S / 2, r.y - 22, skillKeyLabel(over))
-    }
+    // over 는 스킬 칸 번호(Q 0 · E 1 · R 2 · 1 3 · 2 4) — rects 는 채워진 칸만 Q · E · 1 · 2 · R 차례라 번호로 찾는다
+    // (2026-10-08: rects[over] 로 찾아 "1" 을 배운 뒤 1 · R 설명이 뒤바뀌고, "2" 만 있으면 없는 칸을 읽어 그리기가 멈출 수 있었다)
+    const hov = over >= 0 && this.hoverT > 0.35 ? rects.find((r) => r.i === over) : undefined
+    if (hov) this.tooltip(h, SKILLS[hov.id!], hov.x + S / 2, hov.y - 22, skillKeyLabel(over), hov.cd)
   }
 
   /** 스킬에 딸린 버프가 남은 비율 (칸 아래 금색 막대) */
@@ -535,7 +535,7 @@ export class D4Hud {
     }
   }
 
-  private tooltip(h: HudCtx, def: (typeof SKILLS)[SkillId], cx: number, bottom: number, key: string): void {
+  private tooltip(h: HudCtx, def: (typeof SKILLS)[SkillId], cx: number, bottom: number, key: string, cdSec: number): void {
     const c = h.ctx
     const W = 300
     c.save()
@@ -552,7 +552,7 @@ export class D4Hud {
     c.fillText(def.name, x + 14, y + 26)
     c.font = `600 11px ${SANS}`
     c.fillStyle = '#9d8f78'
-    c.fillText(`${def.ult ? '궁극기' : '스킬'} · ${key} · 재사용 ${Math.round(def.cd / 60)}초`, x + 14, y + 44)
+    c.fillText(`${def.ult ? '궁극기' : '스킬'} · ${key} · 재사용 ${Math.round(cdSec * 10) / 10}초`, x + 14, y + 44)
     c.font = `500 13px ${SANS}`
     c.fillStyle = '#d8cfbf'
     lines.forEach((l, i) => c.fillText(l, x + 14, y + 64 + i * 18))
@@ -569,7 +569,7 @@ export class D4Hud {
     c.font = `700 11px ${SANS}`
     c.fillStyle = '#b8a67e'
     c.textAlign = 'left'
-    c.fillText(`${areaDef(s.curArea).act + 1}막 퀘스트 · J`, x + 12, y + 17)
+    c.fillText(`${areaDef(s.curArea).act + 1}막 퀘스트 · ${keyLabel('quest')}`, x + 12, y + 17)
     list.forEach(({ d, i }, k) => {
       const st = q[i] ?? 0
       const ly = y + 36 + k * 18
@@ -635,7 +635,7 @@ export class D4Hud {
           ? a.boss !== undefined
             ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`
             : `◆ 우두머리 ${a.unique?.name ?? ''}`
-          : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · T 타운 포털`
+          : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · ${keyLabel('portal')} 타운 포털`
       // 글이 칸을 넘지 않게 (2026-09-24 사용자): 목표는 낱말 단위로 세 줄까지 접고, 나머지는 줄여서 맞춘다
       c.font = `600 12px ${SANS}`
       const goalLines = wrapWords(c, goal, inner, 3)
@@ -841,7 +841,7 @@ export class D4Hud {
       c.fillRect(x + 52, y + 27, (W - 64) * hpK, 7)
       c.font = `600 10px ${SANS}`
       c.fillStyle = p.downed ? '#ff8a7a' : '#8d8170'
-      const st = p.left ? '나감' : p.downed ? `쓰러짐 ${Math.ceil(p.downTimer / 60)}초 — F 로 일으키기` : p.out ? '탈락' : !p.alive ? `사망 · ${Math.ceil(p.respawnTimer / 60)}초` : `${def.name} · ${WEAPONS[p.weapon].name}`
+      const st = p.left ? '나감' : p.downed ? `쓰러짐 ${Math.ceil(p.downTimer / 60)}초 — ${keyLabel('use')} 로 일으키기` : p.out ? '탈락' : !p.alive ? `사망 · ${Math.ceil(p.respawnTimer / 60)}초` : `${def.name} · ${WEAPONS[p.weapon].name}`
       c.fillText(st, x + 52, y + 45)
       y += 58
     }

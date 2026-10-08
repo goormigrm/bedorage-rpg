@@ -1,6 +1,7 @@
 // 웨이포인트 창 (디아블로 2): 웨이포인트 곁에서 F. 막마다 열린 곳이 나열되고, 누르면 그곳으로 건너간다.
 // 가방 창과 같은 원칙 — **상태를 직접 바꾸지 않는다**. CMD_WAYPOINT 만 LocalInput 에 넣고 sim 이 다음 틱에 옮긴다.
 
+import { keyLabel } from '../game/keymap'
 import { CMD_WAYPOINT } from '../core/input'
 import { ACTS, AREAS, WAYPOINTS, wpBit } from '../core/world'
 import { PlayerState } from '../core/state'
@@ -46,7 +47,7 @@ export class WaypointPanel {
       return `<div class="wpp-act"><div class="wpp-actn">${ai + 1}막 · ${act.name}</div>${rows}</div>`
     }).join('')
     this.el.innerHTML = `<div class="wpp-head"><b>웨이포인트</b><button class="inv-x" data-x>✕</button></div>
-      <p class="wpp-hint">밟아서 연 웨이포인트로 곧장 건너갑니다 · F / Esc 로 닫기</p>${acts}`
+      <p class="wpp-hint">밟아서 연 웨이포인트로 곧장 건너갑니다 · ${keyLabel('use')} / Esc 로 닫기</p>${acts}`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
     this.el.querySelectorAll<HTMLButtonElement>('button[data-a]').forEach((b) => {
       b.onclick = () => {

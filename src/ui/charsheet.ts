@@ -3,6 +3,7 @@
 //   위: 능력치 넷(힘 · 민첩 · 활력 · 정신) — 쓴 점 · 지금 효과 · + 단추 · ★ 추천(캐릭터마다 둘)
 //   아래: 세부 능력치 — 체력 · 무기 초당 피해 · 피해 · 연사 · 치명타 · 스킬 · 방어 · 이동 … (레벨 · 장비 · 능력치 · 패시브를 모두 더한 값)
 
+import { keyLabel } from '../game/keymap'
 import { ATTR_REC, CHARACTERS, ROLE_INFO } from '../core/characters'
 import { CMD_ATTR } from '../core/input'
 import { AFFIXES, ATTR_DESC, ATTR_NAMES, ST_COUNT, ST_DMG, ST_RATE, attrFree, attrPoints, xpNeed } from '../core/items'
@@ -86,7 +87,7 @@ export class CharSheet {
     this.el.innerHTML = `<div class="tp-head"><b>능력치 — ${c.name} <span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="tp-gold">레벨 ${p.level} · 남은 포인트 ${free}</span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">레벨마다 능력치 포인트 3점. ★ 는 ${c.name}에게 추천하는 능력치(주 6 : 부 4). 경험치 ${Math.floor(p.xp)} / ${need}</p>
       <div class="cs-grid"><div>${rows}${acts}</div><div class="cs-sts"><div class="cs-t">세부 능력치 (레벨 · 장비 · 능력치 · 패시브 합)</div>${lines.join('')}</div></div>
-      <p class="tp-hint">C · Esc 로 닫기</p>`
+      <p class="tp-hint">${keyLabel('attr')} · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
     this.el.querySelectorAll<HTMLButtonElement>('[data-cmd]').forEach((btn) => {
       btn.onclick = () => this.send(Number(btn.dataset.cmd), Number(btn.dataset.arg))

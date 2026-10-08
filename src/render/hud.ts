@@ -1,6 +1,7 @@
 // HUD 오버레이 (2D 캔버스). 3D 씬 위에 투명하게 겹친다. sim 을 바꾸지 않는다.
 // 협동: 위 가운데 층 목표(남은 몬스터), 왼쪽 아래 내 카드, 오른쪽 아래 파티(동료 체력은 늘 보인다), 가운데 알림.
 
+import { keyLabel } from '../game/keymap'
 import { bt } from '../game/skin'
 import { WEAPONS } from '../core/weapons'
 import { CHARACTERS } from '../core/characters'
@@ -383,7 +384,7 @@ export class Hud {
     if (me.alive && me.downed) {
       const others = s.players.some((p) => p.id !== me.id && p.alive && !p.downed && !p.left)
       title = '쓰러졌습니다'
-      sub = others ? `동료가 곁에서 F 를 누르고 있으면 일어납니다 · ${Math.ceil(me.downTimer / 60)}초` : `${Math.ceil(me.downTimer / 60)}초 뒤 숨이 끊깁니다`
+      sub = others ? `동료가 곁에서 ${keyLabel('use')} 를 누르고 있으면 일어납니다 · ${Math.ceil(me.downTimer / 60)}초` : `${Math.ceil(me.downTimer / 60)}초 뒤 숨이 끊깁니다`
     } else if (!me.alive && me.out) {
       title = '탈락'
       sub = '하드코어 — 이번 원정은 관전만 할 수 있습니다'

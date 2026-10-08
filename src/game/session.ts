@@ -380,8 +380,8 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      (open) => {
-        this.input.uiOpen = open || this.inventory?.open
+      () => {
+        this.syncUi()
         this.sfx.blip()
       },
       () => tierOf(this.state.tier).lvl,
@@ -391,8 +391,8 @@ export class Session {
       () => this.state,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      (open) => {
-        this.input.uiOpen = open || this.inventory?.open || this.waypoints?.open
+      () => {
+        this.syncUi()
         this.sfx.blip()
       },
     )
@@ -400,8 +400,8 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      (open) => {
-        this.input.uiOpen = open || this.inventory?.open || this.town?.open !== null
+      () => {
+        this.syncUi()
         this.sfx.blip()
       },
     )
@@ -409,8 +409,8 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      (open) => {
-        this.input.uiOpen = open || this.inventory?.open || this.skills?.open || this.town?.open !== null
+      () => {
+        this.syncUi()
         this.sfx.blip()
       },
     )
@@ -419,8 +419,8 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
       (cmd, arg) => this.input.queueCmd(cmd, arg),
-      (open) => {
-        this.input.uiOpen = open
+      () => {
+        this.syncUi()
         this.sfx.blip()
       },
     )
@@ -983,7 +983,8 @@ export class Session {
     }
     // 퀘스트 기록: J
     if (isKey(e, 'quest') && !this.arena) {
-      this.quests.toggle()
+      // Esc 메뉴 뒤에서는 열지 않는다 (가방 · 스킬 · 능력치와 같게 — 2026-10-08)
+      if (this.overlay.hidden) this.openCenter('quests')
       e.preventDefault()
       return
     }
@@ -1007,7 +1008,7 @@ export class Session {
     }
     // 스킬 창: K (Esc 로도 닫힌다)
     if (isKey(e, 'skills')) {
-      if (this.overlay.hidden) this.skills.toggle()
+      if (this.overlay.hidden) this.openCenter('skills')
       e.preventDefault()
       return
     }
@@ -1018,7 +1019,7 @@ export class Session {
     }
     // 능력치 창: C (Esc 로도 닫힌다)
     if (isKey(e, 'attr') && !this.arena) {
-      if (this.overlay.hidden) this.chars.toggle()
+      if (this.overlay.hidden) this.openCenter('chars')
       e.preventDefault()
       return
     }
@@ -1034,10 +1035,11 @@ export class Session {
       e.preventDefault()
       return
     }
-    if (use && !this.arena) {
+    if (use && !this.arena && this.overlay.hidden) {
       const me = this.state.players[this.cfg.localPlayer]
       const npc = me && me.alive && !me.left ? npcNear(me.area, me.x, me.y) : null
       if (npc) {
+        this.closeCenter('town')
         this.town.show(npc)
         return
       }
@@ -1048,7 +1050,7 @@ export class Session {
       e.preventDefault()
       return
     }
-    if (use && !this.arena && this.nearWaypoint()) {
+    if (use && !this.arena && this.overlay.hidden && this.nearWaypoint()) {
       // 싸우는 중에는 창을 열지 않는다 (2026-09-25 사용자: "웨이포인트 찍고 나면 창이 떠서 전투 중에 방해된다").
       // 웨이포인트는 밟는 순간 이미 열렸다고 알려 주었으니, 여기서는 F 를 줍기 · 일으키기로 흘려보낸다
       if (this.fightNear()) {
@@ -1061,6 +1063,7 @@ export class Session {
       }
       // 막 밟아서 연 참이면 알리기만 (밟자마자 F 를 눌러 창이 뜨고 ✕ 를 따로 눌러야 했다 — 2026-09-25 사용자)
       if (performance.now() - this.wpFoundAt < 4000) return
+      this.closeCenter('waypoints')
       this.waypoints.toggle(true)
       return
     }
@@ -1132,9 +1135,9 @@ export class Session {
     if (!box) return
     const open: Record<string, () => void> = {
       bag: () => this.inventory.toggle(),
-      skill: () => this.skills.toggle(),
-      attr: () => this.chars.toggle(),
-      quest: () => this.quests.toggle(),
+      skill: () => this.openCenter('skills'),
+      attr: () => this.openCenter('chars'),
+      quest: () => this.openCenter('quests'),
       map: () => {
         this.renderer.mapOpen = !this.renderer.mapOpen
         this.applyKeys()
@@ -2206,13 +2209,37 @@ export class Session {
     return true
   }
 
+  /**
+   * 창이 하나라도 열려 있으면 사격 · 스킬을 막는다 (2026-10-08 — 창마다 따로 셈해, 마을 사람 창 · 스킬 창이 열린 채
+   * 가방을 닫으면 막기가 풀려 창을 누르는 클릭이 사격으로 나갔다)
+   */
+  private syncUi(): void {
+    this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open || this.czClose)
+  }
+
+  /** 가운데 창(스킬 · 능력치 · 퀘스트 · 마을 사람 · 웨이포인트)은 같은 자리에 뜬다 — 하나만 남기고 닫는다 (2026-10-08 — K 가 대장장이 창을 덮었다) */
+  private closeCenter(keep: 'skills' | 'chars' | 'quests' | 'town' | 'waypoints'): void {
+    if (keep !== 'skills' && this.skills?.open) this.skills.toggle(false)
+    if (keep !== 'chars' && this.chars?.open) this.chars.toggle(false)
+    if (keep !== 'quests' && this.quests?.open) this.quests.toggle(false)
+    if (keep !== 'town' && this.town?.open) this.town.show(null)
+    if (keep !== 'waypoints' && this.waypoints?.open) this.waypoints.toggle(false)
+  }
+
+  /** 가운데 창 여닫기 (열 때는 다른 가운데 창을 닫는다) */
+  private openCenter(w: 'skills' | 'chars' | 'quests'): void {
+    const panel = w === 'skills' ? this.skills : w === 'chars' ? this.chars : this.quests
+    if (!panel.open) this.closeCenter(w)
+    panel.toggle()
+  }
+
   /** 치지직 방송 연동 창 (열려 있는 동안 사격 · 스킬을 막는다 — 움직임은 그대로) */
   private openCz(): void {
     if (this.czClose) return
     this.input.uiOpen = true
     this.czClose = openStreamPanel(this.stage.querySelector('.game-ui') as HTMLElement, () => {
       this.czClose = null
-      this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open)
+      this.syncUi()
     })
   }
 

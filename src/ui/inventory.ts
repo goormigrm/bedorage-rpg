@@ -3,6 +3,7 @@
 // **상태를 직접 바꾸지 않는다** — 명령(CMD_*)만 LocalInput 에 넣고, sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다(DESIGN 2장 3).
 // 창이 열려 있어도 게임은 멈추지 않는다(협동). 대신 사격·스킬 입력은 막는다(클릭이 총질이 되지 않게).
 
+import { keyLabel } from '../game/keymap'
 import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
 import {
@@ -161,6 +162,7 @@ export class Inventory {
     this.el.hidden = true
     parent.appendChild(this.el)
     this.tip = new ItemTip(parent)
+    this.el.addEventListener('scroll', () => this.tip.hide(), { passive: true, capture: true })
     this.el.addEventListener('contextmenu', (e) => e.preventDefault())
     // 창 안의 클릭이 게임(사격)으로 새지 않게
     for (const ev of ['mousedown', 'mouseup', 'click']) this.el.addEventListener(ev, (e) => e.stopPropagation())
@@ -180,9 +182,22 @@ export class Inventory {
     this.onToggle(this.open)
   }
 
+  /** 잠깐 보이는 알림 줄 (가방 창 위 — 2.5초) */
+  private note = ''
+  private noteTimer = 0
+  private flash(msg: string): void {
+    this.note = msg
+    clearTimeout(this.noteTimer)
+    this.noteTimer = window.setTimeout(() => {
+      this.note = ''
+      if (this.open) this.render()
+    }, 2500)
+    this.render()
+  }
+
   private render(): void {
     const me = this.me()
-    const key = JSON.stringify([me.level, me.xp, me.gold, me.bagMax, me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`)])
+    const key = JSON.stringify([me.level, me.xp, me.gold, me.bagMax, me.attr, me.st.map((v) => Math.round(v * 10)), me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`), this.note])
     if (key === this.lastKey) return
     this.lastKey = key
     const c = CHARACTERS[me.char]
@@ -199,7 +214,7 @@ export class Inventory {
     const cells: string[] = []
     for (let i = 0; i < me.bagMax; i++) cells.push(cellHtml(me.bag[i], `data-bag="${i}"`, me))
     this.el.innerHTML = `
-      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">${myGoldText(me.gold)}</span><button class="inv-x" title="닫기 (I · Tab · Esc)">✕</button></div>
+      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">${myGoldText(me.gold)}</span><button class="inv-x" title="닫기 (${keyLabel('bag')} · Tab · Esc)">✕</button></div>
       <div class="inv-xp"><i style="width:${Math.min(100, (me.xp / need) * 100).toFixed(1)}%"></i><span>${me.xp} / ${need}</span></div>
       <div class="inv-body">
         <div class="inv-left">
@@ -210,6 +225,7 @@ export class Inventory {
           <div class="bag-h">가방 ${me.bag.length} / ${me.bagMax}
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
             <small>왼클릭 끼기 · 오른클릭 버리기 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)</small></div>
+          ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
           <div class="bag">${cells.join('')}</div>
         </div>
       </div>`
@@ -240,7 +256,9 @@ export class Inventory {
     this.el.querySelectorAll<HTMLElement>('[data-eq]').forEach((cell) => {
       const i = Number(cell.dataset.eq)
       cell.onclick = () => {
-        if (me.equip[i]) this.send(CMD_UNEQUIP, i)
+        // 가방이 가득 차면 벗을 수 없다(sim 이 조용히 거른다) — 까닭을 잠깐 보인다 (2026-10-08)
+        if (me.equip[i] && me.bag.length >= me.bagMax) this.flash('가방이 가득 찼다 — 벗으려면 빈 칸이 필요하다')
+        else if (me.equip[i]) this.send(CMD_UNEQUIP, i)
         this.tip.hide()
       }
       cell.onmouseenter = () => this.tip.show(cell, me.equip[i] ?? undefined, me, false)

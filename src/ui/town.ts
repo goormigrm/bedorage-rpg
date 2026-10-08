@@ -60,7 +60,7 @@ export class QuestLog {
     const reach = actReached(q)
     let body = ''
     for (let act = reach; act >= 0; act--) body += `<p class="tp-line">${act + 1}막 · ${ACTS[act].name}</p>` + questList(q.map((v, i) => (QUESTS[i]?.act === act ? v : -1)), false)
-    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 기록</b><button class="inv-x" data-x>✕</button></div>${body}${recordHtml(me)}<p class="tp-hint">${bt('퀘스트는 마을의 촌장 카인이')} 맡긴다 · J · Esc 로 닫기</p>`
+    this.el.innerHTML = `<div class="tp-head"><b>퀘스트 · 기록</b><button class="inv-x" data-x>✕</button></div>${body}${recordHtml(me)}<p class="tp-hint">${bt('퀘스트는 마을의 촌장 카인이')} 맡긴다 · ${keyLabel('quest')} · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
   }
 }
@@ -151,7 +151,8 @@ export class TownPanel {
     parent.appendChild(this.el)
     this.tip = new ItemTip(parent)
     // 창을 굴리면 칸이 움직인다 — 풍선이 옛 자리에 남지 않게 (2026-10-08 자잘한 편의)
-    this.el.addEventListener('scroll', () => this.tip.hide(), { passive: true })
+    // 스크롤은 거품이 일지 않는다 — 안쪽 칸(.st-grid)을 굴려도 잡히게 capture 로
+    this.el.addEventListener('scroll', () => this.tip.hide(), { passive: true, capture: true })
   }
 
   /** 세션이 벼리기 결과를 알려 준다 (sim 이벤트) */
@@ -213,9 +214,11 @@ export class TownPanel {
         this.tab === 'buy'
           ? s.shop.map((it, i) => {
               const price = Math.round(buyPrice(it) * questDiscount(me.quests))
-              return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price)
+              return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price || me.bag.length >= me.bagMax)
             }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
           : me.bag.map((it, i) => row(it, it.lk ? '🔒 잠금' : `+${itemValue(it)} 골드`, it.lk ? '' : `data-cmd="${CMD_SELL}" data-arg="${i}"`, !!it.lk)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
+      // 가방이 가득 차면 살 수 없다(sim 이 조용히 거른다) — 까닭을 적는다 (2026-10-08)
+      const fullNote = this.tab === 'buy' && me.bag.length >= me.bagMax ? '<p class="tp-note warn">가방이 가득 찼다 — 팔거나 보관하면 살 수 있다</p>' : ''
       // 한꺼번에 팔기 (2026-09-20 요청). 잠근 것은 빠진다 — 가방 창에서 Shift+클릭으로 잠근다
       let bulk = ''
       if (this.tab === 'sell') {
@@ -228,7 +231,7 @@ export class TownPanel {
           <button class="btn ${this.sellArmed ? 'danger' : 'secondary'}" data-sellall ${all.length ? '' : 'disabled'}>${
             this.sellArmed ? `정말 전부? — ${all.length}개 · ${sum(all)} 골드` : `전부 팔기 — ${all.length}개 · ${sum(all)} 골드`
           }<small>${this.sellArmed ? '한 번 더 누르면 팝니다' : '낀 것은 빼고'}</small></button>
-          <p class="tp-hint">잠근 것 ${locked}개는 팔지 않습니다 — 가방(I) 에서 <b>Shift+클릭</b>으로 잠급니다.</p>
+          <p class="tp-hint">잠근 것 ${locked}개는 팔지 않습니다 — 가방(${keyLabel('bag')}) 에서 <b>Shift+클릭</b>으로 잠급니다.</p>
         </div>`
       }
       // 돈 쓸 곳 (2026-09-25 요청): 가방 칸 늘리기 · 진열 새로 받기. 사는 탭에만 둔다
@@ -246,7 +249,7 @@ export class TownPanel {
           <button class="btn secondary" data-cmd="${CMD_SHOPNEW}" data-arg="0" ${me.gold >= nw ? '' : 'disabled'}>진열 새로 받기 — ${goldText(nw)}<small>열 가지를 새로 깐다 · 파티 모두에게</small></button></div>`
       }
       // 한꺼번에 팔기는 **목록 위**에 — 아래 두면 물건이 많을 때 스크롤해야 보인다
-      body = tabs + shopSvc + bulk + `<div class="tp-list">${list}</div>`
+      body = tabs + shopSvc + bulk + fullNote + `<div class="tp-list">${list}</div>`
     } else if (npc === 'smith') {
       // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **벼리기**(같은 등급 여럿 → 윗 등급을 노린다)
       const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">벼리기</button></div>`
@@ -403,6 +406,8 @@ export class TownPanel {
 
   /** 창을 그리고 단추를 잇는다 (모든 NPC 공용) */
   private paint(npc: NpcId, me: PlayerState, body: string): void {
+    // 다시 그려도 굴리던 자리 그대로 (2026-10-08 — 보관함에서 하나 옮길 때마다 칸 목록이 맨 위로 튀었다)
+    const tops = [...this.el.querySelectorAll<HTMLElement>('.st-grid')].map((g) => g.scrollTop)
     this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${myGoldText(me.gold)}</span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
     this.el.classList.toggle('wide', npc === 'stash' || npc === 'gambler')
@@ -410,6 +415,7 @@ export class TownPanel {
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
     this.el.classList.toggle('smith', npc === 'smith')
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
+    this.el.querySelectorAll<HTMLElement>('.st-grid').forEach((g, k) => (g.scrollTop = tops[k] ?? 0))
     this.wireCells(me)
     this.el.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => {
       b.onclick = () => {

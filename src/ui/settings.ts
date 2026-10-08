@@ -193,12 +193,18 @@ function keybindHtml(): string {
 
 /** 새 키를 기다린다: 창에서 가장 먼저(capture) 잡아 게임 · 메뉴로 흘려보내지 않는다 */
 let capture: ((e: KeyboardEvent) => void) | null = null
-function listen(a: Action | null, redraw: () => void): void {
+function listen(a: Action | null, redraw: () => void, box?: HTMLElement): void {
   listening = a
   if (capture) window.removeEventListener('keydown', capture, true)
   capture = null
   if (!a) return
   capture = (e: KeyboardEvent) => {
+    // 설정 칸이 닫혔다(메뉴 "계속" · 대화창 닫기): 기다리기를 그만두고 키는 그대로 흘려보낸다
+    // (2026-10-08 — 키 단추를 누른 채 메뉴를 닫으면 다음 키(W · 채팅 글자)가 몰래 그 동작에 묶였다)
+    if (box && (!box.isConnected || box.getClientRects().length === 0)) {
+      listen(null, redraw)
+      return
+    }
     e.preventDefault()
     e.stopImmediatePropagation()
     if (e.key === 'Escape') {
@@ -224,7 +230,11 @@ function listen(a: Action | null, redraw: () => void): void {
 /** 설정 칸의 단추를 잇는다. 값이 바뀌면 칸을 다시 그리고 다시 잇는다 */
 export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
   const redraw = () => {
+    // 키 목록은 칸 안에서 굴러간다 — 다시 그려도 보던 자리 그대로 (2026-10-08 — 아래 줄을 누르면 맨 위로 튀었다)
+    const top = box.querySelector('.kb-grid')?.scrollTop ?? 0
     box.innerHTML = settingsHtml(o)
+    const g = box.querySelector('.kb-grid')
+    if (g) g.scrollTop = top
     bindSettings(box, o)
   }
   box.querySelectorAll<HTMLButtonElement>('.srow .seg[data-set] button').forEach((b) => {
@@ -290,7 +300,7 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
     b.onclick = () => {
       const a = b.dataset.kb as Action
       kbNote = ''
-      listen(listening === a ? null : a, redraw)
+      listen(listening === a ? null : a, redraw, box)
       redraw()
     }
   })
