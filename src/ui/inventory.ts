@@ -3,6 +3,7 @@
 // **상태를 직접 바꾸지 않는다** — 명령(CMD_*)만 LocalInput 에 넣고, sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다(DESIGN 2장 3).
 // 창이 열려 있어도 게임은 멈추지 않는다(협동). 대신 사격·스킬 입력은 막는다(클릭이 총질이 되지 않게).
 
+import { itemIconUrl } from './itemIcons'
 import { keyLabel } from '../game/keymap'
 import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
@@ -48,7 +49,7 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   if (me && it.slot === SLOT_WEAPON && !canWield(me, it)) warn = `<div class="warn">${CHARACTERS[me.char].name} 은(는) ${kind} 을(를) 쓸 수 없습니다</div>`
   const wd = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]] : undefined
   if (wd) lines.unshift(`<div class="base">${wd.desc} · 초당 피해 약 ${Math.round(weaponDps(wd) * 60)}</div>`)
-  return `<div class="it-name" style="color:${color}">${esc(itemName(it))}</div>
+  return `<div class="it-head r${it.rarity}" style="--rc:${color}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><div class="it-name" style="color:${color}">${esc(itemName(it))}</div></div>
     <div class="it-kind">${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${kind} · 아이템 레벨 ${it.ilvl}</div>
     ${lines.join('')}${warn}`
 }
@@ -74,7 +75,7 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
   const tag = it.set !== undefined ? SETS[it.set]?.tag ?? '' : cellTag(it)
-  return `<div class="cell${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><small>${SLOT_NAMES[it.slot]}</small><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
+  return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
 }
 
 /** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */
@@ -205,7 +206,7 @@ export class Inventory {
     const slot = (i: number) => {
       const it = me.equip[i]
       const col = it ? itemColor(it) : 'rgba(201,162,74,0.3)'
-      return `<div class="eq" data-eq="${i}" style="--rc:${col}"><small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
+      return `<div class="eq${it ? ` r${it.rarity}` : ''}" data-eq="${i}" style="--rc:${col}">${it ? `<i class="ic" style="background-image:url(${itemIconUrl(it)})"></i>` : ''}<small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
     }
     const stats = [0, 1, 2, 3, 4, 5, 6, 7, 9].map((i) => {
       const v = Math.round(me.st[i] * 10) / 10

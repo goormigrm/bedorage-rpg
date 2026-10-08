@@ -1228,8 +1228,25 @@ body { background: var(--bg); }
 .set-p span.on { color: #5ce07a; font-weight: 700; }
 .set-b { color: #6f7f6c; }
 .set-b.on { color: #b8ffc8; }
-.cell.setp::after { content: '세트'; position: absolute; left: 4px; bottom: 1px; font-size: 9px; color: #5ce07a; }
+.cell.setp::after { content: '세트'; position: absolute; left: 3px; top: 1px; font-size: 9px; color: #5ce07a; }
 
 /* 2026-10-08 자잘한 편의: 가득 찬 가방 알림 */
 .tp-note.warn, .inv-note { color: #ff9a7a; font-weight: 700; }
 .inv-note { margin: 2px 0 6px; font-size: 11.5px; }
+
+/* ---- 아이템 그림 · 등급 빛 (2026-10-08 퀄리티 3단계 — ui/itemIcons.ts) ---- */
+.cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 2px 3px 2px;
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--rc) 20%, transparent), rgba(0,0,0,0.42) 72%); }
+.cell .ic { position: absolute; left: 50%; top: 2px; width: 32px; height: 32px; transform: translateX(-50%); background: center / contain no-repeat; pointer-events: none; }
+.cell b { position: relative; width: 100%; text-align: center; font-size: 10.5px; text-shadow: 0 1px 2px #000; }
+.cell.r0 b { color: #cfc8bb; }
+.cell.r2, .cell.r3, .cell.r4 { box-shadow: inset 0 0 8px color-mix(in srgb, var(--rc) 45%, transparent); }
+.cell.r3, .cell.r4 { animation: legGlow 2.4s ease-in-out infinite; }
+@keyframes legGlow { 50% { box-shadow: inset 0 0 14px color-mix(in srgb, var(--rc) 70%, transparent), 0 0 6px color-mix(in srgb, var(--rc) 45%, transparent); } }
+.cell:hover:not(.empty) .ic { transform: translateX(-50%) scale(1.12); transition: transform .12s; }
+.eq { position: relative; padding-left: 44px; }
+.eq .ic { position: absolute; left: 6px; top: 50%; width: 32px; height: 32px; transform: translateY(-50%); background: center / contain no-repeat; }
+.eq.r2, .eq.r3, .eq.r4 { box-shadow: inset 0 0 8px color-mix(in srgb, var(--rc) 40%, transparent); }
+.it-head { display: flex; align-items: center; gap: 8px; }
+.it-head .ic { flex: none; width: 40px; height: 40px; border: 1px solid var(--rc); border-radius: 5px; background: center / 34px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--rc) 25%, transparent), rgba(0,0,0,0.5) 75%); }
+.tp-n .ic { display: inline-block; width: 22px; height: 22px; margin-right: 5px; vertical-align: -6px; background: center / contain no-repeat; }

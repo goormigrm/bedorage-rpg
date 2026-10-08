@@ -2,6 +2,7 @@
 // 가방 창과 같은 원칙: **상태를 직접 바꾸지 않는다** — CMD_* 만 넣고 sim 이 다음 틱에 모두의 화면에서 똑같이 처리한다.
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
+import { itemIconUrl } from './itemIcons'
 import { bt } from '../game/skin'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
@@ -106,7 +107,7 @@ function row(it: Item, right: string, data: string, disabled = false, short = fa
   }
   const up = it.up ? `<b class="tp-up">+${it.up}</b>` : ''
   return `<button class="tp-row${short ? ' short' : ''}" ${data} ${disabled ? 'disabled' : ''}>
-    <span class="tp-n" style="color:${itemColor(it)}">${esc(itemName(it))}${up}<small>${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
+    <span class="tp-n" style="color:${itemColor(it)}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i>${esc(itemName(it))}${up}<small>${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${SLOT_NAMES[it.slot]} · 레벨 ${it.ilvl}</small></span>
     <span class="tp-a">${text}</span>
     <span class="tp-g">${right}</span></button>`
 }
