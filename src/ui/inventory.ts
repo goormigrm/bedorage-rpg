@@ -10,7 +10,7 @@ import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, baseName, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
+  affixText, affixValue, armorBase, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -51,7 +51,7 @@ export function itemHtml(it: Item, me?: PlayerState): string {
   const wd = it.slot === SLOT_WEAPON ? WEAPONS[WEAPON_IDS[it.wt]] : undefined
   if (wd) lines.unshift(`<div class="base">${wd.desc} · 초당 피해 약 ${Math.round(weaponDps(wd) * 60)}</div>`)
   return `<div class="it-head r${it.rarity}" style="--rc:${color}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><div class="it-name" style="color:${color}">${esc(itemName(it))}</div></div>
-    <div class="it-kind">${it.set !== undefined ? '세트' : RARITY_NAMES[it.rarity]} ${kind} · 아이템 레벨 ${it.ilvl}</div>
+    <div class="it-kind">${RARITY_NAMES[it.rarity]}${it.set !== undefined ? ' <b class="settag">세트</b>' : ''} ${kind} · 아이템 레벨 ${it.ilvl}</div>
     ${lines.join('')}${warn}`
 }
 
@@ -62,8 +62,8 @@ export function itemHtml(it: Item, me?: PlayerState): string {
  * 일반 아이템은 이름이 바탕 하나라(소총 · 투구) 둘째 낱말이 없어 빈칸이 됐고, 희귀는 바탕 대신 옵션 앞말이 나왔다.
  */
 function cellTag(it: Item): string {
-  const words = baseName(it).split(' ')
-  return it.slot === SLOT_WEAPON ? words[words.length - 1] : words[0]
+  // 부위 이름 그대로 (2026-10-08 사용자: "가방에서 아이템은 그냥 무기 · 투구 · 갑옷 · 반지 · 목걸이로 — 판금 · 은 · 순례자 이렇게 표시되는 건 알맞지 않다")
+  return SLOT_NAMES[it.slot] ?? ''
 }
 
 /**
@@ -75,7 +75,7 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
   const col = itemColor(it)
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
-  const tag = it.set !== undefined ? SETS[it.set]?.tag ?? '' : cellTag(it)
+  const tag = cellTag(it)
   return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
 }
 

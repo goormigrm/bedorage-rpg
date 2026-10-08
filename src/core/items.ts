@@ -8,7 +8,6 @@
 import { Stats, sanitizeStats } from './stats'
 import { Rng, rand, randInt } from './rng'
 import { WEAPONS, WeaponId, familyOf } from './weapons'
-import { palette, setItemCss } from './palette'
 
 export const SLOT_WEAPON = 0
 export const SLOT_HELM = 1
@@ -184,12 +183,15 @@ export const LEG_GRACE = 14
 
 /** 낀 장비의 전설 효과 비트 묶음 */
 /**
- * **세트 아이템** (2026-09-25 사용자 고른 개선 7 — "두세 부위를 맞추면 추가 효과"). 전설 등급으로 떨어지되 고유 효과 대신 세트 효과:
- * 같은 세트 **2부위**면 하나, **3부위**면 둘을 더 얹는다. 전설이 떨어질 자리(무기 빼고)의 SET_CHANCE 가 세트 조각이 된다.
+ * **세트 아이템** (2026-09-25 사용자 고른 개선 7 — "두세 부위를 맞추면 추가 효과"). 고유 효과 대신 세트 효과:
+ * 같은 세트 **2부위**면 하나, **3부위**면 둘을 더 얹는다.
+ * 2026-10-08 사용자: "세트 아이템은 기본적으로 신화 템에만 있게 — 색깔을 신화로 하되 세트라는 것만 표시해서 구분하기 쉽게" →
+ * 전설 자리의 30% → **신화**가 떨어질 자리(무기 빼고 · 상점 빼고 — 벼리기 · 도박은 된다)의 SET_CHANCE. 색은 등급 색(신화 보라) ·
+ * 칸 · 설명에 "세트" 표시. 예전에 받은 전설 세트는 그대로 쓴다(색은 전설 주황).
  * 순서가 세이브에 들어간다 — 새 세트는 끝에 붙인다.
  */
 export const SET_COLOR = '#5ce07a'
-export const SET_CHANCE = 0.3
+export const SET_CHANCE = 0.4
 export type SetDef = { name: string; tag: string; slots: number[]; two: [number, number][]; three: [number, number][] }
 export const SETS: SetDef[] = [
   { name: '순례자의 맹세', tag: '순례자', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_AMULET], two: [[ST_DR, 8]], three: [[ST_HP, 180], [ST_LIFEKILL, 15]] },
@@ -198,7 +200,8 @@ export const SETS: SetDef[] = [
   { name: '심연의 계약', tag: '심연', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_RING], two: [[ST_SKILLPOW, 15]], three: [[ST_CDR, 12], [ST_DMG, 20]] },
 ]
 /** 아이템 이름 색 (세트는 초록) */
-export const itemColor = (it: Item): string => (it.set !== undefined ? (palette.colorblind ? setItemCss() : SET_COLOR) : RARITY_COLORS[it.rarity] ?? '#d8d8d8')
+/** 아이템 이름 색: 등급 색 (세트도 — 2026-10-08 세트는 신화 보라 · "세트" 표시로 가른다) */
+export const itemColor = (it: Item): string => RARITY_COLORS[it.rarity] ?? '#d8d8d8'
 /** 낀 장비에서 세트마다 몇 부위 */
 export function setCounts(equip: (Item | null)[]): number[] {
   const n = SETS.map(() => 0)
@@ -351,8 +354,8 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
   const it: Item = { uid, slot, wt, rarity, ilvl, aff }
   if (leg !== undefined) it.leg = leg
   if (bt !== undefined) it.bt = bt
-  // 세트 조각: 전설(신화는 아니다) · 무기가 아닌 칸의 SET_CHANCE — 그 칸이 들어가는 세트 중 하나. 고유 효과 대신이다
-  if (rarity === 3 && slot !== SLOT_WEAPON && src !== 'shop' && src !== 'forge') {
+  // 세트 조각: **신화** · 무기가 아닌 칸의 SET_CHANCE — 그 칸이 들어가는 세트 중 하나. 고유 효과 대신이다 (2026-10-08 — 예전에는 전설)
+  if (rarity === RARITY_MYTHIC && slot !== SLOT_WEAPON && src !== 'shop') {
     const fits = SETS.map((s, i) => (s.slots.includes(slot) ? i : -1)).filter((i) => i >= 0)
     if (fits.length > 0 && rand(rng) < SET_CHANCE) {
       it.set = fits[randInt(rng, 0, fits.length)]

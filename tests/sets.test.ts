@@ -6,24 +6,29 @@ import { makeRng } from '../src/core/rng'
 const piece = (set: number, slot: number, uid: number): Item => ({ uid, slot, wt: -1, rarity: 3, ilvl: 20, aff: [], set })
 
 describe('세트 아이템', () => {
-  it('전설 자리의 일부가 세트 조각으로 떨어진다 (무기 · 상점 · 신화는 아니다)', () => {
+  it('세트 조각은 신화에서만 떨어진다 (무기 · 상점은 아니다 · 전설은 이제 세트가 아니다 — 2026-10-08 사용자)', () => {
     const rng = makeRng(8)
     let sets = 0
-    let legs = 0
+    let myth = 0
     for (let i = 0; i < 3000; i++) {
-      const it = rollItem(rng, i, 20, 'rapier', 'boss', 0, 3)
+      const it = rollItem(rng, i, 20, 'rapier', 'boss', 0, 4)
+      if (it.rarity !== 4) continue
       if (it.set !== undefined) {
         sets++
         expect(it.slot).not.toBe(0)
-        expect(it.rarity).toBe(3)
         expect(it.leg).toBeUndefined()
         expect(SETS[it.set].slots).toContain(it.slot)
-      } else if (it.rarity === 3) legs++
+      } else myth++
     }
-    expect(sets / (sets + legs)).toBeGreaterThan(0.15)
-    expect(sets / (sets + legs)).toBeLessThan(0.35)
+    expect(sets / (sets + myth)).toBeGreaterThan(0.2)
+    expect(sets / (sets + myth)).toBeLessThan(0.45)
+    const leg = makeRng(10)
+    for (let i = 0; i < 2000; i++) {
+      const it = rollItem(leg, i, 20, 'rapier', 'boss', 0, 3)
+      if (it.rarity === 3) expect(it.set).toBeUndefined()
+    }
     const shop = makeRng(9)
-    for (let i = 0; i < 2000; i++) expect(rollItem(shop, i, 20, 'rapier', 'shop', 0, 3).set).toBeUndefined()
+    for (let i = 0; i < 2000; i++) expect(rollItem(shop, i, 20, 'rapier', 'shop', 0, 4).set).toBeUndefined()
   })
   it('2부위 · 3부위 효과가 붙는다', () => {
     const s = SETS[0] // 순례자의 맹세: 투구 · 갑옷 · 목걸이
@@ -46,7 +51,9 @@ describe('세트 아이템', () => {
   it('이름 · 색 · 세이브 · 재료에서 빠짐', () => {
     const it = piece(2, 3, 7)
     expect(itemName(it)).toContain('거미 여왕의 비단')
-    expect(itemColor(it)).toBe(SET_COLOR)
+    // 색은 등급 색 (세트도) — 세트는 "세트" 표시로 가른다
+    expect(itemColor(it)).not.toBe(SET_COLOR)
+    expect(itemColor({ ...it, rarity: 4 })).toBe(itemColor({ ...it, rarity: 4, set: undefined }))
     const sh = sanitizeSheet({ ...emptySheet(), bag: [it, { ...piece(0, 1, 8), set: 99 }] })
     expect(sh.bag.length).toBe(1)
     expect(sh.bag[0].set).toBe(2)

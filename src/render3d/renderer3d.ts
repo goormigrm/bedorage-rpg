@@ -4331,12 +4331,19 @@ export class Renderer3D {
       }
       if (!m.elite && !goblin && curr.tick - m.hitTick > 180) continue
       const s0 = this.worldToScreen(at.x, monsterTop(m) + 0.15, at.z)
-      const w = 30
+      // 막대를 굵게 (2026-10-08 사용자: "모든 몬스터의 체력바가 너무 얇아서 잘 안 보인다" — 30 × 4px(안쪽 2px) → 44 · 정예 54 × 8px)
+      const w = m.elite ? 54 : 44
+      const bh = 8
       const k = Math.max(0, m.hp / m.maxHp)
       ctx.globalAlpha = m.elite ? 1 : Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'
-      ctx.fillRect(s0.x - w / 2, s0.y, w, 4)
-      ctx.fillStyle = m.elite || goblin ? '#ffb84a' : '#e04a3a'
+      ctx.fillStyle = 'rgba(12,8,16,0.82)'
+      ctx.fillRect(s0.x - w / 2 - 1, s0.y - 1, w + 2, bh + 2)
+      ctx.fillStyle = 'rgba(70,40,40,0.9)'
+      ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, w - 2, bh - 2)
+      ctx.fillStyle = m.elite || goblin ? '#ffb84a' : '#ef4a3a'
+      ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, bh - 2)
+      // 위쪽 빛 한 줄 (막대가 납작한 판처럼 보이지 않게)
+      ctx.fillStyle = 'rgba(255,255,255,0.28)'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, 2)
       if (goblin) {
         // 크게 · 테두리 · 깜빡이는 금빛 — 멀리서도 눈에 띄게 (2026-09-25 사용자: "보이지도 않았는데 이미 도망갔대")
@@ -4352,15 +4359,23 @@ export class Renderer3D {
         ctx.globalAlpha = 1
       }
       if (m.elite) {
-        ctx.font = '700 10px "Nanum Myeongjo", serif'
+        // 이름 · 능력을 크게 · 어두운 테두리 (2026-10-08 사용자: "정예 몬스터의 능력과 이름은 전투 중에 거의 보이지 않는다" — 10 · 9px 테두리 없음)
         ctx.textAlign = 'center'
+        ctx.lineJoin = 'round'
+        ctx.font = '800 15px "Nanum Myeongjo", serif'
+        ctx.lineWidth = 4
+        ctx.strokeStyle = 'rgba(20,10,4,0.92)'
+        ctx.strokeText(`정예 ${def.name}`, s0.x, s0.y - 5)
         ctx.fillStyle = '#ffd86a'
-        ctx.fillText(`정예 ${def.name}`, s0.x, s0.y - 4)
+        ctx.fillText(`정예 ${def.name}`, s0.x, s0.y - 5)
         const af = affixNames(m.elite)
         if (af) {
-          ctx.font = '600 9px system-ui, sans-serif'
-          ctx.fillStyle = '#e8b0ff'
-          ctx.fillText(af, s0.x, s0.y - 15)
+          ctx.font = '700 13px "IBM Plex Sans KR", "Malgun Gothic", system-ui, sans-serif'
+          ctx.lineWidth = 3.5
+          ctx.strokeStyle = 'rgba(24,8,32,0.92)'
+          ctx.strokeText(af, s0.x, s0.y - 22)
+          ctx.fillStyle = '#f0c4ff'
+          ctx.fillText(af, s0.x, s0.y - 22)
         }
       }
       ctx.globalAlpha = 1
@@ -4502,6 +4517,9 @@ export class Renderer3D {
     if (isBossLike(m)) {
       const p = this.bossPlateAt(m, at, def)
       head = { x: p.x, y: p.y - BOSS_PLATE_H }
+    } else if (m.elite) {
+      // 정예: 이름 · 능력 글씨를 크게 한 만큼(2026-10-08) 말풍선을 위로 — 겹치지 않게
+      head = { x: head.x, y: head.y - 26 }
     }
     if (m.sum !== undefined) {
       const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)

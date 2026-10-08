@@ -1237,7 +1237,9 @@ body { background: var(--bg); }
 .set-p span.on { color: #5ce07a; font-weight: 700; }
 .set-b { color: #6f7f6c; }
 .set-b.on { color: #b8ffc8; }
-.cell.setp::after { content: '세트'; position: absolute; left: 3px; top: 1px; font-size: 9px; color: #5ce07a; }
+/* 세트 표시 (2026-10-08 — 색은 등급 색, 세트는 이 표로 가른다) */
+.cell.setp::after { content: '세트'; position: absolute; left: 2px; top: 2px; font: 800 9.5px/1 "IBM Plex Sans KR", sans-serif; color: #fff; background: rgba(20,8,30,.82); border: 1px solid var(--rc); border-radius: 3px; padding: 1px 3px; }
+.it-kind .settag { color: #fff; background: rgba(20,8,30,.7); border: 1px solid var(--rc, #c58aff); border-radius: 3px; padding: 0 4px; font-weight: 800; }
 
 /* 2026-10-08 자잘한 편의: 가득 찬 가방 알림 */
 .tp-note.warn, .inv-note { color: #ff9a7a; font-weight: 700; }
