@@ -546,6 +546,7 @@ export class Session {
     this.startLobbyBeacon()
     this.ticker = new Ticker(() => this.tick())
     this.ticker.start()
+    this.showLoading()
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
     // 디버그·운영 훅. others = 나와 봇 자리를 뺀 '사람' 수 (방 지키기 스크립트가 판을 이어갈지 방을 다시 열지 정한다)
     ;(window as unknown as { __bd?: unknown }).__bd = {
@@ -1974,6 +1975,11 @@ export class Session {
       uiRects: this.uiRects(),
       itemsHeld: this.input.itemsHeld && !this.arena,
     })
+    // 첫 draw 로 물체가 다 만들어졌다 → 셰이더를 비동기로 미리 컴파일하고, 끝나면 로딩 화면을 걷는다
+    if (!this.prepStarted) {
+      this.prepStarted = true
+      void this.renderer.prepareStart().then(() => this.hideLoading())
+    }
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }
 
@@ -2280,6 +2286,42 @@ export class Session {
    * 창이 하나라도 열려 있으면 사격 · 스킬을 막는다 (2026-10-08 — 창마다 따로 셈해, 마을 사람 창 · 스킬 창이 열린 채
    * 가방을 닫으면 막기가 풀려 창을 누르는 클릭이 사격으로 나갔다)
    */
+  /** 시작 로딩 화면 (renderer.prepareStart 가 끝나면 걷는다) */
+  private loadEl: HTMLElement | null = null
+  private loadAt = 0
+  private prepStarted = false
+
+  /** 시작 로딩 화면을 띄운다 — 첫 화면(index.html #boot)과 같은 모양 + 도움말 한 줄 */
+  private showLoading(): void {
+    const tips = [
+      `${keyLabel('items')} 를 누르고 있으면 바닥 아이템 이름이 펼쳐지고, 이름을 누르면 그것만 주워 온다`,
+      `${keyLabel('portal')} 타운 포털 — 마을에 갔다가 그 자리로 돌아온다`,
+      '보관함은 모든 캐릭터가 함께 쓴다 — 오른클릭으로 바로 옮긴다',
+      `${keyLabel('dash')} 구르기 동안은 맞지 않는다 — 두 번까지 모아 둔다`,
+      '정예(금빛 이름표)는 체력 구슬을 꼭 떨어뜨린다',
+      '보스 방의 보스는 먼저 공격하기 전에는 움직이지 않는다',
+      `${keyLabel('map')} 전체 지도 · ${keyLabel('quest')} 퀘스트 기록 · ${keyLabel('attr')} 능력치`,
+    ]
+    const el = document.createElement('div')
+    el.className = 'game-load'
+    el.innerHTML = `<div class="bi"><div class="bl">배도라지<b>알</b>PG</div><div class="bb"><i></i></div><div class="bm">마을 준비 중 — 그림을 미리 그려 두는 중…</div><div class="bt">${tips[Math.floor(Math.random() * tips.length)]}</div></div>`
+    this.root.appendChild(el)
+    this.loadEl = el
+    this.loadAt = performance.now()
+  }
+
+  private hideLoading(): void {
+    const el = this.loadEl
+    if (!el) return
+    this.loadEl = null
+    // 너무 빨리 걷히면 번쩍이기만 한다 — 적어도 0.4초는 보인다
+    const wait = Math.max(0, 400 - (performance.now() - this.loadAt))
+    setTimeout(() => {
+      el.classList.add('done')
+      setTimeout(() => el.remove(), 400)
+    }, wait)
+  }
+
   /** 보관함 · 상인 창 때문에 가방을 같이 열었다 (그 창이 닫히면 같이 닫는다) · 그때 가방 소리는 내지 않는다 */
   private bagDocked = false
   private bagQuiet = false

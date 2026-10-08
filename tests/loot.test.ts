@@ -331,7 +331,7 @@ describe('성장 · 전투 (D4)', () => {
       expect(merc.left).toBe(false)
       expect(p.gold).toBe(2000 - mercPrice(4))
       // 성문 밖으로 나가면(성문 곁에서 F) 따라온다
-      const gate = areaLayout(0, mapOf(0)).exits[0]
+      const gate = areaLayout(0, mapOf(0)).exits.find((e) => !e.gate)!
       p.x = gate.x
       p.y = gate.y
       p.exitLock = 0

@@ -543,6 +543,8 @@ interface TownSpots {
   exits: [number, number][]
   /** 타운 포털이 서는 자리 — 자리 번호(주인)마다 하나 */
   portals: [number, number][]
+  /** 웨이포인트 곁의 들판 문 — 성문과 같은 곳(첫 링크)으로 간다 (2026-10-08 사용자: "다음 필드로 쉽게 이동하도록") */
+  fieldGate?: [number, number]
   /** NPC 자리 (천막 앞) */
   npcs: Record<NpcId, [number, number]>
 }
@@ -565,6 +567,8 @@ export const NPC_RANGE = 70
 // 화면 아래 = 월드 (+1, +1) · 화면 오른쪽 = (+1, −1). 왼쪽 자리는 보관함 곁을 피해 한 칸 아래로
 const CAMP: TownSpots = {
   spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portals: [[25, 19], [25, 14], [20, 20], [20, 14]],
+  // 들판 문: 웨이포인트의 화면 오른쪽(성문 쪽) 두 칸 — 처음 자리에서도 몇 걸음
+  fieldGate: [17, 11],
   npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
 }
 /** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
@@ -593,8 +597,11 @@ export interface Spot {
 export interface AreaLayout {
   /** 처음 들어올 때(웨이포인트가 없을 때) · 마을에서 되살아날 때 */
   spawn: Spot
-  /** links 순서대로의 출구 자리와, 그 출구로 **들어왔을 때** 서는 자리 */
-  exits: (Spot & { to: number; arrive: Spot })[]
+  /**
+   * links 순서대로의 출구 자리와, 그 출구로 **들어왔을 때** 서는 자리. 마을은 맨 앞에 **들판 문**(gate — 웨이포인트 곁)이
+   * 하나 더 있다 — 같은 곳(첫 링크)으로 가고, 들판에서 돌아오면 그 앞에 선다(find 가 앞의 것을 고른다)
+   */
+  exits: (Spot & { to: number; arrive: Spot; gate?: boolean })[]
   wp: Spot | null
   /** 웨이포인트로 왔을 때 서는 자리 */
   wpArrive: Spot | null
@@ -646,11 +653,15 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
   const town = TOWNS[def.id]
   if (def.kind === 'town' && town) {
     const at = ([x, y]: [number, number]): Spot => ({ x: x * TILE + TILE / 2, y: y * TILE + TILE / 2 })
-    const exits = def.links.map((to, i) => {
+    const exits: AreaLayout['exits'] = def.links.map((to, i) => {
       const e = at(town.exits[i] ?? town.exits[0])
       const d = walkField(map, tileOf(map, e))
       return { ...e, to, arrive: nearSteps(map, d, 3) }
     })
+    if (town.fieldGate && def.links.length > 0) {
+      const g = at(town.fieldGate)
+      exits.unshift({ ...g, to: def.links[0], arrive: nearSteps(map, walkField(map, tileOf(map, g)), 2), gate: true })
+    }
     const wp = at(town.wp)
     out = {
       spawn: at(town.spawn),

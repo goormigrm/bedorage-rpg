@@ -279,6 +279,12 @@ export class Renderer3D {
   /** 공중에 떠다니는 것 — 먼지 · 반딧불 · 불티 · 반짝이 (ambient.ts — G7). 보던 지역이 바뀌면 종류를 바꾼다 */
   private ambient!: AmbientFx
   private ambientArea = -2
+  /**
+   * 시작 준비가 끝났나 (prepareStart). 그전에는 3D 를 그리지 않는다 — 첫 그림에서 마을의 모든 재질 셰이더를 한꺼번에 **동기로**
+   * 컴파일하느라 내장 GPU(윈도우 크롬 = ANGLE · D3D)에서 몇 초 동안 화면이 멈춘 채 까맸다 (2026-10-08 사용자: "방을 만들고 들어가면 5초쯤 까맸다").
+   * 그동안 세션이 로딩 화면을 띄우고, 셰이더는 병렬로(KHR_parallel_shader_compile) 컴파일한다
+   */
+  ready = false
   private readonly partDummy = new THREE.Object3D()
   private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
   private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
@@ -855,6 +861,22 @@ export class Renderer3D {
 
   get renderScaleValue(): number {
     return this.renderScale
+  }
+
+  /**
+   * 시작 준비: 지금 장면(마을 · 캐릭터 · NPC · 효과)과 후처리의 셰이더를 **비동기로** 컴파일하고 나서 그리기 시작한다.
+   * 한 번 draw 를 지난 뒤(물체가 다 만들어진 뒤) 부른다. 늦어도 20초면 그냥 시작한다
+   */
+  async prepareStart(): Promise<void> {
+    if (this.ready) return
+    this.padLights()
+    const timeout = new Promise<void>((r) => setTimeout(r, 20000))
+    try {
+      await Promise.race([Promise.all([this.gl.compileAsync(this.scene, this.camera), this.post.warm(this.camera)]), timeout])
+    } catch {
+      /* 컴파일 실패는 그릴 때 다시 — 시작은 막지 않는다 */
+    }
+    this.ready = true
   }
 
   /** 화면 후처리(빛 번짐 · 색감) 켜고 끄기 — 화질 낮음 · 자동 화질 2 단계부터 끈다. GPU 가 못 하면 늘 꺼져 있다 */
@@ -1850,6 +1872,8 @@ export class Renderer3D {
     this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
 
+    // 시작 준비 중에는 그리지 않는다 (물체 만들기 · 갱신은 했다 — 준비가 그것들의 셰이더를 컴파일한다)
+    if (!this.ready) return
     // 색감: 지역(막 · 마을) · 보스가 깨어 있나에 따라 서서히 바뀐다
     if (this.post.enabled && curr.mode === 'dungeon' && curr.curArea >= 0) {
       const a = areaDef(curr.curArea)
@@ -3094,6 +3118,25 @@ export class Renderer3D {
       const town = isTown(e.to)
       const color = town ? 0xffc46a : 0xff8a4a
       const ex = new THREE.Group()
+      if (e.gate) {
+        // 마을 들판 문 (2026-10-08): 서 있는 고리 문 + 바닥 고리 — 다음 막 문(보라)과 같은 꼴, 들판 출구 빛깔(주황)
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.11, 10, 40), new THREE.MeshBasicMaterial({ color: 0xffb060 }))
+        ring.position.y = 1.05
+        const sheet = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }))
+        sheet.position.y = 1.05
+        sheet.userData.pulse = true
+        const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.1, 36), new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+        disc.rotation.x = -Math.PI / 2
+        disc.position.y = 0.05
+        const light = new THREE.PointLight(0xff9a4a, 10, 7, 1.5)
+        light.position.y = 1.2
+        ex.add(ring, sheet, disc, light)
+        // 늘 화면(카메라) 쪽을 보게 — 타운 포털과 같다
+        ex.rotation.y = Math.PI / 4
+        ex.position.set(e.x * U, 0, e.y * U)
+        g.add(ex)
+        continue
+      }
       const hole = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color: 0x010101 }))
       hole.rotation.x = -Math.PI / 2
       hole.position.y = 0.03

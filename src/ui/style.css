@@ -1334,3 +1334,16 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .inv.docked .bag-h small b { color: #f1d58a; }
 .skin-bright .st-tabs button.on { background: linear-gradient(180deg, rgba(90,50,100,.9), rgba(48,28,60,.97)); border-color: rgba(255,158,196,.7); }
 .skin-bright .tp.stashp .st-grid { border-color: rgba(255,158,196,.3); }
+
+/* 게임 시작 로딩 화면 (2026-10-08 — 첫 그림에서 셰이더를 한꺼번에 컴파일하느라 몇 초 까맸다 · session.showLoading) */
+.game-load { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 55%, #1f1710 0%, #0b0907 62%, #050403 100%); transition: opacity .35s ease; }
+.game-load.done { opacity: 0; pointer-events: none; }
+.game-load .bi { display: grid; justify-items: center; gap: 18px; transform: translateY(-4vh); }
+.game-load .bl { font: 400 56px "Black Han Sans", "Malgun Gothic", sans-serif; letter-spacing: .02em; color: #d8c08a; text-shadow: 0 2px 0 #3a2a10, 0 0 24px rgba(201,162,74,.25); }
+.game-load .bl b { font-weight: 400; margin: 0 4px; background: linear-gradient(180deg, #fff6c2 0%, #ffc61a 32%, #ff8a00 66%, #ff5400 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 10px rgba(255,110,0,.7)); }
+.game-load .bb { width: 260px; height: 4px; border-radius: 2px; background: rgba(201,162,74,.16); overflow: hidden; }
+.game-load .bb i { display: block; height: 100%; width: 38%; border-radius: 2px; background: linear-gradient(90deg, transparent, #f1d58a, transparent); animation: bootbar 1.1s ease-in-out infinite; }
+.game-load .bm { font: 500 13px "IBM Plex Sans KR", sans-serif; color: #8d8170; letter-spacing: .04em; }
+.game-load .bt { max-width: 520px; text-align: center; font: 500 13px "IBM Plex Sans KR", sans-serif; color: #b8a67e; padding: 8px 16px; border-top: 1px solid rgba(201,162,74,.2); }
+.game-load .bt::before { content: '도움말 · '; color: #f1d58a; font-weight: 700; }
+@keyframes bootbar { from { transform: translateX(-110%); } to { transform: translateX(290%); } }

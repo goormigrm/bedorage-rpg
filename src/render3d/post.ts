@@ -206,6 +206,15 @@ export class PostFx {
     }
   }
 
+  /** 시작 준비 (renderer.prepareStart): 후처리 셰이더 셋을 비동기로 미리 컴파일한다 */
+  async warm(camera: THREE.Camera): Promise<void> {
+    if (!this.supported) return
+    const s = new THREE.Scene()
+    for (const m of [this.brightMat, this.blurMat, this.compMat]) s.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m))
+    await this.gl.compileAsync(s, camera).catch(() => {})
+    s.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
+  }
+
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     const gl = this.gl
     if (!this.enabled) {

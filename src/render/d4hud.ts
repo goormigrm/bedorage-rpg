@@ -655,7 +655,7 @@ export class D4Hud {
       const goal = questLine
         ? questLine
         : town
-        ? '◆ 안전지대 · 성문은 동쪽'
+        ? '◆ 안전지대 · 들판은 웨이포인트 곁 문으로'
         : bossHere
           ? a.boss !== undefined
             ? `◆ ${MONSTER_LIST[a.boss].name}을(를) 쓰러뜨려라`

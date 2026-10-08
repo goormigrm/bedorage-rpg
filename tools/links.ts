@@ -49,7 +49,8 @@ for (const a of AREAS) {
     const l = areaLayout(a.id, map)
     maps++
     const tag = `${a.id} ${a.name} (시드 ${seed})`
-    if (l.exits.length !== a.links.length) bad(`${tag}: 출구 ${l.exits.length}개 · 링크 ${a.links.length}개`)
+    const real = l.exits.filter((e) => !e.gate).length
+    if (real !== a.links.length) bad(`${tag}: 출구 ${real}개 · 링크 ${a.links.length}개`)
     const spots: [string, { x: number; y: number }][] = [['처음 자리', l.spawn]]
     if (l.wp) spots.push(['웨이포인트', l.wp])
     if (l.wpArrive) spots.push(['웨이포인트 도착', l.wpArrive])

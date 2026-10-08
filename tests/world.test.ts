@@ -331,7 +331,13 @@ describe('이어진 세계', () => {
       if (a.retired) continue
       for (const to of a.links) expect(AREAS[to].links).toContain(a.id)
       const l = areaLayout(a.id, mapOf(a.id))
-      expect(l.exits.length).toBe(a.links.length)
+      expect(l.exits.filter((e) => !e.gate).length).toBe(a.links.length)
+      // 마을: 웨이포인트 곁 들판 문이 첫 링크로 간다 (성문보다 앞 — 돌아오면 그 앞에 선다)
+      if (a.kind === 'town') {
+        expect(l.exits[0].gate).toBe(true)
+        expect(l.exits[0].to).toBe(a.links[0])
+        expect(Math.hypot(l.exits[0].x - l.wp!.x, l.exits[0].y - l.wp!.y)).toBeLessThan(4 * TILE)
+      }
       if (a.wp) expect(l.wp).not.toBeNull()
     }
   })
