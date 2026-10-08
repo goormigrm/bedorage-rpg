@@ -8,6 +8,10 @@ import { Lobby } from './ui/lobby'
 import { connect, handleOAuthRedirect, hasToken } from './net/chzzk'
 import { loadStreamCfg, saveStreamCfg } from './game/stream'
 import { installDevKey } from './game/devmode'
+import { installErrorReport } from './ui/errorReport'
+
+// 오류 보고 단추 (2026-10-08 — 잡히지 않은 오류가 나면 화면 아래에 · ui/errorReport.ts)
+installErrorReport()
 
 const app = document.getElementById('app')!
 // 개발자 모드 (Ctrl + Shift + D — 치지직 창의 시험 단추)

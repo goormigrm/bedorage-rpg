@@ -26,6 +26,14 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # 배포 전 화면 시험 (2026-10-08 — tools/uitest.mjs): 빌드한 것을 띄워 헤드리스 크로미움으로 판을 열고
+      # 가방 칸 이름 · 설명 풍선 자리 · 창 겹침 · 사격 막기 · 잡히지 않은 오류를 본다. 실패하면 배포하지 않는다
+      - name: 화면 시험
+        run: |
+          npx playwright install --with-deps chromium
+          npx vite preview --port 4173 --strictPort &
+          for i in $(seq 1 40); do curl -sf http://localhost:4173/bedorage-rpg/ > /dev/null && break; sleep 1; done
+          node tools/uitest.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

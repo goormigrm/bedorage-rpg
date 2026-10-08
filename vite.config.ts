@@ -1,6 +1,6 @@
 import { defineConfig, Plugin } from 'vite'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
@@ -73,14 +73,25 @@ function shotEndpoint(): Plugin {
   }
 }
 
+/** 판 번호 (오류 보고에 적는다 — ui/errorReport.ts) */
+const version = (JSON.parse(readFileSync(root + 'package.json', 'utf8')) as { version: string }).version
+
 export default defineConfig({
   base: '/bedorage-rpg/',
   plugins: [shotEndpoint()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: { main: root + 'index.html' },
+      // three(3D 엔진)는 따로 묶는다 (2026-10-08 퀄리티 7단계): 게임 코드만 바뀐 업데이트에서는 브라우저가 이 큰 묶음을
+      // 다시 받지 않는다(캐시). 모델 로더(examples)는 처음 괴물을 만날 때 받는 그대로 둔다
+      output: {
+        manualChunks(id) {
+          if (/node_modules[\/]three[\/]build[\/]/.test(id)) return 'three'
+        },
+      },
     },
   },
   // 실사 괴물 로더는 처음 괴물을 만날 때 동적으로 불러온다 — 개발 서버가 그때 의존성을 다시 묶으며 페이지를 통째로
