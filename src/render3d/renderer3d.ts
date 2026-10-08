@@ -314,6 +314,8 @@ export class Renderer3D {
   }
   private zoneDisc = new THREE.CircleGeometry(1, 40)
   private zoneRim = new THREE.RingGeometry(0.94, 1, 48)
+  /** ☀ 밝은 판: 보스 범위 바깥의 어두운 외곽선 (밝은 바닥 위에서 붉은 범위가 묻혔다 — 2026-10-08) */
+  private zoneOutline = new THREE.RingGeometry(1, 1.07, 48)
   /** 보스 줄 범위: (0, 0) 에서 +x 로 길이 1 · 폭 1 (그룹 크기로 늘린다) */
   private zoneLine = new THREE.PlaneGeometry(1, 1).translate(0.5, 0, 0)
   private zoneLineEdge = new THREE.EdgesGeometry(this.zoneLine)
@@ -3929,12 +3931,17 @@ export class Renderer3D {
     const warn = zn.kind === ZONE_WARN
     // 즉사기: 검붉게 덮는다(더하기가 아니라 덮기 — 바닥이 어두워진다) · 테두리는 새빨갛게 · 고리의 안쪽(안전한 곳) 테두리는 금빛
     const kill = !!zn.kill
+    // ☀ 밝은 판 (2026-10-08 사용자: "철면수심전용에서 맵 자체가 밝다 보니 보스의 스킬이 잘 보이지 않는다"): 빛 더하기(Additive)로 깐 빨강이
+    // 밝은 바닥 위에서 하얗게 묻혔다 → 진한 붉은색을 보통 섞기로 덮고 · 테두리를 진하게 · 바깥에 어두운 외곽선
+    const bright = isBright()
     if (!g) {
       g = new THREE.Group()
       const fillMat = kill
         ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
-        : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
+        : bright
+          ? new THREE.MeshBasicMaterial({ color: 0xd8102e, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide })
+          : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : bright ? 0xc4001c : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
       const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
       let fill: THREE.Object3D
       let rim: THREE.Object3D
@@ -3959,6 +3966,13 @@ export class Renderer3D {
       rim.rotation.x = -Math.PI / 2
       fill.userData.fill = true
       g.add(fill, rim)
+      if (bright && shape !== ZS_LINE) {
+        const outMat = new THREE.MeshBasicMaterial({ color: 0x2a0612, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
+        const arc = ((zn.arc ?? 0) / 1024) * Math.PI * 2
+        const out = new THREE.Mesh(shape === ZS_CONE ? new THREE.RingGeometry(1, 1.07, 28, 1, -arc, arc * 2) : this.zoneOutline, outMat)
+        out.rotation.x = -Math.PI / 2
+        g.add(out)
+      }
       this.scene.add(g)
       this.zoneMeshes.set(zn.id, g)
     }
@@ -3974,7 +3988,7 @@ export class Renderer3D {
     // 차오르기: 줄은 길이 쪽으로, 원 · 부채는 가운데서 밖으로, 고리는 진해지기만 (예고만인 것은 옅게)
     if (shape === ZS_LINE) fill.scale.set(Math.max(0.02, k), 1, 1)
     else if (shape !== ZS_RING) fill.scale.setScalar(Math.max(0.05, k))
-    mat.opacity = kill ? 0.3 + 0.4 * k : warn ? 0.12 + 0.18 * k : 0.18 + 0.32 * k
+    mat.opacity = kill ? 0.3 + 0.4 * k : bright ? (warn ? 0.2 + 0.25 * k : 0.3 + 0.4 * k) : warn ? 0.12 + 0.18 * k : 0.18 + 0.32 * k
     const blink = zn.t < 14 ? 0.55 + 0.45 * Math.sin(this.t * 40) : 0.75 + 0.25 * Math.sin(this.t * 12)
     g.children[1].traverse((o) => {
       const mm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined
