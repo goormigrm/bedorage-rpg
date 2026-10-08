@@ -1,11 +1,12 @@
 // 시련 (반복 끝 콘텐츠) · 숙련 (레벨 30 뒤 성장) — 2026-10-08 퀄리티 2차 7단계 D3
 import { describe, expect, it } from 'vitest'
-import { BTN_SKILL2, BTN_USE, CMD_ATTR, CMD_TRIAL, Input } from '../src/core/input'
+import { BTN_SKILL2, BTN_USE, CMD_ATTR, CMD_DONATE, CMD_TRIAL, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { createState, step } from '../src/core/sim'
 import { COUNTDOWN_TICKS, GameState, MS_CHASE } from '../src/core/state'
 import { LEVEL_CAP, MASTERY_XP, ST_DMG, computeStats, emptySheet, sanitizeSheet } from '../src/core/items'
 import { makeMonster } from '../src/core/dungeon'
+import { DONATE_EVENTS } from '../src/core/donate'
 import { ACTS, QUESTS, RIFT_TICKS, actBossQuest, areaDef, buildAreaMap, isRift, riftId, riftScale, townNpcs } from '../src/core/world'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -162,5 +163,29 @@ describe('숙련 (레벨 30 뒤)', () => {
     const b = sanitizeSheet({ ...emptySheet(), level: LEVEL_CAP, mlv: 3, mst: [2, 1, 0, 0] })
     expect(b.mst).toEqual([2, 1, 0, 0])
     expect(QUESTS.length).toBeGreaterThan(0)
+  })
+})
+
+// 2026-10-08 방송 검토: 시련 괴물만 단계만큼 세지고 후원으로 부른 괴물은 그대로였다 — 높은 단계에서 방해 후원이 약한 먹이가 되어 진행 막대를 채웠다
+describe('시련 안의 후원 소환은 그 단계만큼 세다', () => {
+  const summonedBoss = (stage: number) => {
+    const { s, mapOf } = town(true, 62)
+    s.players[0].riftBest = stage - 1
+    step(s, mapOf, [{ ...idle(), cmd: CMD_TRIAL, arg: stage }])
+    step(s, mapOf, [idle()])
+    expect(s.rift?.stage).toBe(stage)
+    const boss = DONATE_EVENTS.find((e) => e.key === 'boss')!.id
+    step(s, mapOf, [{ ...idle(), cmd: CMD_DONATE, arg: boss | (1 << 4) }])
+    const m = s.monsters.find((q) => q.sum === 2)!
+    expect(m).toBeTruthy()
+    return m
+  }
+  it('막 보스 후원: 10단계는 1단계보다 체력 · 공격력이 시련 배율만큼', () => {
+    const a = summonedBoss(1)
+    const b = summonedBoss(10)
+    const k = riftScale(10).hp / riftScale(1).hp
+    expect(b.maxHp / a.maxHp).toBeGreaterThan(k * 0.98)
+    expect(b.maxHp / a.maxHp).toBeLessThan(k * 1.02)
+    expect(b.pow).toBeGreaterThan(a.pow)
   })
 })

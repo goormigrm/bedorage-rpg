@@ -281,6 +281,15 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   }
 }
 
+/**
+ * 이 지역이 지금 열린 시련이면 그 단계의 세기 (아니면 null). 후원 소환 괴물 · 응원 아군도 같은 배율을 받는다 (2026-10-08 방송 검토 —
+ * 예전에는 시련 괴물만 단계만큼 세지고 후원 괴물은 그대로라, 높은 단계에서 방해 후원이 오히려 약한 먹이가 되어 진행 막대를 채웠다)
+ */
+function riftHere(state: GameState, area: number): ReturnType<typeof riftScale> | null {
+  const r = state.rift
+  return r && r.area === area && isRift(area) ? riftScale(r.stage) : null
+}
+
 /** 시련 진행 점수: 졸개 1 · 정예 4 · 우두머리 15 (고블린 · 수호자는 0) */
 function riftPts(m: Monster): number {
   if (m.rg || m.kind === GOBLIN_KIND) return 0
@@ -3462,7 +3471,8 @@ function spawnAllies(state: GameState, map: GameMap, p: PlayerState, c: CheerDef
   const act = areaDef(p.area).act
   const lvl = areaLevel(p.area, state.tier)
   const seats = state.players.length
-  const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp
+  // 시련이면 그 단계의 괴물 체력에 맞춰 아군도 세게 친다 (riftHere)
+  const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp * (riftHere(state, p.area)?.hp ?? 1)
   const melee = summonPool(act).filter((k) => MONSTER_LIST[k].attack === 'melee')
   const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
   for (let i = 0; i < c.allies && state.allies.length < ALLY_CAP; i++) {
@@ -3587,8 +3597,10 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   const lvl = areaLevel(p.area, state.tier) + (tier === SUM_BOSS ? 2 : 1)
   const tr = tierOf(state.tier)
   const seats = state.players.length
-  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp
-  const pow = Math.round(levelPow(lvl) * tr.pow)
+  // 시련이면 그 단계의 세기를 같이 받는다 (riftHere — 시련 괴물과 같게)
+  const rs = riftHere(state, p.area)
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp * (rs?.hp ?? 1)
+  const pow = Math.round(levelPow(lvl) * tr.pow * (rs?.pow ?? 1))
   const pool = summonPool(act)
   const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
   const kind = tier === SUM_BOSS && boss !== undefined ? boss : pool[randInt(state.rng, 0, pool.length)] ?? GHOUL_KIND
