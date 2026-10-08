@@ -35,9 +35,10 @@ export function itemIconUrl(it: Item): string {
 function drawWeapon(g: CanvasRenderingContext2D, id: (typeof WEAPON_IDS)[number]): void {
   // 흰 실루엣을 그린 뒤 그 모양 안만 쇠빛 그라데이션으로 칠한다 (source-atop)
   g.save()
-  g.translate(SIZE / 2, SIZE / 2)
-  g.rotate(-0.42)
-  g.scale(1.25, 1.25)
+  g.translate(SIZE / 2 + 2, SIZE / 2 + 1)
+  // 긴 총은 대각선으로 눕혀야 칸에 다 들어온다 (처음 1.25 배는 소총 · 기관총 끝이 잘렸다)
+  g.rotate(-0.62)
+  g.scale(0.92, 0.92)
   drawWeaponIcon(g, 0, 0, id)
   g.restore()
   g.save()
