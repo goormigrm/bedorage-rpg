@@ -114,7 +114,9 @@ function drawGame() {
   const dh = ch * s
   // 3D 는 조금 밝게 (밤 들판 · 던전이 영상으로는 너무 어두웠다) · 천천히 다가가기는 3D 만 (HUD 가 잘리지 않게)
   // 2026-09-24 사용자: "트레일러가 실제로 플레이하는 것보다 어둡다" → 1.35 → 1.6 · 가장자리 어둡게 0.55 → 0.32
-  g.filter = BRIGHT ? 'none' : 'brightness(1.6) contrast(1.04)'
+  // 2026-10-08: 게임에 빛 번짐 · 색감(후처리)이 들어온 뒤로는 1.6 배면 스킬 빛 · 불빛이 하얗게 날아갔다 → 1.22
+  // 마을(밤 · 모닥불 빛만)은 조금 더 밝게 — ov.bright
+  g.filter = BRIGHT ? 'none' : `brightness(${ov.bright ?? 1.22}) contrast(1.03)`
   g.drawImage(cvs[0], (W - dw) / 2, (H - dh) / 2, dw, dh)
   g.filter = 'none'
   for (const c of cvs.slice(1)) {
@@ -205,7 +207,7 @@ function drawOverlay() {
   const t = now()
   const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.72)
   vg.addColorStop(0, 'rgba(0,0,0,0)')
-  vg.addColorStop(1, 'rgba(0,0,0,0.32)')
+  vg.addColorStop(1, 'rgba(0,0,0,0.2)')
   g.fillStyle = vg
   g.fillRect(0, 0, W, H)
   if (ov.don) drawDonTable()
@@ -319,6 +321,8 @@ function god() {
     // 보스 공격은 ‰ 라 괴물 공격력 0 으로는 못 막는다 — 맞으면 갈고리에 끌려가거나 돌진에 밀려 카메라가 튄다(2026-09-24 "버벅거리는 장면").
     // 보스 공격 쿨다운을 늘 걸어 두면 예고 · 폭발은 그대로 보이고 사람만 안 맞는다 (무적은 황금 보호막이 떠서 안 쓴다)
     p.bossCd = 999
+    // 옮길 때마다 서는 보호막(황금 빛)은 영상에서 끈다 — 빛 번짐과 겹쳐 캐릭터가 하얀 덩어리로 보였다
+    p.invuln = 0
   }
   for (const m of s.monsters) m.pow = 0
 }
@@ -711,9 +715,12 @@ function partWorld() {
     cue('calm', { town: true, act: 0 })
     caption(...L(['마을에서 떠나는 모험', '상인 · 대장장이 · 보관함 · 시련의 문 — 막마다 다른 마을'], ['대기실에서 떠나는 놀이 섬', '매점 · 수리공 · 사물함 · 도전의 문 — 막마다 다른 대기실']))
     zoomTo(1.06, 1.0, 3000)
+    // 마을은 카메라를 조금 뒤로 (천막 · 모닥불 · 웨이포인트가 한 화면에) · 조금 더 밝게
+    S().renderer.setDebugZoom(1.0)
+    ov.bright = 1.45
     key('KeyD', true)
-    snap = 'shot_town' + (BRIGHT ? '_bright' : '')
   })
+  tl.push(1.0, () => (snap = 'shot_town' + (BRIGHT ? '_bright' : '')))
   at(1.5, () => {
     key('KeyD', false)
     fadeTo(1, 350)
@@ -735,6 +742,8 @@ function partWorld() {
   at(0.15, () => key('KeyF', false))
   at(1.0, () => {
     S().autopilot = true
+    S().renderer.setDebugZoom(0.74)
+    ov.bright = undefined
     const spot = openSpot()
     if (spot) {
       st().players[0].x = spot.x
@@ -791,6 +800,8 @@ function partBoss() {
       for (const m of st().monsters) m.hp = 0
       warpParty(area)
       window.__bd.zoom(GIANT_ZOOM)
+      // 보스 방은 붉은 색감 · 어두운 바닥이라 보스가 묻혔다 (2026-10-08 영상 확인) → 조금 더 밝게
+      ov.bright = 1.5
     })
     at(1.2, () => faceBoss(kind, dist))
     at(0.35, () => {
@@ -945,6 +956,8 @@ function partEndgame() {
       S().autopilot = false
       warpAt(area, tx, ty)
       window.__bd.zoom(1)
+      S().renderer.setDebugZoom(1.0)
+      ov.bright = 1.45
     })
     at(1.4, () => {
       holding = false
@@ -973,6 +986,8 @@ function partEndgame() {
     s.rift = { area: id, stage: RIFT_STAGE, kills: 0, need: 0, boss: 0, t: 0, by: 0, last: 0 }
     s.players[0].quests[15] = 3
     warpParty(id)
+    S().renderer.setDebugZoom(0.74)
+    ov.bright = 1.45
     S().autopilot = true
   })
   at(1.4, () => {
@@ -1513,7 +1528,8 @@ export async function start(opts = {}) {
   //                    1.9 · 2.4 Mbps 가 1분 37초에 44.5 · 45.9 MB 였다 → 키 프레임 8초마다 · 720 후보를 더해 뜬 뒤에 크기로 고른다
   //  trailer_hq.webm — 고화질: 1080 · 가변 16 Mbps · 키 2초 (크기는 상관없다)
   // 같은 장을 인코더 넷에 넣는다 — 게임을 한 번만 돌린다. 소리는 한 번 만들어 모두에 붙인다
-  const LOW_MAX = 38_000_000
+  // 네 편을 한 글에 올리려면(게시판 글 하나 50 MB) 편마다 12 MB 안으로 — start({ lowMax: 11_500_000 })
+  const LOW_MAX = opts.lowMax ?? 38_000_000
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
@@ -1643,7 +1659,7 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), count: sec })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { don: false, title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, title: null, cap: null, end: null, bright: undefined, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
   const acts = ULT ? ultScenes() : scenes(PART)

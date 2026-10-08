@@ -7,6 +7,17 @@ import * as THREE from 'three'
 
 let gradient: THREE.DataTexture | null = null
 
+/**
+ * 점광원 하나가 주는 빛의 상한 (2026-10-08 영상 확인): 등불 · 횃불 · 모닥불 바로 곁의 계란 · 괴물이 1 을 훌쩍 넘게 밝아져
+ * 툰 명암이 한 단으로 뭉개지고 빛 번짐(후처리)까지 붙어 하얀 덩어리로 보였다 — 마을에서 파티가 모이면 특히. 바닥 · 벽은 그대로
+ */
+const POINT_CAP = 1.25
+const LIGHTS_CAPPED = THREE.ShaderChunk.lights_fragment_begin.replace(
+  'getPointLightInfo( pointLight, geometryPosition, directLight );',
+  `getPointLightInfo( pointLight, geometryPosition, directLight );
+		directLight.color = min( directLight.color, vec3( ${POINT_CAP.toFixed(2)} ) );`,
+)
+
 /** 명암 계단: 그늘 · 중간 · 밝음 (가장 어두운 단도 너무 까맣지 않게 — 어두운 던전이라) */
 export function toonGradient(): THREE.DataTexture {
   if (gradient) return gradient
@@ -39,7 +50,7 @@ export function addInk(mat: THREE.Material, strength = 0.7): void {
   mat.onBeforeCompile = (sh, r) => {
     prev.call(mat, sh, r)
     sh.uniforms.uInk = { value: strength }
-    sh.fragmentShader = 'uniform float uInk;\n' + sh.fragmentShader.replace(
+    sh.fragmentShader = 'uniform float uInk;\n' + sh.fragmentShader.replace('#include <lights_fragment_begin>', LIGHTS_CAPPED).replace(
       '#include <dithering_fragment>',
       `#include <dithering_fragment>
       {
@@ -50,5 +61,5 @@ export function addInk(mat: THREE.Material, strength = 0.7): void {
     )
   }
   const key = mat.customProgramCacheKey.bind(mat)
-  mat.customProgramCacheKey = () => `${key()}|ink`
+  mat.customProgramCacheKey = () => `${key()}|ink|pcap`
 }

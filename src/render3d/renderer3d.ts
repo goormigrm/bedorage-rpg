@@ -3773,7 +3773,8 @@ export class Renderer3D {
         const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        const beam = new THREE.PointLight(acid ? 0xff4a2a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 10, zn.r * U * 2.5, 1.4)
+        // 무대(스포트라이트) 빛 10 → 6: 빛 번짐(후처리)이 들어온 뒤로 무대 바닥이 하얗게 날아갔다 (2026-10-08 영상 확인)
+        const beam = new THREE.PointLight(acid ? 0xff4a2a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 6, zn.r * U * 2.5, 1.4)
         beam.position.y = 3
         g.add(beam)
         this.scene.add(g)
@@ -4100,8 +4101,16 @@ export class Renderer3D {
       }
       l.visible = true
       const flicker = 1 + Math.sin(this.t * 13 + i * 2) * 0.04 + Math.sin(this.t * 7.3 + i) * 0.03
-      l.intensity = dark.lantern * 5 * flicker * (p.downed ? 0.45 : 1)
-      l.position.set(pos[i].x, 1.7, pos[i].z)
+      // 2026-10-08 영상 확인: 등불이 머리 바로 위(1.7)라 계란 몸이 하얗게 날아갔고(툰 명암 + 빛 번짐), 파티가 모이면 넷이 겹쳐 더 했다 →
+      // 더 높이(3.2) 달고 세기를 조금 올려 바닥 밝기는 비슷하게 · 곁(2.5 안)에 다른 등불이 있으면 그만큼 줄인다
+      let near = 0
+      for (let j = 0; j < this.lanterns.length; j++) {
+        const q = curr.players[j]
+        if (j === i || !q || !q.alive || q.left || !pos[j]) continue
+        if ((pos[j].x - pos[i].x) ** 2 + (pos[j].z - pos[i].z) ** 2 < 2.5 * 2.5) near++
+      }
+      l.intensity = (dark.lantern * 8 * flicker * (p.downed ? 0.45 : 1)) / (1 + 0.6 * near)
+      l.position.set(pos[i].x, 3.2, pos[i].z)
     }
   }
 
