@@ -403,6 +403,7 @@ export class Session {
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
+        this.dockBag()
       },
     )
     this.skills = new SkillPanel(
@@ -431,7 +432,9 @@ export class Session {
       (cmd, arg) => this.input.queueCmd(cmd, arg),
       (open: boolean) => {
         this.syncUi()
-        this.sfx.ui(open)
+        // 보관함 · 상인 창과 같이 열리고 닫힐 때는 그 창 소리 하나만
+        if (!this.bagQuiet) this.sfx.ui(open)
+        if (!open) this.bagDocked = false
       },
     )
     this.bindWinButtons()
@@ -996,7 +999,8 @@ export class Session {
       e.preventDefault()
       return
     }
-    if (e.key === 'Escape' && this.inventory.open) {
+    // 보관함 · 상인 창과 같이 연 가방이면 Esc 는 그 창째 닫는다 (가방도 같이)
+    if (e.key === 'Escape' && this.inventory.open && !this.bagDocked) {
       this.inventory.toggle(false)
       e.preventDefault()
       return
@@ -2276,6 +2280,30 @@ export class Session {
    * 창이 하나라도 열려 있으면 사격 · 스킬을 막는다 (2026-10-08 — 창마다 따로 셈해, 마을 사람 창 · 스킬 창이 열린 채
    * 가방을 닫으면 막기가 풀려 창을 누르는 클릭이 사격으로 나갔다)
    */
+  /** 보관함 · 상인 창 때문에 가방을 같이 열었다 (그 창이 닫히면 같이 닫는다) · 그때 가방 소리는 내지 않는다 */
+  private bagDocked = false
+  private bagQuiet = false
+
+  /**
+   * 보관함 · 상인 창이 열리면 가방(장비 포함)을 오른쪽에 같이 연다 — 디아블로 4 · D2R 처럼 두 창 사이를 클릭 · 오른클릭 · 끌어다 놓기로
+   * 옮기고 판다 (2026-10-08 사용자: "보관함 UI 가 생각보다 별로"). 그 창이 닫히면 같이 연 가방만 닫는다 (원래 열려 있던 가방은 그대로)
+   */
+  private dockBag(): void {
+    if (!this.inventory) return
+    const npc = this.town?.open ?? null
+    const want = npc === 'stash' || npc === 'merchant'
+    this.inventory.setMode(npc === 'stash' ? 'stash' : npc === 'merchant' ? 'sell' : 'normal')
+    this.bagQuiet = true
+    if (want && !this.inventory.open) {
+      this.inventory.toggle(true)
+      this.bagDocked = true
+    } else if (!want && this.bagDocked) {
+      if (this.inventory.open) this.inventory.toggle(false)
+      this.bagDocked = false
+    }
+    this.bagQuiet = false
+  }
+
   private syncUi(): void {
     this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open || this.czClose)
   }

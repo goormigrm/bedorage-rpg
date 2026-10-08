@@ -4,9 +4,10 @@
 // 창이 열려 있어도 게임은 멈추지 않는다(협동). 대신 사격·스킬 입력은 막는다(클릭이 총질이 되지 않게).
 
 import { itemIconUrl } from './itemIcons'
+import { clickSuppressed, makeDraggable } from './dragItem'
 import { keyLabel } from '../game/keymap'
 import { CHARACTERS } from '../core/characters'
-import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SORT, CMD_UNEQUIP } from '../core/input'
+import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
   affixText, affixValue, armorBase, baseName, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
@@ -155,12 +156,21 @@ function compareHtml(it: Item, me: PlayerState): string {
   return out.length ? `<div class="cmp"><div class="cmp-t">끼면</div>${out.join('')}</div>` : ''
 }
 
+/**
+ * 가방 창의 쓰임 (2026-10-08 — 디아블로처럼 보관함 · 상인 창 옆에 같이 열린다):
+ *  normal = 왼클릭 끼기 · 오른클릭 버리기 / stash = 클릭 · 오른클릭이 보관함으로 / sell = 오른클릭 팔기(전설 이상은 두 번)
+ */
+export type BagMode = 'normal' | 'stash' | 'sell'
+
 export class Inventory {
   readonly el: HTMLElement
   private tip: ItemTip
   open = false
   private timer = 0
   private lastKey = ''
+  private mode: BagMode = 'normal'
+  /** 오른클릭 팔기를 한 번 누른 전설 이상 (두 번째에 판다) */
+  private sellArm = -1
 
   constructor(
     parent: HTMLElement,
@@ -177,6 +187,16 @@ export class Inventory {
     this.el.addEventListener('contextmenu', (e) => e.preventDefault())
     // 창 안의 클릭이 게임(사격)으로 새지 않게
     for (const ev of ['mousedown', 'mouseup', 'click']) this.el.addEventListener(ev, (e) => e.stopPropagation())
+  }
+
+  /** 보관함 · 상인 창이 열리고 닫힐 때 세션이 바꾼다 */
+  setMode(m: BagMode): void {
+    if (m === this.mode) return
+    this.mode = m
+    this.sellArm = -1
+    this.el.classList.toggle('docked', m !== 'normal')
+    this.lastKey = ''
+    if (this.open) this.render()
   }
 
   toggle(force?: boolean): void {
@@ -208,7 +228,7 @@ export class Inventory {
 
   private render(): void {
     const me = this.me()
-    const key = JSON.stringify([me.level, me.xp, me.gold, me.bagMax, me.attr, me.st.map((v) => Math.round(v * 10)), me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`), this.note])
+    const key = JSON.stringify([this.mode, me.level, me.xp, me.gold, me.bagMax, me.attr, me.st.map((v) => Math.round(v * 10)), me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`), this.note])
     if (key === this.lastKey) return
     this.lastKey = key
     const c = CHARACTERS[me.char]
@@ -216,7 +236,7 @@ export class Inventory {
     const slot = (i: number) => {
       const it = me.equip[i]
       const col = it ? itemColor(it) : 'rgba(201,162,74,0.3)'
-      return `<div class="eq${it ? ` r${it.rarity}` : ''}" data-eq="${i}" style="--rc:${col}">${it ? `<i class="ic" style="background-image:url(${itemIconUrl(it)})"></i>` : ''}<small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
+      return `<div class="eq${it ? ` r${it.rarity}` : ''}" data-eq="${i}" data-drop="eq" style="--rc:${col}">${it ? `<i class="ic" style="background-image:url(${itemIconUrl(it)})"></i>` : ''}<small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
     }
     const stats = [0, 1, 2, 3, 4, 5, 6, 7, 9].map((i) => {
       const v = Math.round(me.st[i] * 10) / 10
@@ -235,9 +255,15 @@ export class Inventory {
         <div class="inv-right">
           <div class="bag-h">가방 ${me.bag.length} / ${me.bagMax}
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
-            <small>왼클릭 끼기 · 오른클릭 버리기 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)</small></div>
+            <small>${
+               this.mode === 'stash'
+                 ? '<b>클릭 · 오른클릭 → 보관함</b> · 끌어서 장비 칸에 끼기 · <b>Shift+클릭 잠금</b>'
+                 : this.mode === 'sell'
+                   ? '<b>오른클릭 팔기</b>(전설 이상은 두 번) · 왼클릭 끼기 · <b>Shift+클릭 잠금</b>'
+                   : '왼클릭 끼기 · 오른클릭 버리기 · 끌어서 장비 칸 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)'
+             }</small></div>
           ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
-          <div class="bag">${cells.join('')}</div>
+          <div class="bag" data-drop="bag">${cells.join('')}</div>
         </div>
       </div>`
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
@@ -250,17 +276,43 @@ export class Inventory {
     this.el.querySelectorAll<HTMLElement>('[data-bag]').forEach((cell) => {
       const i = Number(cell.dataset.bag)
       cell.onclick = (e) => {
-        if (!me.bag[i]) return
-        // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝)
-        this.send((e as MouseEvent).shiftKey ? CMD_LOCK : CMD_EQUIP, i)
+        if (!me.bag[i] || clickSuppressed()) return
+        // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝). 보관함이 열려 있으면 클릭은 보관함으로
+        this.send((e as MouseEvent).shiftKey ? CMD_LOCK : this.mode === 'stash' ? CMD_STASH_PUT : CMD_EQUIP, i)
         this.lastKey = ''
         this.tip.hide()
       }
       cell.oncontextmenu = (e) => {
         e.preventDefault()
-        if (!me.bag[i]?.lk) this.send(CMD_DROP, i)
         this.tip.hide()
+        const it = me.bag[i]
+        if (!it) return
+        // 보관함 곁: 보관함으로 · 상인 곁: 팔기 · 그 밖: 버리기 (보관함 · 상인 곁에서는 버리지 않는다)
+        if (this.mode === 'stash') return this.send(CMD_STASH_PUT, i)
+        if (this.mode === 'sell') {
+          if (it.lk) return this.flash('잠근 것은 팔 수 없다 — Shift+클릭으로 풀기')
+          if (it.rarity >= 3 && this.sellArm !== it.uid) {
+            this.sellArm = it.uid
+            return this.flash(`한 번 더 오른클릭하면 팝니다 — ${itemName(it)}`)
+          }
+          this.sellArm = -1
+          return this.send(CMD_SELL, i)
+        }
+        if (!it.lk) this.send(CMD_DROP, i)
       }
+      // 끌어다 놓기: 보관함 칸 → 보관 · 장비 칸 → 끼기 · 상인 창 → 팔기
+      makeDraggable(cell, () => (me.bag[i] ? { from: 'bag', index: i, icon: itemIconUrl(me.bag[i]) } : null), (s, t) => {
+        this.tip.hide()
+        const d = t.dataset.drop
+        if (d === 'stash') this.send(CMD_STASH_PUT, s.index)
+        else if (d === 'eq') this.send(CMD_EQUIP, s.index)
+        else if (d === 'sell') {
+          const it = me.bag[s.index]
+          if (it?.lk) this.flash('잠근 것은 팔 수 없다 — Shift+클릭으로 풀기')
+          else this.send(CMD_SELL, s.index)
+        }
+        this.lastKey = ''
+      })
       cell.onmouseenter = () => this.tip.show(cell, me.bag[i], me, true)
       cell.onmouseleave = () => this.tip.hide()
     })

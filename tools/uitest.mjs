@@ -124,6 +124,50 @@ async function openGame(skin) {
   await page.waitForTimeout(300)
   check((await page.evaluate(() => window.__session.input.uiOpen)) === true, '가방을 열고 닫아도 마을 창이 열려 있으면 사격이 막힌 채다')
 
+  // 보관함 (2026-10-08 개편): 왼쪽 보관함 + 오른쪽 가방이 같이 열리고, 겹치지 않고, 화면 안 · 한 탭 60칸 · 칸을 누르면 옮겨진다
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  await page.evaluate(() => {
+    const p = window.__bd.state().players[window.__bd.me()]
+    p.x = 18 * 32 + 16
+    p.y = 17 * 32 + 16 + 30
+  })
+  await page.waitForTimeout(500)
+  await page.keyboard.press('KeyF')
+  await page.waitForTimeout(700)
+  const st = await page.evaluate(() => {
+    const sp = document.querySelector('.tp.stashp')
+    const inv = document.querySelector('.inv')
+    if (!sp || sp.hidden || !inv) return null
+    const a = sp.getBoundingClientRect()
+    const b = inv.getBoundingClientRect()
+    return {
+      invOpen: !inv.hidden,
+      overlap: !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top),
+      inside: a.left >= 0 && a.top >= 0 && a.right <= innerWidth && b.right <= innerWidth && a.bottom <= innerHeight - 100,
+      cells: sp.querySelectorAll('.st-grid .cell').length,
+      bag: window.__bd.state().players[window.__bd.me()].bag.length,
+      a: `${Math.round(a.left)}~${Math.round(a.right)}`,
+      b: `${Math.round(b.left)}~${Math.round(b.right)}`,
+    }
+  })
+  check(!!st, '보관함 곁에서 F — 보관함 창이 열린다')
+  if (st) {
+    check(st.invOpen, '보관함과 같이 가방 창이 열린다')
+    check(!st.overlap, `보관함 창과 가방 창이 겹치지 않는다 (보관함 ${st.a} · 가방 ${st.b})`)
+    check(st.inside, '보관함 창이 화면 안에 있고 스킬 바를 덮지 않는다')
+    check(st.cells === 60, `보관함 한 탭은 60칸 (${st.cells})`)
+    // 가방 첫 칸을 누르면 보관함으로
+    await page.locator('.inv .cell:not(.empty)').first().click()
+    await page.waitForTimeout(500)
+    const moved = await page.evaluate(() => window.__bd.state().players[window.__bd.me()].bag.length)
+    check(moved === st.bag - 1, `보관함이 열려 있으면 가방 칸을 누르면 보관함으로 간다 (${st.bag} → ${moved})`)
+  }
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+
   check(errors.length === 0, `잡히지 않은 오류 없음 (공포스러움)${errors.length ? '\n    ' + errors.slice(0, 3).join('\n    ') : ''}`)
   await page.close()
 }

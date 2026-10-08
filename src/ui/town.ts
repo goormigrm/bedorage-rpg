@@ -3,17 +3,20 @@
 // 창이 열려 있어도 게임은 돈다(마을이라 안전). 멀어지면 닫힌다.
 
 import { itemIconUrl } from './itemIcons'
+import { clickSuppressed, makeDraggable } from './dragItem'
 import { bt } from '../game/skin'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, GAMBLE_PITY, itemColor, FORGE_MAX, FORGE_MIN, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
 import { ItemTip, cellHtml, itemHtml } from './inventory'
+import { WEAPONS } from '../core/weapons'
+import { WEAPON_IDS, SLOT_WEAPON } from '../core/items'
 import { keyLabel } from '../game/keymap'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
 import { CMD_QUEST } from '../core/input'
@@ -112,6 +115,30 @@ function row(it: Item, right: string, data: string, disabled = false, short = fa
     <span class="tp-g">${right}</span></button>`
 }
 
+/** 보관함 한 쪽(탭)의 칸 수 — 10 × 6, 굴리지 않고 한눈에 (디아블로 4 의 탭처럼) */
+const STASH_TAB = 60
+
+/** 찾기에 쓰는 아이템 글: 이름 · 등급 · 부위 · 무기 종류 · 옵션 · 전설 · 세트 */
+function searchText(it: Item): string {
+  const parts = [itemName(it), RARITY_NAMES[it.rarity], SLOT_NAMES[it.slot]]
+  if (it.slot === SLOT_WEAPON) parts.push(WEAPONS[WEAPON_IDS[it.wt]]?.name ?? '')
+  for (let k = 0; k < it.aff.length; k += 2) parts.push(affixText(it.aff[k], affixValue(it, k)))
+  if (it.leg !== undefined && LEGENDS[it.leg]) parts.push(LEGENDS[it.leg].name, LEGENDS[it.leg].desc)
+  if (it.set !== undefined && SETS[it.set]) parts.push('세트', SETS[it.set].name)
+  if (it.up) parts.push(`+${it.up}`)
+  return parts.join(' ').toLowerCase()
+}
+
+/** 찾는 말(띄어 쓴 낱말 모두)이 들어 있나 */
+function matches(it: Item, q: string): boolean {
+  const t = searchText(it)
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((w) => t.includes(w))
+}
+
 const LINES: Record<NpcId, string> = {
   merchant: '살 게 있으면 사고, 팔 게 있으면 팔게.',
   smith: '같은 부위, 같은 등급 물건을 모아 와 — 녹여서 단단하게 해 주지. 같은 등급을 여럿 모아 오면 한 단계 위를 벼려 볼 수도 있고.',
@@ -136,6 +163,9 @@ export class TownPanel {
   /** 마지막 도박 결과 (2026-09-25 "뽑았을 때 어떤 아이템을 뽑았는지 알려 줘") */
   private lastGamble: { items: Item[]; gold: number } | null = null
   private lastSig = ''
+  /** 보관함 탭 (닫았다 열어도 보던 탭 — 라스트 에포크에서 사람들이 바라던 것) · 찾는 말 */
+  private stashTab = 0
+  private query = ''
   /** 아이템 설명 풍선 — 보관함 · 도박 결과의 칸에 마우스를 올리면 (가방 창과 같은 것) */
   private tip: ItemTip
 
@@ -197,7 +227,7 @@ export class TownPanel {
    */
   private sigOf(me: PlayerState, s: GameState): string {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
-    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
+    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
       .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
       .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}`
   }
@@ -340,31 +370,51 @@ export class TownPanel {
             <button class="btn" data-cmd="${CMD_GAMBLE}" data-arg="${k + 16}" ${canOne ? '' : 'disabled'}>10연</button></div>`).join('')}</div>
         <p class="tp-hint2">가방 빈 칸 <b class="${room > 0 ? '' : 'bad'}">${room}</b> · 돈이나 자리가 모자라면 되는 데까지만 뽑는다.</p>`
     } else if (npc === 'stash') {
-      // 2026-09-25 요청: 보관함도 **가방처럼 칸으로** 보고, 한꺼번에 넣고, 골드로 늘린다
+      // 2026-10-08 개편 (사용자: "보관함 UI 가 생각보다 별로 — 다른 게임처럼"): 디아블로 4 · D2R · 라스트 에포크처럼
+      //  · 가방(장비 포함)이 **오른쪽에 같이 열리고**(세션 dockBag) 이 창은 왼쪽 — 두 창 사이를 클릭 · 오른클릭 · 끌어다 놓기로 옮긴다
+      //  · 60칸(10 × 6) 탭으로 나눠 굴리지 않고 한눈에 · 탭마다 찬 개수 · 보던 탭 기억
+      //  · 찾기: 맞지 않는 칸은 흐리게(라스트 에포크) · 탭마다 맞는 개수
       const full = me.stash.length >= me.stashMax
       const bagFull = me.bag.length >= me.bagMax
       const canPut = !full && me.bag.some((it) => !it.lk)
       const up = stashUpPrice(me.stashMax)
-      const grid = (n: number, get: (i: number) => Item | undefined, attr: string) =>
-        `<div class="bag st-grid">${Array.from({ length: n }, (_, i) => cellHtml(get(i), `${attr}="${i}"`, me)).join('')}</div>`
-      body = `<div class="tp-cols">
-        <div class="tp-col"><div class="tp-h">가방 <span class="${bagFull ? 'bad' : ''}">${me.bag.length}/${me.bagMax}</span></div>
-          <div class="tp-btns"><button class="btn secondary" data-cmd="${CMD_SORT}" data-arg="0">정렬</button>
-            <button class="btn" data-cmd="${CMD_STASH_PUT}" data-arg="200" ${canPut ? '' : 'disabled'}>전부 보관 →</button></div>
-          ${grid(me.bagMax, (i) => me.bag[i], 'data-put')}</div>
-        <div class="tp-col"><div class="tp-h">보관함 <span class="${full ? 'bad' : ''}">${me.stash.length}/${me.stashMax}</span></div>
-          <div class="tp-btns"><button class="btn secondary" data-cmd="${CMD_SORT}" data-arg="1">정렬</button>
-            <button class="btn" data-cmd="${CMD_STASH_TAKE}" data-arg="200" ${me.stash.length > 0 && !bagFull ? '' : 'disabled'}>← 전부 꺼내기</button></div>
-          ${grid(me.stashMax, (i) => me.stash[i], 'data-take')}</div></div>
-        <p class="tp-hint2">칸을 누르면 옮긴다 · 마우스를 올리면 설명 · 잠근 것(🔒)은 <b>전부 보관</b>에서 빠진다.</p>
-        <div class="tp-svc">${
-          me.stashMax >= STASH_MAX
-            ? `<button class="btn secondary" disabled>보관함을 끝까지 늘렸다<small>${STASH_MAX}칸</small></button>`
-            : `<button class="btn" data-cmd="${CMD_STASHUP}" data-arg="0" ${me.gold >= up ? '' : 'disabled'}>보관함 ${STASH_STEP}칸 늘리기 — ${goldText(up)}<small>${me.stashMax} → ${
-                me.stashMax + STASH_STEP
-              }칸 · 모든 캐릭터가 함께 쓴다</small></button>`
+      const tabs = Math.max(1, Math.ceil(me.stashMax / STASH_TAB))
+      if (this.stashTab >= tabs) this.stashTab = tabs - 1
+      const q = this.query.trim()
+      const tabBtn = (k: number) => {
+        const lo = k * STASH_TAB
+        const cap = Math.min(STASH_TAB, me.stashMax - lo)
+        const items = me.stash.slice(lo, lo + cap)
+        const hit = q ? items.filter((it) => matches(it, q)).length : 0
+        return `<button data-sttab="${k}" class="${k === this.stashTab ? 'on' : ''}${items.length >= cap ? ' full' : ''}">${k + 1}<small>${items.length}/${cap}</small>${hit ? `<i>${hit}</i>` : ''}</button>`
+      }
+      const lo = this.stashTab * STASH_TAB
+      const cap = Math.min(STASH_TAB, me.stashMax - lo)
+      const cells = Array.from({ length: cap }, (_, k) => {
+        const i = lo + k
+        const it = me.stash[i]
+        const c = cellHtml(it, `data-take="${i}"`, me)
+        return it && q && !matches(it, q) ? c.replace('class="cell ', 'class="cell dim ') : c
+      }).join('')
+      const total = q ? me.stash.filter((it) => matches(it, q)).length : 0
+      body = `<div class="st-top">
+          <div class="st-tabs">${Array.from({ length: tabs }, (_, k) => tabBtn(k)).join('')}${
+            me.stashMax >= STASH_MAX
+              ? ''
+              : `<button class="st-up" data-cmd="${CMD_STASHUP}" data-arg="0" ${me.gold >= up ? '' : 'disabled'} title="보관함 ${STASH_STEP}칸 늘리기 — 모든 캐릭터가 함께 쓴다">+${STASH_STEP}칸<small>${goldText(up)}</small></button>`
+          }</div>
+          <span class="st-count${full ? ' bad' : ''}">${me.stash.length} / ${me.stashMax}</span>
+        </div>
+        <div class="st-find"><input class="st-q" type="text" placeholder="찾기 — 이름 · 등급 · 부위 · 옵션 (예: 전설 반지 · 치명)" value="${esc(this.query)}" autocomplete="off" spellcheck="false">${
+          q ? `<span class="st-hits">${total}개</span><button class="st-clear" data-qclear title="지우기">✕</button>` : ''
         }</div>
-        ${full ? '<p class="tp-note">보관함이 가득 찼다 — 꺼내거나 팔거나, 칸을 늘려야 넣을 수 있다.</p>' : ''}`
+        <div class="bag st-grid" data-drop="stash">${cells}</div>
+        <div class="st-foot">
+          <button class="btn secondary" data-cmd="${CMD_SORT}" data-arg="1" title="등급이 높은 것부터 줄 세운다">정렬</button>
+          <button class="btn" data-cmd="${CMD_STASH_PUT}" data-arg="200" ${canPut ? '' : 'disabled'} title="잠근 것(🔒)은 빠진다">가방 전부 넣기</button>
+          <button class="btn secondary" data-cmd="${CMD_STASH_TAKE}" data-arg="200" ${me.stash.length > 0 && !bagFull ? '' : 'disabled'}>전부 꺼내기</button>
+        </div>
+        <p class="tp-hint2">클릭 · 오른클릭으로 가방 ↔ 보관함 · 끌어다 놓기 · 마우스를 올리면 설명 · 모든 캐릭터가 함께 쓴다${full ? ' · <b class="bad">가득 찼다</b>' : ''}</p>`
     } else if (npc === 'elder') {
       const reach = actReached(me.quests)
       const here = areaDef(me.area).act
@@ -409,10 +459,49 @@ export class TownPanel {
   private paint(npc: NpcId, me: PlayerState, body: string): void {
     // 다시 그려도 굴리던 자리 그대로 (2026-10-08 — 보관함에서 하나 옮길 때마다 칸 목록이 맨 위로 튀었다)
     const tops = [...this.el.querySelectorAll<HTMLElement>('.st-grid')].map((g) => g.scrollTop)
+    // 찾기 칸에 쓰는 중이면 다시 그려도 초점 · 커서를 지킨다
+    const qEl = this.el.querySelector<HTMLInputElement>('.st-q')
+    const typing = !!qEl && document.activeElement === qEl
+    const caret = typing ? [qEl!.selectionStart ?? 0, qEl!.selectionEnd ?? 0] : null
     this.el.innerHTML = `<div class="tp-head"><b>${NPC_NAMES[npc]}</b><span class="tp-gold">${myGoldText(me.gold)}</span><button class="inv-x" data-x>✕</button></div>
-      <p class="tp-line">"${LINES[npc]}"</p>${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
-    this.el.classList.toggle('wide', npc === 'stash' || npc === 'gambler')
+      ${npc === 'stash' ? '' : `<p class="tp-line">"${LINES[npc]}"</p>`}${body}<p class="tp-hint">${keyLabel('use')} · Esc 로 닫기</p>`
+    this.el.classList.toggle('wide', npc === 'gambler')
     this.el.classList.toggle('stashp', npc === 'stash')
+    // 보관함 · 상인은 가방 창이 오른쪽에 같이 열린다 — 이 창은 왼쪽에 붙는다 (디아블로)
+    this.el.classList.toggle('docked', npc === 'stash' || npc === 'merchant')
+    // 가방에서 끌어다 이 창에 놓으면: 보관함은 보관 · 상인은 팔기
+    if (npc === 'stash') this.el.dataset.drop = 'stash'
+    else if (npc === 'merchant') this.el.dataset.drop = 'sell'
+    else delete this.el.dataset.drop
+    const q2 = this.el.querySelector<HTMLInputElement>('.st-q')
+    if (q2) {
+      // 쓰는 키는 게임으로 가지 않게 (keydown 만 — keyup 은 흘려 보내야 누르고 있던 WASD 가 풀린다). Esc 는 찾기 칸에서 나온다
+      q2.addEventListener('keydown', (e) => {
+        e.stopPropagation()
+        if (e.key === 'Escape') q2.blur()
+      })
+      q2.addEventListener('input', () => {
+        this.query = q2.value
+        this.render()
+      })
+      if (typing) {
+        q2.focus()
+        if (caret) q2.setSelectionRange(caret[0], caret[1])
+      }
+    }
+    const qc = this.el.querySelector<HTMLButtonElement>('[data-qclear]')
+    if (qc)
+      qc.onclick = () => {
+        this.query = ''
+        this.render()
+      }
+    this.el.querySelectorAll<HTMLButtonElement>('[data-sttab]').forEach((b) => {
+      b.onclick = () => {
+        this.stashTab = Number(b.dataset.sttab)
+        this.tip.hide()
+        this.render()
+      }
+    })
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20)
     this.el.classList.toggle('smith', npc === 'smith')
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
@@ -463,14 +552,28 @@ export class TownPanel {
       this.el.querySelectorAll<HTMLElement>(sel).forEach((cell) => {
         const i = Number(cell.dataset.put ?? cell.dataset.take ?? cell.dataset.gb)
         const get = () => list()[i]
-        if (cmd >= 0)
+        if (cmd >= 0) {
           cell.onclick = () => {
+            if (!get() || clickSuppressed()) return
+            this.tip.hide()
+            this.send(cmd, i)
+          }
+          // 오른클릭도 옮기기 (디아블로 · 라스트 에포크의 빠른 옮기기)
+          cell.oncontextmenu = (e) => {
+            e.preventDefault()
             if (!get()) return
             this.tip.hide()
             this.send(cmd, i)
           }
+        }
         cell.onmouseenter = () => this.tip.show(cell, get(), me, true)
         cell.onmouseleave = () => this.tip.hide()
+        // 보관함 칸은 끌어서 가방(오른쪽 가방 창)에 놓으면 꺼낸다
+        if (cmd === CMD_STASH_TAKE)
+          makeDraggable(cell, () => (get() ? { from: 'stash', index: i, icon: itemIconUrl(get()!) } : null), (s, t) => {
+            this.tip.hide()
+            if (t.dataset.drop === 'bag' || t.dataset.drop === 'eq') this.send(CMD_STASH_TAKE, s.index)
+          })
       })
     }
     wire('[data-put]', () => this.me().bag, CMD_STASH_PUT)
