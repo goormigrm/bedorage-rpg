@@ -53,16 +53,14 @@ export function itemHtml(it: Item, me?: PlayerState): string {
 }
 
 /**
- * 가방 칸에 쓰는 짧은 이름 (위 작은 글은 부위). 무기는 무기 이름 그대로(소총 · 고기 바이올린),
- * 방어구 · 장신구는 바탕의 앞말(사슬 · 판금 · 구리 — 한 낱말 바탕이면 그대로).
+ * 가방 칸에 쓰는 짧은 이름 (위 작은 글은 부위). 무기는 무기 이름의 끝말(소총 · 바이올린 · 첼로 · 웍 — "고기 바이올린" 은 칸에서
+ * "고기 …" 로 잘려 첼로와 구분이 안 됐다), 방어구 · 장신구는 바탕의 앞말(사슬 · 판금 · 구리 — 한 낱말 바탕이면 그대로).
  * 2026-10-08 사용자: "아이템 창에서 일반 아이템의 이름이 안 보인다" — 예전에는 **전체 이름의 둘째 낱말**을 썼다(v0.4.0 이름 짓기 때의 것).
  * 일반 아이템은 이름이 바탕 하나라(소총 · 투구) 둘째 낱말이 없어 빈칸이 됐고, 희귀는 바탕 대신 옵션 앞말이 나왔다.
  */
 function cellTag(it: Item): string {
-  const base = baseName(it)
-  if (it.slot === SLOT_WEAPON) return base
-  const words = base.split(' ')
-  return words.length > 1 ? words[0] : base
+  const words = baseName(it).split(' ')
+  return it.slot === SLOT_WEAPON ? words[words.length - 1] : words[0]
 }
 
 /**

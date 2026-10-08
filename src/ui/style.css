@@ -702,7 +702,7 @@ body { background: var(--bg); }
 #btn-voice.live { border-color: #6aff8a; color: #b8ffc8; box-shadow: 0 0 10px rgba(106,255,138,.35); }
 
 /* 마을 NPC 창 (F) */
-.tp { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 40px)); max-height: calc(100% - 180px); overflow-y: auto; overflow-x: hidden; pointer-events: auto; cursor: default; z-index: 20;
+.tp { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 40px)); max-height: calc(100% - 216px); overflow-y: auto; overflow-x: hidden; pointer-events: auto; cursor: default; z-index: 20;
   background: linear-gradient(180deg, rgba(28,24,21,0.97), rgba(10,9,8,0.97)); border: 1.5px solid rgba(201,162,74,0.6); border-radius: 6px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 0 4px rgba(0,0,0,0.3); padding: 12px 14px; color: #d8cfbf; font: 500 12px "IBM Plex Sans KR", sans-serif; }
 .tp[hidden] { display: none; }

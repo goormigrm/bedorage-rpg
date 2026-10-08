@@ -10,6 +10,9 @@ describe('가방 칸 이름', () => {
   it('일반 무기도 무기 이름이 보인다 (예전엔 빈칸)', () => {
     const rifle: Item = { uid: 1, slot: SLOT_WEAPON, wt: WEAPON_IDS.indexOf('rifle'), rarity: 0, ilvl: 3, aff: [] }
     expect(tagOf(rifle)).toBe('소총')
+    // 여러 낱말 무기는 끝말 — "고기 바이올린" · "고기 첼로" 가 칸에서 구분되게
+    expect(tagOf({ ...rifle, wt: WEAPON_IDS.indexOf('violin') })).toBe('바이올린')
+    expect(tagOf({ ...rifle, wt: WEAPON_IDS.indexOf('cello') })).toBe('첼로')
   })
 
   it('어떤 등급 · 부위든 칸 이름이 비지 않는다', () => {
