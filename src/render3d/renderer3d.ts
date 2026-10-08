@@ -1178,7 +1178,16 @@ export class Renderer3D {
             v.vsx += 0.28
             v.vsy -= 0.24
           }
-          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.9, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6 })
+          // 잇달아 맞은 피해는 하나로 합친다 (떼에 둘러싸이면 "-12" 가 머리 위에 줄줄이 쌓였다 — 2026-10-08)
+          const hurtKey = -1 - e.p
+          const prevHurt = this.texts.find((t) => t.m === hurtKey && t.max - t.life < 0.35)
+          if (prevHurt) {
+            prevHurt.sum! += Math.round(e.dmg)
+            prevHurt.text = `-${prevHurt.sum}`
+            prevHurt.life = prevHurt.max
+            prevHurt.x = e.x * U
+            prevHurt.z = e.y * U
+          } else this.texts.push({ x: e.x * U, z: e.y * U, y: 1.9, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6, m: hurtKey, sum: Math.round(e.dmg) })
           if (e.p === localPlayer) {
             this.shake = Math.max(this.shake, 0.18)
             const me = state.players[e.p]

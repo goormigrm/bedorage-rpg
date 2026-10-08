@@ -492,7 +492,7 @@ export class Sfx {
           // 치명타는 늘 들리게, 보통 명중은 35ms 에 한 번
           if (e.crit || now - this.lastMHit > 35) {
             this.lastMHit = now
-            this.hit(sp(e.x, e.y), e.crit)
+            this.hit(sp(e.x, e.y), e.crit, e.by === localPlayer)
           }
           break
         }
@@ -744,28 +744,26 @@ export class Sfx {
     // 소음기(권총): 아주 작게 — 남에게는 거의 안 들린다. 내 것도 작게 내되 쐈다는 건 알게
     const quiet = WEAPONS[w].suppressed === true
     const { node, t0 } = this.bus(s, (mine ? 1 : 0.85) * (quiet ? (mine ? 0.3 : 0.12) : 1))
+    // 총소리는 네 겹 (2026-10-08 손맛 — gunShot): 딱(파열) · 몸통 · 쿵(저음) · 꼬리(울림). 소음기 권총은 딱 · 꼬리 없이
     switch (w) {
       case 'pistol':
         // 소음기: 둔탁한 '툭'. 고음 파열음 없이 저음만
-        this.noiseBurst(node, t0, 0.06, 'lowpass', 900, 300, 0.6)
-        this.tone(node, t0, 0.06, 'sine', 180, 60, 0.6)
+        this.gunShot(node, t0, mine, { crack: 0, body: ['lowpass', 900, 300, 0.06, 0.6], thump: [180, 60, 0.06, 0.6], tail: 0, click: 0.04 })
         break
       case 'smg':
-        this.noiseBurst(node, t0, 0.06, 'highpass', 1200, 800, 0.6)
-        this.tone(node, t0, 0.05, 'square', 420, 120, 0.22)
+        this.gunShot(node, t0, mine, { crack: 0.35, body: ['bandpass', 1500, 700, 0.05, 0.55], thump: [260, 90, 0.05, 0.35], tail: 0.22 })
+        this.tone(node, t0, 0.04, 'square', 420, 120, 0.12)
         break
       case 'rifle':
-        this.noiseBurst(node, t0, 0.1, 'bandpass', 1400, 400, 0.8, 0.7)
-        this.tone(node, t0, 0.09, 'sine', 240, 60, 0.8)
+        this.gunShot(node, t0, mine, { crack: 0.55, body: ['bandpass', 1400, 450, 0.09, 0.75], thump: [210, 55, 0.1, 0.75], tail: 0.55 })
         break
       case 'shotgun':
-        this.noiseBurst(node, t0, 0.24, 'lowpass', 1600, 300, 1.0)
-        this.tone(node, t0, 0.18, 'sine', 140, 40, 1.0)
-        this.noiseBurst(node, t0, 0.05, 'highpass', 3000, 2000, 0.5)
+        this.gunShot(node, t0, mine, { crack: 0.6, body: ['lowpass', 1700, 280, 0.24, 1.0], thump: [130, 36, 0.2, 1.05], tail: 1.0 })
+        this.noiseBurst(node, t0, 0.05, 'highpass', 3000, 2000, 0.4)
         break
       case 'mg':
-        this.noiseBurst(node, t0, 0.07, 'bandpass', 1100, 500, 0.75, 0.7)
-        this.tone(node, t0, 0.06, 'square', 200, 70, 0.5)
+        this.gunShot(node, t0, mine, { crack: 0.45, body: ['bandpass', 1100, 500, 0.07, 0.7], thump: [170, 60, 0.07, 0.6], tail: 0.4 })
+        this.tone(node, t0, 0.05, 'square', 200, 70, 0.3)
         break
       case 'pan':
         // 후라이팬: 금속 울림 (여러 배음 + 짧은 노이즈)
@@ -773,9 +771,8 @@ export class Sfx {
         this.noiseBurst(node, t0, 0.05, 'highpass', 4000, 2500, 0.5)
         break
       case 'revolver':
-        // 소음기 없는 한 발: 크고 굵게
-        this.noiseBurst(node, t0, 0.12, 'bandpass', 1200, 350, 1.0, 0.7)
-        this.tone(node, t0, 0.14, 'sine', 160, 45, 1.0)
+        // 소음기 없는 한 발: 크고 굵게 + 공이치기 딸깍
+        this.gunShot(node, t0, mine, { crack: 0.7, body: ['bandpass', 1200, 350, 0.12, 0.95], thump: [150, 42, 0.15, 1.0], tail: 0.8, click: 0.22 })
         break
       case 'flamer':
         // 불길: 쉬익 하는 잡음
@@ -787,9 +784,8 @@ export class Sfx {
         this.noiseBurst(node, t0, 0.04, 'highpass', 2500, 1500, 0.35)
         break
       case 'doublebarrel':
-        this.noiseBurst(node, t0, 0.32, 'lowpass', 1400, 250, 1.2)
-        this.tone(node, t0, 0.24, 'sine', 110, 32, 1.2)
-        this.noiseBurst(node, t0 + 0.03, 0.2, 'lowpass', 1000, 200, 0.8)
+        this.gunShot(node, t0, mine, { crack: 0.7, body: ['lowpass', 1500, 240, 0.32, 1.15], thump: [105, 30, 0.26, 1.2], tail: 1.2 })
+        this.noiseBurst(node, t0 + 0.03, 0.2, 'lowpass', 1000, 200, 0.7)
         break
       case 'railgun':
         // 전기: 올라가는 윙 + 크랙
@@ -798,9 +794,10 @@ export class Sfx {
         this.tone(node, t0 + 0.05, 0.4, 'sine', 90, 30, 1.0)
         break
       case 'launcher':
-        // 퐁 (유탄이 나가는 소리 — 터지는 소리는 aoe 가 낸다)
+        // 퐁 (유탄이 나가는 소리 — 터지는 소리는 aoe 가 낸다) + 묵직한 쿵
         this.tone(node, t0, 0.12, 'sine', 220, 90, 0.9)
         this.noiseBurst(node, t0, 0.08, 'lowpass', 800, 300, 0.6)
+        this.tone(node, t0, 0.16, 'sine', 95, 38, mine ? 0.9 : 0.5, 0.002)
         break
       case 'wok':
         for (const f of [330, 495, 740, 990]) this.tone(node, t0, 0.6, 'sine', f, f * 0.95, 0.22, 0.002)
@@ -912,10 +909,39 @@ export class Sfx {
     this.noiseBurst(bus, t0, 0.02, 'bandpass', 2400, 1800, 0.12, 2)
   }
 
-  private hit(s: Spatial, head: boolean): void {
-    const { node, t0 } = this.bus(s, 0.9)
-    this.tone(node, t0, 0.06, 'triangle', 900, 300, 0.7)
-    this.noiseBurst(node, t0, 0.04, 'bandpass', 2200, 1200, 0.4, 1.5)
+  /**
+   * 총소리 층 (2026-10-08 손맛 — 사용자: "특히 손맛을 더 살려줘"): 딱(아주 짧은 고음 파열) · 몸통(거른 잡음) · 쿵(떨어지는 저음 —
+   * 내 총은 더 세게) · 꼬리(낮게 깔리며 사그라지는 울림) · 딸깍(기계). 쏠 때마다 높이를 ±6% 바꿔 같은 소리가 되풀이되지 않게.
+   */
+  private gunShot(
+    node: AudioNode,
+    t0: number,
+    mine: boolean,
+    o: { crack: number; body: [BiquadFilterType, number, number, number, number]; thump: [number, number, number, number]; tail: number; click?: number },
+  ): void {
+    const k = 0.94 + Math.random() * 0.12
+    if (o.crack > 0) this.noiseBurst(node, t0, 0.018, 'highpass', 5200 * k, 3800 * k, o.crack, 0.8)
+    const [bt, b0, b1, bd, bp] = o.body
+    this.noiseBurst(node, t0, bd, bt, b0 * k, b1 * k, bp, 0.7)
+    const [f0, f1, td, tp] = o.thump
+    this.tone(node, t0, td, 'sine', f0 * k, f1 * k, tp * (mine ? 1.25 : 0.8), 0.002)
+    // 꼬리는 내 총만 — 동료 · 봇의 총까지 길게 울리면 소리 노드가 몰린다(느린 PC)
+    if (o.tail > 0 && mine) this.noiseBurst(node, t0 + 0.02, 0.28 + o.tail * 0.2, 'lowpass', 700 * k, 120, o.tail * 0.45, 0.6)
+    if (o.click) this.tone(node, t0 + o.click, 0.025, 'square', 2300 * k, 1600 * k, 0.12, 0.001)
+  }
+
+  /** 명중음. mine = 내가 맞힘 — 살에 박히는 둔탁한 저음을 더한다 (2026-10-08 손맛). 밝은 분위기는 말랑한 "뽁" */
+  private hit(s: Spatial, head: boolean, mine = false): void {
+    const { node, t0 } = this.bus(s, mine ? 1 : 0.8)
+    const k = 0.92 + Math.random() * 0.16
+    if (isBright()) {
+      this.tone(node, t0, 0.07, 'sine', 650 * k, 1250 * k, 0.45, 0.002)
+      this.noiseBurst(node, t0, 0.025, 'bandpass', 2600, 1800, 0.2, 1.5)
+    } else {
+      this.tone(node, t0, 0.06, 'triangle', 900 * k, 300 * k, 0.7)
+      this.noiseBurst(node, t0, 0.04, 'bandpass', 2200 * k, 1200 * k, 0.4, 1.5)
+    }
+    if (mine) this.tone(node, t0, 0.055, 'sine', 170 * k, 70, 0.55, 0.002)
     if (head) {
       // 헤드샷: 높은 '팅' 두 겹 — 몸통 명중과 확실히 구분되게
       this.tone(node, t0 + 0.01, 0.14, 'sine', 1500, 1100, 0.6)
