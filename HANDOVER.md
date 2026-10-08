@@ -34,7 +34,7 @@
 - 정예 이름표끼리 · 시청자 채팅 말풍선끼리 겹침은 **그대로**(사용자 — 움직이는 것이라 비키면 흔들린다).
 - 그림체 = 캐릭터 · 괴물 **둘 다 툰**(`toon.ts`).
 - 반복 끝 콘텐츠 이름 = **시련**(☀ 도전 놀이) — 4막 지역 '불타는 균열'과 헷갈리지 않게. 보통 난이도 심연의 군주를 잡은 캐릭터부터 · 끝낸 단계 + 1 까지 · 10분.
-- 소개 영상 규칙(메모 `feedback-trailer-video`): **☀ 철면수심전용 판만**(2026-10-08 사용자 — `tools/trailer.js` 기본값도 밝게) · 40초 여러 편 · 1080 + 작은 HUD · 쉬운 말 · 끝은 페이드아웃 → 검은 끝 카드 · 지루한 구간 빼기. 지금 판은 `docs/img/trailer1 ~ 4_bright.webm`(공포스러움 판 `trailer1 ~ 4.webm` 도 남아 있다 — 쓰지 않는다).
+- 소개 영상 규칙(메모 `feedback-trailer-video`): **☀ 철면수심전용 판만**(2026-10-08 사용자 — `tools/trailer.js` 기본값도 밝게) · 40초 여러 편 · 1080 + 작은 HUD · 쉬운 말 · 끝은 페이드아웃 → 검은 끝 카드 · 지루한 구간 빼기. 지금 판은 `docs/img/trailer1 ~ 4_bright.webm`(공포스러움 판 `trailer1 ~ 4.webm` 도 남아 있다 — 쓰지 않는다). **메인 PC 에서도 v0.98.1 로 네 편을 떴다**(2026-10-08 — 사용자: "트레일러 철면수심전용 영상 만들어줘" · 39.1 · 32.3 · 39.2 · 39.6초 · 게시판용 10.9 · 8.9 · 10.9 · 11.3 MB = 42.0 MB · 고화질 70 · 58 · 71 · 75 MB · 사진 `shot_town · fight · boss_bright.jpg`). `docs/img` 는 git 밖이라 PC 마다 따로 뜬다.
 - **녹음 효과음(S4)**: 사용자 허락으로 Kenney CC0 셋을 받아 45개 435 KB 를 넣었다(v0.98.0 — `public/sfx` · `CREDITS.md`). 소리 세기 · 느낌은 사용자 확인이 필요하다(Claude 는 못 듣는다).
 
 **주의**
@@ -563,6 +563,7 @@ tests/dungeon.test.ts · tests/combat.test.ts · tests/skills.test.ts · tests/i
   RPG 폴더에서 세션을 열면 이 저장소의 `.claude/launch.json` `dev` 로 된다.
 - **확인은 배포 사이트에서**(2026-09-23 사용자: "노트북 사양이 좋지 않으니 localhost 로 접속하지 말고, 반영한 후에 https://goormigrm.github.io/bedorage-rpg/ 에서 테스트하고, 잘못되면 수정 반영"). 작업 규칙의 3 · 4 는 → 푸시 · 배포 뒤 배포 사이트에서 확인 · 탭 닫기.
   - 노트북 작업 폴더: `C:\Users\tkdrm\Workspace\personal\bedorage-rpg`.
+- **메인 PC(데스크톱)에서 영상 뜨기**(2026-10-08): 이 폴더 `.claude/launch.json` 의 `rpg-dev`(5173 — 메인 PC 에는 다른 서버가 없다) → `tabs_create` 새 탭 → `resize_window` 1920×1080 → `?shot=1` 다시 열기(닉네임 철면수심 · 철면란은 세이브에 있다) → `t.start({ part: 1, lowMax: 11_500_000 })` 을 기다리지 말고 띄운 뒤 `status()` 를 30초씩 본다(자바스크립트 도구는 45초에 끊긴다) → 같은 판에서 2 · 3 · 4편. 한 편에 1분 남짓 · 네 편 약 5분. 확인 `tools/sheet.js` → `.frames/shots/tr1b-sheet.jpg` …
 - **2026-10-06 노트북에서 공지 영상 · 사진을 다시 떴다**(v0.72.4 — 사용자: "공지글 멘트 · 트레일러 영상 · 사진 파일을 이 노트북에서 생성"). `docs/img/` 는 git 밖이라 PC 마다 따로 떠야 한다.
   - 이때만 노트북에서 개발 서버를 띄웠다: `npx vite --port 5174 --strictPort`(백그라운드) → `preview_start({url:'http://localhost:5174/bedorage-rpg/?shot=1'})` → **새 탭(tabs_create)** 에서 `resize_window` 1920×1080 · `bd.nick` 철면수심 → 로비에서 `t.start()`. 녹화 약 3.5분 + 소리 · 저장 1분(노트북). 끝나면 창 크기 되돌리고 탭 닫고 서버 멈춤.
   - ⚠ 창 크기 흉내는 **턴이 끝나면 풀린다** — 녹화하는 동안 턴을 끝내지 말고 `status()` 를 들여다보며 기다린다.
