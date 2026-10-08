@@ -498,6 +498,11 @@ export class SkillFx {
         this.wave(x, z, 0xffffff, r, 0.3, 0.3, 2)
         this.glyphs(x, z, '✦', 0xffffff, 4, r * 0.6, 0.6, 0.5)
         return true
+      case 'echo': // 스킬 변형 "여진": 같은 자리에 한 번 더 — 금빛 충격파 · 불티
+        this.wave(x, z, 0xffe08a, r * 1.05, 0.4, 0.3, 1.6)
+        this.sparks(x, 0.6, z, 0xffe08a, 14, 0.14, 0.4, 0.7)
+        h.impact(x, 0.8, z, 0xffd86a, r * 1.4)
+        return true
       case 'curtain':
       case 'shout':
       case 'catstep':

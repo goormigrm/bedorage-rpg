@@ -221,6 +221,32 @@ export const ULT_NODE = 5
 export const MAX_RANK = 5
 export const MOD_NAMES = [['위력 (+25%)', '신속 (재사용 -20%)'], ['극대화 (+25%)', '절약 (집중 -35%)']]
 
+/**
+ * 랭크 5 변형의 갈래 (2026-10-08 퀄리티 2차 6단계 D1 — 전에는 모든 스킬이 "+25% | 집중 -35%" 숫자만):
+ *  blast 범위 공격 = ① 여진(0.6초 뒤 같은 자리에 한 번 더 · 50%) ② 불바다(3초 불타는 바닥)
+ *  buff 강화 = ① 연장(이 스킬이 건 효과의 지속 +50%) ② 나눔(6칸 안 동료도 그 효과를 절반 시간)
+ *  heal 회복 = ① 더 많이(회복 +40%) ② 보호(회복받은 동료 4초 받는 피해 -30%)
+ *  shot 사격 · 조종 = 예전 그대로 ① 극대화(+25%) ② 절약(집중 -35%)
+ * 효과는 sim 이 시전 동안의 범위 피해 · 강화 · 회복을 적어 두었다가 덧붙인다(castSkill) — 투기장은 쓰지 않는다
+ */
+export type VariantKind = 'blast' | 'buff' | 'heal' | 'shot'
+const VARIANT_KIND: Partial<Record<string, VariantKind>> = {
+  roar: 'blast', grenade: 'blast', flame: 'blast', oil: 'blast', flash: 'blast', supernova: 'blast', shout: 'blast', cluck: 'blast',
+  bladewind: 'blast', trap: 'blast', flashbulb: 'blast', curtain: 'blast',
+  ironwall: 'buff', barrage: 'buff', pierce: 'buff', composure: 'buff', pancharge: 'buff', catstep: 'buff', ninelives: 'buff', mirror: 'buff',
+  overdrive: 'buff', kingrage: 'buff', kenwang: 'buff', catwalk: 'buff', encore: 'buff', kitchen: 'buff', redcarpet: 'buff',
+  firstaid: 'heal', surgery: 'heal', snack: 'heal',
+}
+export const VARIANT_NAMES: Record<VariantKind, [string, string]> = {
+  blast: ['여진 (0.6초 뒤 한 번 더 · 50%)', '불바다 (3초 불타는 바닥)'],
+  buff: ['연장 (지속 +50%)', '나눔 (6칸 안 동료도 절반만큼)'],
+  heal: ['더 많이 (회복 +40%)', '보호 (회복받은 동료 4초 받는 피해 -30%)'],
+  shot: ['극대화 (+25%)', '절약 (집중 -35%)'],
+}
+export const variantKind = (id: SkillId): VariantKind => VARIANT_KIND[baseSkill(id)] ?? 'shot'
+/** 칸의 변형 이름 (tier 0 = 3랭크 · 1 = 5랭크) */
+export const modNames = (id: SkillId, tier: number): [string, string] => (tier === 0 ? (MOD_NAMES[0] as [string, string]) : VARIANT_NAMES[variantKind(id)])
+
 /** 스킬 빌드 (세이브 · 판에 들어간다): 칸별 랭크 · 3·5랭크 변형(0 안 고름, 1·2) · 스킬 칸 Q·E·1·2 에 건 칸 번호 */
 export type Build = { r: number[]; m3: number[]; m5: number[]; s: number[] }
 
@@ -258,8 +284,8 @@ export function freePoints(level: number, b: Build, bonus = 0): number {
 }
 
 /** 칸의 위력 배율 · 재사용 배율 · 집중 비용 배율 */
-export function nodePow(b: Build, n: number): number {
-  return 1 + 0.15 * Math.max(0, b.r[n] - 1) + (b.m3[n] === 1 ? 0.25 : 0) + (b.m5[n] === 1 ? 0.25 : 0)
+export function nodePow(b: Build, n: number, kind: VariantKind = 'shot'): number {
+  return 1 + 0.15 * Math.max(0, b.r[n] - 1) + (b.m3[n] === 1 ? 0.25 : 0) + (b.m5[n] === 1 && kind === 'shot' ? 0.25 : 0)
 }
 export function nodeCd(b: Build, n: number): number {
   return (1 - 0.04 * Math.max(0, b.r[n] - 1)) * (b.m3[n] === 2 ? 0.8 : 1)
@@ -267,7 +293,7 @@ export function nodeCd(b: Build, n: number): number {
 export function focusCost(def: SkillDef, b: Build, n: number): number {
   if (def.ult) return 0
   const base = Math.max(15, Math.min(40, Math.round((def.cd / 60) * 2.5)))
-  return Math.round(base * (b.m5[n] === 2 ? 0.65 : 1))
+  return Math.round(base * (b.m5[n] === 2 && variantKind(def.id) === 'shot' ? 0.65 : 1))
 }
 
 /** 스킬 칸(0 Q · 1 E · 2 R · 3 [1] · 4 [2]) → 트리 칸 번호 (배우지 않았으면 -1) */

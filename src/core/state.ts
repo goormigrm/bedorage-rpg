@@ -589,6 +589,8 @@ export interface Zone {
   slow?: number
   /** 즉사기 범위: 맞으면 무엇과도 상관없이 쓰러진다 (그리기도 검붉게 다르다) */
   kill?: boolean
+  /** 덫 같은 스킬 장판의 랭크 5 변형 (1 여진 · 2 불바다) */
+  v5?: number
 }
 export const ZONE_SPOTLIGHT = 0
 /** 폭발 정예가 죽은 자리: t 가 0 이 되면 터진다 (몬스터 편 — 플레이어만 다친다) */
@@ -601,6 +603,10 @@ export const ZONE_VORTEX = 3
 export const ZONE_TRAP = 4
 /** 보스 예고만 (피해 없음 — 도살자 돌진 길처럼 몸으로 치는 패턴의 길을 보여 준다) */
 export const ZONE_WARN = 5
+/** 스킬 변형 "여진": t 가 0 이 되면 같은 자리에 한 번 더 (플레이어 편 · dmg = 한 번 피해) */
+export const ZONE_ECHO = 6
+/** 스킬 변형 "불바다": 안의 괴물을 30틱마다 태운다 (플레이어 편) */
+export const ZONE_BURN = 7
 /** 예고 범위 모양 */
 export const ZS_CIRCLE = 0
 export const ZS_RING = 1
@@ -611,6 +617,8 @@ export const ZS_CONE = 3
 export interface Throw {
   id: number
   owner: number
+  /** 던진 스킬의 랭크 5 변형 (1 여진 · 2 불바다 — 터질 때 덧붙인다) */
+  v5?: number
   x0: number
   y0: number
   x: number

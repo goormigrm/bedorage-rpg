@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
-import { Ally, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
+import { Ally, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
-import { ACID, BOSS_PATS, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant } from '../core/monsters'
+import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -3649,6 +3649,9 @@ export class Renderer3D {
       const acid = zn.kind === ZONE_ACID
       const vortex = zn.kind === ZONE_VORTEX
       const trap = zn.kind === ZONE_TRAP
+      const burn = zn.kind === ZONE_BURN
+      // 여진(스킬 변형)은 터질 때만 보인다 (skillFx.aoe 'echo')
+      if (zn.kind === ZONE_ECHO) continue
       if (!g) {
         g = new THREE.Group()
         // 색의 뜻 (2026-09-23 사용자: "적의 범위 공격은 빨강, 우리 편 힐 · 좋은 효과는 초록 — 초록 독을 좋은 범위로 착각하지 않게"):
@@ -3657,8 +3660,8 @@ export class Renderer3D {
         const owner = curr.players[zn.owner]
         const hostileStage = !!me && !!owner && me !== owner && isEnemy(me, owner)
         const stage = hostileStage ? 0xff4a3a : allyGood()
-        const cDisc = acid ? 0xff3a1a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : hostileStage ? 0xff3a1a : 0x7affa0
-        const cRim = acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
+        const cDisc = burn ? 0xff6a1a : acid ? 0xff3a1a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : hostileStage ? 0xff3a1a : 0x7affa0
+        const cRim = burn ? 0xffa040 : acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
         const disc = new THREE.Mesh(this.zoneDisc, new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
         const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
@@ -3685,6 +3688,18 @@ export class Renderer3D {
         continue
       }
       if (trap) continue
+      if (burn) {
+        // 불바다 (스킬 랭크 5 변형): 일렁이는 주황 바닥 + 솟는 불티, 끝나 갈수록 사그라든다
+        const fade = Math.min(1, zn.t / 40)
+        ;((g.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = (0.32 + 0.1 * Math.sin(this.t * 11 + zn.id)) * fade
+        ;((g.children[1] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.55 * fade
+        if (Math.random() < 0.5) {
+          const a = Math.random() * Math.PI * 2
+          const d = Math.random() * zn.r * U * 0.9
+          this.spawnGlow(zn.x * U + Math.cos(a) * d, 0.1, zn.y * U + Math.sin(a) * d, 0, 0.05 + Math.random() * 0.06, 0, 0.5 + Math.random() * 0.3, Math.random() < 0.5 ? 0xff8a3a : 0xffd26a, 0.8)
+        }
+        continue
+      }
       if (acid) {
         // 산성 웅덩이: 부글거리며, 끝나 갈수록 옅어진다
         const fade = Math.min(1, zn.t / 40)
@@ -4012,6 +4027,8 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const def = MONSTER_LIST[m.kind]
+      // 정예 "보호막": 막이 서 있는 동안 하늘빛 원 (이때는 쏴도 안 다친다 — 기다렸다 쏘라는 신호)
+      if (m.elite & EA_SHIELD && shieldUp(curr.tick, m)) this.groundCircle(ctx, at.x, at.z, bodyR(m) * U * 1.7, '#7ad8ff', 0.75 + 0.2 * Math.sin(this.t * 10))
       if (m.st === MS_WINDUP && def.attack === 'lob' && m.mode === 0) {
         // 산성·불덩이 예고: 떨어질 자리
         this.groundCircle(ctx, m.ax * U, m.ay * U, (def.blast ?? ACID.r) * U, ENEMY_AOE_CSS, 0.3 + 0.5 * (1 - m.t / def.windup))

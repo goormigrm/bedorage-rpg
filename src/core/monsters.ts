@@ -424,6 +424,13 @@ export const EA_SPLIT = 16
 export const EA_VAMP = 32
 /** 접두 능력이 아니라 표시: 이름 있는 **우두머리** (이름은 world.ts 의 지역 표에서) */
 export const EA_UNIQUE = 64
+/** 2026-10-08 퀄리티 2차 6단계 F4 — 정예 능력 5 → 9: 서리 · 화염 · 보호막 · 순간이동 */
+export const EA_FROST = 128
+export const EA_FIRE = 256
+export const EA_SHIELD = 512
+export const EA_BLINK = 1024
+/** 보호막: 8초마다 1.7초 동안 피해를 받지 않는다 (틱 · 괴물 번호로 정해 결정론 — 상태를 따로 들지 않는다) */
+export const shieldUp = (tick: number, m: { id: number }): boolean => (tick + m.id * 37) % 480 < 100
 /** 우두머리: 체력·공격·경험치 배율 · 접두 능력 수 · 전리품 등급 보너스 · 전리품 수 */
 export const UNIQUE = { hp: 9, pow: 1.5, xp: 12, affixes: 3, lootBonus: 0.3, drops: 2 }
 export const ELITE_AFFIXES: { bit: number; name: string; desc: string }[] = [
@@ -432,6 +439,10 @@ export const ELITE_AFFIXES: { bit: number; name: string; desc: string }[] = [
   { bit: EA_VOLATILE, name: '폭발', desc: '죽은 자리가 1초 뒤 터진다' },
   { bit: EA_SPLIT, name: '분열', desc: '죽으면 구울 셋이 기어 나온다' },
   { bit: EA_VAMP, name: '흡혈', desc: '때린 피해의 절반만큼 회복' },
+  { bit: EA_FROST, name: '서리', desc: '7초마다 둘레가 얼어붙는다 — 붉은 원이 차면 피해 · 느려짐' },
+  { bit: EA_FIRE, name: '화염', desc: '지나간 자리에 불 웅덩이를 남긴다' },
+  { bit: EA_SHIELD, name: '보호막', desc: '8초마다 잠깐 피해를 받지 않는다' },
+  { bit: EA_BLINK, name: '순간이동', desc: '떨어진 표적의 등 뒤로 순간이동한다' },
 ]
 export const AFFIX_TUNE = {
   fast: 1.35,

@@ -159,6 +159,12 @@ export const LEGENDS: { name: string; desc: string }[] = [
   { name: '관통 탄띠', desc: '처치하면 다음 3발이 3마리를 꿰뚫고 피해 +30%' },
   { name: '집중', desc: '스킬 재사용 대기 -15%' },
   { name: '황금 손', desc: '골드 +50% · 골드를 주우면 체력 2% 회복' },
+  // 스킬을 바꾸는 전설 (2026-10-08 퀄리티 2차 6단계 D2 — 디아블로 4 의 위상처럼): 스킬 랭크 5 변형을 장비로도 (core/skills.ts VARIANT_NAMES)
+  { name: '메아리', desc: '범위 스킬이 0.6초 뒤 같은 자리에 한 번 더 터진다 (50%)' },
+  { name: '잿불', desc: '범위 스킬이 3초 동안 불타는 바닥을 남긴다' },
+  { name: '긴 여운', desc: '강화 스킬이 건 효과의 지속 +50%' },
+  { name: '나눔', desc: '강화 스킬의 효과를 6칸 안 동료도 절반 시간 받는다' },
+  { name: '은총', desc: '회복 스킬의 회복 +40%' },
 ]
 export const LEG_BLOOD = 0
 export const LEG_CORPSE = 1
@@ -170,6 +176,11 @@ export const LEG_GUARD = 6
 export const LEG_AMMO = 7
 export const LEG_FOCUS = 8
 export const LEG_GOLD = 9
+export const LEG_ECHO = 10
+export const LEG_EMBER = 11
+export const LEG_LINGER = 12
+export const LEG_SHARE = 13
+export const LEG_GRACE = 14
 
 /** 낀 장비의 전설 효과 비트 묶음 */
 /**

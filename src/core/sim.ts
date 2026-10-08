@@ -13,7 +13,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_GOLD, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -22,7 +22,7 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_FAST, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
   bodyR, GIANT_HP, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
@@ -32,7 +32,7 @@ import { botInput, makeBot } from './bot'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
-import {
+import { variantKind,
   CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_KENWANG, FX_SNIPE, FX_SWIFT, FX_WHIRL,
   MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
@@ -42,7 +42,7 @@ import {
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
   CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, Ally, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL, TICK_RATE,
-  STAMINA_MAX, STAMINA_REGEN, UWON, DASH_GRACE, ZONE_ACID, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, isHumanSeat, teamKills, MoveHow, SimEvent,
+  STAMINA_MAX, STAMINA_REGEN, UWON, DASH_GRACE, ZONE_ACID, ZONE_BURN, ZONE_ECHO, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, isHumanSeat, teamKills, MoveHow, SimEvent,
 } from './state'
 import { HEAD_AIM_FRAC, HEAD_FRAC, PART_BODY, PART_HEAD, PART_LEGS, PART_MULT, WEAPONS, falloff, headMult, partForOffset } from './weapons'
 
@@ -2050,6 +2050,8 @@ interface AoeOpts {
  */
 function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: number, r: number, dmg: number, o: AoeOpts): number {
   if (!o.quiet) state.events.push({ type: 'aoe', p: caster.id, id: o.id, x, y, r })
+  // 시전 동안의 범위 피해를 적어 둔다 (랭크 5 변형 — 여진 · 불바다)
+  if (aoeLog && dmg > 0) aoeLog.push({ x, y, r, dmg: dmg * skillPow, arc: o.arc, arcAim: o.arcAim })
   dmg = Math.round(dmg * dmgMul(caster) * skillPow)
   let n = 0
   const inArc = (tx: number, ty: number) => {
@@ -2280,12 +2282,57 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
   const def = SKILLS[id]
   p.cd[slot] = Math.round(def.cd * (1 - p.st[ST_CDR] / 100) * (node >= 0 ? nodeCd(p.build, node) : 1))
   if (state.mode === 'dungeon' && node >= 0) p.focus = Math.max(0, p.focus - focusCost(def, p.build, node))
-  skillPow = (node >= 0 ? nodePow(p.build, node) : 1) * (1 + p.st[ST_SKILLPOW] / 100)
+  const kind = variantKind(id)
+  skillPow = (node >= 0 ? nodePow(p.build, node, kind) : 1) * (1 + p.st[ST_SKILLPOW] / 100)
+  // 랭크 5 변형 (던전만): 시전 동안의 범위 피해 · 강화 · 회복을 적어 두었다가 덧붙인다.
+  // 같은 효과의 전설(메아리 · 잿불 · 긴 여운 · 나눔 · 은총)이 있으면 고르지 않은 쪽도 붙는다 — 비트 1 = 첫째 · 2 = 둘째
+  const dun = state.mode === 'dungeon'
+  const v5 = dun && node >= 0 ? p.build.m5[node] : 0
+  // leg2 < 0 = 둘째 변형의 전설이 없다 (회복의 "보호")
+  const pick = (leg1: number, leg2: number) => (dun ? (v5 === 1 || hasLeg(p, leg1) ? 1 : 0) | (v5 === 2 || (leg2 >= 0 && hasLeg(p, leg2)) ? 2 : 0) : 0)
+  const vm = kind === 'blast' ? pick(LEG_ECHO, LEG_EMBER) : kind === 'buff' ? pick(LEG_LINGER, LEG_SHARE) : kind === 'heal' ? pick(LEG_GRACE, -1) : 0
+  const fx0 = vm && kind === 'buff' ? p.fx.slice() : null
+  const hp0 = vm && kind === 'heal' ? state.players.map((q) => q.hp) : null
+  if (vm && kind === 'blast') aoeLog = []
+  castV5 = kind === 'blast' ? vm : 0
   try {
     castSkillBody(state, map, p, slot, id, def)
+    if (aoeLog) for (const a of aoeLog) blastVariant(state, p, a, vm)
+    if (fx0) {
+      const share = vm & 2 ? alliesFx(state, p, 6 * TILE).filter((q) => q !== p) : []
+      for (let i = 0; i < p.fx.length; i++) {
+        const inc = p.fx[i] - fx0[i]
+        if (inc <= 0) continue
+        for (const q of share) {
+          if (i === FX_RATE) buffRate(q, Math.round(inc * 0.5), p.rateMul)
+          else q.fx[i] = Math.max(q.fx[i], Math.round(inc * 0.5))
+        }
+        if (vm & 1) p.fx[i] = fx0[i] + Math.round(inc * 1.5)
+      }
+    }
+    if (hp0)
+      for (const q of state.players) {
+        const d = q.hp - (hp0[q.id] ?? q.hp)
+        if (d <= 0 || !q.alive) continue
+        if (vm & 1) healPlayer(state, q, d * 0.4)
+        if (vm & 2) q.fx[FX_PARTYDR] = Math.max(q.fx[FX_PARTYDR], 240)
+      }
   } finally {
     skillPow = 1
+    aoeLog = null
+    castV5 = 0
   }
+}
+
+/** 시전 동안 적어 둔 범위 피해 (랭크 5 변형 — castSkill) */
+let aoeLog: { x: number; y: number; r: number; dmg: number; arc?: number; arcAim?: number }[] | null = null
+/** 지금 시전 중인 범위 스킬의 랭크 5 변형 (던지기 · 덫이 들고 간다) */
+let castV5 = 0
+
+/** 범위 공격 변형 (비트): 1 여진(0.6초 뒤 같은 자리 50%) · 2 불바다(3초 · 30틱마다 12%) */
+function blastVariant(state: GameState, p: PlayerState, a: { x: number; y: number; r: number; dmg: number; arc?: number; arcAim?: number }, v5: number): void {
+  if (v5 & 1) state.zones.push({ id: state.nextFxId++, kind: ZONE_ECHO, owner: p.id, x: a.x, y: a.y, r: a.r, t: 36, max: 36, dmg: Math.max(1, Math.round(a.dmg * 0.5)), arc: a.arc, a: a.arcAim })
+  if (v5 & 2) state.zones.push({ id: state.nextFxId++, kind: ZONE_BURN, owner: p.id, x: a.x, y: a.y, r: Math.round(a.r * 0.75), t: 180, max: 180, dmg: Math.max(2, Math.round(a.dmg * 0.12)) })
 }
 
 function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: number, realId: SkillId, def: (typeof SKILLS)[SkillId]): void {
@@ -2325,7 +2372,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       p.pierceShots = 6
       break
     case 'grenade':
-      state.throws.push({ id: state.nextFxId++, owner: p.id, x0: p.x, y0: p.y, x: tx, y: ty, t: 42, max: 42 })
+      state.throws.push({ id: state.nextFxId++, owner: p.id, x0: p.x, y0: p.y, x: tx, y: ty, t: 42, max: 42, v5: castV5 || undefined })
       break
     case 'composure':
       p.fx[FX_CRIT] = dun ? 480 : 360
@@ -2553,7 +2600,7 @@ function castSkillBody(state: GameState, map: GameMap, p: PlayerState, slot: num
       break
     }
     case 'trap':
-      state.zones.push({ id: state.nextFxId++, kind: ZONE_TRAP, owner: p.id, x: tx, y: ty, r: 1.2 * T, t: 1200, max: 1200, dmg: Math.round(120 * skillPow) })
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_TRAP, owner: p.id, x: tx, y: ty, r: 1.2 * T, t: 1200, max: 1200, dmg: Math.round(120 * skillPow), v5: castV5 || undefined })
       break
     case 'angelshot': {
       const { x: mx, y: my } = muzzle(map, p)
@@ -2651,6 +2698,12 @@ function stepZones(state: GameState, map: GameMap): void {
     }
     z.t--
     if (z.t <= 0) {
+      // 여진 (스킬 랭크 5 변형): 같은 자리 · 같은 모양으로 한 번 더
+      if (z.kind === ZONE_ECHO) {
+        const owner = state.players[z.owner]
+        if (owner) aoe(state, map, owner, z.x, z.y, z.r, z.dmg, { id: 'echo', arc: z.arc, arcAim: z.a })
+        continue
+      }
       // 보스 범위(‰ · 모양) — 여기서 바로 친다
       if (z.kind === ZONE_FUSE && (z.pm || z.kill)) bossBlast(state, map, z)
       // 몬스터 편 폭발: 대기열에 넣으면 이번 틱 runBooms 가 터뜨린다 (by -2 = 몬스터는 안 다친다)
@@ -2675,9 +2728,15 @@ function stepZones(state: GameState, map: GameMap): void {
       // 덫: 처음 밟은 괴물 둘레를 치고 사라진다
       const owner = state.players[z.owner]
       if (owner && state.monsters.some((m) => m.hp > 0 && m.st !== MS_SLEEP && len(m.x - z.x, m.y - z.y) <= z.r)) {
-        aoe(state, map, owner, z.x, z.y, (state.mode === 'dungeon' ? 3 : 2) * TILE, z.dmg, { stun: 180, id: 'trap' })
+        const tr = (state.mode === 'dungeon' ? 3 : 2) * TILE
+        aoe(state, map, owner, z.x, z.y, tr, z.dmg, { stun: 180, id: 'trap' })
+        if (z.v5) blastVariant(state, owner, { x: z.x, y: z.y, r: tr, dmg: z.dmg }, z.v5)
         continue
       }
+    } else if (z.kind === ZONE_BURN) {
+      // 불바다: 30틱마다 안의 괴물을 태운다
+      const owner = state.players[z.owner]
+      if (owner && z.t % 30 === 0) aoe(state, map, owner, z.x, z.y, z.r, z.dmg, { id: 'burn', quiet: true })
     } else if (z.kind === ZONE_ACID) {
       // 산성 웅덩이: 안에 선 사람이 주기마다 다친다 (구르는 중·무적이면 hurtPlayer 가 거른다)
       if (z.t % ACID.every === 0) {
@@ -2718,7 +2777,10 @@ function stepThrows(state: GameState, map: GameMap, grid: Grid): void {
       continue
     }
     const owner = state.players[t.owner]
-    if (owner) aoe(state, map, owner, t.x, t.y, 3 * TILE, 80, { stun: 60, knock: 4, id: 'grenade' })
+    if (owner) {
+      aoe(state, map, owner, t.x, t.y, 3 * TILE, 80, { stun: 60, knock: 4, id: 'grenade' })
+      if (t.v5) blastVariant(state, owner, { x: t.x, y: t.y, r: 3 * TILE, dmg: 80 }, t.v5)
+    }
   }
   state.throws.length = write
   void grid
@@ -2941,6 +3003,11 @@ function noise(state: GameState, x: number, y: number): void {
 
 function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit: boolean, x: number, y: number): void {
   if (m.hp <= 0 || dmg <= 0) return
+  // 정예 "보호막": 막이 서 있는 동안은 다치지 않는다 (막았다는 불꽃만 — 너무 잦지 않게)
+  if (m.elite & EA_SHIELD && shieldUp(state.tick, m)) {
+    if (by >= 0 && (state.tick + m.id) % 4 === 0) state.events.push({ type: 'mblock', m: m.id, x, y })
+    return
+  }
   // 보스 방의 보스는 **사람이 먼저** 친다 (2026-09-25 사용자: "보스방에서 AI 봇이 먼저 보스를 때리지 않도록 — 유저가 때린 후 때리도록").
   // 안 맞은 보스에게 봇 · 용병(빗나간 탄 · 범위) · 주인 없는 피해는 들지 않는다 — 깨우지도 않는다
   if (m.hitTick < 0 && isGiant(m) && !isHumanSeat(by >= 0 ? state.players[by] : undefined)) return
@@ -3695,6 +3762,23 @@ function nearestActive(state: GameState, x: number, y: number, plain = false): n
   return best
 }
 
+/**
+ * 정예 새 능력 (2026-10-08 퀄리티 2차 6단계 F4): 서리 — 7초마다 표적이 가까우면 둘레에 얼음 폭발 예고(1.1초 · 최대 체력 4.5% · 2초 느려짐) ·
+ * 화염 — 움직이는 동안 0.6초마다 발밑에 불 웅덩이(3.3초)
+ */
+function eliteAffixTick(state: GameState, m: Monster, tick: number): void {
+  if (m.elite & EA_FROST && (tick + m.id * 13) % 420 === 0) {
+    const t = state.players[m.target]
+    if (t && isActive(t) && len(t.x - m.x, t.y - m.y) < 4 * TILE)
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_FUSE, owner: -1, x: m.x, y: m.y, r: Math.round(2.6 * TILE), t: 66, max: 66, dmg: 0, pm: 45, slow: 120, from: m.id })
+  }
+  // 움직임 표시(moving)는 이 틱의 이동 전에 지워져 있다 — 쫓는 중이고 표적이 아직 멀면 걷는 중으로 본다
+  const tgt = state.players[m.target]
+  const walking = m.st === MS_CHASE && !!tgt && len(tgt.x - m.x, tgt.y - m.y) > bodyR(m) + 48
+  if (m.elite & EA_FIRE && walking && (tick + m.id * 7) % 36 === 0 && state.zones.length < 120)
+    state.zones.push({ id: state.nextFxId++, kind: ZONE_ACID, owner: -1, x: m.x, y: m.y, r: Math.round(0.85 * TILE), t: 200, max: 200, dmg: Math.max(2, Math.round((4 * m.pow) / 100)) })
+}
+
 function stepMonsters(state: GameState, map: GameMap): void {
   const tick = state.tick
   for (const m of state.monsters) {
@@ -3760,6 +3844,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       if (m.st !== MS_CHASE) m.st = MS_CHASE
       continue
     }
+    if (m.elite & (EA_FROST | EA_FIRE)) eliteAffixTick(state, m, tick)
     const tp = state.players[m.target]
     const dx = tp.x - m.x
     const dy = tp.y - m.y
@@ -3811,7 +3896,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       // 막 보스: 정해진 차례로 패턴 (monsters.ts BOSS_PLANS)
       if (def.boss && bossThink(state, map, m, def, tp, d)) continue
       // 그림자: 떨어진 표적의 등 뒤로 순간이동 (mode 2 — 나타날 자리는 예고 때 정한다: 표적 자리에서 등 쪽으로 밀어 벽을 피한다)
-      if (def.special === 'blink' && m.scd === 0 && m.los === 1 && d > BLINK.min && d < BLINK.max) {
+      if ((def.special === 'blink' || (m.elite & EA_BLINK) !== 0) && !def.boss && m.scd === 0 && m.los === 1 && d > BLINK.min && d < BLINK.max) {
         const to = moveCircle(map, tp.x, tp.y, def.r, (dx / d) * BLINK.behind, (dy / d) * BLINK.behind)
         // 벽에 겹치거나 표적에게서 안 보이는 자리면 건너뛴다 (벽 속에 나타나면 쏠 수도 닿을 수도 없게 된다 — D7 계측에서 봇이 멈췄다)
         if (isWallAt(map, to.x, to.y) || rayBlocked(map, tp.x, tp.y, to.x, to.y) || circleHitsWall(map, to.x, to.y, def.r)) {
@@ -3892,7 +3977,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
     } else if (m.st === MS_WINDUP && m.mode >= 2) {
       // 보스 특수 예고: 끝나면 부채 · 새끼 (방향은 예고 시작 때 정했다 — 예고선 밖으로 비키면 산다)
       if (--m.t <= 0) {
-        if (def.special === 'blink') {
+        if (m.mode === 2 && (def.special === 'blink' || (m.elite & EA_BLINK) !== 0)) {
           state.events.push({ type: 'blink', m: m.id, x0: m.x, y0: m.y, x: m.ax, y: m.ay })
           m.x = m.ax
           m.y = m.ay
@@ -3904,7 +3989,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
         }
         m.st = MS_RECOVER
         // 순간이동한 그림자는 곧장 덤빈다
-        m.t = def.special === 'blink' ? 6 : 30
+        m.t = m.mode === 2 ? 6 : 30
         m.mode = 0
       }
     } else if (m.st === MS_WINDUP) {
