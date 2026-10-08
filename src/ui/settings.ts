@@ -96,7 +96,8 @@ export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
   const v = get(HUD_KEY)
   return HUD_SIZES.some((h) => h.id === v) ? (v as (typeof HUD_SIZES)[number]['id']) : 'normal'
 }
-export const hudScale = (): number => HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1
+/** 소개 영상은 더 작게 (2026-10-08 사용자: "영상은 HUD 자체도 작게" — tools/trailer.js 가 'tiny' 를 넣는다 · 설정 창에는 없다) */
+export const hudScale = (): number => (get(HUD_KEY) === 'tiny' ? 0.7 : (HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1))
 export const setHudSize = (id: string): void => set(HUD_KEY, id)
 
 /**
