@@ -64,6 +64,70 @@ export function canSee(map: GameMap, viewers: Viewer[], x: number, y: number, ra
   return false
 }
 
+/**
+ * 구조물 안개 (2026-10-08 사용자: "철면수심전용에서 시야(하얀 안개)가 계단식으로 깨진다" · "구조물에 하얀 네모 박스가 보인다"):
+ * 벽 · 상자 위 안개는 타일마다 **네모 덮개**(윗면 · 옆면 사각형 — 높이 WALL_H 고정)였다. 무서운 판의 네모 돌벽에는 맞지만 ☀ 밝은 판의
+ * 둥근 덤불 · 높이가 제각각인 장난감 블록과는 모양이 달라, 흰 파스텔 안개가 반투명 네모 상자로 떠 보였고 시야 끝이 타일 계단이 됐다.
+ * 밝은 판은 네모 덮개를 만들지 않고, 구조물 재질이 **세계 좌표로 시야 마스크를 직접 읽어** 안개색으로 섞는다(fogStructures).
+ * 곁의 바닥이 보이면 보이는 것으로 친다(네 방향 0.7칸 — 시야 쪽 벽 면이 반쯤 흐려지지 않게). 모든 재질이 같은 uniform 을 본다
+ */
+const VIS_U = {
+  visMask: { value: null as THREE.Texture | null },
+  visSize: { value: new THREE.Vector2(1, 1) },
+  visColor: { value: new THREE.Vector3() },
+  visAlpha: { value: 0 },
+  visOn: { value: 0 },
+}
+
+/** 세계(벽 · 상자 · 소품) 재질에 구조물 안개를 붙인다 — 바닥(userData.noVisFog)은 덮개가 맡는다. 무서운 판에서는 visOn 0 이라 그대로 */
+export function fogStructures(group: THREE.Object3D): void {
+  group.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (!m.isMesh || m.userData.noVisFog) return
+    const mats = Array.isArray(m.material) ? m.material : [m.material]
+    for (const mat of mats) addVisFog(mat)
+  })
+}
+
+function addVisFog(mat: THREE.Material): void {
+  if (!mat || mat.userData.visFog || (mat as THREE.ShaderMaterial).isShaderMaterial) return
+  mat.userData.visFog = true
+  const prev = mat.onBeforeCompile
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
+    Object.assign(sh.uniforms, VIS_U)
+    sh.vertexShader = 'varying vec3 vVisW;\n' + sh.vertexShader.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      {
+        vec4 visWp = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+        visWp = instanceMatrix * visWp;
+        #endif
+        vVisW = ( modelMatrix * visWp ).xyz;
+      }`,
+    )
+    sh.fragmentShader =
+      'uniform sampler2D visMask; uniform vec2 visSize; uniform vec3 visColor; uniform float visAlpha; uniform float visOn; varying vec3 vVisW;\n' +
+      sh.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+      if ( visOn > 0.5 ) {
+        vec2 vuv = vec2( vVisW.x / visSize.x, 1.0 - vVisW.z / visSize.y );
+        vec2 vo = vec2( 0.7 / visSize.x, 0.7 / visSize.y );
+        float vv = texture2D( visMask, vuv ).r;
+        vv = max( vv, texture2D( visMask, vuv + vec2( vo.x, 0.0 ) ).r );
+        vv = max( vv, texture2D( visMask, vuv - vec2( vo.x, 0.0 ) ).r );
+        vv = max( vv, texture2D( visMask, vuv + vec2( 0.0, vo.y ) ).r );
+        vv = max( vv, texture2D( visMask, vuv - vec2( 0.0, vo.y ) ).r );
+        gl_FragColor.rgb = mix( gl_FragColor.rgb, visColor, visAlpha * ( 1.0 - vv ) );
+      }`,
+      )
+  }
+  const key = mat.customProgramCacheKey.bind(mat)
+  mat.customProgramCacheKey = () => `${key()}|visfog`
+}
+
 /** 벽 끝을 부드럽게: 광선 끝에서 바깥으로 이만큼(타일) 흐려지는 띠 — 예전 캔버스 흐림(0.35 타일)을 대신한다 */
 const FEATHER = 0.45
 /** 한 번에 보는 사람 (파티 넷) */
@@ -88,6 +152,10 @@ export class Vision {
   private dirty = true
   private px: number
   private readonly clear = new THREE.Color()
+  /** 구조물 안개를 재질에서 (밝은 판 — 네모 덮개 없음) */
+  private readonly soft: boolean
+  private readonly fogColor: THREE.Vector3
+  private readonly fogAlpha: number
 
   constructor(readonly map: GameMap) {
     this.px = pxFor(map)
@@ -101,6 +169,9 @@ export class Vision {
         : map.theme.dark
           ? new THREE.Vector3(3 / 255, 3 / 255, 5 / 255)
           : new THREE.Vector3(6 / 255, 8 / 255, 5 / 255)
+    this.soft = vf !== undefined
+    this.fogColor = fogColor
+    this.fogAlpha = fogAlpha
     const cover = (side: boolean) =>
       new THREE.ShaderMaterial({
         uniforms: { mask: { value: null }, color: { value: fogColor }, alpha: { value: fogAlpha } },
@@ -126,6 +197,8 @@ export class Vision {
     floor.renderOrder = 10
     this.group.add(floor)
     this.geos.push(floorGeo)
+    // 밝은 판: 구조물은 재질이 안개를 섞는다 (fogStructures) — 네모 덮개를 만들지 않는다
+    if (this.soft) return
     // 벽·상자 윗면 덮개 (타일마다 사각형, uv 는 맵 좌표)
     this.group.add(this.topQuads(TILE_WALL, WALL_H + 0.02))
     this.group.add(this.topQuads(TILE_CRATE, CRATE_H + 0.02))
@@ -302,6 +375,12 @@ export class Vision {
       this.sideMat.uniforms.mask.value = this.rt.texture
       this.dirty = true
     }
+    // 구조물 안개 uniform 은 모든 세계 재질이 같이 본다 — 지금 그리는 시야의 것으로
+    VIS_U.visMask.value = this.rt.texture
+    VIS_U.visSize.value.set(this.map.w, this.map.h)
+    VIS_U.visColor.value.copy(this.fogColor)
+    VIS_U.visAlpha.value = this.fogAlpha
+    VIS_U.visOn.value = this.soft && this.group.visible ? 1 : 0
     if (!this.dirty) return
     this.dirty = false
     const prevRt = gl.getRenderTarget()
@@ -317,6 +396,7 @@ export class Vision {
 
   setVisible(v: boolean): void {
     this.group.visible = v
+    if (!v) VIS_U.visOn.value = 0
   }
 
   dispose(): void {

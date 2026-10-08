@@ -189,3 +189,22 @@ describe('시련 안의 후원 소환은 그 단계만큼 세다', () => {
     expect(b.pow).toBeGreaterThan(a.pow)
   })
 })
+
+// 2026-10-08 사용자: "도전 놀이에서 맵에 구조물이 너무 많아 보스가 나왔을 때 이동 자체가 어렵고 보스도 제대로 공격을 못 한다"
+describe('시련 맵은 트인 싸움터', () => {
+  it('막마다 · 맵마다: 상자 · 모래주머니 없음 · 바닥이 90% 안팎 · 테마는 그 막의 맵 그대로', async () => {
+    const { TILE_CRATE, TILE_SANDBAG } = await import('../src/core/map')
+    for (let act = 0; act < 4; act++)
+      for (let n = 0; n < 5; n++) {
+        const id = riftId(n, act)
+        const m = buildAreaMap(7, id)
+        let floor = 0
+        for (const t of m.tiles) {
+          expect(t === TILE_CRATE || t === TILE_SANDBAG).toBe(false)
+          if (t === 0) floor++
+        }
+        expect(floor / m.tiles.length).toBeGreaterThan(0.88)
+        expect(m.id).toBe(areaDef(id).map)
+      }
+  })
+})

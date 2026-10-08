@@ -176,6 +176,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   floor.rotation.x = -Math.PI / 2
   floor.position.set(map.w / 2, 0, map.h / 2)
   floor.receiveShadow = true
+  floor.userData.noVisFog = true
   group.add(floor)
   // 맵 밖: 바닥이 이어지다 안개로 사라진다 (2026-10-08 퀄리티 2차 1단계 — 전에는 한 색 판이라 밝은 분위기에서 하늘에 뜬 섬 같았다)
   const outTex = paintOutside(map)
@@ -183,6 +184,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const outside = new THREE.Mesh(new THREE.PlaneGeometry(map.w * 4, map.h * 4), new THREE.MeshBasicMaterial({ map: outTex }))
   outside.rotation.x = -Math.PI / 2
   outside.position.set(map.w / 2, -0.02, map.h / 2)
+  outside.userData.noVisFog = true
   group.add(outside)
 
   const m4 = new THREE.Matrix4()
@@ -1081,6 +1083,7 @@ function buildClassic(map: GameMap): World3D {
   floor.rotation.x = -Math.PI / 2
   floor.position.set(map.w / 2, 0, map.h / 2)
   floor.receiveShadow = true
+  floor.userData.noVisFog = true
   group.add(floor)
 
   // 맵 밖 바닥 (넓게, 어둡게)
@@ -1088,6 +1091,7 @@ function buildClassic(map: GameMap): World3D {
   outside.rotation.x = -Math.PI / 2
   outside.position.set(map.w / 2, -0.02, map.h / 2)
   outside.receiveShadow = true
+  outside.userData.noVisFog = true
   group.add(outside)
 
   // ---- 벽 / 상자 (인스턴스) ----

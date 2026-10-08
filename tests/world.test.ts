@@ -489,20 +489,32 @@ describe('2막 안개 숲 (D6)', () => {
   })
 
   it('버섯 주술사: 곁의 다친 동료를 고친다', () => {
-    const { s, run } = game(['chim'], 60, { area: 15 })
+    const { s, mapOf, run } = game(['chim'], 60, { area: 15 })
     const shaman = s.monsters.find((m) => MONSTER_LIST[m.kind].attack === 'heal' && !m.elite)!
     expect(shaman).toBeTruthy()
     const mate = s.monsters.find((m) => m !== shaman && m.pack === shaman.pack && !MONSTER_LIST[m.kind].boss && !m.elite)!
     expect(mate).toBeTruthy()
     const p = s.players[0]
+    // 사람 · 동료를 세울 자리: 주술사에서 벽 없이 곧게 트인 방향 (맵 모양이 바뀌어도 — 2026-10-08 던전 맵을 트이게 하며 왼쪽 200px 이 벽 너머가 됐다)
+    const map = mapOf(15)
+    const clear = (dx: number, dy: number, d: number) => {
+      for (let k = 8; k <= d; k += 8) {
+        const tx = Math.floor((shaman.x + dx * k) / TILE)
+        const ty = Math.floor((shaman.y + dy * k) / TILE)
+        if (map.tiles[ty * map.w + tx] !== TILE_FLOOR) return false
+      }
+      return true
+    }
+    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1], [-0.7071, -0.7071], [0.7071, 0.7071], [-0.7071, 0.7071], [0.7071, -0.7071]]
+    const pd = dirs.find(([dx, dy]) => clear(dx, dy, 200) && clear(-dx, -dy, 40)) ?? dirs[0]
     let healed = false
     for (let t = 0; t < 60 * 10 && !healed; t++) {
-      p.x = shaman.x - 200
-      p.y = shaman.y
+      p.x = shaman.x + pd[0] * 200
+      p.y = shaman.y + pd[1] * 200
       p.invuln = 99
       p.hp = p.maxHp
-      mate.x = shaman.x + 30
-      mate.y = shaman.y
+      mate.x = shaman.x - pd[0] * 30
+      mate.y = shaman.y - pd[1] * 30
       if (t === 30) mate.hp = Math.round(mate.maxHp * 0.3)
       const before = mate.hp
       run(1)

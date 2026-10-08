@@ -31,7 +31,7 @@ registerText(BOSS_INTRO, 'butcher', '무궁화 운동장의 술래 — 움직이
 registerText(BOSS_INTRO, 'queen', '벌집 궁전의 여왕벌 — 꿀단지를 지키러 깨어났다')
 registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 반칙하면 바로 탈락이다')
 registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
-import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isRift, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
 import { allyGood, allyTagCss } from '../core/palette'
@@ -45,7 +45,7 @@ import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText,
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
-import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
+import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { buildNpc } from './npc3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
@@ -514,6 +514,7 @@ export class Renderer3D {
     this.scene.background = new THREE.Color(map.theme.outside)
     this.scene.fog = new THREE.Fog(map.theme.fog, 34, 70)
     this.world = buildWorld(map)
+    fogStructures(this.world.group)
     this.scene.add(this.world.group)
     this.vision = new Vision(map)
     this.scene.add(this.vision.group)
@@ -683,6 +684,7 @@ export class Renderer3D {
     const pre = this.prebuilt.get(map)
     this.prebuilt.delete(map)
     this.world = pre ? pre.world : buildWorld(map)
+    fogStructures(this.world.group)
     this.scene.add(this.world.group)
     this.vision = pre ? pre.vision : new Vision(map)
     this.scene.add(this.vision.group)
@@ -731,6 +733,7 @@ export class Renderer3D {
       yield
     }
     const world = buildWorld(map, floor)
+    fogStructures(world.group)
     yield
     const vision = new Vision(map)
     this.prebuilt.set(map, { world, vision })
@@ -1245,8 +1248,8 @@ export class Renderer3D {
         case 'riftDone': {
           const mm = Math.floor(e.t / 3600)
           const ss = String(Math.floor((e.t % 3600) / 60)).padStart(2, '0')
-          if (e.ok) this.hud.banner(bt(`시련 ${e.stage}단계 성공`), `${mm}:${ss} · 다음 단계가 열렸다 · 수호자 자리의 문으로 마을에`, '#d8b8ff')
-          else this.hud.banner(bt(`시련 ${e.stage}단계 끝`), `시간 초과(${mm}:${ss}) — 단계는 그대로 · 수호자 자리의 문으로 마을에`, '#ff9a8a')
+          if (e.ok) this.hud.banner(bt(`시련 ${e.stage}단계 성공`), bt(`${mm}:${ss} · 다음 단계가 열렸다 — 보랏빛 문(F)으로 마을에 가서 시련의 문에서 다음 단계`), '#d8b8ff')
+          else this.hud.banner(bt(`시련 ${e.stage}단계 끝`), bt(`시간 초과(${mm}:${ss}) — 단계는 그대로 · 보랏빛 문(F)으로 마을에`), '#ff9a8a')
           break
         }
         case 'mastery': {
@@ -2079,7 +2082,10 @@ export class Renderer3D {
 
   private updateVision(curr: GameState, opts: RenderOptions): void {
     const lp = opts.viewer ?? opts.localPlayer
-    const fog = (opts.fog ?? true) && lp >= 0
+    // ☀ 철면수심전용은 시야 안개가 없다 — 다 보인다 (2026-10-08 사용자: "밝은 맵인데 안개가 괜히 성능 낭비와 품질 저하를 부른다 — 아예 없애줘").
+    // 후원 "시야 축소" 가 걸린 동안만 안개를 쓴다(돈을 낸 효과 — 그때는 구조물도 재질에서 부드럽게 흐려진다, vision.ts fogStructures)
+    const darkNow = lp >= 0 && (curr.players[lp]?.don?.[DON_DARK] ?? 0) > 0
+    const fog = (opts.fog ?? true) && lp >= 0 && (!isBright() || darkNow)
     this.vision.setVisible(fog)
     const n = curr.players.length
     if (this.hidden.length !== n) this.hidden = curr.players.map(() => false)
@@ -2474,6 +2480,19 @@ export class Renderer3D {
     if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return null
     const me = curr.players[lp]
     if (!me) return null
+    // 시련(☀ 도전 놀이) 안: 막대를 채울 괴물 → 수호자 → 끝나면 마을로 가는 문 (2026-10-08 사용자: "1단계 성공 — 다음 단계가 열렸다고
+    // 떴는데 맵을 이동할 수단이 없어 보인다" — 문은 수호자 자리에 생기는데 가리키는 것이 없었다)
+    if (isRift(curr.curArea) && curr.rift?.area === curr.curArea) {
+      const r = curr.rift
+      if (r.boss === 2) {
+        const door = curr.portals.find((q) => q.owner < 0 && q.area === curr.curArea)
+        return door ? { x: door.x, y: door.y, label: bt('마을로 가는 문 — 시련의 문에서 다음 단계') } : null
+      }
+      if (r.boss === 1) {
+        const gd = curr.monsters.find((m) => m.rg === 1 && m.hp > 0)
+        if (gd) return { x: gd.x, y: gd.y, label: bt('시련의 수호자') }
+      }
+    }
     const g = questGuide(me.quests ?? [], curr.curArea)
     if (!g) return null
     const l = areaLayout(curr.curArea, this.map)
@@ -3316,15 +3335,31 @@ export class Renderer3D {
       let g = this.portalMeshes.get(owner)
       if (!g) {
         g = new THREE.Group()
-        const door = new THREE.Mesh(new THREE.CircleGeometry(0.62, 32), new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+        // 시련이 끝나고 열리는 "마을로 가는 문"(주인 없음)은 보랏빛 + 하늘로 솟는 빛기둥 — 멀리서도 보이게 (2026-10-08).
+        // ☀ 밝은 판에서는 더하기 섞기(Additive)가 밝은 바닥 위에서 하얗게 묻혀 보통 섞기 · 진한 색으로
+        const exit = owner < 0
+        const bright = isBright()
+        const col = exit ? (bright ? 0x8a3cff : 0xb47aff) : bright ? 0x2a5cff : 0x3a6cff
+        const door = new THREE.Mesh(
+          new THREE.CircleGeometry(0.62, 32),
+          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+        )
         door.scale.set(1, 1.55, 1)
         door.position.y = 1.05
-        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.05, 6, 32), new THREE.MeshBasicMaterial({ color: 0xaad0ff }))
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.64, exit ? 0.08 : 0.05, 6, 32), new THREE.MeshBasicMaterial({ color: exit ? (bright ? 0x5a1aa8 : 0xe8d8ff) : bright ? 0x1a3a9a : 0xaad0ff }))
         rim.scale.set(1, 1.55, 1)
         rim.position.y = 1.05
-        const light = new THREE.PointLight(0x5a8cff, 10, 7, 1.4)
+        const light = new THREE.PointLight(exit ? 0xb47aff : 0x5a8cff, 10, 7, 1.4)
         light.position.y = 1.2
         g.add(door, rim, light)
+        if (exit) {
+          const beam = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.42, 0.62, 9, 20, 1, true),
+            new THREE.MeshBasicMaterial({ color: bright ? 0x9a4cff : 0xc89aff, transparent: true, opacity: bright ? 0.35 : 0.28, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+          )
+          beam.position.y = 4.5
+          g.add(beam)
+        }
         this.scene.add(g)
         this.portalMeshes.set(owner, g)
       }

@@ -5,7 +5,7 @@
 // (`areaLayout` — 같은 맵이면 모든 브라우저에서 같은 자리). 상태에는 지역 번호만 들어간다.
 
 import { GameMap, TILE, TILE_FLOOR, buildMap, walkField } from './map'
-import { MapId } from './maps'
+import { MAPS, MapId } from './maps'
 import { tierOf } from './monsters'
 
 /** 무리 틀: 원형 [종류, 최소, 최대(포함)] 묶음. w = 뽑힐 비중 (틀 목록 안에서 합 1) */
@@ -343,7 +343,15 @@ export function areaSeed(seed: number, area: number): number {
 }
 
 export function buildAreaMap(seed: number, area: number): GameMap {
-  return buildMap(areaDef(area).map, 1, areaSeed(seed, area))
+  const def = areaDef(area)
+  // 시련(☀ 도전 놀이): 그 막의 맵 모습(테마)은 그대로, 뼈대는 **트인 싸움터** — 상자 · 모래주머니 없이 짧은 벽 조각만 드문드문
+  // (2026-10-08 사용자: "구조물이 너무 많아 보스가 나왔을 때 이동 자체가 어렵고 보스도 제대로 공격을 못 한다 — 전투가 가능하게").
+  // 굴 · 미로 · 지하 묘지 같은 방 · 통로 맵이 걸리면 거대한 수호자가 통로에 끼었다
+  if (isRift(area)) {
+    const base = MAPS[def.map]
+    return buildMap({ ...base, gen: { style: 'scatter', density: 3, crates: 0, sandbags: 0, maxLen: 4, forts: false } }, 1, areaSeed(seed, area))
+  }
+  return buildMap(def.map, 1, areaSeed(seed, area))
 }
 
 // ---------------------------------------------------------------- 퀘스트 (GUIDE 10장 — D5)

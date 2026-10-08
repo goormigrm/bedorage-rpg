@@ -4,7 +4,6 @@
 
 import { isBright } from '../game/skin'
 import { GameState, OBJ_GOLDCHEST, OBJ_URN, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
-import { areaDef } from '../core/world'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
@@ -271,6 +270,10 @@ export class Sfx {
   updateSteps(state: GameState, localPlayer: number, dt: number): void {
     if (!this.ready() || state.phase !== 'playing') return
     this.heartbeat(state.players[localPlayer])
+    // 발소리는 투기장의 **상대**만 (2026-10-08 사용자: "내 캐릭터와 동료의 발소리는 필요 없다 — 상대도 아닌데 들을 이유가 없다").
+    // 던전은 모두 같은 편이라 발소리를 내지 않는다. 투기장에서는 상대 위치를 듣는 게임 요소라 남긴다
+    if (state.mode !== 'arena') return
+    const myTeam = localPlayer >= 0 ? state.players[localPlayer]?.team : undefined
     const n = state.players.length
     if (this.stepPhase.length !== n) {
       this.stepPhase = new Array(n).fill(0)
@@ -283,13 +286,11 @@ export class Sfx {
       lx = me.x
       ly = me.y
     }
-    // 발밑: 들판 · 숲 · 늪 · 마을은 풀 · 흙, 나머지(묘지 · 성당 · 굴 · 하수도 · 심연)는 돌바닥
-    if (state.mode === 'dungeon' && state.curArea >= 0) {
-      const map = areaDef(state.curArea).map
-      this.stepGrass = map === 'fields' || map === 'forest' || map === 'swamp' || map.startsWith('town')
-    } else this.stepGrass = false
+    // 발밑: 투기장은 돌바닥 (던전은 위에서 돌아갔다 — 발소리 없음)
+    this.stepGrass = false
     for (let i = 0; i < n; i++) {
       const p = state.players[i]
+      if (i === localPlayer || (myTeam !== undefined && p.team === myTeam)) continue
       if (!p.alive || p.left || !p.moving || p.dashTimer > 0 || WEAPONS[p.weapon].suppressed) {
         // 소음기 무기(권총)를 든 사람은 발소리가 안 난다 — 소리로 위치가 안 새는 은신형 (2026-09-05)
         this.stepPhase[i] = 0.55 // 멈췄다 다시 걸으면 곧바로 한 걸음

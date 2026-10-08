@@ -1084,7 +1084,8 @@ function placeObjects(state: GameState, map: GameMap, id: number, seed: number, 
   // 지역 이벤트 (2026-10-08 D4): 저주받은 상자는 트인 곳 · 숨은 보물은 막다른 곳(벽 셋 — 없으면 구석) — 보스 방에는 없다
   if (def.kind !== 'boss') {
     if (rand(rng) < 0.4) add(OBJ_CURSED, pick((s) => s.wall === 0))
-    if (rand(rng) < 0.5) add(OBJ_SECRET, pick((s) => s.wall === 3) ?? pick((s) => s.wall === 2))
+    // 맵을 트이게 한 뒤(2026-10-08) 막다른 곳 · 구석이 드물다 — 그때는 벽 곁에
+    if (rand(rng) < 0.5) add(OBJ_SECRET, pick((s) => s.wall === 3) ?? pick((s) => s.wall === 2) ?? pick((s) => s.wall === 1))
   }
   // 보스 방 · 보스 방 바로 앞 층 · "비워라" 퀘스트 던전에는 금빛 상자
   const deepest = def.kind === 'boss' || GOLD_CHEST_AREAS.includes(id)

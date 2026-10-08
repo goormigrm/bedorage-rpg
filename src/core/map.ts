@@ -100,17 +100,22 @@ function generate(map: GameMap, def: MapDef, seed: number): void {
     carveArena(map)
     return
   }
+  // 던전 맵은 더 트이게 (2026-10-08 사용자: "맵에 기둥이 너무 많아 — 기둥 개수를 줄여 평야에서 싸우는 느낌을 더, 기둥은 답답함을 더한다"):
+  // 벽 덩어리 절반 · 기둥 간격 1.7 배 · 방 나누기 두 단계 덜 · 상자 군집 40%. 투기장(PvP — 중앙 진지가 있는 맵)은 엄폐가 대전 균형이라 그대로
+  const open = g.forts === false
+  const density = !open ? g.density : g.style === 'rooms' ? Math.max(2, g.density - 2) : g.style === 'pillars' ? Math.round(g.density * 1.7) : g.density * 0.5
+  const crates = open ? g.crates * 0.4 : g.crates
   // 1) 뼈대 — 맵 성격을 정하는 부분
   if (g.style === 'rooms') {
     // 넓을수록 더 잘게 나눈다
-    carveRooms(map, rng, g.density + (map.scale === 4 ? 2 : map.scale === 2 ? 1 : 0))
+    carveRooms(map, rng, density + (map.scale === 4 ? 2 : map.scale === 2 ? 1 : 0))
   } else if (g.style === 'pillars') {
-    placePillars(map, rng, g.density)
+    placePillars(map, rng, density)
   } else {
-    for (let i = 0; i < Math.round(g.density * k); i++) placeWallShape(map, rng, g.maxLen)
+    for (let i = 0; i < Math.round(density * k); i++) placeWallShape(map, rng, g.maxLen)
   }
   // 2) 상자 군집
-  for (let i = 0; i < Math.round(g.crates * k); i++) placeCluster(map, rng, TILE_CRATE, randInt(rng, 1, 5))
+  for (let i = 0; i < Math.round(crates * k); i++) placeCluster(map, rng, TILE_CRATE, randInt(rng, 1, 5))
   // 3) 모래주머니 진지: 중앙에 하나. 넓은 맵이면 하나 더 (많으면 지저분하고 엄폐가 흔해진다). 던전(forts: false)에는 없다
   const forts: [number, number][] = g.forts === false ? [] : [[map.w / 2, map.h / 2]]
   if (map.scale === 4 && g.forts !== false) forts.push([map.w * 0.25, map.h * 0.25])
