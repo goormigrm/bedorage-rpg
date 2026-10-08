@@ -41,6 +41,7 @@ import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
+import { buildNpc } from './npc3d'
 import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
@@ -2924,7 +2925,14 @@ export class Renderer3D {
     }
     if (this.markersFor === this.map && this.markers) {
       const k = 1 + Math.sin(this.t * 2.2) * 0.06
-      for (const c of this.markers.children) if (c.userData.pulse) c.scale.setScalar(k)
+      for (const c of this.markers.children) {
+        if (c.userData.pulse) c.scale.setScalar(k)
+        else if (c.userData.npc !== undefined) {
+          const p = this.t * 2.4 + c.userData.npc
+          c.position.y = Math.abs(Math.sin(p)) * 0.035
+          c.rotation.z = Math.sin(p * 0.5) * 0.035
+        }
+      }
       return
     }
     if (this.markers) {
@@ -2973,31 +2981,14 @@ export class Renderer3D {
       g.add(gate)
       this.gate = gate
     }
-    // 마을 사람들: 두건 쓴 사람(망토 색이 저마다) · 보관함은 쇠테 두른 큰 궤짝
-    const cloak: Record<string, number> = { merchant: 0x6a4a2a, smith: 0x4a3a30, gambler: 0x4a2a52, elder: 0x5a5a4a, captain: 0x5a2a22 }
+    // 마을 사람들: 계란 몸에 역할마다 차림 (2026-10-08 — 전에는 원뿔 + 두건 · render3d/npc3d.ts) · 보관함은 궤짝
+    let ph = 0
     for (const n of townNpcs(curr.curArea)) {
-      const f = new THREE.Group()
-      if (n.id === 'stash') {
-        const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.7), new THREE.MeshLambertMaterial({ color: 0x4a3420 }))
-        box.position.y = 0.35
-        box.castShadow = true
-        const band = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.08, 0.74), new THREE.MeshLambertMaterial({ color: 0x8a8070 }))
-        band.position.y = 0.6
-        const lock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.06), new THREE.MeshLambertMaterial({ color: 0xc9a24a }))
-        lock.position.set(0, 0.45, 0.37)
-        f.add(box, band, lock)
-      } else {
-        const body = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.25, 10), new THREE.MeshLambertMaterial({ color: cloak[n.id] ?? 0x4a4a4a }))
-        body.position.y = 0.62
-        body.castShadow = true
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshLambertMaterial({ color: 0xc8a888 }))
-        head.position.y = 1.36
-        const hood = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.34, 10), new THREE.MeshLambertMaterial({ color: new THREE.Color(cloak[n.id] ?? 0x4a4a4a).multiplyScalar(0.8) }))
-        hood.position.y = 1.58
-        f.add(body, head, hood)
-      }
+      const f = buildNpc(n.id, isBright())
       f.position.set(n.x * U, 0, n.y * U)
       f.rotation.y = Math.PI / 4
+      // 숨 쉬듯 통통 (궤짝은 가만히) — 아래 updateMarkers 가 움직인다
+      if (n.id !== 'stash') f.userData.npc = ph++ * 1.7
       g.add(f)
     }
     if (l.wp) {

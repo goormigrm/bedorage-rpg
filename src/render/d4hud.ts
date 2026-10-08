@@ -8,7 +8,7 @@
 //  - 체력이 낮으면 화면 가장자리가 붉게 맥박친다.
 // 모양은 어두운 쇠 바탕 + 바랜 금테 + 명조체 제목. 수치는 읽기 쉬운 고딕.
 
-import { bt } from '../game/skin'
+import { bt, isBright } from '../game/skin'
 import { CHARACTERS, CharacterDef, ROLE_INFO } from '../core/characters'
 import { focusCost, nodeCd, nodeSkill, slotNode } from '../core/skills'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_SWIFT, FX_WHIRL, SKILLS, SkillId } from '../core/skills'
@@ -27,6 +27,18 @@ const SERIF = '"Nanum Myeongjo", "Batang", serif'
 const SANS = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
 const GOLD = '#c9a24a'
 const GOLD_HI = '#f1d58a'
+
+/**
+ * HUD 뼈대 색 (2026-10-08 퀄리티 4단계): 공포스러움 = 쇠 · 금 / 철면수심전용 = "캔디 나이트" — 짙은 자주 바탕 · 분홍 테 · 민트 점.
+ * 글자는 둘 다 밝은 색이라 바탕은 어둡게 둔다(대비 그대로). 패널 · 오브 고리 · 스킬 칸 틀만 바꾼다.
+ */
+const IRON = { top: 'rgba(28,24,21,0.94)', bottom: 'rgba(10,9,8,0.94)', edge: 'rgba(201,162,74,0.55)', inner: 'rgba(201,162,74,0.18)', gem: GOLD,
+  ring: ['#1a1614', '#4a3f33', '#0c0a09'], ringEdge: 'rgba(201,162,74,0.8)', ringInner: 'rgba(241,213,138,0.35)', glass: '#070606',
+  slot: ['#191512', '#0d0b09', '#141110'], slotEdge: 'rgba(201,162,74,0.8)', slotIdle: 'rgba(120,100,70,0.5)' }
+const CANDY = { top: 'rgba(58,34,72,0.95)', bottom: 'rgba(30,18,40,0.95)', edge: 'rgba(255,158,196,0.75)', inner: 'rgba(127,220,192,0.28)', gem: '#7fdcc0',
+  ring: ['#2a1834', '#7a4a8a', '#1a0e22'], ringEdge: 'rgba(255,158,196,0.9)', ringInner: 'rgba(127,220,192,0.45)', glass: '#120a18',
+  slot: ['#3a2448', '#22142c', '#2c1a38'], slotEdge: 'rgba(255,158,196,0.85)', slotIdle: 'rgba(170,120,180,0.5)' }
+const hudSkin = () => (isBright() ? CANDY : IRON)
 
 /** 미니맵 한 변 (renderer3d 와 같아야 한다 — 추적 패널이 그 아래에 붙는다) */
 export const MINIMAP_SIZE = 190
@@ -86,22 +98,23 @@ function thinBar(c: CanvasRenderingContext2D, x: number, y: number, w: number, h
 /** 쇠 패널: 어두운 바탕 + 금테 두 줄 + 모서리 마름모 장식 */
 export function ironPanel(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, ornate = true): void {
   c.save()
+  const P = hudSkin()
   const g = c.createLinearGradient(0, y, 0, y + h)
-  g.addColorStop(0, 'rgba(28,24,21,0.94)')
-  g.addColorStop(1, 'rgba(10,9,8,0.94)')
+  g.addColorStop(0, P.top)
+  g.addColorStop(1, P.bottom)
   c.fillStyle = g
   rr(c, x, y, w, h, 4)
   c.fill()
-  c.strokeStyle = 'rgba(201,162,74,0.55)'
+  c.strokeStyle = P.edge
   c.lineWidth = 1.5
   rr(c, x + 0.75, y + 0.75, w - 1.5, h - 1.5, 4)
   c.stroke()
-  c.strokeStyle = 'rgba(201,162,74,0.18)'
+  c.strokeStyle = P.inner
   c.lineWidth = 1
   rr(c, x + 4, y + 4, w - 8, h - 8, 2)
   c.stroke()
   if (ornate) {
-    c.fillStyle = GOLD
+    c.fillStyle = P.gem
     for (const [px, py] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) {
       c.beginPath()
       c.moveTo(px, py - 5)
@@ -123,27 +136,28 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
   const c = h.ctx
   c.save()
   // 바깥 쇠 고리
+  const P = hudSkin()
   const ring = c.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.22)
-  ring.addColorStop(0, '#1a1614')
-  ring.addColorStop(0.55, '#4a3f33')
-  ring.addColorStop(1, '#0c0a09')
+  ring.addColorStop(0, P.ring[0])
+  ring.addColorStop(0.55, P.ring[1])
+  ring.addColorStop(1, P.ring[2])
   c.fillStyle = ring
   c.beginPath()
   c.arc(cx, cy, r * 1.2, 0, Math.PI * 2)
   c.fill()
-  c.strokeStyle = 'rgba(201,162,74,0.8)'
+  c.strokeStyle = P.ringEdge
   c.lineWidth = 2
   c.beginPath()
   c.arc(cx, cy, r * 1.2, 0, Math.PI * 2)
   c.stroke()
   // 고리 안쪽에 얇은 금선 하나 더 (두 겹이라야 쇠테처럼 보인다)
-  c.strokeStyle = 'rgba(241,213,138,0.35)'
+  c.strokeStyle = P.ringInner
   c.lineWidth = 1
   c.beginPath()
   c.arc(cx, cy, r * 1.07, 0, Math.PI * 2)
   c.stroke()
   // 안쪽 어두운 유리
-  c.fillStyle = '#070606'
+  c.fillStyle = P.glass
   c.beginPath()
   c.arc(cx, cy, r, 0, Math.PI * 2)
   c.fill()
@@ -228,16 +242,17 @@ function slot(h: HudCtx, x: number, y: number, s: number, key: string, cdK: numb
   const c = h.ctx
   c.save()
   // 칸 바탕: 위가 조금 밝은 돌 — 평평한 검정보다 깊이가 산다
+  const P = hudSkin()
   const bg = c.createLinearGradient(0, y, 0, y + s)
-  bg.addColorStop(0, '#191512')
-  bg.addColorStop(0.5, '#0d0b09')
-  bg.addColorStop(1, '#141110')
+  bg.addColorStop(0, P.slot[0])
+  bg.addColorStop(0.5, P.slot[1])
+  bg.addColorStop(1, P.slot[2])
   c.fillStyle = bg
   rr(c, x, y, s, s, 5)
   c.fill()
   const ready = cdK <= 0
   // 준비된 궁극기는 금빛으로 숨쉰다
-  c.strokeStyle = gold ? (ready ? `rgba(241,213,138,${(0.75 + 0.25 * Math.sin(h.t * 4)).toFixed(3)})` : 'rgba(201,162,74,0.5)') : ready ? 'rgba(201,162,74,0.8)' : 'rgba(120,100,70,0.5)'
+  c.strokeStyle = gold ? (ready ? `rgba(241,213,138,${(0.75 + 0.25 * Math.sin(h.t * 4)).toFixed(3)})` : 'rgba(201,162,74,0.5)') : ready ? P.slotEdge : P.slotIdle
   c.lineWidth = gold ? 2.5 : 1.5
   rr(c, x + 0.5, y + 0.5, s - 1, s - 1, 5)
   c.stroke()

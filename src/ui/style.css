@@ -1250,3 +1250,13 @@ body { background: var(--bg); }
 .it-head { display: flex; align-items: center; gap: 8px; }
 .it-head .ic { flex: none; width: 40px; height: 40px; border: 1px solid var(--rc); border-radius: 5px; background: center / 34px no-repeat, radial-gradient(circle, color-mix(in srgb, var(--rc) 25%, transparent), rgba(0,0,0,0.5) 75%); }
 .tp-n .ic { display: inline-block; width: 22px; height: 22px; margin-right: 5px; vertical-align: -6px; background: center / contain no-repeat; }
+
+/* ---- 철면수심전용 창 색 "캔디 나이트" (2026-10-08 퀄리티 4단계): 짙은 자주 바탕 · 분홍 테 · 민트 점 — 글자 대비는 그대로 ---- */
+.skin-bright .inv, .skin-bright .tp, .skin-bright .wpp { background: linear-gradient(180deg, rgba(58,34,72,0.97), rgba(30,18,40,0.97)); border-color: rgba(255,158,196,0.7); box-shadow: 0 10px 40px rgba(20,0,30,0.6), inset 0 0 0 1px rgba(127,220,192,0.22); }
+.skin-bright .inv-tip > div { background: rgba(40,22,52,0.97); }
+.skin-bright .tp-head, .skin-bright .inv-head { border-bottom-color: rgba(255,158,196,0.45); }
+.skin-bright .tp-tabs button.on, .skin-bright .seg button.on { background: rgba(255,158,196,0.25); border-color: #ff9ec4; color: #fff0f6; }
+.skin-bright .tp-row { border-color: rgba(255,158,196,0.25); }
+.skin-bright .tp-row:hover:not([disabled]) { border-color: #ff9ec4; background: rgba(255,158,196,0.14); }
+.skin-bright .cell.empty, .skin-bright .eq { border-color: rgba(255,158,196,0.22); }
+.skin-bright .winbtns button, .skin-bright .rbcol button { border-color: rgba(255,158,196,0.55); background: rgba(48,28,60,0.88); }

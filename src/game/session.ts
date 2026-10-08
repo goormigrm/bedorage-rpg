@@ -357,6 +357,8 @@ export class Session {
     this.applyKeys()
     this.viewArea = this.wantedArea()
     this.renderer = new Renderer3D(this.stage, this.map)
+    // 창(가방 · 마을 · 스킬 …) 색: 철면수심전용은 캔디 나이트 (style.css .skin-bright — 2026-10-08 퀄리티 4단계)
+    this.stage.classList.toggle('skin-bright', isBright())
     this.renderer.setRealMonsters(realMonstersOn())
     this.renderer.setSummonLabel((by, seq) => {
       const i = this.donNames.get(`${by}:${seq}`)
