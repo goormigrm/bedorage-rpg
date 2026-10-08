@@ -541,8 +541,8 @@ interface TownSpots {
   wp: [number, number]
   /** links 순서대로의 출구 */
   exits: [number, number][]
-  /** 타운 포털이 서는 자리 (자리 번호마다 옆으로 2칸씩) */
-  portal: [number, number]
+  /** 타운 포털이 서는 자리 — 자리 번호(주인)마다 하나 */
+  portals: [number, number][]
   /** NPC 자리 (천막 앞) */
   npcs: Record<NpcId, [number, number]>
 }
@@ -560,8 +560,11 @@ export const NPC_NAMES: Record<NpcId, string> = {
 /** NPC 와 이야기할 수 있는 거리 (px) */
 export const NPC_RANGE = 70
 
+// 타운 포털은 마을 가운데 모닥불(22 ~ 23, 16 ~ 17)을 둘러싼다 — 화면에서 모닥불의 아래 · 오른쪽 · 왼쪽 · 위
+// (2026-10-08 사용자: "타운 포털이 불필요하게 멀리 떨어져 있다 — 마을 가운데로". 전에는 서쪽 아래 17, 21 에서 주인마다 동쪽으로 2칸씩).
+// 화면 아래 = 월드 (+1, +1) · 화면 오른쪽 = (+1, −1). 왼쪽 자리는 보관함 곁을 피해 한 칸 아래로
 const CAMP: TownSpots = {
-  spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portal: [17, 21],
+  spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portals: [[25, 19], [25, 14], [20, 20], [20, 14]],
   npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
 }
 /** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
@@ -597,8 +600,8 @@ export interface AreaLayout {
   wpArrive: Spot | null
   /** 우두머리·보스 자리 */
   special: Spot
-  /** 타운 포털 자리 (마을만) */
-  portal: Spot | null
+  /** 타운 포털 자리 — 주인(자리 번호)마다 하나 (마을만 · 나머지는 빈 배열) */
+  portals: Spot[]
 }
 
 const layouts = new WeakMap<GameMap, AreaLayout>()
@@ -655,7 +658,7 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
       wp,
       wpArrive: nearSteps(map, walkField(map, tileOf(map, wp)), 2),
       special: at(town.spawn),
-      portal: at(town.portal),
+      portals: town.portals.map(at),
     }
   } else {
     // 입구 모서리를 지역마다 바꾼다 (늘 왼쪽 위에서 오른쪽 아래로 가면 지역이 다 같아 보인다).
@@ -693,7 +696,7 @@ export function areaLayout(area: number, map: GameMap): AreaLayout {
     }
     // 보스는 결투장 가운데(없으면 가장 먼 곳 — 보스 방은 출구가 하나뿐이라 비어 있다), 우두머리는 입구 · 출구 둘 다에서 먼 자리
     const bossAt = arena ? { x: arena.x, y: arena.y } : farS
-    out = { spawn: wpArrive ?? exits[0]?.arrive ?? entry, exits, wp, wpArrive, special: def.boss !== undefined ? bossAt : midS, portal: null }
+    out = { spawn: wpArrive ?? exits[0]?.arrive ?? entry, exits, wp, wpArrive, special: def.boss !== undefined ? bossAt : midS, portals: [] }
   }
   layouts.set(map, out)
   return out

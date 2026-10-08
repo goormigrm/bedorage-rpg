@@ -35,7 +35,7 @@ import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, area
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
-import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
+import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
@@ -120,6 +120,8 @@ interface WorldText {
   pop?: number
   /** 옆으로 흐르는 정도 (월드 단위 — 숫자가 한 줄로 쌓이지 않게) */
   dx?: number
+  /** 화면에서 옆으로 비킨 자리 (px) — 사람 머리 위 숫자가 이름표를 덮지 않게 (맞은 피해 오른쪽 · 회복 왼쪽) */
+  sx?: number
   /** 같은 괴물에 잇달아 맞힌 피해를 한 숫자로 합친다 (2026-10-08 손맛) — 그 괴물 · 합 */
   m?: number
   sum?: number
@@ -305,6 +307,9 @@ export class Renderer3D {
   private readonly tmpColor = new THREE.Color()
   private readonly tmpV3 = new THREE.Vector3()
   private texts: WorldText[] = []
+  /** 이번 프레임에 놓인 바닥 이름표 (지역 · 아이템 — 겹치면 비킨다) · 그 밑에 그리지 않을 반투명 DOM 자리 */
+  private labelRects: UiRect[] = []
+  private uiRects: UiRect[] = []
   private flashes: Flash[] = []
   private rings: Ring[] = []
   private slashes: Slash[] = []
@@ -887,6 +892,14 @@ export class Renderer3D {
     return { x: ((v.x + 1) / 2) * VIEW_W, y: ((1 - v.y) / 2) * VIEW_H }
   }
 
+  /**
+   * 사람 머리 위 숫자(맞은 피해 · 회복)가 뜨는 높이: 이름표(키 + 0.2) 글자 위 — 전에는 1.9 · 1.7 고정이라
+   * 이름표 위에 겹쳐 떴다 (2026-10-08). 옆으로도 비킨다(WorldText.sx)
+   */
+  private overName(i: number): number {
+    return (this.rigs[i]?.height ?? 1.6) + 0.75
+  }
+
   private ensureRigs(state: GameState): void {
     const chars = state.players.map((p) => p.char)
     if (chars.length !== this.rigChars.length) {
@@ -1192,7 +1205,7 @@ export class Renderer3D {
             prevHurt.life = prevHurt.max
             prevHurt.x = e.x * U
             prevHurt.z = e.y * U
-          } else this.texts.push({ x: e.x * U, z: e.y * U, y: 1.9, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6, m: hurtKey, sum: Math.round(e.dmg) })
+          } else this.texts.push({ x: e.x * U, z: e.y * U, y: this.overName(e.p), sx: 24, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6, m: hurtKey, sum: Math.round(e.dmg) })
           if (e.p === localPlayer) {
             this.shake = Math.max(this.shake, 0.18)
             const me = state.players[e.p]
@@ -1434,7 +1447,7 @@ export class Renderer3D {
           // 체력은 물약처럼 틱마다 조금씩 차 소수가 남는다 — "가득 채우기" 회복량이 +37.4 처럼 보였다(2026-09-19) → 정수로, 1 미만은 띄우지 않는다
           const healed = Math.round(e.amount)
           if (healed < 1) break
-          this.texts.push({ x: e.x * U, z: e.y * U, y: 1.7, text: `+${healed}`, life: 0.9, max: 0.9, color: '#7ef0a0', big: true })
+          this.texts.push({ x: e.x * U, z: e.y * U, y: this.overName(e.p), sx: -24, text: `+${healed}`, life: 0.9, max: 0.9, color: '#7ef0a0', big: true })
           for (let i = 0; i < 8; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.02 + Math.random() * 0.05
@@ -1762,15 +1775,18 @@ export class Renderer3D {
       const p = this.worldToScreen(t.x + (t.dx ?? 0) * (1 - t.life / t.max), t.y + (1 - t.life / t.max) * 0.8, t.z)
       const k = t.life / t.max
       // 막 뜰 때 크게 튀었다가 제 크기로 (덕코프 숫자 느낌). 헤드샷은 더 크게 튄다
-      return { x: p.x, y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
+      return { x: p.x + (t.sx ?? 0), y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
     this.drawMonsterBars(curr)
     this.drawAllyTags(curr)
     this.drawUltWarn()
     this.drawDonWarn()
     this.drawOrphanSays(curr)
-    this.drawDropLabels(curr, opts.localPlayer)
+    // 바닥 이름표: 자리 이름(멈춰 있는 것)이 먼저 자리를 잡고, 아이템 이름이 그것을 비킨다 (placeLabel)
+    this.uiRects = opts.uiRects ?? []
+    this.labelRects.length = 0
     this.drawPlaceLabels(curr, opts.localPlayer)
+    this.drawDropLabels(curr, opts.localPlayer)
     this.hud.drawTexts(st)
     this.drawPings()
     this.drawMarkArrows()
@@ -2685,7 +2701,10 @@ export class Renderer3D {
     const lp = opts.localPlayer
     const spectator = lp === -1
     const teams = isTeamMatch(curr)
-    for (let i = 0; i < curr.players.length; i++) {
+    // 이름이 겹치면(붙어 선 동료 — 마을 · 포털 앞) 뒤의 것을 위로 비킨다. 내 이름이 먼저 자리를 잡는다 (2026-10-08)
+    const order = curr.players.map((_, i) => i).sort((a, b) => Number(b === lp) - Number(a === lp) || a - b)
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = []
+    for (const i of order) {
       const p = curr.players[i]
       if (!p.alive || !this.rigs[i]?.root.visible) continue
       const c = CHARACTERS[p.char]
@@ -2698,11 +2717,19 @@ export class Renderer3D {
       ctx.font = `600 ${mine ? 13 : 12}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'alphabetic'
+      const nw = ctx.measureText(name).width + 4
+      let ny = s.y
+      for (let tries = 0; tries < 4; tries++) {
+        const hit = placed.find((r) => s.x - nw / 2 < r.x1 && s.x + nw / 2 > r.x0 && ny - 13 < r.y1 && ny + 3 > r.y0)
+        if (!hit) break
+        ny = hit.y0 - 4
+      }
+      placed.push({ x0: s.x - nw / 2, y0: ny - 13, x1: s.x + nw / 2, y1: ny + 3 })
       ctx.lineWidth = 3
       ctx.strokeStyle = 'rgba(0,0,0,0.6)'
-      ctx.strokeText(name, s.x, s.y)
+      ctx.strokeText(name, s.x, ny)
       ctx.fillStyle = mine ? '#ffe680' : ally ? '#9fd6ff' : '#ffffff'
-      ctx.fillText(name, s.x, s.y)
+      ctx.fillText(name, s.x, ny)
       // 감정 표현 말풍선 (이름 위). 보이는 사람 것만 — 이 루프가 이미 숨은 사람을 건너뛴다
       const em = this.emotes.get(i)
       if (em) {
@@ -2713,7 +2740,7 @@ export class Renderer3D {
           ctx.globalAlpha = Math.min(1, left / 350)
           ctx.font = '700 15px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
           const tw = ctx.measureText(em.text).width + 20
-          const by = s.y - 40
+          const by = ny - 40
           // 우리 편을 부르는 스킬 외침은 초록 (초록 = 우리 편 좋은 효과 — 범위 고리와 같은 색)
           ctx.fillStyle = em.ally ? '#e2ffe9' : '#ffffff'
           roundRect(ctx, s.x - tw / 2, by - 13, tw, 26, 13)
@@ -3140,6 +3167,25 @@ export class Renderer3D {
     }
   }
 
+  /**
+   * 바닥 이름표 하나의 자리 (가운데 y — 그리지 않을 것이면 null). 앞서 놓인 이름표와 겹치면 위로 비키고(2026-10-08 —
+   * 마을 가운데 포털 · NPC · 웨이포인트, 한자리에 떨어진 아이템), 반투명 DOM(조작 안내 띠 · 단추) 밑이면 그리지 않는다(비쳐 보여 겹쳐 보였다)
+   */
+  private placeLabel(cx: number, cy: number, w: number, h: number): number | null {
+    const hw = w / 2
+    const hh = h / 2
+    const hits = (rs: UiRect[], y: number) => rs.find((r) => cx - hw < r.x1 && cx + hw > r.x0 && y - hh < r.y1 && y + hh > r.y0)
+    let y = cy
+    for (let tries = 0; tries < 8; tries++) {
+      const hit = hits(this.labelRects, y)
+      if (!hit) break
+      y = hit.y0 - hh - 2
+    }
+    if (hits(this.uiRects, y)) return null
+    this.labelRects.push({ x0: cx - hw, y0: y - hh, x1: cx + hw, y1: y + hh })
+    return y
+  }
+
   /** 출구·웨이포인트·포털 이름표 (가까운 것만) */
   private drawPlaceLabels(curr: GameState, lp: number): void {
     if (curr.mode !== 'dungeon' || curr.curArea < 0 || lp < 0) return
@@ -3149,15 +3195,18 @@ export class Renderer3D {
     ctx.save()
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    const label = (x: number, y: number, text: string, color: string) => {
-      if (Math.hypot(x - me.x, y - me.y) > 12 * 32) return
+    const label = (x: number, y: number, text: string, color: string): number | null => {
+      if (Math.hypot(x - me.x, y - me.y) > 12 * 32) return null
       const s = this.worldToScreen(x * U, 1.6, y * U)
       ctx.font = '700 13px "Nanum Myeongjo", serif'
       const w = ctx.measureText(text).width + 14
+      const cy = this.placeLabel(s.x, s.y, w, 20)
+      if (cy === null) return null
       ctx.fillStyle = 'rgba(8,7,6,0.72)'
-      ctx.fillRect(s.x - w / 2, s.y - 10, w, 20)
+      ctx.fillRect(s.x - w / 2, cy - 10, w, 20)
       ctx.fillStyle = color
-      ctx.fillText(text, s.x, s.y + 0.5)
+      ctx.fillText(text, s.x, cy + 0.5)
+      return cy
     }
     // 이름표의 키는 설정을 따른다 (2026-09-23 키 재설정 — 기본 F)
     const F = keyLabel('use')
@@ -3170,11 +3219,13 @@ export class Renderer3D {
     const em = elderMarks(me.quests ?? [])
     const elderMark = em.report ? '?' : em.offer ? '!' : ''
     for (const n of townNpcs(curr.curArea)) {
-      label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · ${F}`, n.id === 'elder' && elderMark ? '#ffd84a' : '#e8d6a8')
+      const ly = label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · ${F}`, n.id === 'elder' && elderMark ? '#ffd84a' : '#e8d6a8')
       // 촌장 머리 위 **큰** ! · ? (2026-09-27 사용자: "촌장 카인의 ! · ? 표시를 더 알아보기 쉽게 크게" — 전에는 이름표 앞 작은 글자였다):
       // 보고할 것이 있으면 ?, 맡을 것이 있으면 ! — 모든 막 공유 · 금빛으로 빛나며 위아래로 통통 · 멀리서도 보이게 거리 제한 없이
       if (n.id === 'elder' && elderMark) {
         const s = this.worldToScreen(n.x * U, 1.6, (n.y - 44) * U)
+        // 이름표가 비켜 올라갔으면 ! · ? 도 따라 올라간다
+        if (ly !== null) s.y = ly
         const bob = Math.sin(this.t * 3.2) * 5
         const k = 1 + 0.06 * Math.sin(this.t * 6.4)
         ctx.save()
@@ -3295,14 +3346,17 @@ export class Renderer3D {
       const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
       const name = itemName(d.item)
       const w = ctx.measureText(name).width + 12
+      // 한자리에 여럿 떨어지면 이름이 포개졌다 → 디아블로처럼 위로 쌓는다 (떨어진 차례대로라 쌓인 자리가 바뀌지 않는다)
+      const y = this.placeLabel(s.x, s.y, w, 18)
+      if (y === null) continue
       ctx.fillStyle = 'rgba(8,7,6,0.78)'
-      ctx.fillRect(s.x - w / 2, s.y - 9, w, 18)
+      ctx.fillRect(s.x - w / 2, y - 9, w, 18)
       ctx.strokeStyle = itemColor(d.item)
       ctx.globalAlpha = 0.6
-      ctx.strokeRect(s.x - w / 2 + 0.5, s.y - 8.5, w - 1, 17)
+      ctx.strokeRect(s.x - w / 2 + 0.5, y - 8.5, w - 1, 17)
       ctx.globalAlpha = 1
       ctx.fillStyle = itemColor(d.item)
-      ctx.fillText(name, s.x, s.y + 0.5)
+      ctx.fillText(name, s.x, y + 0.5)
       n++
     }
     ctx.restore()

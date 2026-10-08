@@ -302,6 +302,8 @@ interface Move {
   y?: number
   /** 포털 주인이 마을에서 자기 포털로 돌아갔다 → 포털이 닫힌다 (디아블로 2) */
   closePortal?: boolean
+  /** 들판에서 탄 포털의 주인 — 마을에서는 그 포털 앞에 선다 */
+  portalOwner?: number
 }
 /** 이번 틱에 다른 지역으로 건너갈 사람 (지역을 다 돈 뒤에 한꺼번에 옮긴다 — 도는 중에 지역이 바뀌지 않게) */
 const moves: Move[] = []
@@ -373,6 +375,7 @@ function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
     if (m.x !== undefined && m.y !== undefined) at = { x: m.x, y: m.y }
     else if (m.how === 'exit') at = l.exits.find((e) => e.to === p.area)?.arrive ?? l.spawn
     else if (m.how === 'wp') at = l.wpArrive ?? l.spawn
+    else if (m.how === 'portal') at = townPortalArrive(l, m.portalOwner ?? p.id) ?? l.spawn
     else at = l.spawn
     placeIn(state, map, p, m.to, at.x, at.y, m.how)
     if (m.closePortal) state.portals = state.portals.filter((q) => q.owner !== p.id)
@@ -475,7 +478,7 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
         } else {
           if (q.area !== area || len(p.x - q.x, p.y - q.y) > PORTAL_R) continue
           const t = ACTS[areaDef(area).act].town
-          queueMove(p, { to: t, how: 'portal' })
+          queueMove(p, { to: t, how: 'portal', portalOwner: q.owner })
         }
         used = true
         break
@@ -868,9 +871,15 @@ function placeObjects(state: GameState, map: GameMap, id: number, seed: number, 
 }
 
 
-/** 마을 쪽 포털 자리 (주인마다 옆으로 두 칸씩) */
+/** 마을 쪽 포털 자리 (주인마다 하나 — 마을 가운데 모닥불 앞, world.ts CAMP) */
 export function townPortalSpot(l: AreaLayout, owner: number): { x: number; y: number } | null {
-  return l.portal ? { x: l.portal.x + owner * 2 * TILE, y: l.portal.y } : null
+  return l.portals.length > 0 ? l.portals[owner % l.portals.length] : null
+}
+
+/** 포털로 마을에 왔을 때 서는 자리: 내 포털 바로 앞(화면 아래쪽 = 월드 +x +y 로 한 칸) — 가게를 보고 곧장 돌아가게 */
+function townPortalArrive(l: AreaLayout, owner: number): { x: number; y: number } | null {
+  const at = townPortalSpot(l, owner)
+  return at ? { x: at.x + TILE, y: at.y + TILE } : null
 }
 
 /**

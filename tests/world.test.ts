@@ -3,9 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { flowField } from '../src/core/flow'
-import { TILE } from '../src/core/map'
+import { TILE, TILE_FLOOR } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
 import { PORTAL_CAST, areaView, createState, hashState, joinPlayer, step, townPortalSpot } from '../src/core/sim'
 import { GameState } from '../src/core/state'
@@ -191,22 +191,53 @@ describe('이어진 세계', () => {
     p.y = q.y
     run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(p.area).toBe(TOWN)
-    // 동료가 마을 쪽 포털로 들판에 간다 (포털은 남는다)
+    // 마을에서는 내 포털 바로 앞에 선다 (2026-10-08 — 전에는 서쪽 끝 처음 자리라 포털까지 멀었다)
     const tl = areaLayout(TOWN, mapOf(TOWN))
+    const at = townPortalSpot(tl, 0)!
+    expect(Math.hypot(p.x - at.x, p.y - at.y)).toBeLessThan(60)
+    // 동료가 마을 쪽 포털로 들판에 간다 (포털은 남는다)
     const mate = s.players[1]
-    mate.x = tl.portal!.x
-    mate.y = tl.portal!.y
+    mate.x = at.x
+    mate.y = at.y
     run(2)
     run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(mate.area).toBe(1)
     expect(s.portals.length).toBe(1)
+    // 동료가 내 포털로 마을에 돌아오면 내 포털 앞에 선다
+    mate.x = q.x
+    mate.y = q.y
+    run(2)
+    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(mate.area).toBe(TOWN)
+    // (내가 그 자리에 서 있어 몸끼리 조금 밀린다)
+    expect(Math.hypot(mate.x - at.x, mate.y - at.y)).toBeLessThan(90)
     // 주인이 돌아가면 닫힌다
-    p.x = tl.portal!.x
-    p.y = tl.portal!.y
+    p.x = at.x
+    p.y = at.y
     run(2)
     run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(p.area).toBe(1)
     expect(s.portals.length).toBe(0)
+  })
+
+  it('마을 쪽 포털 자리는 마을 가운데(모닥불 앞) — 넷 모두 트인 바닥 · 서로 · NPC 와 떨어져 있다', () => {
+    const { mapOf } = game(['chim'])
+    for (const town of [0, 10, 19, 28]) {
+      const map = mapOf(town)
+      const tl = areaLayout(town, map)
+      const spots = [0, 1, 2, 3].map((o) => townPortalSpot(tl, o)!)
+      const fire = { x: 23 * TILE, y: 17 * TILE }
+      for (const [i, a] of spots.entries()) {
+        // 모닥불에서 4.5칸 안 (전에는 서쪽 아래로 7칸 남짓 — 처음 자리 · 성문 사이 길에서 벗어나 있었다)
+        expect(Math.hypot(a.x - fire.x, a.y - fire.y)).toBeLessThan(4.5 * TILE)
+        // 포털 자리와 포털로 와서 서는 자리(한 칸 앞)가 트인 바닥
+        for (const [dx, dy] of [[0, 0], [TILE, TILE]]) {
+          expect(map.tiles[Math.floor((a.y + dy) / TILE) * map.w + Math.floor((a.x + dx) / TILE)]).toBe(TILE_FLOOR)
+        }
+        for (const b of spots.slice(i + 1)) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(2 * TILE)
+        for (const n of townNpcs(town)) expect(Math.hypot(a.x - n.x, a.y - n.y)).toBeGreaterThan(NPC_RANGE + 40)
+      }
+    }
   })
 
   it('출구는 곁에서 F 를 눌러야 건너간다 — 출구 곁에 열린 포털로 와서 서 있어도 넘어가지 않는다', () => {

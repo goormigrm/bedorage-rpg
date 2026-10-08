@@ -42,7 +42,7 @@ import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
 import { CtlMessage, LobbyLink, RoomLink } from '../net/room'
 import { banPeer, isBanned } from '../net/bans'
-import { VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
+import { UiRect, VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
 import { worldDirToScreen } from '../render3d/camera'
 import { U } from '../render3d/world3d'
 import { Renderer3D, VIEWER_TAG } from '../render3d/renderer3d'
@@ -231,6 +231,8 @@ export class Session {
   private raf = 0
   private root: HTMLElement
   private stage: HTMLElement
+  /** 오른쪽 아래 단추 기둥 — 추적 칸이 그 위에서 멈춘다(RenderOptions.rightColTop) */
+  private rbcol: HTMLElement | null = null
   private overlay: HTMLElement
   private paused = false
   private stallSince = -1
@@ -348,6 +350,7 @@ export class Session {
       </div>`
     this.root = host.querySelector('.game-root') as HTMLElement
     this.stage = host.querySelector('#stage') as HTMLElement
+    this.rbcol = host.querySelector('.rbcol')
     this.overlay = host.querySelector('#overlay') as HTMLElement
     // 조작 안내 띠: 처음 두 판만 보이고 그 뒤로는 감춘다(화면 아래 34px). Esc 메뉴에서 다시 켤 수 있다 (2026-09-05)
     try {
@@ -1948,8 +1951,25 @@ export class Session {
       touch: this.touch !== null,
       floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
       speaking: this.speakingList(),
+      // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
+      rightColTop: this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined,
+      uiRects: this.uiRects(),
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
+  }
+
+  /** 게임 위 반투명 DOM 의 자리 (논리 좌표 — 무대 배율을 되돌린다). 바닥 이름표가 그 밑에 깔리지 않게 (RenderOptions.uiRects) */
+  private uiRects(): UiRect[] {
+    const st = this.stage.getBoundingClientRect()
+    const k = st.width > 0 ? VIEW_W / st.width : 1
+    const out: UiRect[] = []
+    for (const el of this.stage.querySelectorAll<HTMLElement>('.keys, .rbcol .wbtn, .rbcol .btn, .tutor')) {
+      if (el.offsetParent === null) continue
+      const r = el.getBoundingClientRect()
+      if (r.width < 1 || r.height < 1) continue
+      out.push({ x0: (r.left - st.left) * k, y0: (r.top - st.top) * k, x1: (r.right - st.left) * k, y1: (r.bottom - st.top) * k })
+    }
+    return out
   }
 
   /** 조준선 화면 좌표. 터치면 화면 중앙에서 조준 방향으로 띄운다 */

@@ -42,6 +42,8 @@ const hudSkin = () => (isBright() ? CANDY : IRON)
 
 /** 미니맵 한 변 (renderer3d 와 같아야 한다 — 추적 패널이 그 아래에 붙는다) */
 export const MINIMAP_SIZE = 190
+/** 추적 칸의 퀘스트 목록: 머리 줄 + 마지막 줄 아래 여백 (전에는 22 — 마지막 줄 글자가 칸 테두리에 닿았다) */
+const QL_PAD = 28
 
 export interface HudCtx {
   ctx: CanvasRenderingContext2D
@@ -578,13 +580,21 @@ export class D4Hud {
    * 추적 칸 아래: 이 막의 퀘스트와 진행 — ○ 아직(촌장) · ▸ 진행 중(여기면 남은 괴물 / 아니면 지역) · ◆ 이룸(촌장에게 보고) · ✓ 끝.
    * 자세한 글은 J(퀘스트 기록).
    */
-  private drawQuestList(c: CanvasRenderingContext2D, s: GameState, q: number[], list: { d: (typeof QUESTS)[number]; i: number }[], x: number, y: number, W: number): void {
+  private drawQuestList(c: CanvasRenderingContext2D, s: GameState, q: number[], list: { d: (typeof QUESTS)[number]; i: number }[], x: number, y: number, W: number, more = 0): void {
     c.fillStyle = 'rgba(201,162,74,0.25)'
     c.fillRect(x + 12, y + 2, W - 24, 1)
     c.font = `700 11px ${SANS}`
     c.fillStyle = '#b8a67e'
     c.textAlign = 'left'
     c.fillText(`${areaDef(s.curArea).act + 1}막 퀘스트 · ${keyLabel('quest')}`, x + 12, y + 17)
+    // 칸이 모자라 접은 퀘스트 수 (자세한 것은 퀘스트 창)
+    if (more > 0) {
+      c.font = `500 11px ${SANS}`
+      c.fillStyle = '#8d8170'
+      c.textAlign = 'right'
+      c.fillText(`외 ${more}개`, x + W - 12, y + 17)
+      c.textAlign = 'left'
+    }
     list.forEach(({ d, i }, k) => {
       const st = q[i] ?? 0
       const ly = y + 36 + k * 18
@@ -632,7 +642,7 @@ export class D4Hud {
       const q = me?.quests ?? []
       // 이 막의 퀘스트 넷을 아래에 늘어놓는다 (2026-09-19 요청 "퀘스트 진행 사항을 맵 아래에서 확인").
       // 다른 막에서 **보고할 것**도 끝에 붙인다 — 어느 야영지 촌장에게든 받을 수 있다 (2026-09-25)
-      const actQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act || q[o.i] === 2)
+      const allQuests = QUESTS.map((d, i) => ({ d, i })).filter((o) => o.d.act === areaDef(s.curArea).act || q[o.i] === 2)
       const a = areaDef(s.curArea)
       const town = isTown(s.curArea)
       const bossHere = s.monsters.some((m) => m.hp > 0 && isBossLike(m))
@@ -655,7 +665,19 @@ export class D4Hud {
       c.font = `600 12px ${SANS}`
       const goalLines = wrapWords(c, goal, inner, 3)
       const ex = (goalLines.length - 1) * 16
-      ironPanel(c, x, y, W, 84 + ex + (actQuests.length > 0 ? 22 + actQuests.length * 18 : 0), false)
+      // 퀘스트 줄은 오른쪽 아래 단추 기둥(가방 · 스킬 …) 위까지만 — 낮은 창(1280×720 · 브라우저 안 768)에서 칸이 단추를 덮었다 (2026-10-08).
+      // 넘치면 진행 중 · 보고할 것을 먼저 남기고, 나머지는 "외 N개"로 접는다
+      const room = Math.floor(((opts.rightColTop ?? h.H) - 8 - (y + 84 + ex) - QL_PAD) / 18)
+      let actQuests = allQuests
+      if (room < allQuests.length) {
+        // 먼저 남길 차례: 보고할 것(2) → 진행 중(1) → 아직(0) → 끝(3)
+        const rank = (o: { i: number }) => [2, 1, 0, 3][Math.min(3, q[o.i] ?? 0)]
+        const keep = new Set([...allQuests].sort((a, b) => rank(a) - rank(b) || a.i - b.i).slice(0, Math.max(0, room)).map((o) => o.i))
+        actQuests = room > 0 ? allQuests.filter((o) => keep.has(o.i)) : []
+      }
+      const more = allQuests.length - actQuests.length
+      const showList = actQuests.length > 0 || (more > 0 && room >= 0)
+      ironPanel(c, x, y, W, 84 + ex + (showList ? QL_PAD + actQuests.length * 18 : 0), false)
       c.font = `800 16px ${SERIF}`
       c.fillStyle = GOLD_HI
       c.fillText(fitText(c, opts.floorName ?? '던전', inner), x + 12, y + 24)
@@ -680,7 +702,7 @@ export class D4Hud {
       c.textAlign = town ? 'left' : 'right'
       c.fillText(fitText(c, `죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, inner - used), town ? x + 12 : x + W - 12, y + 74 + ex)
       c.textAlign = 'left'
-      if (actQuests.length > 0) this.drawQuestList(c, s, q, actQuests, x, y + 84 + ex, W)
+      if (showList) this.drawQuestList(c, s, q, actQuests, x, y + 84 + ex, W, more)
     } else {
       const teams = isTeamMatch(s)
       const rows = teams
@@ -795,6 +817,8 @@ export class D4Hud {
     for (const p of mates) {
       const def = CHARACTERS[p.char]
       const W = 210
+      // 다른 지역에 있는 동료: 화면용 사본(areaView)에서는 left + away 다 — 나간 사람이 아니다 (전에는 "나감" · 붉은 초상 · 빈 체력으로 보였다)
+      const gone = p.left && !p.away
       ironPanel(c, x, y, W, 50, false)
       // 초상 (둥근 창)
       c.save()
@@ -804,8 +828,11 @@ export class D4Hud {
       c.fillStyle = '#1a1614'
       c.fillRect(x + 7, y + 6, 38, 38)
       c.drawImage(this.portrait(def), x + 5, y + 4, 42, 42)
-      if (!p.alive || p.downed || p.left) {
+      if (!p.alive || p.downed || gone) {
         c.fillStyle = 'rgba(120,0,0,0.45)'
+        c.fillRect(x + 7, y + 6, 38, 38)
+      } else if (p.away) {
+        c.fillStyle = 'rgba(10,12,20,0.4)'
         c.fillRect(x + 7, y + 6, 38, 38)
       }
       c.restore()
@@ -816,22 +843,26 @@ export class D4Hud {
       c.beginPath()
       c.arc(x + 26, y + 25, 19, 0, Math.PI * 2)
       c.stroke()
+      let roleW = 0
       if (role) {
         c.font = `700 10px ${SANS}`
         c.textAlign = 'right'
         c.textBaseline = 'alphabetic'
         c.fillStyle = role.color
         c.fillText(role.name, x + W - 10, y + 20)
+        roleW = c.measureText(role.name).width + 8
       }
-      // 이름 · 체력
+      // 이름 · 체력 — 긴 별명은 역할 글자 · 말하는 표시 앞에서 줄인다(겹치지 않게)
       c.font = `700 12px ${SANS}`
       c.textAlign = 'left'
       c.textBaseline = 'alphabetic'
       c.fillStyle = '#efe4cf'
-      c.fillText(opts.names[p.id] ?? def.name, x + 52, y + 20)
+      const speaking = !!opts.speaking?.[p.id]
+      const nameT = fitText(c, opts.names[p.id] ?? def.name, W - 62 - roleW - (speaking ? 18 : 0))
+      c.fillText(nameT, x + 52, y + 20)
       // 말하는 중: 이름 옆 초록 소리 표시 (음성 대화)
-      if (opts.speaking?.[p.id]) {
-        const nx = x + 58 + c.measureText(opts.names[p.id] ?? def.name).width
+      if (speaking) {
+        const nx = x + 58 + c.measureText(nameT).width
         c.fillStyle = '#6aff8a'
         c.beginPath()
         c.moveTo(nx, y + 11)
@@ -842,22 +873,16 @@ export class D4Hud {
         c.lineTo(nx, y + 17)
         c.fill()
       }
-      // 다른 지역에 있으면 그 지역 이름
-      if (p.away) {
-        c.font = `600 10px ${SANS}`
-        c.fillStyle = '#8d8170'
-        c.fillText(areaDef(p.area).name, x + 52, y + 8)
-        c.font = `700 12px ${SANS}`
-      }
-      const hpK = p.alive && !p.downed && !p.left ? Math.max(0, p.hp / p.maxHp) : 0
+      const hpK = p.alive && !p.downed && !gone ? Math.max(0, p.hp / p.maxHp) : 0
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 52, y + 27, W - 64, 7)
       c.fillStyle = hpK > 0.5 ? '#b83a2a' : hpK > 0.25 ? '#d8782a' : '#ff3a2a'
       c.fillRect(x + 52, y + 27, (W - 64) * hpK, 7)
+      // 아래 줄: 상태. 다른 지역에 있으면 그 지역 이름 — 전에는 이름 위(y + 8)에 그려 칸 테두리에 걸쳤다
       c.font = `600 10px ${SANS}`
-      c.fillStyle = p.downed ? '#ff8a7a' : '#8d8170'
-      const st = p.left ? '나감' : p.downed ? `쓰러짐 ${Math.ceil(p.downTimer / 60)}초 — ${keyLabel('use')} 로 일으키기` : p.out ? '탈락' : !p.alive ? `사망 · ${Math.ceil(p.respawnTimer / 60)}초` : `${def.name} · ${WEAPONS[p.weapon].name}`
-      c.fillText(st, x + 52, y + 45)
+      c.fillStyle = p.downed ? '#ff8a7a' : p.away && p.alive ? '#9ac8ff' : '#8d8170'
+      const st = gone ? '나감' : p.downed ? `쓰러짐 ${Math.ceil(p.downTimer / 60)}초 — ${keyLabel('use')} 로 일으키기` : p.out ? '탈락' : !p.alive ? `사망 · ${Math.ceil(p.respawnTimer / 60)}초` : p.away ? `◇ ${areaDef(p.area).name}` : `${def.name} · ${WEAPONS[p.weapon].name}`
+      c.fillText(fitText(c, st, W - 62), x + 52, y + 45)
       y += 58
     }
   }

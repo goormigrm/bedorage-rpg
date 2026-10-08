@@ -7,7 +7,7 @@ import { WEAPONS } from '../core/weapons'
 import { CHARACTERS } from '../core/characters'
 import { GameState, PlayerState } from '../core/state'
 import { WeaponId } from '../core/weapons'
-import { D4Hud, HudCtx, setWeaponIconPainter } from './d4hud'
+import { D4Hud, HudCtx, MINIMAP_SIZE, setWeaponIconPainter } from './d4hud'
 
 /** 기준 논리 해상도. 카메라 시야 보정의 기준점이기도 하다 */
 export const BASE_W = 1280
@@ -98,6 +98,20 @@ export interface RenderOptions {
   floorName?: string
   /** 자리별로 지금 말하고 있나 (음성 대화) */
   speaking?: boolean[]
+  /** 오른쪽 아래 단추 기둥(창 단추 · 음성 · 소리 · 로비로)의 위 끝 (논리 좌표) — 추적 칸이 그 위에서 멈춘다 */
+  rightColTop?: number
+  /**
+   * 게임 위 반투명 DOM(조작 안내 띠 · 오른쪽 아래 단추 기둥 · 안내 말풍선)의 자리 (논리 좌표).
+   * 그 밑에 깔리는 바닥 이름표(지역 · 아이템)는 그리지 않는다 — 비쳐 보여 글자가 겹쳐 보였다 (2026-10-08)
+   */
+  uiRects?: UiRect[]
+}
+
+export interface UiRect {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
 }
 
 export interface ScreenText {
@@ -443,7 +457,9 @@ export class Hud {
       ctx.font = '500 12px "IBM Plex Mono", monospace'
       ctx.textAlign = 'right'
       ctx.fillStyle = opts.ping < 80 ? '#8fd18a' : opts.ping < 150 ? '#f2c94c' : '#f25c4c'
-      ctx.fillText(`${opts.ping} ms`, VIEW_W - 16, 22)
+      // 미니맵(오른쪽 위 190) 왼쪽 바깥 — 전에는 미니맵 테두리 위에 겹쳐 그렸다 (2026-10-08)
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillText(`${opts.ping} ms`, VIEW_W - 16 - MINIMAP_SIZE - 12, 28)
     }
     if (opts.message) {
       ctx.font = '500 16px "IBM Plex Sans KR", sans-serif'
@@ -494,13 +510,15 @@ export class Hud {
 
   private drawBanner(s: GameState, opts: RenderOptions): void {
     const ctx = this.ctx
-    // 알림: 최근 것이 맨 위
+    // 알림: 최근 것이 맨 위. 지역 이름 배너(위 20% 자리 · 띠 높이 100)가 떠 있으면 그 아래로 —
+    // 들어서자마자 웨이포인트 · 퀘스트 알림이 뜨면 배너 글자와 겹쳤다 (2026-10-08)
+    const top = this.d4.banner && opts.showHud && s.mode === 'dungeon' ? VIEW_H * 0.2 + 50 + 24 : 110
     for (let n = 0; n < this.notices.length && s.phase !== 'over'; n++) {
       const b = this.notices[this.notices.length - 1 - n]
       const k = b.life / b.max
       const inK = Math.min(1, (b.max - b.life) * 6)
       ctx.globalAlpha = Math.min(1, k * 4) * inK
-      const y = 110 + n * 44
+      const y = top + n * 44
       ctx.font = '400 24px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
