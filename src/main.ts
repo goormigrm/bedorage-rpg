@@ -60,7 +60,7 @@ function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
 async function fontsReady(): Promise<void> {
   if (!document.fonts?.load) return
   const sample = '배도라지 알PG 게임 만들기 방 목록 설정 가방 스킬 능력치 퀘스트 지도 체력 집중 골드 레벨 마을 던전 상인 대장장이 0123456789'
-  const want = ['400 16px "Black Han Sans"', '800 16px "Nanum Myeongjo"', '700 16px "Nanum Myeongjo"', '500 16px "IBM Plex Sans KR"', '700 16px "IBM Plex Sans KR"', '500 12px "IBM Plex Mono"']
+  const want = ['400 16px "Black Han Sans"', '800 16px "Nanum Myeongjo"', '700 16px "Nanum Myeongjo"', '500 16px "IBM Plex Sans KR"', '600 16px "IBM Plex Sans KR"', '700 16px "IBM Plex Sans KR"', '500 12px "IBM Plex Mono"']
   await Promise.race([Promise.all(want.map((f) => document.fonts.load(f, sample).catch(() => []))), new Promise((r) => setTimeout(r, 3000))])
 }
 
@@ -83,7 +83,8 @@ void Promise.all([restoreFromMirror().catch(() => false), fontsReady().catch(() 
     showLobby()
     if (restored) console.info('[세이브] 브라우저 저장소가 비어 있어 IndexedDB 의 한 벌로 되살렸습니다')
   })
-  .finally(() => requestAnimationFrame(() => hideBoot()))
+  // rAF 가 아니라 타이머로 — 창이 가려져 있으면 rAF 가 돌지 않아 8초 안전 시간까지 첫 화면이 남았다 (배포 확인 2026-10-08)
+  .finally(() => setTimeout(hideBoot, 60))
 
 // 치지직 방송 연동 (2026-09-23): 로그인에서 돌아왔으면(?code=) 토큰으로 바꾸고 연결, 전에 연결해 두었으면 다시 연결
 void (async () => {
