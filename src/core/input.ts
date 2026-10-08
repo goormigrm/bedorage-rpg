@@ -100,6 +100,11 @@ export const CMD_STASHUP = 27
 export const CMD_SHOPNEW = 28
 /** 같은 방해 효과가 이어 붙는 한도: arg = 초 / 10 (3 · 6 · 9 · 12 — core/donate.ts DON_CAP_CHOICES). 각자의 방송 설정이라 명령으로 모두에게 알린다 */
 export const CMD_DONCAP = 29
+/**
+ * 줍기 표시(기본 Alt — 누르고 있으면 바닥 아이템 이름이 모두 펼쳐진다)에서 누른 아이템: arg = Drop.id.
+ * 그 자리까지 걸어가 줍는다(디아블로처럼 — 2026-10-08 사용자: "같은 곳에 떨어지면 겹쳐서 따로 줍는 게 안 된다")
+ */
+export const CMD_PICK = 30
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

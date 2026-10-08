@@ -105,6 +105,8 @@ export interface RenderOptions {
    * 그 밑에 깔리는 바닥 이름표(지역 · 아이템)는 그리지 않는다 — 비쳐 보여 글자가 겹쳐 보였다 (2026-10-08)
    */
   uiRects?: UiRect[]
+  /** 아이템 이름 펼치기 키를 누르고 있다 — 화면의 내 아이템 이름을 모두 펼치고, 마우스를 올린 것을 밝힌다 */
+  itemsHeld?: boolean
 }
 
 export interface UiRect {

@@ -241,6 +241,10 @@ export interface PlayerState {
   exitLock: number
   /** 타운 포털 시전 남은 틱 (0 = 안 함) */
   portalCast: number
+  /** 줍기 표시에서 누른 아이템(Drop.id) — 그리로 걸어가 줍는다. 움직이거나 쏘거나 구르면 그만둔다 (CMD_PICK) */
+  pickGoal?: number
+  /** 그 아이템까지 남은 시간(틱) — 벽에 막혀 못 가면 그만둔다 */
+  pickT?: number
   /** 따라가는 사람 (용병·동료 봇 — 그 사람이 다른 지역으로 가면 곁으로 따라간다). -1 = 없음 */
   follow: number
   /** 밟으면 줍는 아이템 등급(비트 1 << 등급, 기본 AUTOPICK_ALL). 내 전리품만 — 버려진 것·남에게 준 것은 F */

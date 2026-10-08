@@ -8,7 +8,7 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
@@ -323,6 +323,7 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   p.y = spot.y
   p.dashTimer = 0
   p.portalCast = 0
+  delete p.pickGoal
   p.exitLock = 30
   p.ads = false
   p.fx[FX_CHARGE] = 0
@@ -1606,14 +1607,29 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     mx = 0
     my = 0
   }
+  // 줍기 표시에서 누른 아이템으로 걸어간다 — 움직이거나 쏘거나 구르면 그만둔다
+  let goal: { x: number; y: number } | null = null
+  if (p.pickGoal !== undefined) {
+    if (mx !== 0 || my !== 0 || p.dashTimer > 0 || !playing || (input.buttons & (BTN_FIRE | BTN_DASH)) !== 0) delete p.pickGoal
+    else goal = pickGoalStep(state, p)
+  }
   if (p.dashTimer > 0) {
     p.dashTimer--
     const r = moveCircle(map, p.x, p.y, PLAYER_RADIUS, p.dashDx * DASH_SPEED, p.dashDy * DASH_SPEED)
     p.x = r.x
     p.y = r.y
     p.moving = true
-  } else if (mx !== 0 || my !== 0) {
-    const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
+  } else if (mx !== 0 || my !== 0 || goal) {
+    let inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
+    if (goal) {
+      // 아이템 쪽 단위 방향 (넘어가지 않게 남은 거리까지만)
+      const gx = goal.x - p.x
+      const gy = goal.y - p.y
+      const gd = Math.max(1, Math.sqrt(gx * gx + gy * gy))
+      mx = gx / gd
+      my = gy / gd
+      inv = 1
+    }
     let speed = c.speed * w.moveMul
     if (p.sprinting) speed *= SPRINT_MUL
     if (p.ads && c.id !== 'oknyang') speed *= 0.6 // 옥냥란 패시브: 정조준해도 느려지지 않음
@@ -3469,6 +3485,30 @@ function takeItem(state: GameState, p: PlayerState, i: number): void {
   state.events.push({ type: 'pickup', p: p.id, rarity: it.rarity, uid: it.uid })
 }
 
+/** 아이템까지 걸어가는 시간 상한 (5초 — 벽에 막혀 못 가면 그만둔다) */
+const PICK_WALK_TICKS = 300
+
+/**
+ * 줍기 표시에서 누른 아이템(pickGoal): 닿았으면 줍고(가방이 차면 알림) 그만둔다, 아직이면 그 자리를 돌려준다(걸어갈 곳).
+ * 사라졌거나 남의 것이 됐거나 시간이 다 되면 그만둔다. 직접 누른 것이라 막 버린 것(lock)도 줍는다
+ */
+function pickGoalStep(state: GameState, p: PlayerState): { x: number; y: number } | null {
+  const i = state.drops.findIndex((q) => q.id === p.pickGoal)
+  const d = state.drops[i]
+  p.pickT = (p.pickT ?? PICK_WALK_TICKS) - 1
+  if (!d || !d.item || (d.owner !== p.id && d.owner !== -1) || p.pickT <= 0) {
+    delete p.pickGoal
+    return null
+  }
+  if ((d.x - p.x) ** 2 + (d.y - p.y) ** 2 <= (PLAYER_RADIUS + 22) ** 2) {
+    delete p.pickGoal
+    if (p.bag.length >= p.bagMax) state.events.push({ type: 'bagFull', p: p.id })
+    else takeItem(state, p, i)
+    return null
+  }
+  return { x: d.x, y: d.y }
+}
+
 /** F: 가장 가까운 내 아이템(또는 버려진 것)을 줍는다 (가방이 차면 못 줍는다) */
 function pickItem(state: GameState, p: PlayerState): boolean {
   if (p.bag.length >= p.bagMax) return false
@@ -3519,6 +3559,15 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_AUTOPICK) {
     p.autoPick = arg & AUTOPICK_ALL
+    return
+  }
+  if (cmd === CMD_PICK) {
+    const d = state.drops.find((q) => q.id === arg)
+    // 내 것 · 버려진 것만 (남의 전리품은 못 줍는다 — F 와 같다)
+    if (d && d.item && (d.owner === p.id || d.owner === -1)) {
+      p.pickGoal = arg
+      p.pickT = PICK_WALK_TICKS
+    }
     return
   }
   if (cmd === CMD_DONCAP) {

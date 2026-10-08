@@ -5,7 +5,7 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
+import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
@@ -435,6 +435,14 @@ export class Session {
       },
     )
     this.bindWinButtons()
+    // 아이템 이름 펼치기(기본 Alt) 중 이름을 누르면 그 아이템까지 걸어가 줍는다 (CMD_PICK — 2026-10-08 사용자: "디아블로처럼")
+    this.input.labelClick = (x, y) => {
+      if (this.arena || !this.overlay.hidden) return false
+      const id = this.renderer.dropAt(x, y)
+      if (id === null) return false
+      this.input.queueCmd(CMD_PICK, id)
+      return true
+    }
     this.offKeymap = onKeymap(() => this.refreshKeyLabels())
     // 도입 장면: **새 캐릭터로 처음** 던전에 들어섰을 때 한 번 (레벨 1 · 아직 아무 퀘스트도 받지 않았다)
     if (!this.arena && !cfg.resumeState) {
@@ -1960,6 +1968,7 @@ export class Session {
       // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
       rightColTop: this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined,
       uiRects: this.uiRects(),
+      itemsHeld: this.input.itemsHeld && !this.arena,
     })
     this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
   }

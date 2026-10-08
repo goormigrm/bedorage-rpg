@@ -1,6 +1,6 @@
 // 성장·전리품: 스마트 루트 · 개인 전리품 · 줍기 · 장착 명령 · 버리기(선물) · 경험치 공유 · 레벨업 · 소실 규칙 · 세이브 검사.
 import { describe, expect, it } from 'vitest'
-import { BTN_USE, CMD_AUTOPICK, CMD_DROP, CMD_EQUIP, Input } from '../src/core/input'
+import { BTN_USE, CMD_AUTOPICK, CMD_DROP, CMD_EQUIP, CMD_PICK, Input } from '../src/core/input'
 import { buildMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
@@ -169,6 +169,35 @@ describe('전리품 · 성장 (sim)', () => {
       step(s, map, [{ ...idle(), buttons: BTN_USE }, idle()])
       expect(s.drops.some((d) => d.id === other.id)).toBe(true)
     }
+  })
+
+  it('줍기 표시(Alt)에서 누른 아이템: 그 자리까지 걸어가 그것만 줍는다 — 움직이면 그만둔다 · 남의 것은 못 고른다', () => {
+    const { s, map } = ready(['chim', 'magic'])
+    const a = s.players[0]
+    // 자동 줍기를 끈다 (한곳에 겹친 것 중 하나만 고르는 시험)
+    step(s, map, [cmd(CMD_AUTOPICK, 0), idle()])
+    const put = (uid: number, owner: number, dx: number, dy: number) =>
+      s.drops.push({ id: 7000 + uid, owner, x: a.x + dx, y: a.y + dy, item: { uid, slot: SLOT_WEAPON, wt: 0, rarity: 1, ilvl: 3, aff: [] }, gold: 0, pot: 0, ttl: 6000, lock: 30 })
+    // 4칸 떨어진 한곳에 셋이 겹쳐 있다 (막 버린 것 — lock 이어도 직접 고른 것은 줍는다)
+    put(1, 0, 128, 0)
+    put(2, 0, 129, 1)
+    put(3, -1, 127, -1)
+    const x0 = a.x
+    step(s, map, [cmd(CMD_PICK, 7002), idle()])
+    expect(a.pickGoal).toBe(7002)
+    for (let t = 0; t < 90 && a.pickGoal !== undefined; t++) step(s, map, [idle(), idle()])
+    expect(a.x).toBeGreaterThan(x0 + 60)
+    expect(a.bag.map((i) => i.uid)).toEqual([2])
+    expect(s.drops.filter((d) => d.item).map((d) => d.item!.uid).sort()).toEqual([1, 3])
+    // 움직이면 그만둔다
+    put(4, 0, 300, 0)
+    step(s, map, [cmd(CMD_PICK, 7004), idle()])
+    step(s, map, [{ ...idle(), my: 1 }, idle()])
+    expect(a.pickGoal).toBeUndefined()
+    // 남의 전리품은 고를 수 없다
+    put(5, 1, 20, 0)
+    step(s, map, [cmd(CMD_PICK, 7005), idle()])
+    expect(a.pickGoal).toBeUndefined()
   })
 
   it('자동 줍기: 기본은 모든 등급 · 켠 등급의 내 아이템만 밟으면 줍는다 — 버려진 것(주인 -1)은 F · 가방이 차면 알린다', () => {

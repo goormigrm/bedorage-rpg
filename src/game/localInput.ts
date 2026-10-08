@@ -70,6 +70,10 @@ export class LocalInput {
   touch: TouchControls | null = null
   /** 가방 창 같은 UI 가 열려 있다 — 클릭이 사격·스킬이 되지 않게 막는다 */
   uiOpen = false
+  /** 아이템 이름 펼치기 키(기본 Alt)를 누르고 있다 */
+  itemsHeld = false
+  /** 누른 자리(논리 좌표)가 아이템 이름이면 그것을 줍게 하고 true — 그 누름은 사격이 아니다 (세션이 단다) */
+  labelClick: ((x: number, y: number) => boolean) | null = null
   /** 가방·장비 명령 대기열 (한 틱에 하나씩 Input.cmd 로 나간다) */
   private cmds: { cmd: number; arg: number }[] = []
 
@@ -88,6 +92,12 @@ export class LocalInput {
       const k = e.key.toLowerCase()
       // 키는 e.code 로 본다 (keymap.ts — 한글 입력 상태에서도 W 는 KeyW 다). 게임 키로 걸린 것과 화살표만 잡는다
       const code = codeOf(e)
+      if (code === keyOf('items')) {
+        this.itemsHeld = down
+        // Alt 를 떼면 브라우저가 메뉴로 초점을 옮긴다 — 막는다
+        e.preventDefault()
+        return
+      }
       if (PLAY_ACTIONS.some((a) => keyOf(a) === code) || code.startsWith('Arrow') || code === 'Digit3') {
         if (down) this.keys.add(code)
         else this.keys.delete(code)
@@ -112,6 +122,14 @@ export class LocalInput {
       // (2026-09-26 사용자: "소리 조절이 안 되고 그냥 캐릭터 평타 공격이 나간다" — 창 전체의 누름을 받아 막대를 못 끌었다).
       // .game-ui 는 빈 곳이 마우스를 통과시키므로(pointer-events: none) 그 안에서 눌린 것은 모두 UI 다
       if (isUiTarget(e.target)) return
+      // 아이템 이름 펼치기 중 이름을 누르면 그것을 줍는다 (사격 아님)
+      if (e.button === 0 && this.itemsHeld && this.labelClick) {
+        const r = stage.getBoundingClientRect()
+        if (this.labelClick(((e.clientX - r.left) / r.width) * VIEW_W, ((e.clientY - r.top) / r.height) * VIEW_H)) {
+          e.preventDefault()
+          return
+        }
+      }
       this.mouseDown.add(e.button)
       e.preventDefault()
     }
@@ -122,6 +140,7 @@ export class LocalInput {
     const blur = () => {
       this.keys.clear()
       this.mouseDown.clear()
+      this.itemsHeld = false
     }
     window.addEventListener('keydown', kd)
     window.addEventListener('keyup', ku)

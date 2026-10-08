@@ -317,6 +317,8 @@ export class Renderer3D {
   /** 이번 프레임에 놓인 바닥 이름표 (지역 · 아이템 — 겹치면 비킨다) · 그 밑에 그리지 않을 반투명 DOM 자리 */
   private labelRects: UiRect[] = []
   private uiRects: UiRect[] = []
+  /** 이번 프레임에 그린 아이템 이름 자리 (펼치기 중 누르면 그 아이템 — dropAt) */
+  private dropHits: (UiRect & { id: number })[] = []
   /**
    * 지역을 넘을 때 화면이 툭 바뀌지 않게: 새 지역이 검게(웨이포인트 · 포털은 푸른 빛으로) 시작해 0.45초에 걸쳐 밝아진다
    * (2026-10-08 퀄리티 2차 1단계). 세계 · 이름표만 덮고 HUD 패널은 그 위에 그린다
@@ -1860,7 +1862,7 @@ export class Renderer3D {
     this.uiRects = opts.uiRects ?? []
     this.labelRects.length = 0
     this.drawPlaceLabels(curr, opts.localPlayer)
-    this.drawDropLabels(curr, opts.localPlayer)
+    this.drawDropLabels(curr, opts.localPlayer, opts.itemsHeld === true, opts.cursor)
     this.hud.drawTexts(st)
     this.drawPings()
     this.drawMarkArrows()
@@ -3413,35 +3415,57 @@ export class Renderer3D {
   }
 
   /** 가까운 전리품 이름표 (디아블로 4 처럼 바닥에 이름) */
-  private drawDropLabels(curr: GameState, lp: number): void {
+  /**
+   * 바닥 아이템 이름. 보통은 10칸 안 24개까지, **펼치기 키(기본 Alt)를 누르고 있으면 화면의 것 모두** — 겹치지 않게 위로 쌓이고
+   * 마우스를 올린 이름이 밝아진다. 누르면 그 아이템까지 걸어가 줍는다(dropAt → CMD_PICK — 2026-10-08 사용자: "디아블로처럼")
+   */
+  private drawDropLabels(curr: GameState, lp: number, held = false, cursor?: { x: number; y: number }): void {
+    this.dropHits.length = 0
     if (lp < 0) return
     const me = curr.players[lp]
     const ctx = this.hud.ctx
     ctx.save()
-    ctx.font = '700 12px "IBM Plex Sans KR", sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     let n = 0
     for (const d of curr.drops) {
-      if ((d.owner !== lp && d.owner !== -1) || n > 24 || !d.item) continue
-      if (Math.hypot(d.x - me.x, d.y - me.y) > 10 * 32) continue
+      if ((d.owner !== lp && d.owner !== -1) || n > (held ? 60 : 24) || !d.item) continue
+      if (Math.hypot(d.x - me.x, d.y - me.y) > (held ? 22 : 10) * 32) continue
       const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
+      if (s.x < -40 || s.y < -20 || s.x > VIEW_W + 40 || s.y > VIEW_H + 20) continue
       const name = itemName(d.item)
-      const w = ctx.measureText(name).width + 12
+      ctx.font = `700 ${held ? 13 : 12}px "IBM Plex Sans KR", sans-serif`
+      const w = ctx.measureText(name).width + (held ? 16 : 12)
+      const h = held ? 21 : 18
       // 한자리에 여럿 떨어지면 이름이 포개졌다 → 디아블로처럼 위로 쌓는다 (떨어진 차례대로라 쌓인 자리가 바뀌지 않는다)
-      const y = this.placeLabel(s.x, s.y, w, 18)
+      const y = this.placeLabel(s.x, s.y, w, h + (held ? 2 : 0))
       if (y === null) continue
-      ctx.fillStyle = 'rgba(8,7,6,0.78)'
-      ctx.fillRect(s.x - w / 2, y - 9, w, 18)
-      ctx.strokeStyle = itemColor(d.item)
-      ctx.globalAlpha = 0.6
-      ctx.strokeRect(s.x - w / 2 + 0.5, y - 8.5, w - 1, 17)
+      const x0 = s.x - w / 2
+      const y0 = y - h / 2
+      const hover = held && !!cursor && cursor.x >= x0 && cursor.x <= x0 + w && cursor.y >= y0 && cursor.y <= y0 + h
+      const col = itemColor(d.item)
+      ctx.fillStyle = hover ? 'rgba(48,40,28,0.95)' : 'rgba(8,7,6,0.8)'
+      ctx.fillRect(x0, y0, w, h)
+      ctx.strokeStyle = hover ? '#ffffff' : col
+      ctx.globalAlpha = hover ? 1 : 0.6
+      ctx.lineWidth = hover ? 1.5 : 1
+      ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1)
       ctx.globalAlpha = 1
-      ctx.fillStyle = itemColor(d.item)
+      ctx.fillStyle = col
       ctx.fillText(name, s.x, y + 0.5)
+      if (held) this.dropHits.push({ id: d.id, x0, y0, x1: x0 + w, y1: y0 + h })
       n++
     }
     ctx.restore()
+  }
+
+  /** 펼치기 중 이 자리(논리 좌표)에 그린 아이템 이름의 Drop.id (없으면 null) */
+  dropAt(x: number, y: number): number | null {
+    for (let i = this.dropHits.length - 1; i >= 0; i--) {
+      const r = this.dropHits[i]
+      if (x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1) return r.id
+    }
+    return null
   }
 
   // ---------- 스킬 연출 ----------

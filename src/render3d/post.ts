@@ -38,7 +38,7 @@ const DARK_ACT: Grade[] = [
 /** 마을: 모닥불 곁의 따뜻한 빛 */
 const DARK_TOWN: Grade = { bloom: 0.55, threshold: 0.95, knee: 0.6, sat: 1.04, contrast: 1.04, shadow: [0.96, 0.98, 1.04], high: [1.06, 1.0, 0.9], exposure: 1.03 }
 /** 철면수심전용(밝은 낮): 장면이 밝아 문턱을 높이고 번짐은 옅게 — 파스텔이 하얗게 날아가지 않게 */
-const BRIGHT_GRADE: Grade = { bloom: 0.32, threshold: 1.5, knee: 0.8, sat: 1.08, contrast: 1.02, shadow: [1.0, 0.98, 1.05], high: [1.03, 1.01, 0.97], exposure: 1 }
+const BRIGHT_GRADE: Grade = { bloom: 0.3, threshold: 1.2, knee: 0.6, sat: 1.08, contrast: 1.02, shadow: [1.0, 0.98, 1.05], high: [1.03, 1.01, 0.97], exposure: 1 }
 
 /** 지역의 색감. 보스가 깨어 있으면 대비 · 번짐을 조금 올린다 */
 export function gradeFor(act: number, town: boolean, bright: boolean, boss: boolean): Grade {

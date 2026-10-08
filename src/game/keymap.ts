@@ -10,7 +10,7 @@ export type Action =
   | 'dash' | 'sprint' | 'use' | 'portal'
   | 'skill1' | 'skill2' | 'ult' | 'skill3' | 'skill4'
   | 'bag' | 'skills' | 'attr' | 'quest' | 'map'
-  | 'voice' | 'mark' | 'mute' | 'donHold'
+  | 'voice' | 'mark' | 'mute' | 'donHold' | 'items'
 
 export const ACTIONS: { id: Action; label: string; def: string; group: string }[] = [
   { id: 'up', label: '위로', def: 'KeyW', group: '이동' },
@@ -25,6 +25,9 @@ export const ACTIONS: { id: Action; label: string; def: string; group: string }[
   { id: 'skill3', label: '배운 스킬 1', def: 'Digit1', group: '전투' },
   { id: 'skill4', label: '배운 스킬 2', def: 'Digit2', group: '전투' },
   { id: 'use', label: '이동 · 열기 · 일으키기', def: 'KeyF', group: '전투' },
+  // 디아블로처럼: 누르고 있으면 바닥 아이템 이름이 겹치지 않게 모두 펼쳐지고, 이름을 누르면 그것만 걸어가 줍는다 (2026-10-08 사용자).
+  // Ctrl 은 쓰지 않는다 — WASD 와 같이 누르면 Ctrl+W 가 탭을 닫는다
+  { id: 'items', label: '아이템 이름 펼치기 (누르고 있기)', def: 'Alt', group: '전투' },
   { id: 'portal', label: '타운 포털', def: 'KeyT', group: '전투' },
   { id: 'bag', label: '가방', def: 'KeyI', group: '창' },
   { id: 'skills', label: '스킬 창', def: 'KeyK', group: '창' },
@@ -154,6 +157,7 @@ export function keysHintHtml(): string {
     it(k('sprint'), '달리기'),
     it(k('use'), '이동 · 열기 · 일으키기'),
     it(k('portal'), '타운 포털'),
+    it(k('items'), '누르고 있으면 아이템 이름 · 눌러서 줍기'),
   ]
   const wins = [
     it(k('bag'), '가방'),
