@@ -143,6 +143,9 @@ export class Hud {
   private hitMarkMax = 0.22
   private hitMarkHead = false
   private killMarkT = 0
+  /** 영화 띠 (보스 등장 — 2026-10-08 퀄리티 5단계): 남은 초 · 처음 길이 */
+  private cineT = 0
+  private cineMax = 1
   /** 연속 처치 (2026-10-08 손맛): 수 · 마지막으로 늘어난 시각 */
   private comboN = 0
   private comboT = -99
@@ -178,6 +181,25 @@ export class Hud {
   /** 처치 표시: 조준 표시가 굵은 붉은 X 로 (손맛 — 2026-09-19) */
   killMark(): void {
     this.killMarkT = 0.4
+  }
+
+  /** 화면 위아래 검은 띠를 sec 초 (보스 등장) */
+  cinema(sec: number): void {
+    this.cineT = sec
+    this.cineMax = sec
+  }
+
+  private drawCinema(): void {
+    if (this.cineT <= 0) return
+    this.cineT = Math.max(0, this.cineT - this.lastDt)
+    const el = this.cineMax - this.cineT
+    const k = Math.min(1, el / 0.35, this.cineT / 0.45)
+    const e = k * k * (3 - 2 * k)
+    const bar = VIEW_H * 0.085 * e
+    const ctx = this.ctx
+    ctx.fillStyle = 'rgba(0,0,0,0.92)'
+    ctx.fillRect(0, 0, VIEW_W, bar)
+    ctx.fillRect(0, VIEW_H - bar, VIEW_W, bar)
   }
 
   /** 연속 처치 수 (renderer — 내가 잡을 때마다) */
@@ -354,6 +376,8 @@ export class Hud {
   }
 
   drawMain(s: GameState, opts: RenderOptions): void {
+    // 영화 띠는 패널 아래에 (오브 · 스킬 바는 그 위로 보인다)
+    this.drawCinema()
     if (opts.showHud) this.drawPanels(s, opts)
     this.drawHitDirs()
     if (opts.spectateLabel) this.drawSpectate(opts.spectateLabel)

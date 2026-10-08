@@ -397,6 +397,10 @@ export class Renderer3D {
   private punch = 0
   /** 바닥 핏자국 (인스턴스 — 오래된 것부터 덮어쓴다) */
   private blood: BloodDecals | null = null
+  /** 보스 등장 장면 (2026-10-08 퀄리티 5단계): 카메라가 보스 쪽으로 잠깐 다가갔다 돌아온다 (월드 자리 · 지난 초) */
+  private bossCut: { x: number; z: number; t: number } | null = null
+  /** 느린 화면 (보스 처치 — 연출만 느려진다, 판은 그대로) 남은 초 */
+  private slowMo = 0
   /** 연속 처치 (2026-10-08 손맛): 2.5초 안에 다음을 잡으면 이어진다 — HUD 숫자 · 처치음 높이 */
   private combo = 0
   private comboAt = -99
@@ -1288,6 +1292,18 @@ export class Renderer3D {
             this.shake = Math.max(this.shake, big ? 0.55 : 0.3)
             if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
           }
+          if (rank >= 3) {
+            // 막 보스 쓰러짐 (2026-10-08 퀄리티 5단계): 1.2초 느린 화면 + 금화 · 별 분수가 솟아 사방에 떨어진다
+            this.slowMo = 1.2
+            this.punch = Math.max(this.punch, 1)
+            for (let k = 0; k < 48; k++) {
+              const a = Math.random() * Math.PI * 2
+              const sp = 0.03 + Math.random() * 0.09
+              const col = k % 5 === 0 ? 0xffffff : k % 3 === 0 ? 0xffb02a : 0xffd84a
+              this.spawnParticle(e.x * U, 1.2, e.y * U, Math.cos(a) * sp, 0.22 + Math.random() * 0.22, Math.sin(a) * sp, 2.4, col, 0.16 + Math.random() * 0.1)
+            }
+            this.spawnRing(e.x * U, e.y * U, 0.4, 7, 1.0, 0xffe066)
+          }
           if (this.hiddenM.has(e.m)) break
           // 핏자국 (2026-09-24 — 동그라미 대신 미리 그린 모양 여덟 · blood.ts): 쓰러진 자리의 웅덩이 + 쏜 방향 뒤로 튄 자국
           if (e.kind !== 1) {
@@ -1673,8 +1689,9 @@ export class Renderer3D {
       }
     }
     // 역경직: 내 치명타 · 처치 · 정예·보스 쓰러짐에 연출(입자 · 괴물 몸짓)을 잠깐 거의 멈춘다 — sim 은 그대로 (그림만)
-    const ts = (opts.timeScale ?? 1) * (this.hitStop > 0 ? 0.08 : 1)
+    const ts = (opts.timeScale ?? 1) * (this.hitStop > 0 ? 0.08 : 1) * (this.slowMo > 0 ? 0.35 : 1)
     this.hitStop = Math.max(0, this.hitStop - dt)
+    this.slowMo = Math.max(0, this.slowMo - dt)
     this.lastDt = dt
     const viewer = opts.viewer ?? opts.localPlayer
     this.scoped =
@@ -1824,6 +1841,9 @@ export class Renderer3D {
       if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
       this.shake = Math.max(this.shake, 0.55)
       this.punch = Math.max(this.punch, 1)
+      // 등장 장면: 화면 위아래 검은 띠 + 카메라가 보스 쪽으로 다가갔다 돌아온다 (2.2초 — 보스 방 보스는 먼저 치기 전엔 가만히라 안전)
+      this.bossCut = { x: m.x * U, z: m.y * U, t: 0 }
+      this.hud.cinema(2.2)
     }
   }
 
@@ -2867,7 +2887,9 @@ export class Renderer3D {
       rig.head.rotation.x = down * 0.35
     } else {
       v.reloadSwing = 0
-      rig.body.scale.set(1, 1, 1)
+      // 가만히 서 있으면 숨 쉬듯 살짝 부푼다 (2026-10-08 퀄리티 5단계 — 사람마다 박자가 다르게)
+      const b = p.moving ? 0 : Math.sin(this.t * 2.4 + i * 1.3) * 0.018
+      rig.body.scale.set(1 - b * 0.5, 1 + b, 1 - b * 0.5)
       rig.head.rotation.x = 0
     }
     rig.body.rotation.x = 0
@@ -4423,6 +4445,17 @@ export class Renderer3D {
         tz += Math.sin(r) * reach
       }
       dist = FOLLOW_DIST * (this.scoped ? 1.45 : 1)
+    }
+    // 보스 등장 장면: 0.4초 다가가 1초 머물고 0.6초 돌아온다 — 나도 화면에 남게 보스 쪽으로 65%만
+    if (this.bossCut) {
+      const c = this.bossCut
+      c.t += dt
+      const w = c.t < 0.4 ? c.t / 0.4 : c.t < 1.4 ? 1 : c.t < 2 ? 1 - (c.t - 1.4) / 0.6 : 0
+      const e = w * w * (3 - 2 * w)
+      tx += (c.x - tx) * e * 0.65
+      tz += (c.z - tz) * e * 0.65
+      dist *= 1 + e * 0.12
+      if (c.t >= 2) this.bossCut = null
     }
     // 저격 반동: 조준 반대쪽으로 밀렸다가 돌아온다
     if (this.kick > 0) {

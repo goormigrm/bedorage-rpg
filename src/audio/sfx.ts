@@ -1411,6 +1411,13 @@ export class Sfx {
       : { rate: 0.8, echo: 0.26, fb: 0.42, ring: 0, sub: false, low: 7, vol: 0.6 }
     const t0 = ctx.currentTime + 0.05
     const len = buf.duration / P.rate
+    // 대사 동안 배경음을 줄였다가 되돌린다 (2026-10-08 퀄리티 5단계 — 대사가 음악에 묻히지 않게). 영상(오프라인)은 건드리지 않는다
+    if (this.bgmGain && typeof (ctx as unknown as { startRendering?: unknown }).startRendering !== 'function') {
+      const g = this.bgmGain.gain
+      const base = BGM_LEVEL * volumes().bgm
+      g.setTargetAtTime(base * 0.3, t0, 0.08)
+      g.setTargetAtTime(base, t0 + len + 0.3, 0.5)
+    }
     const parts: AudioNode[] = []
     const mk = <T extends AudioNode>(n: T): T => (parts.push(n), n)
     const input = mk(ctx.createGain())
