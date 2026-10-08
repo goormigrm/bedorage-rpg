@@ -7,8 +7,34 @@ import { GameState, OBJ_GOLDCHEST, OBJ_URN, PlayerState, SPRINT_MUL, SimEvent } 
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
+import { FX_FREEAMMO } from '../core/skills'
 import { worldDirToScreen } from '../render3d/camera'
 import { onVolume, volumes } from './volume'
+
+// ---- 캐논 변주곡 (파헬벨 캐논 D 장조 — 2026-10-08 고기 바이올린 · canon) ----
+const N = { B3: 246.94, D4: 293.66, E4: 329.63, Fs4: 369.99, G4: 392.0, A4: 440.0, B4: 493.88, Cs5: 554.37, D5: 587.33, E5: 659.26, Fs5: 739.99, G5: 783.99, A5: 880.0 }
+/** 화음 진행 D · A · Bm · F#m · G · D · G · A 의 바이올린 자리 세 음 (아래 → 위) */
+const CANON_CHORDS: number[][] = [
+  [N.D5, N.Fs5, N.A5],
+  [N.Cs5, N.E5, N.A5],
+  [N.B4, N.D5, N.Fs5],
+  [N.A4, N.Cs5, N.Fs5],
+  [N.B4, N.D5, N.G5],
+  [N.A4, N.D5, N.Fs5],
+  [N.G4, N.B4, N.D5],
+  [N.A4, N.Cs5, N.E5],
+]
+/** 첼로 근음 D3 · A2 · B2 · F#2 · G2 · D3 · G2 · A2 */
+const CANON_BASS = [146.83, 110.0, 123.47, 92.5, 98.0, 146.83, 98.0, 110.0]
+/** 선율 48음: 앞 16음은 화음마다 둘(F# E D C# B A B C# · D C# B A G F# G E) · 뒤 32음은 화음마다 넷(8분 변주) */
+const CANON_MELODY = [
+  N.Fs5, N.E5, N.D5, N.Cs5, N.B4, N.A4, N.B4, N.Cs5,
+  N.D5, N.Cs5, N.B4, N.A4, N.G4, N.Fs4, N.G4, N.E4,
+  N.D4, N.Fs4, N.A4, N.G4, N.Fs4, N.D4, N.Fs4, N.E4,
+  N.D4, N.B3, N.D4, N.A4, N.G4, N.B4, N.A4, N.G4,
+  N.Fs4, N.D4, N.E4, N.Cs5, N.D5, N.Fs5, N.A5, N.A4,
+  N.B4, N.G4, N.A4, N.Fs4, N.D4, N.D5, N.D5, N.Cs5,
+]
 
 const STORAGE_KEY = 'brpg.muted'
 const MASTER = 0.8
@@ -419,7 +445,11 @@ export class Sfx {
       }
       switch (e.type) {
         case 'fire':
-          this.gun(e.weapon, sp(e.x, e.y), e.p === localPlayer)
+          // 고기 바이올린 · 첼로는 캐논 변주곡을 연주한다 (canon — 평타는 화음 아르페지오 · 격정 연주는 선율)
+          if (WEAPONS[e.weapon]?.family === 'violin') {
+            const pl = state.players[e.p]
+            this.canon(e.p, e.weapon === 'cello' ? 0.5 : 1, (pl?.fx[FX_FREEAMMO] ?? 0) > 0, sp(e.x, e.y), e.p === localPlayer)
+          } else this.gun(e.weapon, sp(e.x, e.y), e.p === localPlayer)
           this.intensity = Math.min(1, this.intensity + 0.06)
           // 탄피가 바닥에 떨어지는 "팅" (내 총만 · 작게 · 0.12초에 한 번 — 2026-10-08 손맛)
           if (e.p === localPlayer && performance.now() - this.lastCasing > 120) {
@@ -992,6 +1022,59 @@ export class Sfx {
       default:
         break
     }
+  }
+
+  /**
+   * 캐논 변주곡 (2026-10-08 사용자: "철면란이 빠른 공격(스킬)을 썼을 때는 마치 캐논 변주곡을 연주하는 것 같은 소리와 임팩트 —
+   * 단순하게 공격할 때도 1개의 음이 아니라 바이올린이나 첼로가 디리링 하는 소리" · 예시 "고기 바이올린 캐논 변주곡 (feat. 철면수심)").
+   * 파헬벨 캐논(D 장조)의 화음 진행 D · A · Bm · F#m · G · D · G · A 를 휘두를 때마다 한 칸씩:
+   *  - 평타: 그 화음을 세 음 아르페지오로 "디리링"(올라가기 · 내려가기를 번갈아) + 첼로 근음을 살짝. 3초 쉬면 처음 화음부터
+   *  - 격정 연주(FX_FREEAMMO — 휘두르기 2배): 캐논 선율이 한 음씩 이어진다(반음표 · 4분 · 8분 변주 48음) · 화음이 바뀔 때 첼로 근음
+   * 사람마다 따로 센다. low = 0.5 면 첼로(한 옥타브 아래)
+   */
+  private canonState = new Map<number, { chord: number; mel: number; at: number; up: boolean }>()
+  private canon(who: number, low: number, fast: boolean, s: Spatial, mine: boolean): void {
+    const { node, t0 } = this.bus(s, mine ? 1 : 0.75)
+    const now = performance.now()
+    let c = this.canonState.get(who)
+    if (!c || now - c.at > 3000) {
+      c = { chord: -1, mel: -1, at: now, up: true }
+      this.canonState.set(who, c)
+    }
+    c.at = now
+    // 크기 — 예전 현악기 휘두름(0.5)과 비슷하게 (2026-09-24 사용자: "철면란 공격 효과음이 너무 크다")
+    const V = 0.5
+    // 활이 현에 닿는 아주 작은 바람 소리
+    this.noiseBurst(node, t0, 0.07, 'bandpass', 900 * low, 1500 * low, 0.1 * V, 0.8)
+    if (fast) {
+      c.mel = (c.mel + 1) % CANON_MELODY.length
+      const i = c.mel
+      const chord = i < 16 ? i >> 1 : (i - 16) >> 2
+      const f = CANON_MELODY[i] * low
+      // 선율: 이어 긋는 활(레가토) · 비브라토 — 위에 3도 아래 화음을 아주 작게
+      this.stringNote(node, t0, 0.26, f, f, 0.19 * V, 0.012, 0.008)
+      this.stringNote(node, t0, 0.24, f * 0.794, f * 0.794, 0.06 * V, 0.02, 0.006)
+      if (chord !== c.chord) {
+        c.chord = chord
+        const b = CANON_BASS[chord] * low
+        this.stringNote(node, t0, 0.55, b, b, 0.14 * V, 0.03, 0.004)
+        this.stringNote(node, t0, 0.5, b * 2, b * 2, 0.05 * V, 0.03, 0.004)
+      }
+      return
+    }
+    c.chord = (c.chord + 1) % CANON_CHORDS.length
+    c.up = !c.up
+    const tones = CANON_CHORDS[c.chord].map((f) => f * low)
+    const seq = c.up ? tones : [...tones].reverse()
+    // 디리링: 45ms 간격 세 음 — 짧은 활(스피카토) + 손끝 퉁김을 겹쳐 또렷하게 · 마지막 음은 조금 길게 울린다
+    seq.forEach((f, k) => {
+      const at = t0 + 0.005 + k * 0.045
+      const last = k === seq.length - 1
+      this.stringNote(node, at, last ? 0.3 : 0.1, f, f, (last ? 0.17 : 0.13) * V, 0.006, last ? 0.007 : 0.003)
+      this.pluck(node, at, f, 0.12 * V)
+    })
+    const b = CANON_BASS[c.chord] * low
+    this.stringNote(node, t0, 0.32, b, b, 0.08 * V, 0.02, 0.003)
   }
 
   /**

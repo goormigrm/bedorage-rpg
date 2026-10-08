@@ -6,7 +6,7 @@ import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
-import { FX_CRIT, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
+import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
@@ -177,6 +177,10 @@ interface Slash {
   mesh: THREE.Mesh
   life: number
   max: number
+  /** 이만큼(초) 기다렸다 보인다 — 바이올린 · 첼로는 부채꼴을 세 조각으로 오른쪽 → 왼쪽 차례로 쓴다 */
+  delay?: number
+  /** 처음 진하기 */
+  peak?: number
 }
 
 /** 빠른 감정 표현 (키 1·2·3, 폰은 버튼). 글은 여기 한 곳에서 정한다 */
@@ -1409,14 +1413,23 @@ export class Renderer3D {
             this.hitStop = Math.max(this.hitStop, 0.045)
             this.punch = Math.max(this.punch, 0.22)
           }
-          // 근접 무게감 (2026-10-08 손맛): 내 근접 공격이 닿으면 아주 잠깐 멈칫 + 흔들림 (한 번 휘둘러 여럿을 쳐도 한 번)
-          if (mine) {
-            const by = state.players[e.by]
-            if (by && WEAPONS[by.weapon]?.melee && this.t - this.lastMeleeStop > 0.09) {
-              this.lastMeleeStop = this.t
-              this.hitStop = Math.max(this.hitStop, head ? 0.06 : 0.035)
-              // 흔들림은 뺐다 (2026-10-08 멀미) — 타격감은 멈칫 · 섬광 · 파편 · 소리로 (spawnMeleeImpact)
-              this.punch = Math.max(this.punch, head ? 0.22 : 0.08)
+          // 근접 타격감 (2026-10-08 사용자: "전체적으로 근접 무기에 대한 임팩트가 상승하지 않은 것 같다"): 맞은 자리마다 무기 색 섬광 · 불티,
+          // 내 공격이면 작은 충격 고리 · 더 긴 멈칫. 격정 연주 중의 바이올린은 음표가 튄다. 흔들림은 쓰지 않는다(멀미)
+          {
+            const by = e.by >= 0 ? state.players[e.by] : undefined
+            const bw = by ? WEAPONS[by.weapon] : undefined
+            if (bw?.melee && !hidden) {
+              const fam = bw.family
+              const col = head ? 0xffd84a : fam === 'violin' ? 0xff6a4a : fam === 'rapier' ? 0xcfe6ff : 0xffcf6a
+              this.spawnImpact(e.x * U, 0.8, e.y * U, col, mine ? (head ? 3 : 2.2) : 1.3)
+              this.skillFx.sparks(e.x * U, 0.9, e.y * U, col, mine ? 7 : 3, 0.12, 0.32, 0.8, 0.06)
+              if (fam === 'violin' && (by!.fx[FX_FREEAMMO] ?? 0) > 0) this.skillFx.glyphs(e.x * U, e.y * U, Math.random() < 0.5 ? '♪' : '♫', Math.random() < 0.5 ? 0xff7aa8 : 0xffc46a, 1, 0.3, 0.8, 0.45)
+              if (mine && this.t - this.lastMeleeStop > 0.09) {
+                this.lastMeleeStop = this.t
+                this.hitStop = Math.max(this.hitStop, head ? 0.08 : 0.05)
+                this.punch = Math.max(this.punch, head ? 0.22 : 0.08)
+                this.spawnRing(e.x * U, e.y * U, 0.2, head ? 1.6 : 1.1, 0.22, col)
+              }
             }
           }
           if (!hidden && mine && dmgNumbersOn()) {
@@ -1863,6 +1876,32 @@ export class Renderer3D {
   }
 
   private spawnSlash(x: number, z: number, aim: number, w: WeaponDef): void {
+    if (w.family === 'violin') {
+      // 실제로 맞는 부채꼴(사거리 meleeRange + 몸 · 각도 ±meleeArc)을 세 조각으로 — 오른쪽(+z 쪽, 시작)부터 왼쪽으로 쓸어 간다 (2026-10-08)
+      const range = ((w.meleeRange ?? 60) + 12) * U
+      const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
+      for (let j = 0; j < 3; j++) {
+        const key = `${w.id}|${j}`
+        let g = this.slashGeo.get(key)
+        if (!g) {
+          g = new THREE.RingGeometry(range * 0.38, range, 10, 1, -half + (j * 2 * half) / 3, (2 * half) / 3 + 0.02)
+          g.rotateX(-Math.PI / 2)
+          this.slashGeo.set(key, g)
+        }
+        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        mesh.geometry = g
+        const mat = mesh.material as THREE.MeshBasicMaterial
+        mat.color.setHex(j === 1 ? 0xffb07a : 0xff7a5a)
+        mat.opacity = 0
+        mesh.scale.setScalar(1)
+        mesh.position.set(x, 0.45, z)
+        mesh.rotation.y = -aim
+        mesh.visible = false
+        this.scene.add(mesh)
+        this.slashes.push({ mesh, life: 0.17, max: 0.17, delay: j * 0.045, peak: 0.75 })
+      }
+      return
+    }
     let geo = this.slashGeo.get(w.id)
     if (!geo) {
       const range = ((w.meleeRange ?? 60) + 12) * U
@@ -1873,7 +1912,7 @@ export class Renderer3D {
       geo.rotateX(-Math.PI / 2)
       this.slashGeo.set(w.id, geo)
     }
-    const color = w.family === 'violin' ? 0xff7a5a : w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
+    const color = w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
     // 재질은 모아 두었다가 다시 쓴다 (2026-09-23): 휘두를 때마다 만들고 0.14초 뒤 해제했더니, 그 셰이더를 쓰는 재질이
     // 하나도 안 남는 순간 three 가 셰이더 프로그램까지 지워 다음 휘두르기에서 다시 컴파일했다(한 번에 100~150ms 멈춤)
     const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
@@ -3207,7 +3246,22 @@ export class Renderer3D {
     rig.arms.position.z = p.ads ? 0.18 : 0.1
     // 휘두르기: 옆으로 쓸어 친다. (2026-09-20 철면란만 파리채처럼 내려치게 해 봤지만
     // 게임 안에서 보기 나빠 원래대로 되돌렸다 — 사용자 "그냥 원래처럼 옆으로 휘두르도록 해 줘")
-    rig.arms.rotation.y = v.swing > 0 ? Math.sin(v.swing * Math.PI) * 1.5 : v.reloadSwing
+    const wd = WEAPONS[p.weapon]
+    if (v.swing > 0 && wd?.family === 'violin') {
+      // 철면란 고기 바이올린 · 첼로 (2026-10-08 사용자: "오른쪽 위에서 왼쪽 아래로 사선으로 흔드는 모션 — 흔드는 모션과 실제 공격 범위가 일치하지 않는다"):
+      // 예전에는 옆으로 내밀었다 되돌아오는 사인 곡선이라 실제로 맞는 앞쪽 부채꼴(±meleeArc)을 쓸고 지나가지 않았다.
+      // 이제 오른쪽(-x)에서 높이 들었다가 왼쪽(+x)으로 낮게 — 정확히 ±meleeArc 만큼 쓸고(앞 55%), 조금 머문 뒤 제자리로
+      const k = 1 - v.swing
+      const e = k < 0.55 ? 1 - Math.pow(1 - k / 0.55, 3) : 1
+      const back = k > 0.72 ? (k - 0.72) / 0.28 : 0
+      const A = (((wd.meleeArc ?? 150) / 1024) * Math.PI * 2) * 1.05
+      rig.arms.rotation.y = (-A + 2 * A * e) * (1 - back)
+      rig.arms.rotation.x += (-0.95 + 1.5 * e) * (1 - back)
+      rig.arms.rotation.z = (0.45 - 0.9 * e) * (1 - back)
+    } else {
+      rig.arms.rotation.y = v.swing > 0 ? Math.sin(v.swing * Math.PI) * 1.5 : v.reloadSwing
+      rig.arms.rotation.z = 0
+    }
     rig.arms.position.y = armsBaseY(rig)
     if (p.fx[FX_WHIRL] > 0) root.rotation.y = this.t * 18
     root.scale.set(v.sx, v.sy, v.sx)
@@ -4886,6 +4940,11 @@ export class Renderer3D {
     }
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       const sl = this.slashes[i]
+      if ((sl.delay ?? 0) > 0) {
+        sl.delay! -= dt
+        sl.mesh.visible = sl.delay! <= 0
+        if (sl.delay! > 0) continue
+      }
       sl.life -= dt
       if (sl.life <= 0) {
         this.scene.remove(sl.mesh)
@@ -4894,8 +4953,9 @@ export class Renderer3D {
         continue
       }
       const k = 1 - sl.life / sl.max
-      sl.mesh.scale.setScalar(0.85 + 0.25 * k)
-      ;(sl.mesh.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - k)
+      // 조각 궤적(바이올린)은 크기를 키우지 않는다 — 실제 범위 그대로
+      if (sl.peak === undefined) sl.mesh.scale.setScalar(0.85 + 0.25 * k)
+      ;(sl.mesh.material as THREE.MeshBasicMaterial).opacity = (sl.peak ?? 0.6) * (1 - k)
     }
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]
