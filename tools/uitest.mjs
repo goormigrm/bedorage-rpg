@@ -85,8 +85,9 @@ async function openGame(skin) {
   await cell.hover()
   await page.waitForTimeout(300)
   const tip = await page.evaluate(() => {
-    const t = document.querySelector('.inv-tip')
-    if (!t || t.hidden) return null
+    // 풍선은 가방용 · 마을용 둘이다 — 지금 보이는 것
+    const t = [...document.querySelectorAll('.inv-tip')].find((e) => !e.hidden)
+    if (!t) return null
     const r = t.getBoundingClientRect()
     const cs = [...document.querySelectorAll('.inv .cell:not(.empty)')]
     const c = cs[cs.length - 1].getBoundingClientRect()
