@@ -41,7 +41,7 @@ function creditsHtml(): string {
     ${sec('출연 — 계란이 된 크루', cast)}
     ${sec('괴물 모델 (Sketchfab · CC BY 4.0)', models)}
     ${sec('무료 자료 (CC0)', '<div class="cr-row"><span>귀여운 괴물</span><em>Quaternius "Ultimate Monsters"</em></div><div class="cr-row"><span>옮겨 붙인 동작</span><em>Quaternius "Universal Animation Library"</em></div>')}
-    ${sec('목소리 · 소리', '<div class="cr-row"><span>보스 대사</span><em>Microsoft Heami 음성 합성</em></div><div class="cr-row"><span>음악 · 효과음</span><em>모두 코드로 만든 소리 — 방송에 마음껏</em></div>')}
+    ${sec('목소리 · 소리', '<div class="cr-row"><span>보스 대사</span><em>Microsoft Heami 음성 합성</em></div><div class="cr-row"><span>음악 · 총소리</span><em>코드로 만든 소리 — 방송에 마음껏</em></div><div class="cr-row"><span>효과음 일부</span><em>Kenney "Impact · RPG Audio · Interface Sounds" (CC0)</em></div>')}
     ${sec('도구 · 글꼴', '<div class="cr-row"><span>3D</span><em>three.js (MIT)</em></div><div class="cr-row"><span>글꼴</span><em>나눔명조 · IBM Plex Sans KR (SIL OFL)</em></div>')}
     <div class="cr-end">그리고 — 끝까지 함께해 준 당신</div>`
 }

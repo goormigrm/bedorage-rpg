@@ -3,7 +3,8 @@
 // 브라우저 자동재생 정책: 첫 클릭/키 입력 전에는 소리가 나지 않는다 (그 전 이벤트는 버린다).
 
 import { isBright } from '../game/skin'
-import { GameState, OBJ_GOLDCHEST, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
+import { GameState, OBJ_GOLDCHEST, OBJ_URN, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
+import { areaDef } from '../core/world'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
@@ -246,6 +247,7 @@ export class Sfx {
     this.master = master
     this.bgmGain = bgm
     this.noise = buf
+    this.loadSamples(ctx)
     // 장치가 바뀌거나 잠들어 멈추면 바로 되살린다 (한 번이라도 누른 페이지는 몸짓 없이도 resume 된다)
     ctx.onstatechange = () => {
       if (ctx.state === 'running' || ctx.state === 'closed' || this.ctx !== ctx) return
@@ -281,6 +283,11 @@ export class Sfx {
       lx = me.x
       ly = me.y
     }
+    // 발밑: 들판 · 숲 · 늪 · 마을은 풀 · 흙, 나머지(묘지 · 성당 · 굴 · 하수도 · 심연)는 돌바닥
+    if (state.mode === 'dungeon' && state.curArea >= 0) {
+      const map = areaDef(state.curArea).map
+      this.stepGrass = map === 'fields' || map === 'forest' || map === 'swamp' || map.startsWith('town')
+    } else this.stepGrass = false
     for (let i = 0; i < n; i++) {
       const p = state.players[i]
       if (!p.alive || p.left || !p.moving || p.dashTimer > 0 || WEAPONS[p.weapon].suppressed) {
@@ -315,6 +322,8 @@ export class Sfx {
    */
   private foot(s: Spatial, right: boolean, mine: boolean): void {
     const { node, t0 } = this.bus(s, mine ? 0.26 : 0.55)
+    // 녹음 발소리 (2026-10-08 S4) — 좌우 발을 높이로 조금 다르게
+    if (this.sample(this.stepGrass ? 'stepGrass' : 'stepStone', node, t0, 0.8, right ? 1.02 : 0.97, 0.05)) return
     const f = right ? 126 : 112
     this.tone(node, t0, 0.07, 'sine', f, f * 0.5, 0.42, 0.006)
   }
@@ -433,6 +442,8 @@ export class Sfx {
           this.tone(b.node, b.t0, 0.12, 'triangle', f, f * 1.02, 0.35, 0.004)
           if (e.rarity >= 2) this.tone(b.node, b.t0 + 0.08, 0.2, 'sine', f * 1.5, f * 1.5, 0.3, 0.004)
           if (e.rarity >= 3) this.tone(b.node, b.t0 + 0.16, 0.4, 'sine', f * 2, f * 2, 0.3, 0.004)
+          // 가죽 주머니에 넣는 소리 (2026-10-08 S4)
+          this.sample('pouch', b.node, b.t0, 0.8)
           break
         }
         case 'loot': {
@@ -463,7 +474,10 @@ export class Sfx {
           break
         }
         case 'equip':
-          if (e.p === localPlayer) this.blip()
+          if (e.p === localPlayer) {
+            const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
+            if (!this.sample('equip', b.node, b.t0, 0.9)) this.blip()
+          }
           break
         // ---- 2026-10-08 퀄리티 2차 1단계: 소리가 없던 일들 ----
         case 'gold':
@@ -481,8 +495,9 @@ export class Sfx {
           break
         }
         case 'stagger': {
-          // 보스 경직: 묵직한 쿵 + 종 (기회다!)
+          // 보스 경직: 묵직한 쿵 + 종 (기회다!) — 녹음 종소리를 한 겹 (2026-10-08 S4)
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)
+          this.sample('bell', b.node, b.t0, 0.7, 0.9, 0.02)
           this.tone(b.node, b.t0, 0.5, 'sine', 90, 40, 0.7, 0.004)
           this.noiseBurst(b.node, b.t0, 0.25, 'lowpass', 900, 200, 0.4, 0.7)
           for (const [i, f] of [784, 1047, 1319].entries()) this.tone(b.node, b.t0 + 0.08 + i * 0.06, 0.9, 'triangle', f, f, 0.22, 0.004)
@@ -491,6 +506,7 @@ export class Sfx {
         case 'bagFull':
           if (e.p === localPlayer) {
             const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
+            if (this.sample('error', b.node, b.t0, 0.8)) break
             this.tone(b.node, b.t0, 0.09, 'square', 220, 200, 0.18, 0.004)
             this.tone(b.node, b.t0 + 0.11, 0.12, 'square', 196, 170, 0.18, 0.004)
           }
@@ -575,8 +591,15 @@ export class Sfx {
           break
         }
         case 'objOpen': {
-          // 상자 뚜껑: 나무 삐걱 + 쿵 (금빛 상자는 짤랑까지)
+          // 상자 뚜껑: 나무 삐걱 + 쿵 (금빛 상자는 짤랑까지) · 항아리는 깨지는 소리 — 녹음 (2026-10-08 S4)
           const b = this.bus(sp(e.x, e.y), 0.6)
+          if (e.kind === OBJ_URN) {
+            if (this.sample('pot', b.node, b.t0, 0.9)) break
+          } else if (this.sample('creak', b.node, b.t0, 0.8, 1.1)) {
+            this.tone(b.node, b.t0 + 0.14, 0.14, 'sine', 130, 60, 0.35, 0.003)
+            if (e.kind === OBJ_GOLDCHEST) this.coins(3, 0.2)
+            break
+          }
           this.noiseBurst(b.node, b.t0, 0.16, 'bandpass', 380, 620, 0.3, 6)
           this.tone(b.node, b.t0 + 0.14, 0.14, 'sine', 130, 60, 0.45, 0.003)
           if (e.kind === OBJ_GOLDCHEST) this.coins(3, 0.2)
@@ -742,6 +765,7 @@ export class Sfx {
         }
         case 'drop': {
           const b = this.bus(sp(e.x, e.y), 0.5)
+          if (this.sample('drop', b.node, b.t0, 0.9)) break
           this.tone(b.node, b.t0, 0.12, 'sine', 420, 300, 0.3, 0.004)
           break
         }
@@ -754,12 +778,23 @@ export class Sfx {
         }
         case 'block': {
           const b = this.bus(sp(e.x, e.y), 0.9)
+          this.sample('clang', b.node, b.t0, 0.7)
           for (const f of [900, 1350, 1800]) this.tone(b.node, b.t0, 0.35, 'sine', f, f * 0.94, 0.24, 0.002)
           this.noiseBurst(b.node, b.t0, 0.05, 'highpass', 5000, 3000, 0.45)
           break
         }
+        // 정예 "보호막"이 막았다: 쇠 울림 (자주 나니 0.15초에 한 번 — 2026-10-08 S4)
+        case 'mblock': {
+          const now = performance.now()
+          if (now - this.lastClang < 150) break
+          this.lastClang = now
+          const b = this.bus(sp(e.x, e.y), 0.6)
+          if (!this.sample('clang', b.node, b.t0, 0.7, 1.15)) this.tone(b.node, b.t0, 0.2, 'triangle', 1400, 1200, 0.2, 0.002)
+          break
+        }
         case 'break': {
           const b = this.bus(sp((e.tx + 0.5) * 32, (e.ty + 0.5) * 32), 0.9)
+          this.sample('wood', b.node, b.t0, 0.8)
           this.noiseBurst(b.node, b.t0, 0.4, 'lowpass', 900, 200, 0.8)
           this.tone(b.node, b.t0, 0.3, 'triangle', 150, 50, 0.4)
           break
@@ -1068,7 +1103,11 @@ export class Sfx {
       this.tone(node, t0, 0.06, 'triangle', 900 * k, 300 * k, 0.7)
       this.noiseBurst(node, t0, 0.04, 'bandpass', 2200 * k, 1200 * k, 0.4, 1.5)
     }
-    if (mine) this.tone(node, t0, 0.055, 'sine', 170 * k, 70, 0.55, 0.002)
+    if (mine) {
+      this.tone(node, t0, 0.055, 'sine', 170 * k, 70, 0.55, 0.002)
+      // 내 총알이 박히는 살 소리 한 겹 (2026-10-08 S4 — 남의 명중은 많아 합성만)
+      if (!isBright()) this.sample('flesh', node, t0, 0.35, 1.1)
+    }
     if (head) {
       // 헤드샷: 높은 '팅' 두 겹 — 몸통 명중과 확실히 구분되게
       this.tone(node, t0 + 0.01, 0.14, 'sine', 1500, 1100, 0.6)
@@ -1080,6 +1119,12 @@ export class Sfx {
   private meleeHit(s: Spatial, crit: boolean, fam: string): void {
     // 바이올린은 휘두를 때마다 치므로 조금 작게 (2026-09-24 — 공격 소리가 너무 크다)
     const { node, t0 } = this.bus(s, fam === 'violin' ? 0.65 : 0.95)
+    // 녹음 타격음 (2026-10-08 S4): 바이올린 = 퍽 · 검 = 베기 · 후라이팬 = 쇠판 — 묵직함은 낮은 합성 쿵을 조금 더한다
+    if (this.sample(fam === 'violin' ? 'punch' : fam === 'rapier' ? 'blade' : 'pan', node, t0, fam === 'violin' ? 0.9 : 0.8)) {
+      if (fam === 'violin') this.tone(node, t0, 0.1, 'sine', 140, 50, 0.4, 0.002)
+      if (crit) this.tone(node, t0 + 0.01, 0.16, 'triangle', 2300, 1800, 0.3)
+      return
+    }
     if (fam === 'violin') {
       // 살을 치는 퍽 — 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게
       const k = 0.88 + Math.random() * 0.24
@@ -1500,6 +1545,55 @@ export class Sfx {
     return kind + (isBright() ? 1000 : 0)
   }
 
+  // ---------- 녹음 효과음 (2026-10-08 퀄리티 2차 S4 — 사용자 허락 · Kenney CC0 · public/sfx 45개 435 KB) ----------
+  // 총소리는 묶음에 없어 합성 그대로. 타격 · 발소리 · 줍기 · 상자 · 창 · 단추 · 막기 · 경직에 녹음 소리를 쓴다.
+  // 받기 전(첫 1 ~ 2초)이나 받지 못한 브라우저는 예전 합성 소리가 난다.
+  private static readonly SAMPLE_GROUPS: Record<string, number> = {
+    punch: 4, blade: 3, pan: 3, flesh: 3, stepStone: 5, stepGrass: 5, coins: 2, pouch: 2, equip: 2, drop: 1,
+    creak: 2, pot: 3, bookOpen: 1, bookClose: 1, click: 2, error: 1, clang: 2, bell: 1, wood: 2,
+  }
+  private samples = new Map<string, AudioBuffer[]>()
+  private samplesFor: BaseAudioContext | null = null
+  /** 발밑이 풀 · 흙인가 (들판 · 숲 · 늪 · 마을) — 아니면 돌바닥 발소리 */
+  private stepGrass = false
+  private lastClang = 0
+
+  private loadSamples(ctx: AudioContext): void {
+    if (this.samplesFor === ctx) return
+    this.samplesFor = ctx
+    this.samples.clear()
+    for (const [g, n] of Object.entries(Sfx.SAMPLE_GROUPS)) {
+      for (let i = 0; i < n; i++) {
+        void fetch(`${import.meta.env.BASE_URL}sfx/${g}_${i}.ogg`)
+          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+          .then((a) => ctx.decodeAudioData(a))
+          .then((b) => {
+            const l = this.samples.get(g) ?? []
+            l.push(b)
+            this.samples.set(g, l)
+          })
+          .catch(() => {})
+      }
+    }
+  }
+
+  /** 녹음 소리 하나 (변형 중 무작위 · 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게). 아직 없으면 false — 부른 쪽이 합성으로 */
+  private sample(g: string, bus: AudioNode, t0: number, vol: number, rate = 1, spread = 0.07): boolean {
+    const l = this.samples.get(g)
+    const ctx = this.ctx
+    if (!l || l.length === 0 || !ctx) return false
+    const src = ctx.createBufferSource()
+    src.buffer = l[Math.floor(Math.random() * l.length)]
+    src.playbackRate.value = rate * (1 - spread + Math.random() * 2 * spread)
+    const gn = ctx.createGain()
+    gn.gain.value = vol
+    src.connect(gn)
+    gn.connect(bus)
+    this.finish(src, [gn], bus, true)
+    src.start(t0)
+    return true
+  }
+
   /** 보스 대사 소리를 받아 둔다 (한 번만 · 실패하면 다시 받지 않는다 — 그때는 음성 합성으로) */
   private loadLine(kind: number): void {
     const key = this.lineKey(kind)
@@ -1756,6 +1850,11 @@ export class Sfx {
     if (delay === 0 && now - this.lastCoin < 80) return
     this.lastCoin = now
     const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.4)
+    // 녹음 짤랑 (2026-10-08 S4) — 여러 번이면 조금 늦춰 한 번 더
+    if (this.sample('coins', b.node, b.t0 + delay, 0.9)) {
+      if (n >= 3) this.sample('coins', b.node, b.t0 + delay + 0.18, 0.6)
+      return
+    }
     for (let i = 0; i < n; i++) {
       const t = b.t0 + delay + i * 0.055 + Math.random() * 0.015
       const f = 2400 + Math.random() * 900
@@ -1776,6 +1875,8 @@ export class Sfx {
   ui(open: boolean): void {
     if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
+    // 녹음: 책 펴고 덮는 소리 (2026-10-08 S4)
+    if (this.sample(open ? 'bookOpen' : 'bookClose', node, t0, 0.8)) return
     this.noiseBurst(node, t0, 0.08, 'bandpass', open ? 900 : 2600, open ? 2600 : 900, 0.2, 1.4)
     this.tone(node, t0 + 0.01, 0.07, 'sine', open ? 660 : 880, open ? 990 : 587, 0.22, 0.005)
   }
@@ -1792,6 +1893,7 @@ export class Sfx {
   blip(): void {
     if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
+    if (this.sample('click', node, t0, 0.8)) return
     this.tone(node, t0, 0.08, 'sine', 880, 1320, 0.4, 0.005)
   }
 

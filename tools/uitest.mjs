@@ -206,6 +206,17 @@ async function openGame(skin) {
     check(area >= 100, `열고 들어가기 — 시련 지역으로 간다 (지역 ${area})`)
   }
 
+  // 녹음 효과음 (2026-10-08 S4 — Kenney CC0 · public/sfx): 판에 들어오면 받아서 푼다 (묶음 19)
+  const smp = await page.evaluate(async () => {
+    for (let i = 0; i < 40; i++) {
+      const n = window.__session?.sfx?.samples?.size ?? -1
+      if (n >= 19) return n
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    return window.__session?.sfx?.samples?.size ?? -1
+  })
+  check(smp >= 15, `녹음 효과음을 받아 풀었다 (${smp} / 19 묶음)`)
+
   check(errors.length === 0, `잡히지 않은 오류 없음 (공포스러움)${errors.length ? '\n    ' + errors.slice(0, 3).join('\n    ') : ''}`)
   await page.close()
 }
