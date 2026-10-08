@@ -20,7 +20,7 @@ import { QuestLog, TownPanel } from '../ui/town'
 import { Tutor } from '../ui/tutor'
 import { showEnding, showIntro } from '../ui/ending'
 import { showForgeFx } from '../ui/forgefx'
-import { isKey, keyLabel, keysHintHtml, onKeymap } from './keymap'
+import { isKey, keyLabel, keyOf, keysHintHtml, onKeymap } from './keymap'
 import { LORD_KIND, MONSTER_LIST, TIER_LABEL, isGiant, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
@@ -438,6 +438,10 @@ export class Session {
       },
     )
     this.bindWinButtons()
+    // 마우스 휠: 카메라 가까이 · 멀리 (던전만 — 2026-10-08 퀄리티 2차 5단계)
+    this.input.onWheel = (d) => {
+      if (!this.arena) this.renderer.zoom(d)
+    }
     // 아이템 이름 펼치기(기본 Alt) 중 이름을 누르면 그 아이템까지 걸어가 줍는다 (CMD_PICK — 2026-10-08 사용자: "디아블로처럼")
     this.input.labelClick = (x, y) => {
       if (this.arena || !this.overlay.hidden) return false
@@ -1902,6 +1906,9 @@ export class Session {
     let message = this.message
     if (this.lockstep && this.stallSince >= 0 && now - this.stallSince > 400) message = '상대 입력 대기 중…'
     this.pollTouchMenu()
+    // 게임패드 Start = Esc(메뉴 · 창 닫기) · Back = 가방 — 키 처리와 같은 길로 (2026-10-08 퀄리티 2차 5단계)
+    if (this.input.takePadPress(9)) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
+    if (this.input.takePadPress(8)) window.dispatchEvent(new KeyboardEvent('keydown', { key: '', code: keyOf('bag'), bubbles: true }))
     // 발소리는 sim 이벤트가 아니라 이동 상태로 낸다(틱마다 이벤트를 만들면 패킷이 무거워진다)
     this.sfx.updateSteps(this.state, lp, dt)
     // 처음 10분 안내: 0.25초에 한 번 살핀다
@@ -2003,6 +2010,15 @@ export class Session {
 
   /** 조준선 화면 좌표. 터치면 화면 중앙에서 조준 방향으로 띄운다 */
   private aimCursor(): { x: number; y: number } {
+    // 게임패드로 조준 중이면 패드가 겨눈 자리에 (마우스를 움직이면 마우스 자리로)
+    if (this.input.padActive) {
+      const me = this.state.players[this.cfg.localPlayer]
+      if (me) {
+        const r = angleToRad(me.aim)
+        const d = Math.max(3 * 32, me.aimDist * 4)
+        return this.renderer.worldToScreen((me.x + Math.cos(r) * d) * U, 0.6, (me.y + Math.sin(r) * d) * U)
+      }
+    }
     if (!this.touch) return this.input.mouse
     const me = this.state.players[this.cfg.localPlayer]
     const r = angleToRad(me.aim)

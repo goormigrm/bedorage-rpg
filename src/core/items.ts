@@ -8,6 +8,7 @@
 import { Stats, sanitizeStats } from './stats'
 import { Rng, rand, randInt } from './rng'
 import { WEAPONS, WeaponId, familyOf } from './weapons'
+import { palette, setItemCss } from './palette'
 
 export const SLOT_WEAPON = 0
 export const SLOT_HELM = 1
@@ -186,7 +187,7 @@ export const SETS: SetDef[] = [
   { name: '심연의 계약', tag: '심연', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_RING], two: [[ST_SKILLPOW, 15]], three: [[ST_CDR, 12], [ST_DMG, 20]] },
 ]
 /** 아이템 이름 색 (세트는 초록) */
-export const itemColor = (it: Item): string => (it.set !== undefined ? SET_COLOR : RARITY_COLORS[it.rarity] ?? '#d8d8d8')
+export const itemColor = (it: Item): string => (it.set !== undefined ? (palette.colorblind ? setItemCss() : SET_COLOR) : RARITY_COLORS[it.rarity] ?? '#d8d8d8')
 /** 낀 장비에서 세트마다 몇 부위 */
 export function setCounts(equip: (Item | null)[]): number[] {
   const n = SETS.map(() => 0)

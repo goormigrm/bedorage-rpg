@@ -22,6 +22,7 @@ import { DON_SEAL } from '../core/donate'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
+import { koWords } from '../ui/koBreak'
 
 const SERIF = '"Nanum Myeongjo", "Batang", serif'
 const SANS = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
@@ -930,7 +931,8 @@ function fitText(c: CanvasRenderingContext2D, text: string, maxW: number): strin
 function wrapWords(c: CanvasRenderingContext2D, text: string, maxW: number, max: number): string[] {
   const out: string[] = []
   let cur = ''
-  for (const w of text.split(' ')) {
+  // 가운뎃점 · 줄표는 앞 낱말에 붙여 줄 머리에 오지 않게 (2026-10-08 — ui/koBreak.ts)
+  for (const w of koWords(text)) {
     const next = cur ? `${cur} ${w}` : w
     if (c.measureText(next).width <= maxW) {
       cur = next

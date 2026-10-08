@@ -26,6 +26,9 @@ body { font-family: "IBM Plex Sans KR", "Malgun Gothic", "Segoe UI", system-ui, 
 /* 한글 줄바꿈 (2026-09-19 사용자): 한글도 **낱말 단위로만** 줄을 바꾼다. 칸이 좁아도 한 글자씩 세로로 쪼개지지 않는다.
    낱말 하나가 칸보다 길 때만 그 안에서 끊는다(break-word 는 칸의 최소 폭을 낱말 폭으로 둔다). */
 body { word-break: keep-all; overflow-wrap: break-word; }
+/* 한국어 줄바꿈 (2026-10-08 사용자: "줄바꿈 어색한 것"): 엄격한 줄 나눔 · 마지막 줄에 한 낱말만 남지 않게(text-wrap: pretty).
+   가운뎃점 · 줄표가 줄 머리에 오는 것은 ui/koBreak.ts 가 막는다 */
+body { line-break: strict; text-wrap: pretty; }
 button, .btn, .pill, kbd { white-space: nowrap; }
 #app { min-height: 100%; }
 button { font-family: inherit; }
@@ -903,6 +906,10 @@ body { background: var(--bg); }
 /* 역할 표시 (탱커 · 딜러 · 힐러 — 2026-09-19) */
 .role-chip { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 3px; border: 1px solid var(--rc); color: var(--rc); font: 700 11.5px "IBM Plex Sans KR", sans-serif; line-height: 18px; vertical-align: middle; white-space: nowrap; background: rgba(0,0,0,.35); }
 .slot .rd .role-chip { margin-left: 0; margin-right: 6px; }
+/* 방 자리 줄 오른쪽 칸(캐릭터 이름 · 역할 칩)은 오른쪽 끝을 맞춘다 — 칩의 오른쪽 여백 6px 때문에 이름과 칩이 어긋났다 (2026-10-08 사용자) */
+.d2-side .slot .rd { gap: 3px; }
+.d2-side .slot .rd .role-chip { margin: 0; }
+.d2-side .slot .rd .rs:empty { display: none; }
 .roomhint.party { margin-top: 8px; font-weight: 600; }
 .tp-role { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 .tp-role .role-chip { margin: 0 4px 0 0; min-width: 44px; text-align: center; }

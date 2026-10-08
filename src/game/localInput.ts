@@ -6,7 +6,7 @@ import { GameMap } from '../core/map'
 import { GameState } from '../core/state'
 import { WEAPONS } from '../core/weapons'
 import { VIEW_H, VIEW_W } from '../render/hud'
-import { moveDirFromScreen } from '../render3d/camera'
+import { cameraForward, cameraRight, moveDirFromScreen } from '../render3d/camera'
 import { VIEW_RADIUS_PX, canSee } from '../render3d/vision'
 import { Action, codeOf, keyOf } from './keymap'
 
@@ -74,6 +74,23 @@ export class LocalInput {
   itemsHeld = false
   /** 누른 자리(논리 좌표)가 아이템 이름이면 그것을 줍게 하고 true — 그 누름은 사격이 아니다 (세션이 단다) */
   labelClick: ((x: number, y: number) => boolean) | null = null
+  /** 마우스 휠 (세션이 카메라 줌에 단다 — +1 멀리 · -1 가까이) */
+  onWheel: ((dir: number) => void) | null = null
+  /**
+   * 게임패드 (2026-10-08 퀄리티 2차 5단계 U4 — Steam 표준): 왼스틱 이동 · 오른스틱 조준 · RT 사격 · LT 정조준 · A 구르기 ·
+   * B 쓰기(F) · X · Y 스킬 · RB 궁극기 · LB · ↑ 배운 스킬 · ↓ 타운 포털 · L3 달리기. Start · Back 은 세션이 본다(takePadPress).
+   * padActive = 최근에 패드를 썼다 (조준선을 패드 조준 자리에 그린다 · 마우스를 움직이면 꺼진다)
+   */
+  padActive = false
+  private padPrev = 0
+  private padEdges = 0
+  /** 이번에 막 누른 패드 단추인가 (한 번만 참 — 메뉴 · 가방) */
+  takePadPress(i: number): boolean {
+    const b = 1 << i
+    if ((this.padEdges & b) === 0) return false
+    this.padEdges &= ~b
+    return true
+  }
   /** 가방·장비 명령 대기열 (한 틱에 하나씩 Input.cmd 로 나간다) */
   private cmds: { cmd: number; arg: number }[] = []
 
@@ -113,6 +130,7 @@ export class LocalInput {
     const kd = (e: KeyboardEvent) => onKey(e, true)
     const ku = (e: KeyboardEvent) => onKey(e, false)
     const mm = (e: MouseEvent) => {
+      this.padActive = false
       const r = stage.getBoundingClientRect()
       this.mouse.x = ((e.clientX - r.left) / r.width) * VIEW_W
       this.mouse.y = ((e.clientY - r.top) / r.height) * VIEW_H
@@ -142,6 +160,13 @@ export class LocalInput {
       this.mouseDown.clear()
       this.itemsHeld = false
     }
+    // 마우스 휠: 카메라 줌 (창 · 단추 위에서는 그 창이 굴러가게 둔다)
+    const wh = (e: WheelEvent) => {
+      if (isUiTarget(e.target) || e.deltaY === 0) return
+      e.preventDefault()
+      this.onWheel?.(e.deltaY > 0 ? 1 : -1)
+    }
+    stage.addEventListener('wheel', wh, { passive: false })
     window.addEventListener('keydown', kd)
     window.addEventListener('keyup', ku)
     window.addEventListener('mousemove', mm)
@@ -150,6 +175,7 @@ export class LocalInput {
     window.addEventListener('blur', blur)
     stage.addEventListener('contextmenu', cm)
     this.detach = () => {
+      stage.removeEventListener('wheel', wh)
       window.removeEventListener('keydown', kd)
       window.removeEventListener('keyup', ku)
       window.removeEventListener('mousemove', mm)
@@ -244,6 +270,53 @@ export class LocalInput {
       this.lastDist = Math.hypot(dx, dy)
     }
     let buttons = 0
+    // 게임패드: 표준 배치(standard mapping)의 첫 패드
+    const gp = typeof navigator !== 'undefined' && navigator.getGamepads ? [...navigator.getGamepads()].find((g) => g && g.connected && g.mapping === 'standard') : undefined
+    if (gp) {
+      const dz = (v: number) => (Math.abs(v) < 0.3 ? 0 : v)
+      const lx = dz(gp.axes[0] ?? 0)
+      const ly = dz(gp.axes[1] ?? 0)
+      const rx = dz(gp.axes[2] ?? 0)
+      const ry = dz(gp.axes[3] ?? 0)
+      const pr = (i: number) => !!gp.buttons[i]?.pressed || (gp.buttons[i]?.value ?? 0) > 0.5
+      let mask = 0
+      for (let i = 0; i < 17; i++) if (pr(i)) mask |= 1 << i
+      this.padEdges |= mask & ~this.padPrev
+      this.padPrev = mask
+      if (mask !== 0 || lx || ly || rx || ry) this.padActive = true
+      if (lx || ly) {
+        const d = moveDirFromScreen(Math.abs(lx) > 0.38 ? Math.sign(lx) : 0, Math.abs(ly) > 0.38 ? Math.sign(ly) : 0)
+        mx = d.mx
+        my = d.my
+      }
+      // 오른스틱: 화면 기준 방향 → 월드 방향 (카메라 요 45°) · 밀린 만큼 멀리 (4 ~ 8칸)
+      const mag = Math.hypot(rx, ry)
+      if (mag > 0.35) {
+        const f = cameraForward()
+        const r = cameraRight()
+        const wx = rx * r.x - ry * f.x
+        const wy = rx * r.y - ry * f.y
+        this.lastAim = radToAngle(Math.atan2(wy, wx))
+        this.lastDist = (4 + Math.min(1, mag) * 4) * 32
+      } else if ((lx || ly) && this.padActive) {
+        // 오른스틱을 놓으면 걷는 쪽을 본다 (트윈 스틱 슈터처럼)
+        const f = cameraForward()
+        const r = cameraRight()
+        this.lastAim = radToAngle(Math.atan2(lx * r.y - ly * f.y, lx * r.x - ly * f.x))
+        this.lastDist = 5 * 32
+      }
+      if (pr(7)) buttons |= BTN_FIRE
+      if (pr(6)) buttons |= BTN_ADS
+      if (pr(0)) buttons |= BTN_DASH
+      if (pr(1)) buttons |= BTN_USE
+      if (pr(2)) buttons |= BTN_SKILL1
+      if (pr(3)) buttons |= BTN_SKILL2
+      if (pr(5)) buttons |= BTN_ULT
+      if (pr(4)) buttons |= BTN_SKILL3
+      if (pr(12)) buttons |= BTN_SKILL4
+      if (pr(13)) buttons |= BTN_PORTAL
+      if (pr(10)) buttons |= BTN_SPRINT
+    }
     if (this.mouseDown.has(0) || t?.firing) buttons |= BTN_FIRE
     if (this.mouseDown.has(2) || t?.ads) buttons |= BTN_ADS
     // Shift 는 달리기다. 구르기는 Space (전에는 Shift 도 구르기였다)

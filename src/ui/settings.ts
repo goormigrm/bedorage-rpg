@@ -7,12 +7,16 @@ import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES } from '../core/items'
 import { isTouchDevice } from '../game/touch'
 import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } from '../game/keymap'
 import { VOL_KEYS, VOL_NAMES, VolKey, setVolume, volumes } from '../audio/volume'
+import { palette } from '../core/palette'
 
 const AUTOPICK_KEY = 'brpg.autopick'
 const REAL_KEY = 'brpg.real'
 const KEYS_KEY = 'brpg.keys'
 const MUTE_KEY = 'brpg.muted'
 const HUD_KEY = 'brpg.hud'
+const SHAKE_KEY = 'brpg.shake'
+const DMGNUM_KEY = 'brpg.dmgnum'
+const CB_KEY = 'brpg.colorblind'
 const GFX_KEY = 'brpg.gfx'
 
 const get = (k: string): string | null => {
@@ -50,6 +54,30 @@ export const setRealMonsters = (on: boolean): void => set(REAL_KEY, on ? '1' : '
 const BOSSVOICE_KEY = 'brpg.bossvoice'
 export const bossVoiceOn = (): boolean => get(BOSSVOICE_KEY) !== '0'
 export const setBossVoice = (on: boolean): void => set(BOSSVOICE_KEY, on ? '1' : '0')
+
+/**
+ * 화면 흔들림 세기 (2026-10-08 퀄리티 2차 5단계 — 멀미 · 방송 화면): 0 끔 · 0.5 약하게 · 1 보통. 후원 "화면 흔들림" 이벤트는 그대로다
+ */
+let shakeK = Number(get(SHAKE_KEY) ?? '1')
+if (![0, 0.5, 1].includes(shakeK)) shakeK = 1
+export const shakeScale = (): number => shakeK
+export const setShakeScale = (k: number): void => {
+  shakeK = k
+  set(SHAKE_KEY, String(k))
+}
+/** 괴물 위 피해 숫자 보기 (기본 켬) */
+let dmgNum = get(DMGNUM_KEY) !== '0'
+export const dmgNumbersOn = (): boolean => dmgNum
+export const setDmgNumbers = (on: boolean): void => {
+  dmgNum = on
+  set(DMGNUM_KEY, on ? '1' : '0')
+}
+/** 색약 모드: 우리 편 초록 → 파랑 · 세트 초록 → 하늘색 (core/palette.ts) */
+palette.colorblind = get(CB_KEY) === '1'
+export const setColorblind = (on: boolean): void => {
+  palette.colorblind = on
+  set(CB_KEY, on ? '1' : '0')
+}
 
 /** 조작 안내 띠 */
 export const keysShown = (): boolean => get(KEYS_KEY) !== '0'
@@ -131,6 +159,11 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
     gfxRowHtml() +
+    shakeRowHtml() +
+    onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
+    onoff('색약 모드', palette.colorblind) +
+    `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
+    (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>`) +
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
     `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
@@ -151,6 +184,12 @@ function volRowsHtml(): string {
     }).join('') +
     `</div>`
   )
+}
+
+function shakeRowHtml(): string {
+  const opts: [number, string][] = [[0, '끔'], [0.5, '약하게'], [1, '보통']]
+  const btns = opts.map(([k, n]) => `<button type="button" data-shake="${k}" class="${k === shakeK ? 'on' : ''}">${n}</button>`).join('')
+  return `<div class="srow"><b>화면 흔들림</b><div class="seg small hudseg">${btns}</div></div>`
 }
 
 function gfxRowHtml(): string {
@@ -249,6 +288,10 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         o.onReal?.(on)
       } else if (name === '보스 목소리') {
         setBossVoice(on)
+      } else if (name === '피해 숫자') {
+        setDmgNumbers(on)
+      } else if (name === '색약 모드') {
+        setColorblind(on)
       } else {
         setKeysShown(on)
         o.onKeys?.(on)
@@ -265,6 +308,19 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       if (em) em.textContent = `${pct}%`
     }
   })
+  box.querySelectorAll<HTMLButtonElement>('[data-shake]').forEach((b) => {
+    b.onclick = () => {
+      setShakeScale(Number(b.dataset.shake))
+      redraw()
+    }
+  })
+  const fs = box.querySelector<HTMLButtonElement>('[data-fs]')
+  if (fs)
+    fs.onclick = () => {
+      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
+      else void document.documentElement.requestFullscreen?.().catch(() => {})
+      setTimeout(redraw, 300)
+    }
   box.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {
     b.onclick = () => {
       setGfxMode(b.dataset.gfx as string)

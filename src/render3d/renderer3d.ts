@@ -34,6 +34,8 @@ registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드�
 import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
+import { allyGood, allyTagCss } from '../core/palette'
+import { dmgNumbersOn, shakeScale } from '../ui/settings'
 import { PostFx, gradeFor } from './post'
 import { AmbientFx, ambientFor } from './ambient'
 import { FxAt, SkillFx } from './skillfx'
@@ -918,6 +920,26 @@ export class Renderer3D {
     this.monsterView.setReal(on)
   }
 
+  /** 마우스 휠 줌 (2026-10-08 퀄리티 2차 5단계 G10): 가까이 · 보통 · 멀리 — 던전만. dir = +1 멀리 · -1 가까이 */
+  private zoomStep = (() => {
+    try {
+      const v = Number(localStorage.getItem('brpg.zoom') ?? '1')
+      return v >= 0 && v < ZOOMS.length ? v : 1
+    } catch {
+      return 1
+    }
+  })()
+  zoom(dir: number): void {
+    const n = Math.max(0, Math.min(ZOOMS.length - 1, this.zoomStep + Math.sign(dir)))
+    if (n === this.zoomStep) return
+    this.zoomStep = n
+    try {
+      localStorage.setItem('brpg.zoom', String(n))
+    } catch {
+      /* 이번 판만 */
+    }
+  }
+
   /** 확인용: 카메라 거리 배율 (1 = 보통) */
   setDebugZoom(k: number): void {
     this.debugZoom = Math.max(0.15, Math.min(2, k))
@@ -1175,7 +1197,7 @@ export class Renderer3D {
           const me = localPlayer >= 0 ? state.players[localPlayer] : undefined
           const caster = state.players[e.p]
           const foe = !!me && !!caster && me !== caster && isEnemy(me, caster)
-          const col = foe ? ENEMY_BUFF : ALLY_GOOD
+          const col = foe ? ENEMY_BUFF : allyGood()
           // 가는 고리 둘 — 퍼져 나가는 것 · 닿는 끝에 잠깐 남는 것 (두꺼운 띠가 화면을 덮었다 — 2026-09-23 영상에서 확인)
           this.spawnRing(e.x * U, e.y * U, 0.3, e.r * U, 0.6, col, true, 0.7)
           this.spawnRing(e.x * U, e.y * U, e.r * U * 0.985, e.r * U, 0.9, col, true, 0.55)
@@ -1322,7 +1344,7 @@ export class Renderer3D {
               this.punch = Math.max(this.punch, head ? 0.5 : 0.2)
             }
           }
-          if (!hidden && mine) {
+          if (!hidden && mine && dmgNumbersOn()) {
             // 잇달아 맞힌 같은 괴물의 숫자는 하나로 합쳐 커진다 (연사 무기 숫자가 화면을 덮지 않게 · 쌓이는 맛) — 치명타는 따로
             const prev = head ? undefined : this.texts.find((t) => t.m === e.m && t.sum !== undefined && t.max - t.life < 0.3)
             if (prev) {
@@ -3634,7 +3656,7 @@ export class Renderer3D {
         const me = localPlayer >= 0 ? curr.players[localPlayer] : undefined
         const owner = curr.players[zn.owner]
         const hostileStage = !!me && !!owner && me !== owner && isEnemy(me, owner)
-        const stage = hostileStage ? 0xff4a3a : ALLY_GOOD
+        const stage = hostileStage ? 0xff4a3a : allyGood()
         const cDisc = acid ? 0xff3a1a : fuse ? 0xff3a1a : vortex ? 0x60c8ff : trap ? 0xa07040 : hostileStage ? 0xff3a1a : 0x7affa0
         const cRim = acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
         const disc = new THREE.Mesh(this.zoneDisc, new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
@@ -4320,7 +4342,7 @@ export class Renderer3D {
       const label = `${who ? `${who}님의 아군` : '아군'} · ${Math.ceil(a.t / 60)}`
       ctx.font = `800 ${def.boss ? 14 : 11}px ${SAY_FONT}`
       ctx.strokeText(label, p.x, p.y)
-      ctx.fillStyle = ALLY_TAG
+      ctx.fillStyle = allyTagCss()
       ctx.fillText(label, p.x, p.y)
     }
     ctx.restore()
@@ -4715,6 +4737,8 @@ export class Renderer3D {
         tz += Math.sin(r) * reach
       }
       dist = FOLLOW_DIST * (this.scoped ? 1.45 : 1)
+      // 마우스 휠 줌 (던전만 — 투기장은 모두 같은 시야)
+      if (curr.mode === 'dungeon') dist *= ZOOMS[this.zoomStep]
     }
     // 보스 등장 장면: 0.4초 다가가 1초 머물고 0.6초 돌아온다 — 나도 화면에 남게 보스 쪽으로 65%만
     if (this.bossCut) {
@@ -4747,8 +4771,10 @@ export class Renderer3D {
       this.camTarget.z += (tz - this.camTarget.z) * s
       this.camDist += (dist - this.camDist) * s * 0.7
     }
-    let shx = (Math.random() - 0.5) * this.shake
-    let shz = (Math.random() - 0.5) * this.shake
+    // 화면 흔들림 세기 (설정 — 끔 · 약하게 · 보통). 후원 "화면 흔들림" 은 아래에서 그대로
+    const sk = shakeScale()
+    let shx = (Math.random() - 0.5) * this.shake * sk
+    let shz = (Math.random() - 0.5) * this.shake * sk
     // 후원 "화면 흔들림" (2026-09-26 — core/donate.ts): 화면이 잘게 떨린다 · 0.3초쯤에 걸쳐 들어오고 빠진다. 마우스 조준점도 화면을 따라 움직인다.
     // 처음(v0.68.1)에는 크게 느리게 출렁이고(1초에 한 번 · 0.6칸) 기울기까지 해 멀미가 났다(2026-09-26 사용자) → 기울기를 빼고,
     // 느린 출렁임 대신 **작고 빠른 떨림**(초당 2~4번 · 폭 0.16칸 — 전의 약 ¼)
@@ -4763,7 +4789,7 @@ export class Renderer3D {
     const cx = this.camTarget.x + shx
     const cz = this.camTarget.z + shz
     // 카메라 펀치: 잠깐 당겨졌다 돌아온다 (최대 7%)
-    const cd = this.camDist * this.debugZoom * (1 - Math.min(1, this.punch) * 0.07)
+    const cd = this.camDist * this.debugZoom * (1 - Math.min(1, this.punch) * 0.07 * sk)
     const flat = Math.cos(PITCH) * cd
     this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * cd, cz + Math.cos(YAW) * flat)
     this.camera.lookAt(cx, 0.6, cz)
@@ -4840,7 +4866,6 @@ export { hex, PLAYER_RADIUS }
  * 초록을 다른 뜻에 쓰지 말 것 — 예전 산성 웅덩이가 초록이라 좋은 범위로 착각했다.
  */
 /** 응원 아군 이름표 색 */
-const ALLY_TAG = '#8dffb0'
 /** 후원 "화면 흔들림": 카메라가 떨리는 폭(월드 칸 — 화면 높이의 약 1%). 기울기는 없다 (멀미 — 2026-09-26) */
 const DON_SHAKE_AMP = 0.11
 /** 시청자 이름 괴물의 닉네임 (하늘빛 — 후원 소환의 초록 · 응원 아군의 연두와 다르게) */
@@ -4857,9 +4882,10 @@ function withAllies(s: GameState): GameState {
 
 /** 보스 이름표 높이 (말풍선 · 소환 이름표를 그 위로 올린다) */
 const BOSS_PLATE_H = 50
+/** 마우스 휠 줌 단계 (카메라 거리 배율) — 시야 반경(15칸)은 그대로라 멀리 봐도 어둠 너머 괴물이 더 보이지는 않는다 */
+const ZOOMS = [0.8, 1, 1.2]
 const ENEMY_AOE = 0xff4a3a
 const ENEMY_AOE_CSS = '#ff4a3a'
-const ALLY_GOOD = 0x5aff8a
 const ENEMY_BUFF = 0xc070ff
 
 /** 스킬 색 (고리·입자). skillIcons 의 색과 맞춘다 */
