@@ -327,6 +327,15 @@ function god() {
   }
   for (const m of s.monsters) m.pow = 0
 }
+/** 1편: 철면란 격정 연주를 장면 내내 — 휘두르기 2배 · 탄 무한(격정 연주의 표시) · 집중 가득 (캐논 선율 · 음표가 끊기지 않게) */
+function forceCanon() {
+  const p = st().players[0]
+  if (!p || !M.skills) return
+  p.fx[M.skills.FX_FREEAMMO] = Math.max(p.fx[M.skills.FX_FREEAMMO] ?? 0, 30)
+  p.fx[M.skills.FX_RATE] = Math.max(p.fx[M.skills.FX_RATE] ?? 0, 30)
+  p.rateMul = Math.max(p.rateMul ?? 1, 2)
+  p.focus = 100
+}
 function key(code, down) {
   window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { key: code.replace('Key', '').toLowerCase(), code, bubbles: true }))
 }
@@ -633,7 +642,8 @@ function ultScenes() {
 // ---------- 장면 (게임 시각 초 — 준비 중(hold)에는 게임은 흐르고 영상은 멈춘다) ----------
 // 2026-10-08 사용자: "트레일러를 40초 분량으로 여러 개로 나눠서" · "보스를 죽이고 잠깐 멈췄다가 움직이는 게 어색 — 멈추면서 페이드아웃으로 끝" ·
 // "약 25% 지점이 지루하다 — 불필요한 부분은 생략" · "'접두' 같은 흔히 쓰지 않는 말은 쓰지 말 것" → 편마다 한 주제 · 끝은 모두 페이드아웃 → 검은 끝 카드.
-//   1편 세계와 전투 — 고르는 화면 · 마을 · 괴물 떼와 스킬 효과 · 정예 특수 능력 · 전리품(Alt 이름 펼치기)
+//   1편 세계와 전투 — (2026-10-09 새로) 첫 장면부터 떼 한가운데 철면란 격정 연주(캐논) + 제목 · 궁극기 · 파티 스킬 · 정예 · 전리품
+//   ⚠ 2026-10-09 사용자: "1 · 2 · 3편에는 엔딩 화면 넣지 마 — 자연스럽게 연결되도록" → 1 · 2 · 3편 끝은 segueOut(짧게 어둡게) · 끝 카드는 4편만
 //   2편 막 보스 — 보스 넷 · 경직 · 최종 보스를 쓰러뜨리는 순간 페이드아웃
 //   3편 방송 연동 — 채팅 말풍선 · !참여 · 후원 이벤트 · 큰 후원 예고 · !응원 · 방해 효과
 //   4편 한 바퀴 뒤에도 — 막마다 다른 마을 · 시련(단계 · 진행 막대 · 수호자) · 저주받은 상자 · 숙련
@@ -651,7 +661,20 @@ function timeline() {
   return tl
 }
 
-/** 끝: 지금 장면에서 멈추듯 검게 닫고 → 검은 바탕 끝 카드 → 다시 검게 (2026-10-08 — 멈췄다 다시 움직이지 않게) */
+/**
+ * 1 · 2 · 3편의 끝 (2026-10-09 사용자: "트레일러 1, 2, 3 영상에는 엔딩 화면 넣지 마 — 자연스럽게 연결되도록"): 끝 카드 없이
+ * 지금 장면에서 짧게 검게 닫는다 — 다음 편은 검은 데서 열리므로 이어 보면 한 편처럼 넘어간다. 끝 카드는 4편에만
+ */
+function segueOut(tl, lead = 0, fadeMs = 650) {
+  tl.at(lead, () => fadeTo(1, fadeMs))
+  tl.at(fadeMs / 1000 + 0.1, () => {
+    ov.cap = null
+    ov.title = null
+  })
+  tl.at(0.05, null)
+}
+
+/** 끝: 지금 장면에서 멈추듯 검게 닫고 → 검은 바탕 끝 카드 → 다시 검게 (2026-10-08 — 멈췄다 다시 움직이지 않게) — 4편만 */
 function endCard(tl, lead = 0, fadeMs = 900) {
   tl.at(lead, () => fadeTo(1, fadeMs))
   tl.at(fadeMs / 1000 + 0.15, () => {
@@ -706,30 +729,20 @@ function scenes(part) {
   return partWorld()
 }
 
-/** 1편 세계와 전투 (고르는 화면은 lobbyPhase — 약 9초) */
+/**
+ * 1편 세계와 전투 (2026-10-09 사용자: "첫 번째 영상은 특히 임팩트가 세야 하는데 되게 약하다 — 첫 번째 영상에 제일 임팩트가 세게").
+ * 예전 1편은 고르는 화면 9초 → 마을 → 떼 → 정예 → 전리품으로 앞이 느렸다. 이제 **첫 장면부터 괴물 떼 한가운데**:
+ *   철면란 격정 연주(고기 바이올린 캐논 변주곡 — 사선 베기 · 음표) + 섬광과 함께 제목 → 궁극기 야차의 포효로 떼를 날린다 →
+ *   파티 스킬 → 정예 → 전리품 → 끝 카드 없이 어두워지며 2편으로
+ */
 function partWorld() {
   const tl = timeline()
   const { at, every } = tl
-  // 마을 (짧게)
+  // 들판으로 곧장 (준비하는 동안 영상 멈춤 — 마을 · 고르는 화면은 넣지 않는다)
   at(0, () => {
-    fadeTo(0, 600)
-    cue('calm', { town: true, act: 0 })
-    caption(...L(['마을에서 떠나는 모험', '상인 · 대장장이 · 보관함 · 시련의 문 — 막마다 다른 마을'], ['대기실에서 떠나는 놀이 섬', '매점 · 수리공 · 사물함 · 도전의 문 — 막마다 다른 대기실']))
-    zoomTo(1.06, 1.0, 3000)
-    // 마을은 카메라를 조금 뒤로 (천막 · 모닥불 · 웨이포인트가 한 화면에) · 조금 더 밝게
-    S().renderer.setDebugZoom(1.0)
-    ov.bright = 1.45
-    key('KeyD', true)
-  })
-  tl.push(1.0, () => (snap = 'shot_town' + (BRIGHT ? '_bright' : '')))
-  at(1.5, () => {
-    key('KeyD', false)
-    fadeTo(1, 350)
-  })
-  // 들판으로 (준비하는 동안 영상 멈춤)
-  at(0.4, () => {
     holding = true
     ov.cap = null
+    fadeTo(1, 1)
     toExit()
     key('KeyF', true)
   })
@@ -743,7 +756,7 @@ function partWorld() {
   at(0.15, () => key('KeyF', false))
   at(1.0, () => {
     S().autopilot = true
-    S().renderer.setDebugZoom(0.74)
+    S().renderer.setDebugZoom(0.7)
     ov.bright = undefined
     const spot = openSpot()
     if (spot) {
@@ -751,21 +764,52 @@ function partWorld() {
       st().players[0].y = spot.y
     }
     gatherBots()
-    spawn([0, 0, 1, 2], 60, 4, 12)
+    spawn([0, 0, 1, 2], 80, 3, 10)
+    // 격정 연주를 장면 내내 (forceCanon — 캐논 선율이 끊기지 않게) · 처음 한 번 스킬로 켠다
+    ov.canon = true
+    const p = st().players[0]
+    p.focus = 100
+    p.cd[1] = 0
   })
-  // 괴물 떼 + 스킬 효과 (한 장면 — 지난 영상은 떼 · 스킬 · 정예가 비슷한 싸움으로 세 번 이어져 지루했다)
-  at(1.2, () => {
+  // 첫 장면: 섬광과 함께 제목이 박힌다
+  at(1.0, () => {
     holding = false
     cue('hot', { act: 0 })
-    fadeTo(0, 450)
-    zoomTo(1.0, 1.08, 10000)
-    caption(...L(['몰려드는 괴물 떼', '막마다 다른 괴물 16종 — 잠든 무리는 총소리에 깬다'], ['몰려드는 귀여운 괴물 떼', '막마다 다른 괴물 16종 — 쓰러지면 "퐁!" 색종이']))
+    fadeTo(0, 220)
+    flash(1)
+    zoomTo(1.22, 1.0, 1700)
+    ov.title = { text: '배도라지 알PG', sub: L('계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', '계란이 된 배도라지 크루의 놀이 섬 슈팅 RPG'), at: now() }
   })
-  const horde = tl.t
-  every(horde + 1.0, horde + 10, 1.0, () => alive() < 55 && spawn([0, 1, 0, 2], 22, 6, 12))
-  tl.push(horde + 4.6, () => caption('스킬마다 다른 효과', '불길 · 충격파 · 빛기둥 · 음파 — 탱커 · 딜러 · 힐러가 함께'))
-  tl.push(horde + 3.6, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
-  at(10.0, () => {})
+  const open = tl.t
+  tl.push(open + 2.3, () => ov.title && (ov.title.out = now()))
+  tl.push(open + 2.8, () => caption('고기 바이올린 · 캐논 변주곡', '철면란 격정 연주 — 휘두를 때마다 캐논이 흐른다'))
+  tl.push(open + 3.2, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
+  every(open + 0.6, open + 8.6, 0.7, () => alive() < 75 && spawn([0, 1, 0, 2], 26, 3, 9))
+  // 궁극기: 야차의 포효 — 몰려 있을 때 쿨다운을 비워 둔다 (봇은 둘레에 다섯 넘게 몰리면 쓴다)
+  tl.push(open + 7.4, () => {
+    spawn([0, 0, 2], 30, 2, 5)
+    st().players[0].cd[2] = 0
+  })
+  tl.push(open + 7.9, () => {
+    caption('야차의 포효', '궁극기 — 둘레를 한 번에 날려 버린다')
+    flash(0.55)
+    zoomTo(1.0, 1.1, 2600)
+  })
+  at(10.6, () => {})
+  // 파티 스킬 — 넷이 함께
+  cut(at, () => {
+    gatherBots()
+    for (const q of st().players) {
+      q.focus = 100
+      q.cd = q.cd.map(() => 0)
+    }
+    spawn([0, 0, 1, 2], 60, 4, 10)
+    caption('스킬마다 다른 효과', '불길 · 충격파 · 빛기둥 · 음파 — 탱커 · 딜러 · 힐러가 함께')
+    zoomTo(1.0, 1.06, 6000)
+  })
+  const party = tl.t
+  every(party + 0.8, party + 5.6, 0.8, () => alive() < 60 && spawn([0, 1, 2], 20, 4, 10))
+  at(5.8, () => {})
   // 정예 — 특수 능력
   cut(at, () => {
     gatherBots()
@@ -773,18 +817,19 @@ function partWorld() {
     elites2()
     spawn([0, 0, 2], 30, 6, 11)
   })
-  at(6.4, () => {})
+  at(5.4, () => {})
   // 전리품 — Alt 로 겹친 이름 펼치기
   cut(at, () => {
+    ov.canon = false
     for (const m of st().monsters) m.hp = 0
     gatherBots()
     dropLoot()
     caption('나만의 전리품', '마법 · 희귀 · 전설 · 신화 — Alt 를 누르면 겹친 이름이 펼쳐진다')
     zoomTo(1.0, 1.06, 5000)
   })
-  at(1.4, () => key('AltLeft', true))
-  at(3.8, () => key('AltLeft', false))
-  endCard(tl, 0.2)
+  at(1.2, () => key('AltLeft', true))
+  at(3.0, () => key('AltLeft', false))
+  segueOut(tl, 0.1)
   return tl.done()
 }
 
@@ -852,7 +897,7 @@ function partBoss() {
     if (lord) lord.hp = 1
   })
   at(0.35, () => cue('win'))
-  endCard(tl, 0.15, 1100)
+  segueOut(tl, 0.15, 900)
   return tl.done()
 }
 
@@ -938,7 +983,7 @@ function partStream() {
     caption('방해 효과 — 방송인이 조절', '스킬 봉인 · 시야 축소 · 거꾸로 걷기 — 길이 · 멈춤 · 보스전 중 대기')
     M.stream.fakeDonation(20000)
   })
-  endCard(tl, 5.2)
+  segueOut(tl, 5.2)
   return tl.done()
 }
 
@@ -1092,7 +1137,8 @@ function liteState(s) {
     phase: s.phase,
     phaseTimer: s.phaseTimer,
     mode: s.mode,
-    players: s.players.map((p) => ({ x: p.x, y: p.y, alive: p.alive, weapon: p.weapon, char: p.char })),
+    // fx — 고기 바이올린의 캐논 소리가 격정 연주(FX_FREEAMMO)인지 본다 (sfx canon)
+    players: s.players.map((p) => ({ x: p.x, y: p.y, alive: p.alive, weapon: p.weapon, char: p.char, fx: [...p.fx] })),
     // x · y — 곁의 괴물 옆 소리(sfx ambientVoice)가 가까운 괴물을 고른다
     monsters: s.monsters.map((m) => ({ hp: m.hp, st: m.st, kind: m.kind, maxHp: m.maxHp, x: m.x, y: m.y })),
   }
@@ -1517,6 +1563,7 @@ export async function start(opts = {}) {
     // 보스 방으로 옮기기(warpPlayer)는 게임이 쓰는 sim 사본이어야 한다 (모듈 안 상태 — 묶인 지역 · 소환 대기열)
     sim: await sameModule('/src/core/sim.ts'),
     chars: await sameModule('/src/core/characters.ts'),
+    skills: await sameModule('/src/core/skills.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -1601,7 +1648,8 @@ export async function start(opts = {}) {
   localStorage.setItem('brpg.hud', 'tiny')
   // 고르는 화면은 1편에만 — 다른 편은 로비에서 부르면 판만 연다 (이미 판 안이면 그대로 이어서)
   if (!S()) {
-    if (ULT || PART !== 1) await startGameFromLobby()
+    // 2026-10-09: 1편도 고르는 화면 없이 곧장 판(첫 장면부터 싸움) — 예전 고르는 화면이 필요하면 start({ select: true })
+    if (ULT || PART !== 1 || !opts.select) await startGameFromLobby()
     else if (await lobbyPhase(ve)) await startGameFromLobby()
   }
   if (!S()) {
@@ -1661,7 +1709,7 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), count: sec })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { don: false, title: null, cap: null, end: null, bright: undefined, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, bright: undefined, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
   const acts = ULT ? ultScenes() : scenes(PART)
@@ -1701,6 +1749,7 @@ export async function start(opts = {}) {
       if (stop) break
       god()
       if (!holding) pullBots()
+      if (ov.canon) forceCanon()
       sess.tick()
       god()
       // 영상에서는 화면 흔들림 · 당김을 끈다 (2026-09-23 사용자: "치지직 장면의 화면 흔들림 — 너무 정신없다")

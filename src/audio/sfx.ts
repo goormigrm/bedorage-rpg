@@ -448,7 +448,7 @@ export class Sfx {
           // 고기 바이올린 · 첼로는 캐논 변주곡을 연주한다 (canon — 평타는 화음 아르페지오 · 격정 연주는 선율)
           if (WEAPONS[e.weapon]?.family === 'violin') {
             const pl = state.players[e.p]
-            this.canon(e.p, e.weapon === 'cello' ? 0.5 : 1, (pl?.fx[FX_FREEAMMO] ?? 0) > 0, sp(e.x, e.y), e.p === localPlayer)
+            this.canon(e.p, e.weapon === 'cello' ? 0.5 : 1, (pl?.fx?.[FX_FREEAMMO] ?? 0) > 0, sp(e.x, e.y), e.p === localPlayer)
           } else this.gun(e.weapon, sp(e.x, e.y), e.p === localPlayer)
           this.intensity = Math.min(1, this.intensity + 0.06)
           // 탄피가 바닥에 떨어지는 "팅" (내 총만 · 작게 · 0.12초에 한 번 — 2026-10-08 손맛)
