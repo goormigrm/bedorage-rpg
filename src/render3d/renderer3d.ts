@@ -521,10 +521,20 @@ export class Renderer3D {
     this.scene.add(this.monsterView.group)
     // 구운 실사 모델: 텍스처 올리기 · 셰이더 컴파일을 줄 세우고, 다 되면 보이게 한다(show — 그때 모양 키 텍스처를 만든다).
     // 마을이 아니면 줄이 돌지 않지만, 그 괴물이 화면에 나오면 monsters3d 가 바로 보이게 한다 (2026-09-20 · 09-23)
-    this.monsterView.setWarm((objs, show) => {
-      for (const o of objs) this.queueWarm(o)
-      this.prepJobs.push({ t: 'run', run: show })
-    })
+    this.monsterView.setWarm(
+      (objs, show) => {
+        for (const o of objs) this.queueWarm(o)
+        this.prepJobs.push({ t: 'run', run: show })
+      },
+      (objs) => {
+        // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
+        const was = objs.map((o) => o.visible)
+        for (const o of objs) o.visible = true
+        const jobs = objs.map((o) => this.gl.compileAsync(o, this.camera, this.scene).catch(() => {}))
+        objs.forEach((o, i) => (o.visible = was[i]))
+        return Promise.all(jobs).then(() => {})
+      },
+    )
     this.partMesh = new THREE.InstancedMesh(this.particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), PART_MAX)
     this.partMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PART_MAX * 3), 3)
     this.partMesh.count = 0
@@ -701,7 +711,20 @@ export class Renderer3D {
     this.fade = { t: 0.45, max: 0.45, rgb: '0,0,0' }
     // 새 지역은 그 지역 색감으로 바로 (페이드 동안 바뀐다)
     this.gradeSnap = true
+    // 새 지역의 셰이더를 **페이드 동안 비동기로** 컴파일한다 — 미리 만들지 못한 지역(던전에서 곧장 넘어온 곳)은 첫 장면에서 셰이더 십여 개를
+    // 한꺼번에 컴파일해 1초 넘게 멈췄다(2026-10-08 계측: gl.render 1188ms · 프로그램 97 → 110). 끝날 때까지(늦어도 2.5초) 3D 를 그리지 않고 어둡게 둔다
+    const job = ++this.areaJob
+    this.areaCompiling = true
+    const done = () => {
+      if (this.areaJob === job) this.areaCompiling = false
+    }
+    this.padLights()
+    void Promise.race([this.gl.compileAsync(this.scene, this.camera).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
   }
+
+  /** 지역에 들어선 뒤 셰이더를 비동기로 컴파일하는 중 (그동안 3D 를 그리지 않는다 — 페이드가 덮는다) */
+  private areaCompiling = false
+  private areaJob = 0
 
   /**
    * 다음 지역을 미리 만드는 **한 걸음** (마을에서 — session.idlePrep). 한 일이 있으면 true, 다 만들었으면 false.
@@ -820,9 +843,12 @@ export class Renderer3D {
       if (this.gone.has(job.obj)) continue
       this.warmScene.fog = this.scene.fog
       this.warmPads.forEach((l, i) => (l.visible = i < job.n))
-      // 자식은 빼고 그 물체 하나만 (그룹이면 아래 것들이 한꺼번에 컴파일된다)
+      // 자식은 빼고 그 물체 하나만 (그룹이면 아래 것들이 한꺼번에 컴파일된다).
+      // 보이게 해서 컴파일한다 — three 의 compile 은 보이는 것만 훑는다(traverseVisible). 숨겨 둔 실사 괴물 모델(보일 때까지 visible=false)은
+      // 그래서 데우기에서 늘 빠져, 처음 화면에 나온 장면에서 동기 컴파일로 멈췄다 (2026-10-08 계측)
       const one = Object.create(job.obj) as THREE.Object3D
       one.children = []
+      one.visible = true
       const done = this.gl.compileAsync(one, this.camera, this.warmScene).catch(() => {})
       if ((programs?.length ?? 0) > p0) {
         this.warmUntil = t0 + 3000
@@ -1969,6 +1995,9 @@ export class Renderer3D {
 
     // 시작 준비 중에는 그리지 않는다 (물체 만들기 · 갱신은 했다 — 준비가 그것들의 셰이더를 컴파일한다)
     if (!this.ready) return
+    // 새 지역 셰이더를 비동기로 컴파일하는 동안: 3D 는 건너뛰고 페이드를 꽉 채워 둔다 (setMap)
+    const compiling = this.areaCompiling
+    if (compiling) this.fade.t = this.fade.max
     // 색감: 지역(막 · 마을) · 보스가 깨어 있나에 따라 서서히 바뀐다
     if (this.post.enabled && curr.mode === 'dungeon' && curr.curArea >= 0) {
       const a = areaDef(curr.curArea)
@@ -1976,7 +2005,7 @@ export class Renderer3D {
       this.post.blend(gradeFor(a.act, a.kind === 'town', isBright(), boss), this.gradeSnap ? 1 : 1 - Math.exp(-dt * 2.5))
       this.gradeSnap = false
     }
-    this.post.render(this.scene, this.camera)
+    if (!compiling) this.post.render(this.scene, this.camera)
 
     // HUD
     this.hud.begin(dt)

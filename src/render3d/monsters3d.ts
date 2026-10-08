@@ -24,6 +24,8 @@ interface ModelKind {
   extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean }[]
   /** 보이게 했나 (처음엔 숨겨 두고 데우기가 끝나거나 괴물이 화면에 나오면 — 2026-09-23) */
   shown: boolean
+  /** 비동기 컴파일을 부탁했다 (askShow — 2026-10-08) */
+  asked: boolean
 }
 
 /**
@@ -957,6 +959,8 @@ export class MonsterView {
   private baking = false
   /** 구운 모델을 미리 데우는 함수 (renderer3d 가 넣어 준다). 다 데우면 show 를 부른다 */
   private warm: ((objs: THREE.Object3D[], show: () => void) => void) | null = null
+  /** 지금 바로 비동기로 컴파일 (던전에서 데우지 못한 모델이 처음 나올 때 — 렌더러가 넣는다) */
+  private compileNow: ((objs: THREE.Object3D[]) => Promise<void>) | null = null
   /** 실사 모델 상태 (확인용 — __bd.models()) */
   modelStatus(): { ready: number[]; loading: number[]; failed: number[] } {
     const r: { ready: number[]; loading: number[]; failed: number[] } = { ready: [], loading: [], failed: [] }
@@ -1003,8 +1007,25 @@ export class MonsterView {
    * 그 괴물이 **처음 화면에 그려지는 프레임**에 몰린다 — 그게 첫 던전이었다.
    * 그래서 구운 자리에서 바로 컴파일·올리기를 끝내 둔다 (마을에서 미리).
    */
-  setWarm(fn: (objs: THREE.Object3D[], show: () => void) => void): void {
+  setWarm(fn: (objs: THREE.Object3D[], show: () => void) => void, now?: (objs: THREE.Object3D[]) => Promise<void>): void {
     this.warm = fn
+    this.compileNow = now ?? null
+  }
+
+  /**
+   * 데우기가 끝나기 전에 이 괴물이 화면에 나왔다 (던전 · 후원 소환 · 저주받은 상자): 예전에는 바로 보이게 해 **그 장면에서** 셰이더를
+   * 컴파일했다 — 한 번에 1초 넘게 멈춰 락스텝으로 같이 하는 모두가 기다렸다 (2026-10-08 사용자: "컴퓨터 셋으로 돌려 보니 괴물이 등장할 때
+   * 끊긴다"). 이제 비동기로 컴파일하고(KHR_parallel_shader_compile) 끝나면 보이게 한다 — 그동안은 도형 괴물로 그린다
+   */
+  private askShow(mk: ModelKind): void {
+    if (mk.shown || mk.asked) return
+    mk.asked = true
+    const objs: THREE.Object3D[] = [...mk.meshes]
+    const show = () => {
+      if (this.models.includes(mk)) this.showModel(mk)
+    }
+    if (!this.compileNow) return show()
+    void this.compileNow(objs).then(show, show)
   }
 
   /**
@@ -1089,7 +1110,7 @@ export class MonsterView {
           this.group.add(mesh)
           extras.push({ mesh, pose: () => {}, s: 1, dx: 0, dy: (specOf(kind)?.size ?? 1) + 0.25, dz: 0, still: true, flat: true })
         }
-        const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false }
+        const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false, asked: false }
         this.models[kind] = mk
         // 처음에는 숨겨 둔다: 보이는 순간(괴물 수 0 이어도) 셰이더 컴파일 · 모양 키 텍스처(3~15MB) 만들기가 그 프레임에 몰린다.
         // 마을에서 데우기가 끝나면 보이게 한다. 그 전에 이 괴물이 화면에 나오면(던전) 그때 보이게 한다 (update)
@@ -1276,7 +1297,6 @@ export class MonsterView {
     this.models.forEach((mk, k) => {
       if (!mk || typeof mk === 'string') return
       const n = this.real ? this.mcounts[k] : 0
-      if (n > 0 && !mk.shown) this.showModel(mk)
       for (const mesh of mk.meshes) {
         mesh.count = n
         if (n === 0) continue
@@ -1297,7 +1317,10 @@ export class MonsterView {
 
   private put(kind: number, counts: number[], x: number, z: number, yaw: number, a: Anim, corpseT: number, lift = 0): void {
     const mk = this.real ? this.models[kind] : undefined
-    const model = mk && typeof mk !== 'string' ? mk : null
+    // 보일 준비가 된 모델만 (아직이면 비동기 컴파일을 부탁하고 이번에는 도형 괴물로 — askShow)
+    const ready = mk && typeof mk !== 'string' ? mk : null
+    if (ready && !ready.shown) this.askShow(ready)
+    const model = ready && ready.shown ? ready : null
     const i = model ? this.mcounts[kind] : counts[kind]
     if (i >= CAP) return
     if (model) this.mcounts[kind]++

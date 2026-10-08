@@ -690,11 +690,16 @@ export class Session {
    * - 마을에 들어선 뒤 PREP_START 는 아무것도 하지 않는다(첫 그림 · 모델 받기와 겹치지 않게).
    */
   private idlePrep(now: number, dt: number): void {
-    if (this.arena || !isTown(this.viewArea)) {
+    if (this.arena) {
       this.prepAt = now + PREP_START
       return
     }
     if (now < this.prepAt || document.hidden) return
+    // 던전에서도 한다 — 싸우지 않을 때만 (2026-10-08: 마을에서만 하던 것이라 던전에서 다음 지역 · 처음 보는 효과를 첫 장면에 컴파일해 멈췄다)
+    if (!isTown(this.viewArea) && this.fightNear()) {
+      this.prepAt = now + PREP_BACKOFF
+      return
+    }
     if (dt > PREP_SLOW_DT) {
       this.prepAt = now + PREP_BACKOFF
       return
