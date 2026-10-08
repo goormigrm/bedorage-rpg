@@ -33,6 +33,12 @@ async function openGame(skin) {
     const s = String(e?.stack ?? e)
     if (!IGNORE.test(s)) errors.push(s)
   })
+  // 셰이더 컴파일 오류는 잡히지 않은 오류가 아니라 console.error 로 온다 — 화면이 까매지므로 배포를 막는다 (2026-10-08: 후처리 합성 셰이더가
+  // toneMappingExposure 를 두 번 선언해 v0.87.0 ~ 0.91.0 동안 후처리가 켜지면 3D 화면이 까맸다)
+  page.on('console', (m) => {
+    const t = m.text()
+    if (m.type() === 'error' && /Shader Error|WebGLProgram|VALIDATE_STATUS/i.test(t)) errors.push(`셰이더 오류: ${t.slice(0, 300)}`)
+  })
   await page.goto(URL, { waitUntil: 'load' })
   await page.evaluate(() => {
     localStorage.setItem('brpg.tut', '["off"]')

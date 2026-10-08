@@ -108,8 +108,8 @@ uniform float uContrast;
 uniform vec3 uShadow;
 uniform vec3 uHigh;
 uniform float uExposure;
-uniform float toneMappingExposure;
 varying vec2 vUv;
+// toneMappingExposure 는 아래 tonemapping_pars_fragment 가 선언한다 — 여기서 또 선언하면 컴파일이 깨져 화면이 까맸다 (v0.87.0 ~ 0.91.0)
 #include <tonemapping_pars_fragment>
 #include <colorspace_pars_fragment>
 void main() {
