@@ -66,3 +66,17 @@ describe('분위기', () => {
     expect(BOSS_PATS.find((p) => p.id === 'slaughter')?.line).toBe('신선한 고기다…!')
   })
 })
+
+// 2026-10-08 방송 검토 9: ☀ 철면수심전용에서 후원 이름에 공포 낱말이 보이지 않게 (치지직 창 안내 글에 "지옥문" 이 박혀 있었다)
+describe('밝은 판의 후원 이름', () => {
+  it('후원 · 응원 이벤트의 이름 · 설명에 좀비 · 지옥 · 암흑이 없다 · 어둡게로 돌아오면 원래 이름', async () => {
+    const { DONATE_EVENTS, CHEER_EVENTS } = await import('../src/core/donate')
+    const dark = DONATE_EVENTS.map((e) => e.name)
+    setSkin('bright')
+    for (const e of [...DONATE_EVENTS, ...CHEER_EVENTS]) expect(`${e.name} ${e.desc}`).not.toMatch(/좀비|지옥|암흑|피|시체/)
+    expect(DONATE_EVENTS.find((e) => e.key === 'horde')!.name).toBe('괴물 떼')
+    expect(DONATE_EVENTS.find((e) => e.key === 'hell')!.name).toBe('깜짝 파티')
+    setSkin('dark')
+    expect(DONATE_EVENTS.map((e) => e.name)).toEqual(dark)
+  })
+})

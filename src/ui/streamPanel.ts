@@ -3,7 +3,7 @@
 // - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태만 — 받은 채팅 · 후원의 개수 · 합계는 보이지 않는다(2026-09-23).
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
-import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
+import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES, DonateEvent } from '../core/donate'
 import { DEFAULT_BANNED, StreamStatus, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
 import { isDev, onDevChange } from '../game/devmode'
@@ -165,13 +165,19 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     toggle('holdBoss', '보스전 중에는 방해 이벤트 대기', c.holdBoss) +
     `<p class="czn">멈춘 동안 받은 방해 후원은 버리지 않고 기다렸다가 풀면 차례로 일어납니다. 응원(!응원)은 그대로 들어갑니다. 멈춤은 페이지를 새로 열면 풀립니다.</p>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
-    `<p class="czn">화면 흔들림 · 시야 축소 · 거꾸로 걷기 · 스킬 봉인이 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (화면 흔들림은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — 광폭화는 끝난 뒤에.</p>` +
+    `<p class="czn">${evName('shake')} · ${evName('dark')} · ${evName('invert')} · ${evName('seal')} — 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (${evName('shake')}은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — ${evName('rage')}는 끝난 뒤에.</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
     (isDev() ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` : '') +
     `<p class="czn">채팅에 <b>!참여</b> → 최근 15분 안에 참여한 사람 중 <b>추첨</b>으로 한 명씩, 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +
     `</div></div>`
   )
 }
+
+/**
+ * 이벤트 이름 (지금 분위기 것 — ☀ 철면수심전용이면 괴물 떼 · 깜짝 파티 …, game/skinText.ts). 안내 글에 이름을 박아 두면
+ * 밝은 판에서도 "지옥문" 이 그대로 보였다 (2026-10-08 방송 검토 9)
+ */
+const evName = (k: DonateEvent['key']): string => DONATE_EVENTS.find((e) => e.key === k)?.name ?? ''
 
 function panelHtml(): string {
   const c = loadStreamCfg()
@@ -220,7 +226,7 @@ function panelHtml(): string {
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
     `<div class="czt">${rows}</div>` +
     `<p class="czn">금액이 넘는 것 중 가장 비싼 이벤트가 일어납니다 · <b>같은 금액이면 그중 하나가 무작위로</b>(게임 속 표에 🎲) · 0 원이면 끔 · 마을에서 받은 후원은 던전에 나가면 일어납니다. 바꾼 금액은 게임 왼쪽 아래 표에 바로 보입니다.</p>` +
-    `<p class="czn">후원으로 부른 <b>막 보스</b>(막 보스 · 지옥문)는 <b>체력 절반 · 즉사기 없음</b> — 다른 패턴은 그대로이고, 잡아도 막 보스 처치 · 퀘스트로 치지 않습니다. 한 번에 하나만 나오고 나머지는 기다립니다.</p>` +
+    `<p class="czn">후원으로 부른 <b>막 보스</b>(${evName('boss')} · ${evName('hell')})는 <b>체력 절반 · 즉사기 없음</b> — 다른 패턴은 그대로이고, 잡아도 막 보스 처치 · 퀘스트로 치지 않습니다. 한 번에 하나만 나오고 나머지는 기다립니다.</p>` +
     `</div></div>` +
     safetyHtml(c) +
     (st === 'error' || !login ? `<p class="czn">로그인이 안 되면 치지직 개발자센터 앱의 로그인 리디렉션 URL 이 <code>${esc(redirectUri())}</code> 인지 확인하세요.</p>` : '')
