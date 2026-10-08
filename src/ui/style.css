@@ -1262,7 +1262,7 @@ body { background: var(--bg); }
 .skin-bright .winbtns button, .skin-bright .rbcol button { border-color: rgba(255,158,196,0.55); background: rgba(48,28,60,0.88); }
 
 /* ---- 처음 10분 안내 (2026-10-08 퀄리티 6단계 — ui/tutor.ts) ---- */
-.tutor { position: absolute; left: 50%; bottom: 168px; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 22px;
+.tutor { position: absolute; left: 50%; bottom: 224px; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 22px;
   background: rgba(14,12,10,0.9); border: 1.5px solid rgba(241,213,138,0.75); color: #f1e6cc; font: 600 13.5px "IBM Plex Sans KR", sans-serif; pointer-events: auto;
   box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 18px rgba(241,213,138,0.25); animation: tutorIn .35s ease-out; white-space: nowrap; }
 .tutor[hidden] { display: none; }
