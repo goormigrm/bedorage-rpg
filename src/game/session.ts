@@ -1864,7 +1864,9 @@ export class Session {
         if (e.type === 'over') {
           this.saveMine(true)
           this.onOver()
-        } else if (e.type === 'levelup' && e.p === this.cfg.localPlayer) this.saveMine(false)
+        } else if ((e.type === 'levelup' || e.type === 'mastery') && e.p === this.cfg.localPlayer) this.saveMine(false)
+        // 시련이 끝나면 단계 기록을 바로 저장
+        else if (e.type === 'riftDone') this.saveMine(false)
         // 최종 보스: 엔딩 (따라잡는 중에 본 것이면 띄우지 않는다)
         else if (e.type === 'bossDown' && e.kind === LORD_KIND && !this.joiningIn) {
           this.saveMine(false)

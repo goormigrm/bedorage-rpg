@@ -6,7 +6,7 @@
 import { keyLabel } from '../game/keymap'
 import { ATTR_REC, CHARACTERS, ROLE_INFO } from '../core/characters'
 import { CMD_ATTR } from '../core/input'
-import { AFFIXES, ATTR_DESC, ATTR_NAMES, ST_COUNT, ST_DMG, ST_RATE, attrFree, attrPoints, xpNeed } from '../core/items'
+import { AFFIXES, ATTR_DESC, ATTR_NAMES, LEVEL_CAP, MASTERY_CAP, MASTERY_DESC, MASTERY_NAMES, MASTERY_XP, ST_COUNT, ST_DMG, ST_RATE, attrFree, attrPoints, masteryFree, xpNeed } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
 import { isTown } from '../core/world'
@@ -48,13 +48,36 @@ export class CharSheet {
   refresh(): void {
     if (!this.open) return
     const p = this.me()
-    const sig = JSON.stringify([p.attr, p.level, p.xp, p.st, p.maxHp, p.weapon, p.area])
+    const sig = JSON.stringify([p.attr, p.level, p.xp, p.st, p.maxHp, p.weapon, p.area, p.mlv, p.mst, Math.floor((p.mxp / MASTERY_XP) * 50)])
     if (sig !== this.sig) this.render()
+  }
+
+  /**
+   * 숙련 (레벨 30 뒤 — 2026-10-08 퀄리티 2차 7단계 D3): 네 줄 · 줄마다 50점. 만렙 전에는 무엇인지만 한 줄로
+   */
+  private masteryHtml(p: PlayerState, town: boolean): string {
+    if (p.level < LEVEL_CAP) return `<div class="cs-ms locked"><div class="cs-t">숙련</div><p class="tp-note">레벨 ${LEVEL_CAP} 뒤에 얻는 경험치가 숙련 점수가 된다 — 공격 · 체력 · 방어 · 기술에 나눠 쓴다</p></div>`
+    const free = masteryFree(p.mlv, p.mst)
+    const k = Math.min(100, Math.floor((p.mxp / MASTERY_XP) * 100))
+    const f = (v: number) => (Math.round(v * 10) / 10).toString()
+    const now = [`피해 +${p.mst[0]}%`, `최대 체력 +${p.mst[1] * 5}`, `받는 피해 -${f(p.mst[2] * 0.3)}%`, `스킬 위력 +${p.mst[3]}% · 재사용 -${f(p.mst[3] * 0.2)}%`]
+    const rows = MASTERY_NAMES.map(
+      (name, i) => `<div class="cs-row ms">
+        <div class="cs-h"><b>${name}</b><span class="cs-pt">${p.mst[i]}<small>/${MASTERY_CAP}</small></span>
+          <button class="sk-up" data-cmd="${CMD_ATTR}" data-arg="${20 + i}" ${free > 0 && p.mst[i] < MASTERY_CAP ? '' : 'disabled'}>+</button></div>
+        <div class="cs-d">${MASTERY_DESC[i]} · <em>지금 ${now[i]}</em></div></div>`,
+    ).join('')
+    return `<div class="cs-ms"><div class="cs-t">숙련 ${p.mlv} · 남은 점수 ${free} <span class="cs-mbar"><i style="width:${k}%"></i></span><small>${k}%</small></div>
+      ${rows}
+      <div class="cs-acts">
+        <button class="btn" data-cmd="${CMD_ATTR}" data-arg="11" ${free > 0 ? '' : 'disabled'}>고르게 분배 (${free}점)</button>
+        ${town ? `<button class="btn secondary" data-cmd="${CMD_ATTR}" data-arg="98" ${p.mst.some((v) => v > 0) ? '' : 'disabled'}>숙련 되돌리기 (마을 · 무료)</button>` : ''}
+      </div></div>`
   }
 
   private render(): void {
     const p = this.me()
-    this.sig = JSON.stringify([p.attr, p.level, p.xp, p.st, p.maxHp, p.weapon, p.area])
+    this.sig = JSON.stringify([p.attr, p.level, p.xp, p.st, p.maxHp, p.weapon, p.area, p.mlv, p.mst, Math.floor((p.mxp / MASTERY_XP) * 50)])
     const c = CHARACTERS[p.char]
     const free = attrFree(p.level, p.attr)
     const rec = ATTR_REC[p.char]
@@ -83,10 +106,11 @@ export class CharSheet {
       lines.push(`<div class="cs-st ${v === 0 ? 'zero' : ''}"><span>${a.name}</span><b>${v === 0 ? '—' : `${minus ? '-' : '+'}${v}${a.pct ? '%' : ''}`}</b></div>`)
     }
     const need = xpNeed(p.level)
+    const mastery = this.masteryHtml(p, town)
     const role = ROLE_INFO[c.role]
     this.el.innerHTML = `<div class="tp-head"><b>능력치 — ${c.name} <span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="tp-gold">레벨 ${p.level} · 남은 포인트 ${free}</span><button class="inv-x" data-x>✕</button></div>
-      <p class="tp-line">레벨마다 능력치 포인트 3점. ★ 는 ${c.name}에게 추천하는 능력치(주 6 : 부 4). 경험치 ${Math.floor(p.xp)} / ${need}</p>
-      <div class="cs-grid"><div>${rows}${acts}</div><div class="cs-sts"><div class="cs-t">세부 능력치 (레벨 · 장비 · 능력치 · 패시브 합)</div>${lines.join('')}</div></div>
+      <p class="tp-line">레벨마다 능력치 포인트 3점. ★ 는 ${c.name}에게 추천하는 능력치(주 6 : 부 4). ${p.level >= LEVEL_CAP ? `만렙 — 경험치는 숙련으로 쌓인다` : `경험치 ${Math.floor(p.xp)} / ${need}`}</p>
+      <div class="cs-grid"><div>${rows}${acts}${mastery}</div><div class="cs-sts"><div class="cs-t">세부 능력치 (레벨 · 장비 · 능력치 · 패시브 합)</div>${lines.join('')}</div></div>
       <p class="tp-hint">${keyLabel('attr')} · Esc 로 닫기</p>`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
     this.el.querySelectorAll<HTMLButtonElement>('[data-cmd]').forEach((btn) => {

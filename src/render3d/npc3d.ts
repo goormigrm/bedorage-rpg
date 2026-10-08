@@ -86,9 +86,78 @@ function eggBody(f: THREE.Group, cloth: number, beard = false): { handL: THREE.V
 /** 몸 위 꼭대기 높이 */
 const TOP = CY + R * EGG_Y
 
+/** 소용돌이 그림 (시련의 문 안쪽 — 가운데가 밝고 팔이 감긴다). 더하기 빛이라 빛 번짐으로 빛난다 */
+function swirlTexture(a: string, b: string): THREE.CanvasTexture {
+  const S = 128
+  const c = document.createElement('canvas')
+  c.width = S
+  c.height = S
+  const g = c.getContext('2d')!
+  const grd = g.createRadialGradient(S / 2, S / 2, 2, S / 2, S / 2, S / 2)
+  grd.addColorStop(0, '#ffffff')
+  grd.addColorStop(0.25, a)
+  grd.addColorStop(0.75, b)
+  grd.addColorStop(1, 'rgba(0,0,0,0)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, S, S)
+  // 감긴 팔 넷
+  g.strokeStyle = 'rgba(255,255,255,0.55)'
+  g.lineWidth = 3
+  for (let k = 0; k < 4; k++) {
+    g.beginPath()
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40
+      const ang = k * (Math.PI / 2) + t * Math.PI * 1.6
+      const r = 6 + t * (S / 2 - 10)
+      const x = S / 2 + Math.cos(ang) * r
+      const y = S / 2 + Math.sin(ang) * r
+      if (i === 0) g.moveTo(x, y)
+      else g.lineTo(x, y)
+    }
+    g.stroke()
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+
+/**
+ * 시련의 문 (2026-10-08 퀄리티 2차 7단계 D3): 돌기둥 둘 + 윗돌 + 안쪽 소용돌이(돌아간다 — userData.swirl) + 바닥 룬 고리.
+ * 철면수심전용은 사탕 기둥 · 분홍 소용돌이. 빛(PointLight)은 두지 않는다 — 마을 빛 수가 바뀌면 셰이더를 다시 짠다
+ */
+function trialGate(f: THREE.Group, bright: boolean): void {
+  const stone = lam(bright ? 0xffb8d8 : 0x4a4652)
+  const cap = lam(bright ? 0x9fe8d0 : 0x5e5868)
+  for (const s of [-1, 1]) {
+    f.add(mesh(new THREE.BoxGeometry(0.34, 2.1, 0.34), stone, s * 0.78, 1.05, 0))
+    f.add(mesh(new THREE.BoxGeometry(0.46, 0.18, 0.46), cap, s * 0.78, 2.15, 0))
+  }
+  f.add(mesh(new THREE.BoxGeometry(2.1, 0.26, 0.42), cap, 0, 2.36, 0))
+  const sw = new THREE.Mesh(
+    new THREE.CircleGeometry(0.62, 40),
+    new THREE.MeshBasicMaterial({ map: swirlTexture(bright ? '#ff9ad8' : '#b47aff', bright ? '#7ad8ff' : '#3a1a8a'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+  )
+  sw.scale.set(1, 1.45, 1)
+  sw.position.set(0, 1.08, 0)
+  f.add(sw)
+  f.userData.swirl = sw
+  const rune = new THREE.Mesh(
+    new THREE.RingGeometry(1.0, 1.18, 6),
+    new THREE.MeshBasicMaterial({ color: bright ? 0xff8fd0 : 0x9a5aff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+  )
+  rune.rotation.x = -Math.PI / 2
+  rune.position.y = 0.04
+  f.add(rune)
+  f.userData.rune = rune
+}
+
 /** 마을 사람 하나 (bright = 철면수심전용) */
 export function buildNpc(id: NpcId, bright: boolean): THREE.Group {
   const f = new THREE.Group()
+  if (id === 'trial') {
+    trialGate(f, bright)
+    return f
+  }
   if (id === 'stash') {
     // 궤짝 (철면수심전용: 민트 사물함 궤짝)
     const box = mesh(new THREE.BoxGeometry(1.1, 0.7, 0.7), lam(bright ? 0x7fdcc0 : 0x4a3420), 0, 0.35, 0)

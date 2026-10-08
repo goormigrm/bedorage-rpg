@@ -8,13 +8,13 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_TRIAL, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
   AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
-  ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed,
+  ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
 import { SNIPER_GRAZE_FRAC, WeaponId } from './weapons'
@@ -29,7 +29,7 @@ export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
 import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
-import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, WAYPOINTS, actBossQuest, actReached, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, safeSpots, wpBit } from './world'
+import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
 import { variantKind,
@@ -239,6 +239,7 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
   // 보스 결투장에는 무리를 두지 않는다 (보스와 그 졸개만 — 2026-09-23)
   populate(state, map, areaSeed(seed, id), seats, lvl, (def.density ?? 1) * ACTS[def.act].density, def.packs ?? ACTS[def.act].packs, l.exits[0] ?? l.spawn, safeSpots(l), map.arena)
   placeObjects(state, map, id, areaSeed(seed, id), safeSpots(l))
+  if (isRift(id) && state.rift?.area === id) riftFill(state)
   // 보물 고블린: 가끔 한 마리 (지역 시드로 정한다)
   {
     const grng = makeRng((areaSeed(seed, id) ^ 0x60b1) >>> 0)
@@ -278,6 +279,115 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
     }
     state.monstersTotal += 4
   }
+}
+
+/** 시련 진행 점수: 졸개 1 · 정예 4 · 우두머리 15 (고블린 · 수호자는 0) */
+function riftPts(m: Monster): number {
+  if (m.rg || m.kind === GOBLIN_KIND) return 0
+  return m.elite & EA_UNIQUE ? 15 : m.elite ? 4 : 1
+}
+
+/** 시련 지역을 막 채웠다: 단계만큼 괴물을 세게 하고, 수호자가 나올 점수(처음 괴물 점수의 70%)를 정한다 */
+function riftFill(state: GameState): void {
+  const r = state.rift!
+  const sc = riftScale(r.stage)
+  let pts = 0
+  for (const m of state.monsters) {
+    m.maxHp = Math.round(m.maxHp * sc.hp)
+    m.hp = m.maxHp
+    m.pow = Math.round(m.pow * sc.pow)
+    pts += riftPts(m)
+  }
+  r.need = Math.max(20, Math.round(pts * 0.7))
+}
+
+/**
+ * 시련 한 틱 (시련 지역이 묶였을 때): 시계 · 막대가 차면 수호자 — 막대를 채운 사람 곁 5 ~ 8칸에 그 막의 보스가 깨어 나온다
+ * (체력은 보통 막 보스의 절반 × 단계 · 즉사기 없음 — 후원 소환 보스와 같다)
+ */
+function stepRift(state: GameState, map: GameMap): void {
+  const r = state.rift
+  if (!r || r.area !== state.curArea || state.phase !== 'playing') return
+  if (r.boss < 2) r.t++
+  if (r.boss !== 0 || r.kills < r.need) return
+  const near = state.players[r.last]
+  const p = near && isActive(near) ? near : state.players.find((q) => isActive(q))
+  if (!p) return
+  const act = areaDef(r.area).act
+  const kind = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
+  if (kind === undefined) return
+  const lvl = areaLevel(r.area, state.tier) + 2
+  const tr = tierOf(state.tier)
+  const sc = riftScale(r.stage)
+  const seats = state.players.length
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp * GIANT_HP * SUMMON_BOSS_HP * sc.hp
+  const pow = Math.round(levelPow(lvl) * tr.pow * sc.pow)
+  const rad = MONSTER_LIST[kind].r
+  let at = { x: p.x, y: p.y }
+  let best = -1
+  const a0 = randInt(state.rng, 0, 1024)
+  for (let i = 0; i < 8; i++) {
+    const a = (a0 + i * 128) & 1023
+    const d = 5 * TILE + randInt(state.rng, 0, 3 * TILE)
+    const g = moveCircle(map, p.x, p.y, rad, cosA(a) * d, sinA(a) * d)
+    const got = len(g.x - p.x, g.y - p.y)
+    if (got > best) {
+      best = got
+      at = g
+    }
+    if (got >= 5 * TILE) break
+  }
+  const m = makeMonster(state, kind, at.x, at.y, 9990, hpMul, pow, lvl)
+  m.rg = 1
+  m.st = MS_CHASE
+  m.target = p.id
+  m.cd = 90
+  // 거대한 보스는 먼저 맞기 전에는 가만히 있다 — 수호자는 나오자마자 덤빈다
+  m.hitTick = state.tick
+  m.aim = atan2A(p.y - m.y, p.x - m.x)
+  state.monsters.push(m)
+  state.monstersTotal++
+  r.boss = 1
+  state.events.push({ type: 'riftBoss', x: at.x, y: at.y })
+}
+
+/**
+ * 시련의 문 (마을 · 곁에서): arg = 단계면 새 시련을 열고 들어간다 · 0 이면 열린 시련에 들어간다.
+ * 열기: 시련이 열린 캐릭터만(riftOpen) · 단계는 (끝낸 가장 높은 단계 + 1) 까지 · 앞 시련 안에 사람이 있으면 못 연다.
+ * 지역 번호는 판에서 몇 번째인지와 이 마을의 막으로 정한다 — 그 막의 맵 · 괴물. 채우기는 처음 들어설 때(placeIn → fillArea → riftFill)
+ */
+function trialCommand(state: GameState, p: PlayerState, arg: number): void {
+  if (state.mode !== 'dungeon' || !isActive(p) || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'trial') return
+  const r = state.rift
+  if (arg === 0) {
+    if (r && r.boss < 2) queueMove(p, { to: r.area, how: 'wp' })
+    return
+  }
+  if (!riftOpen(p, state.tier) || arg < 1 || arg > Math.min(RIFT_MAX, p.riftBest + 1)) return
+  if (r && state.players.some((q) => !q.left && q.area === r.area)) return
+  if (r) {
+    // 앞 시련은 버린다 (지역 · 나가는 문)
+    state.areas = state.areas.filter((a) => a.id !== r.area)
+    state.portals = state.portals.filter((q) => q.owner >= 0)
+  }
+  const n = state.riftN ?? 0
+  state.riftN = n + 1
+  const id = riftId(n, areaDef(p.area).act)
+  state.rift = { area: id, stage: arg, kills: 0, need: 0, boss: 0, t: 0, by: p.id, last: p.id }
+  state.events.push({ type: 'riftOpen', p: p.id, stage: arg })
+  queueMove(p, { to: id, how: 'wp' })
+}
+
+/** 시련이 끝났다 (수호자가 쓰러짐): 제한 시간 안이면 그 자리의 모두에게 단계 기록 · 수호자 자리에 마을로 가는 문 (주인 -1 포털) */
+function riftDone(state: GameState, m: Monster): void {
+  const r = state.rift
+  if (!r || r.area !== state.curArea || r.boss === 2) return
+  r.boss = 2
+  r.ok = r.t <= RIFT_TICKS
+  if (r.ok) for (const q of state.players) if (!q.vacant && !q.left && q.area === r.area) q.riftBest = Math.max(q.riftBest, r.stage)
+  state.portals = state.portals.filter((q) => q.owner >= 0)
+  state.portals.push({ owner: -1, area: r.area, x: m.x, y: m.y })
+  state.events.push({ type: 'riftDone', stage: r.stage, ok: r.ok, t: r.t })
 }
 
 /** 지역이 없으면 만들어 채운다 (처음 들어설 때 · 버린 뒤 다시 올 때) */
@@ -486,7 +596,9 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
         } else {
           if (q.area !== area || len(p.x - q.x, p.y - q.y) > PORTAL_R) continue
           const t = ACTS[areaDef(area).act].town
-          queueMove(p, { to: t, how: 'portal', portalOwner: q.owner })
+          const gate = q.owner < 0 ? townNpcs(t).find((n) => n.id === 'trial') : undefined
+          if (gate) queueMove(p, { to: t, how: 'portal', x: gate.x, y: gate.y + 2 * TILE })
+          else queueMove(p, { to: t, how: 'portal', portalOwner: q.owner })
         }
         used = true
         break
@@ -1083,7 +1195,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   const equip = sh.equip.map((it) => (it ? convertLegacy(char, { ...it, aff: [...it.aff] }) : null))
   const bag = sh.bag.map((it) => convertLegacy(char, { ...it, aff: [...it.aff] }))
   const attr = (sh.attr ?? [0, 0, 0, 0]).slice(0, 4)
-  const st = computeStats(sh.level, equip, attr)
+  const mst = (sh.mst ?? [0, 0, 0, 0]).slice(0, 4)
+  const st = computeStats(sh.level, equip, attr, mst)
   // 탱커: 최대 체력 +30% (던전 — recalc 과 같은 식)
   if (roleOn && c.role === 'tank') st[ST_HP] += Math.round(c.maxHp * 0.3)
   const maxHp = c.maxHp + st[ST_HP]
@@ -1169,6 +1282,10 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     follow: -1,
     autoPick: AUTOPICK_ALL,
     attr,
+    mlv: sh.mlv ?? 0,
+    mxp: sh.mxp ?? 0,
+    mst,
+    riftBest: sh.rift ?? 0,
     potions: sh.potMax ?? 4,
     potMax: sh.potMax ?? 4,
     potHot: 0,
@@ -1206,11 +1323,30 @@ function attrCommand(state: GameState, p: PlayerState, arg: number): void {
   if (arg === 99) {
     if (!isTown(p.area)) return
     p.attr = [0, 0, 0, 0]
-  } else if (arg === 10) autoAttr(p)
+  } else if (arg === 98) {
+    // 숙련 되돌리기 (마을 · 무료)
+    if (!isTown(p.area)) return
+    p.mst = [0, 0, 0, 0]
+  } else if (arg >= 20 && arg < 24) {
+    const k = arg - 20
+    if (masteryFree(p.mlv, p.mst) <= 0 || p.mst[k] >= MASTERY_CAP) return
+    p.mst[k]++
+  } else if (arg === 11) autoMastery(p)
+  else if (arg === 10) autoAttr(p)
   else if (arg >= 0 && arg < 4 && attrFree(p.level, p.attr) > 0) p.attr[arg]++
   else return
   recalc(p)
   state.events.push({ type: 'attr', p: p.id })
+}
+
+/** 남은 숙련 점수를 고르게 (용병 · "고르게 분배") — 가장 적은 줄부터, 같으면 앞 줄 */
+export function autoMastery(p: { mlv: number; mst: number[] }): void {
+  for (let n = masteryFree(p.mlv, p.mst); n > 0; n--) {
+    let k = -1
+    for (let i = 0; i < 4; i++) if (p.mst[i] < MASTERY_CAP && (k < 0 || p.mst[i] < p.mst[k])) k = i
+    if (k < 0) return
+    p.mst[k]++
+  }
 }
 
 /** 남은 포인트를 추천 능력치 둘에 6:4 로 (용병 · 봇 · "추천대로 분배") — 결정론 */
@@ -1225,7 +1361,7 @@ export function autoAttr(p: { char: CharacterId; level: number; attr: number[] }
 function recalc(p: PlayerState): void {
   const c = CHARACTERS[p.char]
   p.weapon = weaponFor(p.char, p.equip)
-  p.st = computeStats(p.level, p.equip, p.attr)
+  p.st = computeStats(p.level, p.equip, p.attr, p.mst)
   p.legs = legMask(p.equip)
   // 전설 "집중": 스킬 재사용 대기 -15% (옵션 상한과 따로 더한다)
   if (hasLeg(p, LEG_FOCUS)) p.st[ST_CDR] += 15
@@ -1399,6 +1535,7 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
     stepInteract(state, map, inputs)
   }
   if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
+  if (state.rift) stepRift(state, map)
   if (state.allies?.length) stepAllies(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)
@@ -3066,8 +3203,16 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
   const def = MONSTER_LIST[m.kind]
   m.hp = 0
   state.events.push({ type: 'mdeath', m: m.id, kind: m.kind, by: suicide ? -1 : by, x: m.x, y: m.y, aim: m.aim })
-  // 후원으로 부른 보스는 그 지역의 보스가 아니다 — 처치 기록 · 다음 막 문 · 엔딩 · 퀘스트로 치지 않는다
-  const summoned = m.sum !== undefined
+  // 후원으로 부른 보스 · 시련의 수호자는 그 지역의 보스가 아니다 — 처치 기록 · 다음 막 문 · 엔딩 · 퀘스트로 치지 않는다
+  const summoned = m.sum !== undefined || m.rg === 1
+  const rift = state.rift
+  if (rift && rift.area === state.curArea && state.mode === 'dungeon') {
+    if (m.rg === 1) riftDone(state, m)
+    else if (!suicide || by >= 0) {
+      rift.kills += riftPts(m)
+      if (by >= 0) rift.last = by
+    }
+  }
   if (state.mode === 'dungeon' && isBossLike(m) && !summoned && !state.killed.includes(state.curArea)) {
     state.killed.push(state.curArea)
     state.events.push({ type: 'bossDown', area: state.curArea, kind: m.kind })
@@ -3455,7 +3600,9 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const unique = (m.elite & EA_UNIQUE) !== 0
     // 레벨 차이: 괴물보다 5 레벨 넘게 높으면 경험치가 확 준다 (xpGapMul — 낮은 곳에서 오래 잡아 올리지 못하게)
     // 막 배율(1막은 지역을 줄여 더 준다 — ACTS.xp)
-    const actXp = state.mode === 'dungeon' ? (ACTS[areaDef(state.curArea).act]?.xp ?? 1) : 1
+    // 시련은 단계만큼 경험치 · 골드 · 전리품 등급이 오른다 (막 배율 대신)
+    const rs = state.mode === 'dungeon' && state.rift && state.rift.area === state.curArea ? riftScale(state.rift.stage) : null
+    const actXp = rs ? rs.xp : state.mode === 'dungeon' ? (ACTS[areaDef(state.curArea).act]?.xp ?? 1) : 1
     gainXp(state, p, Math.round(xpFor(m) * xpGapMul(p.level, m.lvl) * actXp * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
     // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 아이템 10~16%(일반·마법만) / 정예는 골드 둘 · 아이템 1~2(희귀·전설도) /
     // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상, 신화가 드물게 (items.ts DROP_TABLE).
@@ -3468,12 +3615,16 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const tier = tierOf(state.tier)
     const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
     // 첫 아이템 희귀 이상 확정은 막 보스만 (우두머리 · 보물 고블린은 뺐다 — 2026-09-24 "저렙에서도 희귀 · 전설이 너무 쉽다")
-    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold, items, src, tier.loot, boss ? 2 : 0)
+    spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold * (rs?.gold ?? 1), items, src, tier.loot + (rs?.loot ?? 0), boss ? 2 : 0)
   }
 }
 
 function gainXp(state: GameState, p: PlayerState, xp: number): void {
-  if (p.level >= LEVEL_CAP || xp <= 0) return
+  if (xp <= 0) return
+  if (p.level >= LEVEL_CAP) {
+    gainMastery(state, p, xp)
+    return
+  }
   p.xp += xp
   p.xpGain += xp
   let up = false
@@ -3489,6 +3640,26 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
   // 레벨이 오르면 체력이 가득 찬다 (디아블로)
   if (p.alive && !p.downed) p.hp = p.maxHp
   state.events.push({ type: 'levelup', p: p.id, level: p.level })
+}
+
+/** 숙련 경험치 (만렙 뒤) — MASTERY_XP 마다 숙련 레벨 1 (용병은 고르게 스스로 쓴다) */
+function gainMastery(state: GameState, p: PlayerState, xp: number): void {
+  if (p.mlv >= MASTERY_CAP * 4) return
+  p.mxp += xp
+  p.xpGain += xp
+  let up = false
+  while (p.mlv < MASTERY_CAP * 4 && p.mxp >= MASTERY_XP) {
+    p.mxp -= MASTERY_XP
+    p.mlv++
+    up = true
+  }
+  if (p.mlv >= MASTERY_CAP * 4) p.mxp = 0
+  if (!up) return
+  if (p.merc >= 0) {
+    autoMastery(p)
+    recalc(p)
+  }
+  state.events.push({ type: 'mastery', p: p.id, level: p.mlv })
 }
 
 /** 자석: 내 골드·아이템은 2칸 안이면 끌려와 줍는다 (2026-09-19 "밟는 건 이동이 너무 많다 — 2칸쯤은 자석처럼") */
@@ -3656,6 +3827,10 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_ATTR) {
     attrCommand(state, p, arg)
+    return
+  }
+  if (cmd === CMD_TRIAL) {
+    trialCommand(state, p, arg)
     return
   }
   if (cmd >= CMD_SKILL_UP && cmd <= CMD_HIRE) {
@@ -4105,7 +4280,7 @@ function bossThink(state: GameState, map: GameMap, m: Monster, def: MonsterDef, 
   // 즉사기: 차례와 따로 센다 (처음 깨어 패턴을 쓸 때부터 BOSS_ULT_CD.first 뒤 · 그다음은 단계마다 every).
   // 후원으로 부른 막 보스는 즉사기를 쓰지 않는다 — 다른 패턴은 그대로 (2026-09-27 사용자: "소환된 막 보스는 모두 즉사기를 빼 줘" —
   // 들판에서 다른 괴물과 섞여 피하기 어려워, 후원이 분당 2.5건이면 4막 심연의 군주 소환에 파티가 거듭 쓰러졌다)
-  const ult = m.sum === undefined ? BOSS_ULT[def.id] : undefined
+  const ult = m.sum === undefined && !m.rg ? BOSS_ULT[def.id] : undefined
   if (ult) {
     if (m.kcd === undefined) m.kcd = BOSS_ULT_CD.first
     else if (m.kcd <= 0 && bossStart(state, map, m, def, ult, tp)) {

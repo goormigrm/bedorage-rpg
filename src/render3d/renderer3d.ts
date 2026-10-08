@@ -31,7 +31,7 @@ registerText(BOSS_INTRO, 'butcher', '무궁화 운동장의 술래 — 움직이
 registerText(BOSS_INTRO, 'queen', '벌집 궁전의 여왕벌 — 꿀단지를 지키러 깨어났다')
 registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 반칙하면 바로 탈락이다')
 registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
-import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
 import { allyGood, allyTagCss } from '../core/palette'
@@ -78,6 +78,7 @@ const NPC_DOT: Record<string, string> = {
   stash: '#c98a4a',
   elder: '#8affa8',
   captain: '#ff9a7a',
+  trial: '#b47aff',
 }
 
 const MINIMAP_SIZE = 190
@@ -1221,6 +1222,34 @@ export class Renderer3D {
         case 'questReward':
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
+        // ---- 시련 (2026-10-08 퀄리티 2차 7단계 D3) ----
+        case 'riftOpen':
+          if (e.p === localPlayer) this.hud.banner(`${RIFT_TEXT.name} ${e.stage}단계`, `괴물을 잡아 막대를 채우면 수호자가 나온다 · ${Math.round(RIFT_TICKS / 3600)}분 안에`, '#c8a8ff')
+          else this.hud.notice(`${nm[e.p]} — ${RIFT_TEXT.name} ${e.stage}단계를 열었다 · 마을의 ${NPC_NAMES.trial}으로 들어간다`, '#c8a8ff')
+          break
+        case 'riftBoss':
+          this.hud.banner('시련의 수호자가 나타났다', '쓰러뜨리면 시련이 끝난다', '#c8a8ff')
+          this.spawnRing(e.x * U, e.y * U, 0.4, 4, 1.1, 0xb47aff)
+          this.spawnImpact(e.x * U, 1.2, e.y * U, 0xb47aff, 6)
+          break
+        case 'riftDone': {
+          const mm = Math.floor(e.t / 3600)
+          const ss = String(Math.floor((e.t % 3600) / 60)).padStart(2, '0')
+          if (e.ok) this.hud.banner(`시련 ${e.stage}단계 성공`, `${mm}:${ss} · 다음 단계가 열렸다 · 수호자 자리의 문으로 마을에`, '#d8b8ff')
+          else this.hud.banner(`시련 ${e.stage}단계 끝`, `시간 초과(${mm}:${ss}) — 단계는 그대로 · 수호자 자리의 문으로 마을에`, '#ff9a8a')
+          break
+        }
+        case 'mastery': {
+          const p = state.players[e.p]
+          if (!p) break
+          if (e.p === localPlayer) this.hud.notice(`숙련 ${e.level} — 숙련 점수 +1 (${keyLabel('attr')})`, '#d8b8ff')
+          this.spawnRing(p.x * U, p.y * U, 0.3, 2.6, 0.8, 0xb47aff)
+          for (let k = 0; k < 16; k++) {
+            const a = (k / 16) * Math.PI * 2
+            this.spawnGlow(p.x * U, 0.4, p.y * U, Math.cos(a) * 0.05, 0.12 + Math.random() * 0.05, Math.sin(a) * 0.05, 1, k % 2 ? 0xb47aff : 0xe8d8ff, 0.7)
+          }
+          break
+        }
         case 'gold':
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${Math.round(e.n)} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
           break
@@ -3145,7 +3174,12 @@ export class Renderer3D {
       const k = 1 + Math.sin(this.t * 2.2) * 0.06
       for (const c of this.markers.children) {
         if (c.userData.pulse) c.scale.setScalar(k)
-        else if (c.userData.npc !== undefined) {
+        else if (c.userData.swirl) {
+          // 시련의 문: 소용돌이가 돌고 바닥 룬이 숨 쉰다
+          ;(c.userData.swirl as THREE.Object3D).rotation.z = -this.t * 1.6
+          ;(c.userData.rune as THREE.Object3D).rotation.z = this.t * 0.4
+          ;(c.userData.rune as THREE.Object3D).scale.setScalar(k)
+        } else if (c.userData.npc !== undefined) {
           const p = this.t * 2.4 + c.userData.npc
           c.position.y = Math.abs(Math.sin(p)) * 0.035
           c.rotation.z = Math.sin(p * 0.5) * 0.035
@@ -3225,7 +3259,7 @@ export class Renderer3D {
       f.position.set(n.x * U, 0, n.y * U)
       f.rotation.y = Math.PI / 4
       // 숨 쉬듯 통통 (궤짝은 가만히) — 아래 updateMarkers 가 움직인다
-      if (n.id !== 'stash') f.userData.npc = ph++ * 1.7
+      if (n.id !== 'stash' && n.id !== 'trial') f.userData.npc = ph++ * 1.7
       g.add(f)
     }
     if (l.wp) {
@@ -3438,10 +3472,10 @@ export class Renderer3D {
     if (isTown(curr.curArea)) {
       for (const q of curr.portals) {
         const at = townPortalSpot(l, q.owner)
-        if (at) label(at.x, at.y - 40, `타운 포털 → ${AREAS[q.area].name}`, '#9ac8ff')
+        if (at) label(at.x, at.y - 40, `타운 포털 → ${areaDef(q.area).name}`, '#9ac8ff')
       }
     } else {
-      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, `타운 포털 · ${F}`, '#9ac8ff')
+      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, q.owner < 0 ? `마을로 · ${F}` : `타운 포털 · ${F}`, q.owner < 0 ? '#d8b8ff' : '#9ac8ff')
     }
     ctx.restore()
   }

@@ -46,7 +46,7 @@ const OTHER_PER_SEC = 36
 /** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
 const FAR_CULL = 760
 /** 버리지 않는 소리 (드물고 중요하다) */
-const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger'])
+const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger', 'riftOpen', 'riftBoss', 'riftDone', 'mastery'])
 /**
  * 괴물 소리(깸 · 공격 준비 · 쓰러짐)는 남의 소리 몫(토큰)을 쓰지 않는다 — 제 되풀이 제한(아무 괴물 90ms · 같은 종류 0.35초 · 쓰러지는 질척임 50ms)만 거친다.
  * 2026-09-24 사용자: "몬스터 잡는데 몬스터 소리는 안 들린다" — 봇 총소리 · 맞는 소리가 초당 36개 몫을 다 써서, 괴물 단서 922개 중 66개만 소리가 났다.
@@ -505,6 +505,31 @@ export class Sfx {
         }
         case 'questReward':
           if (e.p === localPlayer) this.coins(4, 0.1)
+          break
+        // ---- 시련 (2026-10-08 퀄리티 2차 7단계 D3) ----
+        case 'riftOpen':
+          if (e.p === localPlayer) this.shimmer(1.2, 0.8)
+          break
+        case 'riftBoss': {
+          // 수호자: 낮게 깔리는 울림 + 불길한 단3화음
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 1)
+          this.tone(b.node, b.t0, 1.4, 'sawtooth', 55, 45, 0.35, 0.05)
+          this.noiseBurst(b.node, b.t0, 0.6, 'lowpass', 600, 120, 0.5, 1.2)
+          for (const [i, f] of [220, 262, 330].entries()) this.tone(b.node, b.t0 + 0.2 + i * 0.12, 1.1, 'triangle', f, f * 0.98, 0.16, 0.02)
+          break
+        }
+        case 'riftDone': {
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)
+          const notes = e.ok ? [523, 659, 784, 1047] : [392, 349, 330, 262]
+          for (const [i, f] of notes.entries()) this.tone(b.node, b.t0 + i * 0.11, 0.6, 'triangle', f, f, 0.28, 0.008)
+          if (e.ok) this.coins(4, 0.45)
+          break
+        }
+        case 'mastery':
+          if (e.p === localPlayer) {
+            const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.8)
+            for (const [i, f] of [587, 740, 880, 1175].entries()) this.tone(b.node, b.t0 + i * 0.08, 0.5, 'sine', f, f, 0.26, 0.01)
+          }
           break
         case 'wpFound':
           if (e.p === localPlayer) this.shimmer(0.8, 1)

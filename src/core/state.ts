@@ -276,6 +276,12 @@ export interface PlayerState {
   spBonus: number
   /** 능력치에 쓴 포인트 [힘, 민첩, 활력, 정신] (C 창 · 세이브 Sheet.attr) */
   attr: number[]
+  /** 숙련 (레벨 30 뒤 — items.ts MASTERY_*): 레벨 · 쌓인 경험치 · 줄마다 쓴 점 */
+  mlv: number
+  mxp: number
+  mst: number[]
+  /** 시련: 제한 시간 안에 끝낸 가장 높은 단계 (세이브 Sheet.rift) */
+  riftBest: number
   /** 퀘스트 상태 (world.ts QUESTS: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
   quests: number[]
   /** 용병이면 고용한 사람 (-1 = 사람) · 용병의 봇 기억 (sim 안에서 결정론으로 움직인다) */
@@ -476,6 +482,8 @@ export interface Monster {
    */
   stag?: number
   stagT?: number
+  /** 시련의 수호자 (1) — 막 보스 모습이지만 막 보스 처치 · 퀘스트 · 업적으로 치지 않고 즉사기도 없다 */
+  rg?: number
 }
 
 /** 몬스터 상태 */
@@ -683,6 +691,11 @@ export type SimEvent =
   | { type: 'bagFull'; p: number }
   /** 능력치를 올렸다 · 되돌렸다 (C 창) */
   | { type: 'attr'; p: number }
+  /** 시련: 열었다 · 수호자가 나왔다 · 끝났다(ok = 제한 시간 안) · 숙련 점수를 얻었다 */
+  | { type: 'riftOpen'; p: number; stage: number }
+  | { type: 'riftBoss'; x: number; y: number }
+  | { type: 'riftDone'; stage: number; ok: boolean; t: number }
+  | { type: 'mastery'; p: number; level: number }
   | { type: 'levelup'; p: number; level: number }
   /** 장비를 바꿨다 */
   | { type: 'equip'; p: number; slot: number }
@@ -826,6 +839,29 @@ export interface GameState {
   sandbags: Record<number, number>
   /** 이번 step 에서 발생한 이벤트. 해시/스냅샷 대상 아님. */
   events: SimEvent[]
+  /** 지금 열린 시련 (반복 끝 콘텐츠 — world.ts RIFT_*). 한 판에 하나 */
+  rift?: RiftState
+  /** 이 판에서 연 시련 수 (다음 시련의 지역 번호 — 열 때마다 다른 맵) */
+  riftN?: number
+}
+
+/** 시련 하나 (2026-10-08 퀄리티 2차 7단계 D3) */
+export interface RiftState {
+  /** 지역 번호 (world.ts riftId) */
+  area: number
+  stage: number
+  /** 진행 점수 (졸개 1 · 정예 4 · 우두머리 15) · 수호자가 나오는 점수 (처음 채운 괴물의 70%) */
+  kills: number
+  need: number
+  /** 수호자: 0 아직 · 1 나왔다 · 2 쓰러졌다(끝) */
+  boss: number
+  /** 안에서 흐른 틱 (수호자를 잡을 때까지) */
+  t: number
+  /** 연 사람 · 막대를 마지막으로 채운 사람 (수호자가 그 곁에 나온다) */
+  by: number
+  last: number
+  /** 제한 시간 안에 끝냈나 (끝난 뒤에만) */
+  ok?: boolean
 }
 
 /** 판에서 움직일 수 있는 사람 (쓰러지지 않고 살아 있음) */

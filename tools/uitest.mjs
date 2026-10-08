@@ -174,6 +174,31 @@ async function openGame(skin) {
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
 
+  // 시련 (2026-10-08 퀄리티 2차 7단계): 시련의 문 곁에서 F → 단계 창 → 열고 들어가기 → 시련 지역
+  await page.evaluate(() => {
+    const p = window.__bd.state().players[window.__bd.me()]
+    p.quests[15] = 3
+    p.x = 30 * 32 + 16 + 30
+    p.y = 20 * 32 + 16
+  })
+  await page.waitForTimeout(500)
+  await page.keyboard.press('KeyF')
+  await page.waitForTimeout(700)
+  const tr = await page.evaluate(() => {
+    const w = [...document.querySelectorAll('.tp')].find((e) => !e.hidden)
+    if (!w) return null
+    const r = w.getBoundingClientRect()
+    return { go: !!w.querySelector('.tr-go'), inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }
+  })
+  check(!!tr && tr.go, '시련의 문 곁에서 F — 단계를 고르는 창이 열린다')
+  if (tr?.go) {
+    check(tr.inside, '시련의 문 창이 화면 안에 있다')
+    await page.locator('.tr-go').click()
+    await page.waitForTimeout(2500)
+    const area = await page.evaluate(() => window.__bd.state().players[window.__bd.me()].area)
+    check(area >= 100, `열고 들어가기 — 시련 지역으로 간다 (지역 ${area})`)
+  }
+
   check(errors.length === 0, `잡히지 않은 오류 없음 (공포스러움)${errors.length ? '\n    ' + errors.slice(0, 3).join('\n    ') : ''}`)
   await page.close()
 }

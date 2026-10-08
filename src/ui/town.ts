@@ -6,7 +6,7 @@ import { itemIconUrl } from './itemIcons'
 import { clickSuppressed, makeDraggable } from './dragItem'
 import { bt } from '../game/skin'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
-import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../core/input'
+import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
@@ -18,7 +18,7 @@ import { ItemTip, cellHtml, itemHtml } from './inventory'
 import { WEAPONS } from '../core/weapons'
 import { WEAPON_IDS, SLOT_WEAPON } from '../core/items'
 import { keyLabel } from '../game/keymap'
-import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, actReached, areaDef, questDiscount } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_MAX, RIFT_TICKS, actReached, areaDef, questDiscount, riftOpen, riftScale } from '../core/world'
 import { CMD_QUEST } from '../core/input'
 
 /** 퀘스트 목록 (촌장 창 — 버튼 있음 · 퀘스트 기록 — 버튼 없음) */
@@ -146,6 +146,7 @@ const LINES: Record<NpcId, string> = {
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
   elder: '종이 멈춘 밤부터 모든 게 틀어졌소. 당신들도 그 밤에 떨어졌다지 — 서로 도울 일이 있겠구려.',
   captain: '혼자 가기 무서우면 말해. 쓸 만한 녀석을 붙여 주지.',
+  trial: '문 너머는 매번 다르다. 버티는 만큼 깊이 내려간다.',
 }
 
 export class TownPanel {
@@ -166,6 +167,8 @@ export class TownPanel {
   /** 보관함 탭 (닫았다 열어도 보던 탭 — 라스트 에포크에서 사람들이 바라던 것) · 찾는 말 */
   private stashTab = 0
   private query = ''
+  /** 시련의 문에서 고른 단계 (0 = 아직 — 열 수 있는 가장 높은 단계로) */
+  private riftStage = 0
   /** 아이템 설명 풍선 — 보관함 · 도박 결과의 칸에 마우스를 올리면 (가방 창과 같은 것) */
   private tip: ItemTip
 
@@ -229,7 +232,9 @@ export class TownPanel {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
     return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
       .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
-      .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}`
+      .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}|${this.riftStage}|${me.riftBest}|${
+      s.rift ? `${s.rift.area}:${s.rift.boss}:${Math.floor((s.rift.kills / Math.max(1, s.rift.need)) * 20)}:${s.players.some((q) => !q.left && q.area === s.rift!.area)}` : ''
+    }`
   }
 
   private render(): void {
@@ -449,10 +454,47 @@ export class TownPanel {
                   .join('')}</div>`
               })
               .join('')}`
+    } else if (npc === 'trial') {
+      body = this.trialBody(me, s)
     } else {
       body = ''
     }
     this.paint(npc, me, body)
+  }
+
+  /**
+   * 시련의 문 (2026-10-08 퀄리티 2차 7단계 D3): 단계를 골라 열고 들어간다 · 열린 시련에 들어간다.
+   * 규칙 · 단계마다 오르는 값을 한눈에 — 단계를 바꾸면 아래 숫자가 바로 바뀐다
+   */
+  private trialBody(me: PlayerState, s: GameState): string {
+    const sec = Math.round(RIFT_TICKS / 60 / 60)
+    const rules = `<ul class="tr-rules"><li>괴물을 잡아 <b>진행 막대</b>를 채우면 <b>시련의 수호자</b>가 나온다</li><li><b>${sec}분 안에</b> 수호자를 잡으면 다음 단계가 열린다</li><li>마을로는 수호자 자리에 열리는 문 · 타운 포털로</li></ul>`
+    if (!riftOpen(me, s.tier)) return `${rules}<p class="tp-note warn">보통 난이도에서 <b>${bt('심연의 군주')}</b>를 쓰러뜨리면 열린다.</p>`
+    const r = s.rift
+    const inside = !!r && s.players.some((q) => !q.left && q.area === r.area)
+    const top = Math.min(RIFT_MAX, me.riftBest + 1)
+    if (this.riftStage < 1 || this.riftStage > top) this.riftStage = top
+    const st = this.riftStage
+    const sc = riftScale(st)
+    const x = (v: number) => `×${(Math.round(v * 10) / 10).toFixed(1)}`
+    let open = ''
+    if (r && r.boss < 2) {
+      const k = Math.min(100, Math.round((r.kills / Math.max(1, r.need)) * 100))
+      open = `<div class="tr-open"><b>${r.stage}단계</b> 시련이 열려 있다 — 진행 ${r.boss > 0 ? '수호자' : `${k}%`}<button class="btn" data-cmd="${CMD_TRIAL}" data-arg="0">들어가기</button></div>`
+    }
+    const pick = `<div class="tr-pick">
+        <button class="btn secondary" data-rstage="${st - 1}" ${st > 1 ? '' : 'disabled'}>−</button>
+        <span class="tr-stage"><b>${st}</b>단계</span>
+        <button class="btn secondary" data-rstage="${st + 1}" ${st < top ? '' : 'disabled'}>+</button>
+        <span class="tr-best">끝낸 가장 높은 단계 ${me.riftBest || '없음'}</span>
+      </div>
+      <div class="tr-scale">
+        <span>괴물 체력 <b>${x(sc.hp)}</b></span><span>괴물 힘 <b>${x(sc.pow)}</b></span>
+        <span>경험치 <b>${x(sc.xp)}</b></span><span>골드 <b>${x(sc.gold)}</b></span><span>좋은 등급 <b>+${Math.round(sc.loot * 100)}%</b></span>
+      </div>
+      <button class="btn tr-go" data-cmd="${CMD_TRIAL}" data-arg="${st}" ${inside ? 'disabled' : ''}>${st}단계 열고 들어가기</button>
+      ${inside ? '<p class="tp-note">지금 시련 안에 사람이 있다 — 끝나고 나오면 새로 열 수 있다</p>' : r && r.boss < 2 ? '<p class="tp-note">새로 열면 지금 열린 시련은 닫힌다</p>' : ''}`
+    return `${rules}${open}${pick}`
   }
 
   /** 창을 그리고 단추를 잇는다 (모든 NPC 공용) */
@@ -517,6 +559,12 @@ export class TownPanel {
     this.el.querySelectorAll<HTMLButtonElement>('[data-frar]').forEach((b) => {
       b.onclick = () => {
         this.forgeRarity = Number(b.dataset.frar)
+        this.render()
+      }
+    })
+    this.el.querySelectorAll<HTMLButtonElement>('[data-rstage]').forEach((b) => {
+      b.onclick = () => {
+        this.riftStage = Number(b.dataset.rstage)
         this.render()
       }
     })

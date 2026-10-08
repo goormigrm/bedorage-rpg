@@ -8,6 +8,8 @@
 // 눈을 떠 보니 야영지였고, 이곳을 벗어나기 위해 모험을 떠난다" — 계란이 된 것 · 종을 되찾는 흐름에 이어 붙였다
 // 밝은 분위기(2026-10-06 — 계획서 6장): 초대장 → 놀이 섬 대기실 → 도장 넷 → 하원 버스. 끝맺음 "…우리 꿈꾼 거 맞지?" 는 그대로.
 import { isBright } from '../game/skin'
+import { NPC_NAMES, RIFT_TEXT } from '../core/world'
+import { LEVEL_CAP } from '../core/items'
 
 const LINES_BRIGHT = [
   '무궁화 운동장, 달고나 숲, 구슬 골목, 불꽃 축제 — 네 번의 놀이를 모두 이겼다.',
@@ -36,7 +38,7 @@ export function showEnding(parent: HTMLElement, tier: number, onClose: () => voi
     <h2>${b ? '도장판을 다 채웠다' : '종이 울렸다'}</h2>
     ${lines.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
     <p class="ending-sub" style="animation-delay:${1 + lines.length * 1.6}s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
-    <p class="ending-hint" style="animation-delay:${1.6 + lines.length * 1.6}s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다</p>
+    <p class="ending-hint" style="animation-delay:${1.6 + lines.length * 1.6}s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다<br>마을의 <b>${NPC_NAMES.trial}</b>이 열렸다 — 끝없이 깊어지는 ${RIFT_TEXT.name} · 레벨 ${LEVEL_CAP} 뒤에는 숙련 점수</p>
     <button class="btn ending-go" style="animation-delay:${2 + lines.length * 1.6}s">계속하기</button>
   </div>`
   parent.appendChild(el)

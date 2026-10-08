@@ -254,7 +254,63 @@ export const AREAS: AreaDef[] = [
 ]
 
 export function areaDef(id: number): AreaDef {
+  if (id >= RIFT_BASE) return riftDef(id)
   return AREAS[Math.max(0, Math.min(AREAS.length - 1, id | 0))]
+}
+
+// ---------------------------------------------------------------- 시련 (반복 끝 콘텐츠 — 2026-10-08 퀄리티 2차 7단계 D3)
+//
+// 디아블로 3 의 균열처럼: 마을의 **시련의 문**에서 단계를 골라 열면, 그 막의 맵 하나를 무작위로 골라 괴물을 가득 채운 지역이 생긴다.
+// 괴물을 잡아 막대를 채우면 **시련의 수호자**(그 막의 보스 — 즉사기 없음)가 나오고, 10분 안에 잡으면 다음 단계가 열린다.
+// 단계가 오를수록 괴물 체력 · 힘 · 전리품 · 경험치가 오른다. 보통 난이도의 심연의 군주를 쓰러뜨린 캐릭터부터 연다.
+//
+// 지역 번호 = RIFT_BASE + (판에서 몇 번째 시련) × 4 + 막 — 맵은 (게임 시드, 지역 번호)로 정해지니 열 때마다 다른 맵.
+// AREAS 표에 없는 번호라 areaDef 가 여기서 만든다(링크 없음 · 웨이포인트 없음 — 드나드는 것은 시련의 문 · 타운 포털).
+
+export const RIFT_BASE = 100
+/** 단계 끝 (안전판 — 숫자가 터지지 않게) */
+export const RIFT_MAX = 60
+/** 제한 시간 (틱 — 10분) */
+export const RIFT_TICKS = 60 * 60 * 10
+/** 막마다 시련에 쓰는 맵 (보스 방 · 마을은 빼고) */
+const RIFT_MAPS: MapId[][] = [
+  ['fields', 'cave', 'cathedral', 'crypt'],
+  ['forest', 'hollow', 'swamp'],
+  ['sewer', 'cistern', 'ruins', 'rite', 'archive'],
+  ['rift', 'ashen', 'pit', 'maze', 'stair'],
+]
+/** 화면 글 (밝은 분위기는 skinText 가 갈아 끼운다 — 시련 지역 이름이 이 값을 읽는다) */
+export const RIFT_TEXT = { name: '시련의 균열', lore: '문 너머는 매번 다르다 — 끝까지 버틴 자만 더 깊이 내려간다' }
+
+export const riftId = (n: number, act: number): number => RIFT_BASE + n * 4 + Math.max(0, Math.min(3, act))
+export const isRift = (id: number): boolean => id >= RIFT_BASE
+
+const riftDefs = new Map<number, AreaDef>()
+function riftDef(id: number): AreaDef {
+  let d = riftDefs.get(id)
+  if (d) return d
+  const k = id - RIFT_BASE
+  const act = k % 4
+  const n = Math.floor(k / 4)
+  const maps = RIFT_MAPS[act]
+  // 같은 막을 이어 열어도 맵이 돌아가며 바뀌게 (게임 시드는 맵 모양을 바꾼다)
+  const map = maps[(n * 7 + 3) % maps.length]
+  d = { id, act, kind: 'dungeon', map, level: 30, links: [], density: 1.3 } as unknown as AreaDef
+  Object.defineProperty(d, 'name', { get: () => RIFT_TEXT.name, enumerable: true })
+  Object.defineProperty(d, 'lore', { get: () => RIFT_TEXT.lore, enumerable: true })
+  riftDefs.set(id, d)
+  return d
+}
+
+/** 시련 단계 배율: 괴물 체력 · 힘 · 전리품(등급 오름) · 경험치 · 골드 */
+export function riftScale(stage: number): { hp: number; pow: number; loot: number; xp: number; gold: number } {
+  const s = Math.max(1, Math.min(RIFT_MAX, stage)) - 1
+  return { hp: Math.pow(1.14, s), pow: Math.pow(1.06, s), loot: Math.min(0.3, 0.06 + 0.012 * s), xp: 1.3 + 0.1 * s, gold: 1.5 + 0.1 * s }
+}
+
+/** 이 캐릭터가 시련을 열 수 있나: 보통 난이도의 심연의 군주를 쓰러뜨렸다 (악몽 · 지옥 판이면 이미 넘었다) */
+export function riftOpen(p: { quests: number[]; riftBest?: number }, tier: number): boolean {
+  return tier > 0 || (p.riftBest ?? 0) > 0 || (p.quests[actBossQuest(ACTS.length - 1)] ?? 0) >= 2
 }
 
 export function isTown(id: number): boolean {
@@ -550,7 +606,7 @@ interface TownSpots {
 }
 
 /** 마을 사람들 (GUIDE 4장): 상인 · 대장장이 · 도박꾼 · 보관함 · 촌장(퀘스트, D5) · 용병 대장(D4) */
-export type NpcId = 'merchant' | 'smith' | 'gambler' | 'stash' | 'elder' | 'captain'
+export type NpcId = 'merchant' | 'smith' | 'gambler' | 'stash' | 'elder' | 'captain' | 'trial'
 export const NPC_NAMES: Record<NpcId, string> = {
   merchant: '상인 말린',
   smith: '대장장이 그룬',
@@ -558,6 +614,7 @@ export const NPC_NAMES: Record<NpcId, string> = {
   stash: '보관함',
   elder: '촌장 카인',
   captain: '용병 대장 바르',
+  trial: '시련의 문',
 }
 /** NPC 와 이야기할 수 있는 거리 (px) */
 export const NPC_RANGE = 70
@@ -569,7 +626,7 @@ const CAMP: TownSpots = {
   spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portals: [[25, 19], [25, 14], [20, 20], [20, 14]],
   // 들판 문: 웨이포인트의 화면 오른쪽(성문 쪽) 두 칸 — 처음 자리에서도 몇 걸음
   fieldGate: [17, 11],
-  npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23] },
+  npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23], trial: [30, 20] },
 }
 /** 막마다 마을 (같은 야영지 배치를 쓴다 — 테마만 다르다) */
 const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: CAMP, 19: CAMP, 28: CAMP }

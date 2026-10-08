@@ -1356,3 +1356,24 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .game-load .bt { max-width: 520px; text-align: center; font: 500 13px "IBM Plex Sans KR", sans-serif; color: #b8a67e; padding: 8px 16px; border-top: 1px solid rgba(201,162,74,.2); }
 .game-load .bt::before { content: '도움말 · '; color: #f1d58a; font-weight: 700; }
 @keyframes bootbar { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
+
+/* 숙련 (레벨 30 뒤 — 2026-10-08 퀄리티 2차 7단계 D3): 능력치 아래 보랏빛 칸 */
+.cs-ms { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(180, 122, 255, 0.35); }
+.cs-ms .cs-t { display: flex; align-items: center; gap: 8px; color: #d8b8ff; }
+.cs-ms .cs-t small { color: #a890c8; font-weight: 600; }
+.cs-mbar { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.cs-mbar i { display: block; height: 100%; background: linear-gradient(90deg, #5a2a8a, #d8a8ff); }
+.cs-row.ms .cs-pt small { opacity: 0.6; font-size: 0.8em; }
+.cs-ms.locked .tp-note { margin: 4px 0 0; }
+/* 시련의 문 창 */
+.tr-rules { margin: 6px 0 10px; padding-left: 18px; color: #d8cfe8; line-height: 1.6; }
+.tr-open { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 10px; border-radius: 8px; background: rgba(180, 122, 255, 0.12); border: 1px solid rgba(180, 122, 255, 0.4); }
+.tr-open .btn { margin-left: auto; }
+.tr-pick { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.tr-pick .btn { min-width: 40px; padding: 4px 0; }
+.tr-stage { font-size: 15px; color: #e8d8ff; min-width: 70px; text-align: center; }
+.tr-stage b { font-size: 24px; margin-right: 2px; }
+.tr-best { margin-left: auto; color: #a898c0; font-size: 12px; }
+.tr-scale { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 12px; color: #cfc2e8; font-size: 13px; }
+.tr-scale b { color: #fff; }
+.tr-go { width: 100%; }

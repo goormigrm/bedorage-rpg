@@ -537,6 +537,25 @@ export function gearScore(equip: (Item | null)[] | undefined): number {
   }
   return Math.round(sum / SLOT_COUNT)
 }
+/**
+ * **숙련** (레벨 30 뒤 성장 — 2026-10-08 퀄리티 2차 7단계 D3 · 디아블로 3 정복자 레벨처럼): 만렙 뒤에 얻는 경험치가 숙련 막대를 채우고,
+ * 찰 때마다 숙련 점수 1. 네 줄(공격 · 체력 · 방어 · 기술)에 나눠 쓰고, 줄마다 MASTERY_CAP 점까지. 되돌리기는 마을에서 무료.
+ * 장비 옵션 상한과 따로 더한다(상한에 걸린 사람도 오른다).
+ */
+export const MASTERY_NAMES = ['공격', '체력', '방어', '기술']
+export const MASTERY_DESC = ['피해 +1% / 점', '최대 체력 +5 / 점', '받는 피해 -0.3% / 점', '스킬 위력 +1% · 스킬 재사용 -0.2% / 점']
+export const MASTERY_CAP = 50
+/** 숙련 한 점에 드는 경험치 (29 → 30 레벨의 절반쯤 — 시련 한 판에 한두 점) */
+export const MASTERY_XP = 32000
+export const masteryFree = (mlv: number, mst: number[]): number => mlv - mst.reduce((a, b) => a + b, 0)
+function addMastery(st: number[], mst: number[]): void {
+  st[ST_DMG] += mst[0] ?? 0
+  st[ST_HP] += (mst[1] ?? 0) * 5
+  st[ST_DR] += (mst[2] ?? 0) * 0.3
+  st[ST_SKILLPOW] += mst[3] ?? 0
+  st[ST_CDR] += (mst[3] ?? 0) * 0.2
+}
+
 /** 능력치가 능력치 칸(st)에 더하는 값 */
 function addAttr(st: number[], attr: number[]): void {
   st[ST_DMG] += (attr[0] ?? 0) * 0.8
@@ -555,7 +574,7 @@ export const DMG_PER_LEVEL = 1.5
  * 장비 + 레벨로 능력치를 낸다. 결과는 PlayerState.st 에 들어간다(상태 안 — 결정론).
  * 합산 후 옵션마다 상한을 건다(받는 피해 감소 45%, 스킬 재사용 40% …).
  */
-export function computeStats(level: number, equip: (Item | null)[], attr: number[] = []): number[] {
+export function computeStats(level: number, equip: (Item | null)[], attr: number[] = [], mst: number[] = []): number[] {
   const st = new Array(ST_COUNT).fill(0)
   for (const it of equip) {
     if (!it) continue
@@ -572,6 +591,7 @@ export function computeStats(level: number, equip: (Item | null)[], attr: number
   st[ST_HP] += (level - 1) * HP_PER_LEVEL
   addAttr(st, attr)
   for (let i = 0; i < ST_COUNT; i++) st[i] = Math.min(st[i], AFFIXES[i].cap + (i === ST_DMG ? LEVEL_CAP * DMG_PER_LEVEL + 70 : i === ST_HP ? LEVEL_CAP * HP_PER_LEVEL : i === ST_DR ? 0 : 0))
+  addMastery(st, mst)
   st[ST_DR] = Math.min(st[ST_DR], 60)
   return st
 }
@@ -609,6 +629,12 @@ export type Sheet = {
   playSec?: number[]
   /** 능력치에 쓴 포인트 [힘, 민첩, 활력, 정신] (C 창) */
   attr?: number[]
+  /** 숙련 (레벨 30 뒤): 레벨 · 쌓인 경험치 · 줄마다 쓴 점 [공격, 체력, 방어, 기술] */
+  mlv?: number
+  mxp?: number
+  mst?: number[]
+  /** 시련: 제한 시간 안에 끝낸 가장 높은 단계 (다음 단계까지 열 수 있다) */
+  rift?: number
 }
 
 export function emptySheet(): Sheet {
@@ -657,5 +683,11 @@ export function sanitizeSheet(s: unknown): Sheet {
   // 능력치: 네 칸 · 음수 없음 · 레벨이 준 포인트보다 많으면 모두 되돌린다
   const at = Array.from({ length: 4 }, (_, i) => Math.max(0, Math.floor(Number(o.attr?.[i]) || 0)))
   e.attr = attrFree(e.level, at) >= 0 ? at : [0, 0, 0, 0]
+  // 숙련: 만렙만 · 줄마다 상한 · 쓴 점이 숙련 레벨보다 많으면 모두 되돌린다
+  e.mlv = e.level >= LEVEL_CAP ? Math.max(0, Math.min(MASTERY_CAP * 4, Math.floor(Number(o.mlv) || 0))) : 0
+  e.mxp = e.mlv < MASTERY_CAP * 4 && e.level >= LEVEL_CAP ? Math.max(0, Math.min(MASTERY_XP - 1, Math.floor(Number(o.mxp) || 0))) : 0
+  const ms = Array.from({ length: 4 }, (_, i) => Math.max(0, Math.min(MASTERY_CAP, Math.floor(Number(o.mst?.[i]) || 0))))
+  e.mst = masteryFree(e.mlv, ms) >= 0 ? ms : [0, 0, 0, 0]
+  e.rift = Math.max(0, Math.min(60, Math.floor(Number(o.rift) || 0)))
   return e
 }

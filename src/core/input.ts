@@ -105,6 +105,8 @@ export const CMD_DONCAP = 29
  * 그 자리까지 걸어가 줍는다(디아블로처럼 — 2026-10-08 사용자: "같은 곳에 떨어지면 겹쳐서 따로 줍는 게 안 된다")
  */
 export const CMD_PICK = 30
+/** 시련의 문 (마을): arg = 단계(1 ~) 열고 들어가기 · 0 열린 시련에 들어가기 */
+export const CMD_TRIAL = 31
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

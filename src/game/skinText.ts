@@ -4,7 +4,7 @@
 
 import { BOSS_PATS, MONSTER_LIST } from '../core/monsters'
 import { DONATE_EVENTS } from '../core/donate'
-import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_TEXT } from '../core/world'
 import { registerText } from './skin'
 
 // ---- 괴물 (행동은 그대로 · 이름 · 모습만) ----
@@ -102,8 +102,12 @@ const NPC_TEXT: Partial<Record<NpcId, string>> = {
   stash: '사물함',
   elder: '안내원 모모',
   captain: '응원단장 바르',
+  trial: '도전의 문',
 }
 for (const k of Object.keys(NPC_TEXT) as NpcId[]) registerText(NPC_NAMES, k, NPC_TEXT[k]!)
+// 시련 (반복 끝 콘텐츠) — 밝은 분위기는 "도전 놀이"
+registerText(RIFT_TEXT, 'name', '도전 놀이')
+registerText(RIFT_TEXT, 'lore', '문 너머 놀이는 매번 다르다 — 끝까지 이긴 참가자만 다음 판으로')
 
 // ---- 퀘스트 (보상 · 목표는 그대로 — 이름 · 글만. 종 조각 → 도장 넷) ----
 const QUEST_TEXT: [string, string, string, string][] = [

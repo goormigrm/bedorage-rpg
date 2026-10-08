@@ -15,9 +15,9 @@ import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_SNIPE, FX_SWIFT, FX_WHIR
 import { keyLabel, skillKeyLabel } from '../game/keymap'
 import { DEATH_RULE_LABEL, GameState, PlayerState, isTeamMatch, teamKills } from '../core/state'
 import { EA_UNIQUE, MONSTER_LIST, TIER_LABEL, isBossLike, tierOf } from '../core/monsters'
-import { AREAS, QUESTS, areaDef, isTown } from '../core/world'
+import { AREAS, QUESTS, RIFT_TICKS, areaDef, isTown } from '../core/world'
 import { WEAPONS } from '../core/weapons'
-import { myGoldText, xpNeed, ST_CDR } from '../core/items'
+import { LEVEL_CAP, MASTERY_XP, masteryFree, myGoldText, xpNeed, ST_CDR } from '../core/items'
 import { DON_SEAL } from '../core/donate'
 import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
@@ -495,14 +495,17 @@ export class D4Hud {
     c.restore()
     // 경험치 (아래 가는 막대) — 키 명패 아래
     const xpY = by + S + 24
-    const xpK = Math.min(1, me.xp / xpNeed(me.level))
-    thinBar(c, bx + 20, xpY, barW - 40, 4, xpK, ['#f1d58a', '#8a6a28'])
+    // 만렙 뒤에는 숙련 막대 (보랏빛 — 2026-10-08 퀄리티 2차 7단계 D3)
+    const capped = me.level >= LEVEL_CAP
+    const xpK = capped ? Math.min(1, me.mxp / MASTERY_XP) : Math.min(1, me.xp / xpNeed(me.level))
+    thinBar(c, bx + 20, xpY, barW - 40, 4, xpK, capped ? ['#d8a8ff', '#5a2a8a'] : ['#f1d58a', '#8a6a28'])
     c.save()
     c.font = `800 11.5px ${SERIF}`
     c.fillStyle = GOLD_HI
     c.textAlign = 'left'
     c.textBaseline = 'middle'
-    c.fillText(`Lv ${me.level}`, bx + 20, xpY + 14)
+    const mFree = capped ? masteryFree(me.mlv, me.mst) : 0
+    c.fillText(capped ? `Lv ${me.level} · 숙련 ${me.mlv}${mFree > 0 ? ` (+${mFree})` : ''}` : `Lv ${me.level}`, bx + 20, xpY + 14)
     c.textAlign = 'right'
     c.font = `600 10px ${SANS}`
     c.fillStyle = '#9a8a70'
@@ -743,6 +746,8 @@ export class D4Hud {
   /** 위 가운데: 보스 체력 (깨어 있을 때만) — 디아블로식 긴 막대 */
   drawBoss(h: HudCtx, s: GameState): void {
     const boss = s.monsters.find((m) => m.hp > 0 && isBossLike(m) && m.st !== 0)
+    const rift = s.rift && s.rift.area === s.curArea ? s.rift : null
+    if (rift) this.drawRift(h, rift, !!boss)
     if (!boss) return
     const unique = (boss.elite & EA_UNIQUE) !== 0
     const c = h.ctx
@@ -778,8 +783,59 @@ export class D4Hud {
     c.textBaseline = 'alphabetic'
     c.fillStyle = unique ? '#ffb46a' : '#f1d58a'
     const who = boss.sum !== undefined ? this.summonLabel?.(boss.sumBy ?? -1, boss.sum - 1) : undefined
-    const name = who ? `${who} ${MONSTER_LIST[boss.kind].name}${unique ? ' · 중간보스' : ''}` : unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name
+    const name = boss.rg ? `시련의 수호자 · ${MONSTER_LIST[boss.kind].name}` : who ? `${who} ${MONSTER_LIST[boss.kind].name}${unique ? ' · 중간보스' : ''}` : unique ? `${areaDef(s.curArea).unique?.name ?? ''} · 우두머리` : MONSTER_LIST[boss.kind].name
     c.fillText(name, h.W / 2, y + 8)
+  }
+
+  /**
+   * 시련 막대 (2026-10-08 퀄리티 2차 7단계 D3): 위 가운데 — 단계 · 진행 막대(보라) · 남은 시간. 수호자가 나오면 보스 막대 아래로
+   * 내려가 시간만 작게. 시간이 넘으면 붉게 "시간 초과 — 단계는 그대로"
+   */
+  private drawRift(h: HudCtx, r: NonNullable<GameState['rift']>, boss: boolean): void {
+    const c = h.ctx
+    const W = Math.min(420, h.W - 520)
+    const x = h.W / 2 - W / 2
+    const left = Math.max(0, RIFT_TICKS - r.t)
+    const over = r.t > RIFT_TICKS
+    const mm = Math.floor(left / 3600)
+    const ss = Math.floor((left % 3600) / 60)
+    const time = over ? '시간 초과 — 단계는 그대로' : `${mm}:${String(ss).padStart(2, '0')}`
+    c.save()
+    c.textBaseline = 'alphabetic'
+    if (boss || r.boss === 2) {
+      // 수호자와 싸우는 중 · 끝: 보스 막대 아래 한 줄
+      const y = boss ? 78 : 30
+      c.font = `800 13px ${SERIF}`
+      c.textAlign = 'center'
+      c.fillStyle = 'rgba(8,6,12,0.7)'
+      const msg = r.boss === 2 ? (r.ok ? `시련 ${r.stage}단계 성공 — 다음 단계가 열렸다` : `시련 ${r.stage}단계 끝 — 시간 초과`) : `시련 ${r.stage}단계 · 남은 시간 ${time}`
+      const tw = c.measureText(msg).width + 24
+      rr(c, h.W / 2 - tw / 2, y - 15, tw, 21, 6)
+      c.fill()
+      c.fillStyle = r.boss === 2 ? (r.ok ? '#d8b8ff' : '#ff9a8a') : over ? '#ff8a7a' : '#e8d8ff'
+      c.fillText(msg, h.W / 2, y)
+      c.restore()
+      return
+    }
+    const y = 22
+    ironPanel(c, x - 10, y - 8, W + 20, 42)
+    c.fillStyle = 'rgba(255,255,255,0.06)'
+    c.fillRect(x, y + 14, W, 10)
+    const k = Math.min(1, r.kills / Math.max(1, r.need))
+    const g = c.createLinearGradient(x, 0, x + W, 0)
+    g.addColorStop(0, '#3a1a7a')
+    g.addColorStop(1, '#b47aff')
+    c.fillStyle = g
+    c.fillRect(x, y + 14, W * k, 10)
+    c.font = `800 14px ${SERIF}`
+    c.textAlign = 'left'
+    c.fillStyle = '#e8d8ff'
+    c.fillText(`시련 ${r.stage}단계 · 진행 ${Math.floor(k * 100)}%`, x, y + 8)
+    c.textAlign = 'right'
+    c.font = `700 13px ${SANS}`
+    c.fillStyle = over ? '#ff8a7a' : left < 60 * 60 ? '#ffd27a' : '#cfc2e8'
+    c.fillText(time, x + W, y + 8)
+    c.restore()
   }
 
   /** 지금 판이 던전인가 (집중 구슬 · 구르기 충전) — hud 가 매 프레임 넣는다 */
