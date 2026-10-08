@@ -1260,3 +1260,16 @@ body { background: var(--bg); }
 .skin-bright .tp-row:hover:not([disabled]) { border-color: #ff9ec4; background: rgba(255,158,196,0.14); }
 .skin-bright .cell.empty, .skin-bright .eq { border-color: rgba(255,158,196,0.22); }
 .skin-bright .winbtns button, .skin-bright .rbcol button { border-color: rgba(255,158,196,0.55); background: rgba(48,28,60,0.88); }
+
+/* ---- 처음 10분 안내 (2026-10-08 퀄리티 6단계 — ui/tutor.ts) ---- */
+.tutor { position: absolute; left: 50%; bottom: 168px; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 22px;
+  background: rgba(14,12,10,0.9); border: 1.5px solid rgba(241,213,138,0.75); color: #f1e6cc; font: 600 13.5px "IBM Plex Sans KR", sans-serif; pointer-events: auto;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 18px rgba(241,213,138,0.25); animation: tutorIn .35s ease-out; white-space: nowrap; }
+.tutor[hidden] { display: none; }
+.tutor .kc { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; border-radius: 5px; background: #f1d58a; color: #1a140c; font-weight: 800; text-align: center; box-shadow: 0 2px 0 #8a6a28; }
+.tutor .tutor-x { border: 0; background: transparent; color: #8d8170; font: 600 11px "IBM Plex Sans KR", sans-serif; cursor: pointer; padding: 2px 4px; }
+.tutor .tutor-x:hover { color: #d8cfbf; }
+.tutor.ok { border-color: #7ee0a0; box-shadow: 0 0 22px rgba(126,224,160,0.5); }
+.skin-bright .tutor { background: rgba(48,28,60,0.94); border-color: rgba(255,158,196,0.85); }
+.skin-bright .tutor .kc { background: #ff9ec4; box-shadow: 0 2px 0 #b8507a; }
+@keyframes tutorIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }

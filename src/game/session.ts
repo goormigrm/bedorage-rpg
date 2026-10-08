@@ -17,6 +17,7 @@ import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown,
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
 import { QuestLog, TownPanel } from '../ui/town'
+import { Tutor } from '../ui/tutor'
 import { showEnding, showIntro } from '../ui/ending'
 import { showForgeFx } from '../ui/forgefx'
 import { isKey, keyLabel, keysHintHtml, onKeymap } from './keymap'
@@ -147,6 +148,9 @@ export class Session {
   private bots: (BotMemory | PvpBotMemory)[] = []
   /** 아래 조작 안내 띠 표시 여부 (처음 두 판 · 이후 메뉴에서) */
   private keysShown = true
+  /** 처음 10분 안내 (ui/tutor.ts — 2026-10-08 퀄리티 6단계) */
+  private tutor: Tutor | null = null
+  private tutorAt = 0
   /**
    * 자동 조종(`?autopilot=1`): 내 캐릭터를 보통 난이도 봇이 움직인다. 방을 지키는 운영용 — tools/rooms.mjs 가 이 주소로
    * 브라우저를 여러 개 띄워 사람처럼 보이는 방을 만들어 둔다(2026-09-06). 주소 뒤 플래그라 다른 사람에게는 안 보인다.
@@ -416,6 +420,7 @@ export class Session {
         this.sfx.blip()
       },
     )
+    if (!this.arena) this.tutor = new Tutor(this.stage.querySelector('.game-ui') as HTMLElement)
     this.quests = new QuestLog(this.stage.querySelector('.game-ui') as HTMLElement, () => this.state.players[this.cfg.localPlayer], () => this.sfx.blip())
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
@@ -1873,6 +1878,27 @@ export class Session {
     this.pollTouchMenu()
     // 발소리는 sim 이벤트가 아니라 이동 상태로 낸다(틱마다 이벤트를 만들면 패킷이 무거워진다)
     this.sfx.updateSteps(this.state, lp, dt)
+    // 처음 10분 안내: 0.25초에 한 번 살핀다
+    if (this.tutor && now - this.tutorAt > 250) {
+      const tdt = Math.min(0.5, (now - this.tutorAt) / 1000)
+      this.tutorAt = now
+      const me = this.state.players[lp]
+      if (me) {
+        const v = areaView(this.state, this.viewArea)
+        const near = (x: number, y: number, r: number) => Math.hypot(x - me.x, y - me.y) <= r
+        this.tutor.update(
+          {
+            state: this.state,
+            me: lp,
+            nearMonsters: v.monsters.filter((m) => m.hp > 0 && near(m.x, m.y, 12 * 32)).length,
+            nearLoot: v.drops.some((d) => d.owner === lp && d.item !== null && near(d.x, d.y, 6 * 32)),
+            bagOpen: !!this.inventory?.open,
+            firing: this.input.firing,
+          },
+          tdt,
+        )
+      }
+    }
     const alpha = Math.min(1, this.acc / TICK_MS)
     const choosing = false
     if (choosing && !this.pickerOpen) this.showPicker()
@@ -2822,6 +2848,7 @@ export class Session {
     this.input.dispose()
     this.inventory.dispose()
     this.town.dispose()
+    this.tutor?.dispose()
     this.touch?.dispose()
     this.sfx.dispose()
     window.removeEventListener('keydown', this.onKey)

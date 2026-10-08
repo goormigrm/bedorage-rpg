@@ -50,6 +50,10 @@ export class LocalInput {
   private keys = new Set<string>()
   mouse = { x: VIEW_W / 2, y: VIEW_H / 2 }
   private mouseDown = new Set<number>()
+  /** 왼쪽 버튼을 누르고 있나 (처음 10분 안내 — ui/tutor.ts) */
+  get firing(): boolean {
+    return this.mouseDown.has(0)
+  }
   private lastAim = 0
   /** 조준점까지의 거리 px (마우스면 커서, 터치면 자동 조준 표적) */
   private lastDist = 0
