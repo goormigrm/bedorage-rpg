@@ -34,6 +34,7 @@ registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드�
 import { ACTS, AREAS, NPC_NAMES, QUESTS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
+import { PostFx, gradeFor } from './post'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
@@ -272,6 +273,8 @@ export class Renderer3D {
   /** 빛 알갱이(불꽃 · 마법 — 더하기 빛) · 연기와 먼지 (spritefx.ts — 2026-10-08 퀄리티 2차 1단계). 위 partMesh 는 피 · 뼈 · 색종이 · 탄피 같은 조각만 */
   private glow!: SpriteFx
   private puff!: SpriteFx
+  /** 화면 후처리 — 빛 번짐 · 막마다 색감 (post.ts — 2026-10-08 퀄리티 2차 2단계) */
+  private post!: PostFx
   private readonly partDummy = new THREE.Object3D()
   private ringGeo = new THREE.RingGeometry(0.85, 1, 32)
   private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
@@ -319,6 +322,8 @@ export class Renderer3D {
    * (2026-10-08 퀄리티 2차 1단계). 세계 · 이름표만 덮고 HUD 패널은 그 위에 그린다
    */
   private fade = { t: 0, max: 0.45, rgb: '0,0,0' }
+  /** 다음 프레임은 색감을 서서히가 아니라 바로 맞춘다 (지역을 막 넘었다) */
+  private gradeSnap = true
   private flashes: Flash[] = []
   private rings: Ring[] = []
   private slashes: Slash[] = []
@@ -485,6 +490,7 @@ export class Renderer3D {
     this.gl.outputColorSpace = THREE.SRGBColorSpace
     this.gl.toneMapping = THREE.ACESFilmicToneMapping
     this.gl.toneMappingExposure = 1.05
+    this.post = new PostFx(this.gl)
 
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, VIEW_W / VIEW_H, 0.5, 140)
     this.scene.background = new THREE.Color(map.theme.outside)
@@ -658,6 +664,8 @@ export class Renderer3D {
     this.globeMeshes.clear()
     this.camInit = false
     this.fade = { t: 0.45, max: 0.45, rgb: '0,0,0' }
+    // 새 지역은 그 지역 색감으로 바로 (페이드 동안 바뀐다)
+    this.gradeSnap = true
   }
 
   /**
@@ -841,6 +849,15 @@ export class Renderer3D {
     return this.renderScale
   }
 
+  /** 화면 후처리(빛 번짐 · 색감) 켜고 끄기 — 화질 낮음 · 자동 화질 2 단계부터 끈다. GPU 가 못 하면 늘 꺼져 있다 */
+  setPost(on: boolean): void {
+    this.post.enabled = on && this.post.supported
+  }
+
+  get postOn(): boolean {
+    return this.post.enabled
+  }
+
   /** 그림자 켜고 끄기 (화질 낮음 · 가장 낮은 자동 단계). 바꾸면 재질 셰이더를 한 번 다시 고른다 */
   setShadows(on: boolean): void {
     if (this.gl.shadowMap.enabled === on) return
@@ -876,6 +893,7 @@ export class Renderer3D {
     this.dpr = canvasRatio(STAGE_SCALE, GL_PIXELS) * this.renderScale
     this.gl.setPixelRatio(this.dpr)
     this.gl.setSize(VIEW_W, VIEW_H, false)
+    this.post?.setSize(this.canvas.width, this.canvas.height)
     // 폭이 넓어진 만큼 좌우로 더 보이면 넓은 화면이 유리해진다.
     // 세로 시야를 sqrt(기준비율/현재비율) 만큼 좁혀 **보이는 월드 면적**을 일정하게 맞춘다.
     const a = VIEW_W / VIEW_H
@@ -1816,7 +1834,14 @@ export class Renderer3D {
     this.world.update(this.t, this.camTarget.x, this.camTarget.z)
     this.padLights()
 
-    this.gl.render(this.scene, this.camera)
+    // 색감: 지역(막 · 마을) · 보스가 깨어 있나에 따라 서서히 바뀐다
+    if (this.post.enabled && curr.mode === 'dungeon' && curr.curArea >= 0) {
+      const a = areaDef(curr.curArea)
+      const boss = curr.monsters.some((m) => m.hp > 0 && m.st !== 0 && MONSTER_LIST[m.kind].boss)
+      this.post.blend(gradeFor(a.act, a.kind === 'town', isBright(), boss), this.gradeSnap ? 1 : 1 - Math.exp(-dt * 2.5))
+      this.gradeSnap = false
+    }
+    this.post.render(this.scene, this.camera)
 
     // HUD
     this.hud.begin(dt)
@@ -4656,6 +4681,7 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.post.dispose()
     this.glow.dispose()
     this.puff.dispose()
     this.monsterView.dispose()
