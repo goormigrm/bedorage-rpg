@@ -2356,6 +2356,11 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     hit.push(m)
   })
   hit.sort((a, b) => a.id - b.id)
+  // 치명타 (2026-10-08 사용자: "근접 공격은 크리티컬이 없어? 에임을 올려놓고 공격해도 발동이 안 한다" — 예전에는 늘 false 였다):
+  // 총과 같게 **커서가 올라가 있는 괴물**(조준선이 금색 — aimedMonster)을 휘둘러 맞히면 치명타 · 배율도 총과 같다(headMult + 치명타 피해)
+  const aimed = aimedMonster(state, map, p)
+  const w = WEAPONS[p.weapon]
+  let focusHits = 0
   for (const m of hit) {
     const d = len(m.x - p.x, m.y - p.y) || 1
     // 격정 연주(철면란 E) · 다지기 연타 중 휘두르기에 맞은 괴물은 느려진다 (총의 탄막과 같은 효과)
@@ -2363,7 +2368,13 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     const k = knock * (1 - MONSTER_LIST[m.kind].knockRes)
     m.kx += ((m.x - p.x) / d) * k
     m.ky += ((m.y - p.y) / d) * k
-    hurtMonster(state, m, dmg, p.id, false, m.x, m.y)
+    const crit = m.id === aimed
+    hurtMonster(state, m, crit ? Math.round(dmg * (headMult(w) + p.st[ST_CRIT] / 100)) : dmg, p.id, crit, m.x, m.y)
+    // 집중: 총알 명중처럼 +2 (치명타 +4) — 예전에는 근접이 빠져 철면란 · 승빠란 · 우재란은 저절로 차는 것뿐이었다. 한 번 휘둘러 셋까지
+    if (state.mode === 'dungeon' && focusHits < 3) {
+      focusHits++
+      p.focus = Math.min(100, p.focus + (crit ? 4 : 2) * (1 + 0.1 * (p.build.r[9] ?? 0)))
+    }
     n++
   }
   // 검(우재란)의 흡혈 (던전): 벤 피해의 4% — 근접 딜러가 떼 속에서 버티게 (조용히, 숫자는 띄우지 않는다)

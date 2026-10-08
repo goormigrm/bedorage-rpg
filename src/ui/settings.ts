@@ -18,6 +18,7 @@ const SHAKE_KEY = 'brpg.shake'
 const DMGNUM_KEY = 'brpg.dmgnum'
 const CB_KEY = 'brpg.colorblind'
 const GFX_KEY = 'brpg.gfx'
+const AIM_KEY = 'brpg.aim'
 
 const get = (k: string): string | null => {
   try {
@@ -65,6 +66,39 @@ export const setShakeScale = (k: number): void => {
   shakeK = k
   set(SHAKE_KEY, String(k))
 }
+/**
+ * 조준선(에임) 모양 · 크기 (2026-10-08 사용자: "설정에 에임 모양 및 크기 설정을 추가해줘"). 금색(약점 위) · 히트마커는 모양과 상관없이 그대로.
+ * 모두 어두운 테두리를 둘러 ☀ 밝은 바닥에서도 보인다
+ */
+export type AimShape = 'cross' | 'crossring' | 'ring' | 'dot'
+export const AIM_SHAPES: { id: AimShape; name: string }[] = [
+  { id: 'cross', name: '십자' },
+  { id: 'crossring', name: '십자 + 원' },
+  { id: 'ring', name: '원' },
+  { id: 'dot', name: '점' },
+]
+export const AIM_SIZES: { k: number; name: string }[] = [
+  { k: 0.75, name: '작게' },
+  { k: 1, name: '보통' },
+  { k: 1.4, name: '크게' },
+  { k: 1.8, name: '아주 크게' },
+]
+let aim: { shape: AimShape; size: number } = (() => {
+  try {
+    const v = JSON.parse(get(AIM_KEY) ?? '{}') as { shape?: string; size?: number }
+    const shape = AIM_SHAPES.some((a) => a.id === v.shape) ? (v.shape as AimShape) : 'cross'
+    const size = AIM_SIZES.some((a) => a.k === v.size) ? (v.size as number) : 1
+    return { shape, size }
+  } catch {
+    return { shape: 'cross' as AimShape, size: 1 }
+  }
+})()
+export const aimStyle = (): { shape: AimShape; size: number } => aim
+export function setAimStyle(v: { shape?: AimShape; size?: number }): void {
+  aim = { shape: v.shape ?? aim.shape, size: v.size ?? aim.size }
+  set(AIM_KEY, JSON.stringify(aim))
+}
+
 /** 괴물 위 피해 숫자 보기 (기본 켬) */
 let dmgNum = get(DMGNUM_KEY) !== '0'
 export const dmgNumbersOn = (): boolean => dmgNum
@@ -161,6 +195,7 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     (isTouchDevice() ? '' : hudRowHtml()) +
     gfxRowHtml() +
     shakeRowHtml() +
+    (isTouchDevice() ? '' : aimRowsHtml()) +
     onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
     onoff('색약 모드', palette.colorblind) +
     `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
@@ -185,6 +220,12 @@ function volRowsHtml(): string {
     }).join('') +
     `</div>`
   )
+}
+
+function aimRowsHtml(): string {
+  const shapes = AIM_SHAPES.map((a) => `<button type="button" data-aimshape="${a.id}" class="${a.id === aim.shape ? 'on' : ''}">${a.name}</button>`).join('')
+  const sizes = AIM_SIZES.map((a) => `<button type="button" data-aimsize="${a.k}" class="${a.k === aim.size ? 'on' : ''}">${a.name}</button>`).join('')
+  return `<div class="srow"><b>에임 모양</b><div class="seg small hudseg">${shapes}</div></div><div class="srow"><b>에임 크기</b><div class="seg small hudseg">${sizes}</div></div>`
 }
 
 function shakeRowHtml(): string {
@@ -307,6 +348,18 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       setVolume(inp.dataset.vol as VolKey, pct / 100)
       const em = inp.parentElement?.querySelector('em')
       if (em) em.textContent = `${pct}%`
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-aimshape]').forEach((b) => {
+    b.onclick = () => {
+      setAimStyle({ shape: b.dataset.aimshape as AimShape })
+      redraw()
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-aimsize]').forEach((b) => {
+    b.onclick = () => {
+      setAimStyle({ size: Number(b.dataset.aimsize) })
+      redraw()
     }
   })
   box.querySelectorAll<HTMLButtonElement>('[data-shake]').forEach((b) => {

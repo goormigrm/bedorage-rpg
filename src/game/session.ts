@@ -469,11 +469,11 @@ export class Session {
       // 눌러서 말하기: 버튼을 누르고 있는 동안 · 계속 켜기: 누를 때마다 켜고 끈다
       vb.onpointerdown = (e) => {
         e.preventDefault()
-        if (this.voice?.mode === 'ptt') void this.voice.hold(true).then(() => this.syncVoiceUi())
+        if (this.voice?.mode === 'ptt') void this.pttHold(true)
         else void this.toggleVoice()
       }
       const release = () => {
-        if (this.voice?.mode === 'ptt') void this.voice.hold(false).then(() => this.syncVoiceUi())
+        if (this.voice?.mode === 'ptt') void this.pttHold(false)
       }
       vb.onpointerup = release
       vb.onpointerleave = release
@@ -757,7 +757,11 @@ export class Session {
     const on = await this.voice.toggle()
     this.syncVoiceUi()
     if (!was && !on) this.message = '마이크를 쓸 수 없습니다 (브라우저 권한을 확인하세요)'
-    else this.message = on ? '음성 켜짐 — 같은 게임의 모두에게 들린다' : ''
+    else {
+      // 눌렀다는 것을 귀로도 (내 목소리는 나에게 들리지 않는다 — 2026-10-08)
+      this.sfx.voiceCue(on ? 'on' : 'off')
+      this.message = on ? (this.othersHere() ? '음성 켜짐 — 같은 게임의 모두에게 들린다' : '음성 켜짐 — 지금은 같은 게임에 다른 사람이 없어 들을 사람이 없다 (내 목소리는 나에게 들리지 않는다)') : '음성 꺼짐'
+    }
     setTimeout(() => {
       if (this.message.startsWith('음성') || this.message.startsWith('마이크')) this.message = ''
     }, 2500)
@@ -779,7 +783,32 @@ export class Session {
   /** 눌러서 말하기: B 를 떼면 멈춘다 */
   private onKeyUp = (e: KeyboardEvent): void => {
     if (!isKey(e, 'voice') || !this.voice || this.voice.mode !== 'ptt') return
-    void this.voice.hold(false).then(() => this.syncVoiceUi())
+    void this.pttHold(false)
+  }
+
+  /** 같은 게임에 나 말고 사람이 있나 (봇 · 빈 자리 빼고) — 음성을 들을 사람 */
+  private othersHere(): boolean {
+    return this.state.players.some((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i])
+  }
+
+  /** 눌러서 말하기: 누름 · 뗌 + 확인음 (말하기 시작 · 끝을 귀로 — 2026-10-08) */
+  private async pttHold(down: boolean): Promise<void> {
+    const v = this.voice
+    if (!v) return
+    const was = v.live
+    const had = v.on
+    await v.hold(down)
+    this.syncVoiceUi()
+    if (down && !had && !v.on) {
+      this.message = '마이크를 쓸 수 없습니다 (브라우저 권한을 확인하세요)'
+      setTimeout(() => this.message.startsWith('마이크') && (this.message = ''), 2500)
+      return
+    }
+    if (v.live !== was) this.sfx.voiceCue(v.live ? 'talk' : 'stop')
+    if (down && v.live && !this.othersHere()) {
+      this.message = '말하는 중 — 지금은 같은 게임에 다른 사람이 없어 들을 사람이 없다 (내 목소리는 나에게 들리지 않는다)'
+      setTimeout(() => this.message.startsWith('말하는 중') && (this.message = ''), 2500)
+    }
   }
 
   /** 자리별로 지금 말하고 있나 */
@@ -1113,7 +1142,7 @@ export class Session {
     if (isKey(e, 'voice') && this.voice) {
       e.preventDefault()
       if (e.repeat) return
-      if (this.voice.mode === 'ptt') void this.voice.hold(true).then(() => this.syncVoiceUi())
+      if (this.voice.mode === 'ptt') void this.pttHold(true)
       else void this.toggleVoice()
       return
     }

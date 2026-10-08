@@ -543,7 +543,8 @@ export class Renderer3D {
         l.position.set(x, y, z)
         this.flashes.push({ light: l, mesh: null, life })
       },
-      shake: (k) => (this.shake = Math.max(this.shake, k)),
+      // 2026-10-08 사용자: "맵 흔들림이 멀미 날 정도 — 너무 자주 · 너무 심하다" → 스킬 연출의 흔들림은 절반
+      shake: (k) => (this.shake = Math.max(this.shake, k * 0.5)),
     })
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
@@ -1068,14 +1069,16 @@ export class Renderer3D {
           if (e.p === localPlayer) {
             if (w.scope) {
               // 저격: 크게 흔들리고, 카메라가 반동으로 뒤로 밀리며, 조준경이 번쩍인다
-              this.shake = Math.max(this.shake, 0.32)
-              this.kick = 1.1
+              this.shake = Math.max(this.shake, 0.18)
+              this.kick = 0.8
               this.kickDir = angleToRad(e.aim)
               this.scopeFlash = 1
             } else {
-              this.shake = Math.max(this.shake, w.pellets > 1 ? 0.12 : 0.05)
+              // 쏠 때마다 흔들던 것을 뺐다 (2026-10-08 멀미) — 산탄 · 폭발 무기만 아주 조금
+              if (w.pellets > 1 || w.boom) this.shake = Math.max(this.shake, 0.05)
               // 반동 (2026-10-08 손맛): 모든 총이 쏠 때마다 카메라를 조금 밀어낸다 — 산탄 · 폭발은 크게, 연사 무기는 짧게
-              const kk = w.boom ? 0.5 : w.pellets > 1 ? 0.34 : w.family === 'smg' || w.family === 'mg' ? 0.07 : w.family === 'pistol' ? 0.16 : 0.13
+              // 반동도 절반쯤 (2026-10-08 멀미 — 연사하면 화면이 계속 출렁였다)
+              const kk = w.boom ? 0.3 : w.pellets > 1 ? 0.18 : w.family === 'smg' || w.family === 'mg' ? 0.03 : w.family === 'pistol' ? 0.08 : 0.06
               this.kick = Math.max(this.kick, kk)
               this.kickDir = angleToRad(e.aim)
             }
@@ -1138,7 +1141,7 @@ export class Renderer3D {
           this.spawnImpact(e.x * U, GUN_H, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.8 : 1.7)
           if (e.by === localPlayer) this.hud.hitMark(head)
           if (e.p === localPlayer) {
-            this.shake = Math.max(this.shake, 0.18)
+            this.shake = Math.max(this.shake, 0.1)
             const from = state.players[e.by]
             const me = state.players[e.p]
             if (from && me) {
@@ -1350,7 +1353,9 @@ export class Renderer3D {
             prevHurt.z = e.y * U
           } else this.texts.push({ x: e.x * U, z: e.y * U, y: this.overName(e.p), sx: 24, text: `-${Math.round(e.dmg)}`, life: 0.8, max: 0.8, color: '#ff8a7a', big: false, pop: 0.6, m: hurtKey, sum: Math.round(e.dmg) })
           if (e.p === localPlayer) {
-            this.shake = Math.max(this.shake, 0.18)
+            // 맞을 때마다 흔들던 것 → 최대 체력의 8% 넘는 큰 피해만 (떼에 둘러싸이면 쉬지 않고 흔들렸다 — 2026-10-08 멀미)
+            const hurtMe = state.players[e.p]
+            if (hurtMe && e.dmg >= hurtMe.maxHp * 0.08) this.shake = Math.max(this.shake, 0.12)
             const me = state.players[e.p]
             const src = state.monsters.find((m) => m.id === e.by)
             if (src && me) {
@@ -1371,7 +1376,7 @@ export class Renderer3D {
           const mine = e.by === localPlayer
           if (mine && head) {
             this.hitStop = Math.max(this.hitStop, 0.045)
-            this.punch = Math.max(this.punch, 0.45)
+            this.punch = Math.max(this.punch, 0.22)
           }
           // 근접 무게감 (2026-10-08 손맛): 내 근접 공격이 닿으면 아주 잠깐 멈칫 + 흔들림 (한 번 휘둘러 여럿을 쳐도 한 번)
           if (mine) {
@@ -1379,8 +1384,8 @@ export class Renderer3D {
             if (by && WEAPONS[by.weapon]?.melee && this.t - this.lastMeleeStop > 0.09) {
               this.lastMeleeStop = this.t
               this.hitStop = Math.max(this.hitStop, head ? 0.06 : 0.035)
-              this.shake = Math.max(this.shake, head ? 0.16 : 0.09)
-              this.punch = Math.max(this.punch, head ? 0.5 : 0.2)
+              // 흔들림은 뺐다 (2026-10-08 멀미) — 타격감은 멈칫 · 섬광 · 파편 · 소리로 (spawnMeleeImpact)
+              this.punch = Math.max(this.punch, head ? 0.22 : 0.08)
             }
           }
           if (!hidden && mine && dmgNumbersOn()) {
@@ -1434,7 +1439,8 @@ export class Renderer3D {
           const mineKill = e.by === localPlayer
           this.monsterView.died(e, dir.x, dir.z, rank >= 2 ? 1.2 : mineKill ? 2.6 : 1.6)
           if (mineKill) {
-            this.punch = Math.max(this.punch, rank >= 1 ? 1 : 0.35)
+            // 졸개를 잡을 때마다 당기던 것을 뺐다 (2026-10-08 멀미) — 정예 · 보스만
+            if (rank >= 1) this.punch = Math.max(this.punch, rank >= 2 ? 0.6 : 0.3)
             this.hud.killMark()
             // 연속 처치: 2.5초 안에 다음을 잡으면 이어진다 (HUD 가 셋부터 보인다)
             this.combo = this.t - this.comboAt < 2.5 ? this.combo + 1 : 1
@@ -1447,7 +1453,7 @@ export class Renderer3D {
             light.position.set(e.x * U, 1.4, e.y * U)
             this.flashes.push({ light, mesh: null, life: big ? 0.35 : 0.2 })
             this.spawnRing(e.x * U, e.y * U, 0.3, big ? 5 : 2.8, big ? 0.7 : 0.45, big ? 0xffe0a0 : 0xffc870)
-            this.shake = Math.max(this.shake, big ? 0.55 : 0.3)
+            if (big) this.shake = Math.max(this.shake, 0.3)
             if (mineKill || big) this.hitStop = Math.max(this.hitStop, big ? 0.14 : 0.07)
           }
           if (rank >= 3) {
@@ -1498,7 +1504,7 @@ export class Renderer3D {
           this.skillFx.wave(e.x * U, e.y * U, 0xffd86a, 5, 0.6, 0.5, 2)
           this.spawnImpact(e.x * U, 1.6, e.y * U, 0xfff0b0, 6)
           this.skillFx.sparks(e.x * U, 1.4, e.y * U, 0xffe080, 30, 0.2, 0.6, 0.9)
-          this.shake = Math.max(this.shake, 0.5)
+          this.shake = Math.max(this.shake, 0.25)
           this.hitStop = Math.max(this.hitStop, 0.12)
           this.hud.notice('경직! 3초 — 받는 피해 +25%', '#ffd86a', 2.4)
           break
@@ -1519,7 +1525,7 @@ export class Renderer3D {
           this.spawnImpact(e.x * U, 0.8, e.y * U, 0xff7a4a, e.r * U * 2.4)
           this.spawnRing(e.x * U, e.y * U, 0.4, e.r * U, 0.45, ENEMY_AOE)
           const me = localPlayer >= 0 ? state.players[localPlayer] : null
-          if (me && Math.hypot(me.x - e.x, me.y - e.y) < 500) this.shake = Math.max(this.shake, 0.3)
+          if (me && Math.hypot(me.x - e.x, me.y - e.y) < 500) this.shake = Math.max(this.shake, 0.15)
           break
         }
         case 'shotEnd':
@@ -1534,7 +1540,7 @@ export class Renderer3D {
           }
           this.spawnRing(e.x * U, e.y * U, 0.3, 1.6, 0.5, 0xff5a4a)
           this.hud.notice(`${nm[e.p]} 쓰러짐`, '#ff8a7a')
-          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.35)
+          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.25)
           break
         }
         case 'revive': {
@@ -1566,7 +1572,7 @@ export class Renderer3D {
             if (revenge) this.lastKiller = -1
             this.hud.notice(`${nm[e.by]} → ${nm[e.p]}${revenge ? ' · 복수!' : ''}`, '#' + CHARACTERS[state.players[e.by].char].bodyColor.toString(16).padStart(6, '0'))
           } else this.hud.notice(e.out ? `${nm[e.p]} 탈락` : `${nm[e.p]} 사망 · 입구에서 다시 일어납니다`, e.out ? '#ff5a4a' : '#ffb0a4')
-          this.shake = Math.max(this.shake, e.p === localPlayer ? 0.35 : 0.2)
+          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.25)
           break
         }
         case 'respawn': {
@@ -1639,7 +1645,7 @@ export class Renderer3D {
           // 보스 분노 (체력 절반 · 군주는 2/3 · 1/3): 새로 쓰는 패턴을 알려 준다
           this.spawnRing(e.x * U, e.y * U, 0.5, 6, 1.0, 0xff5a2a)
           this.spawnImpact(e.x * U, 1.4, e.y * U, 0xff6a3a, 6)
-          this.shake = Math.max(this.shake, 0.5)
+          this.shake = Math.max(this.shake, 0.3)
           const id = MONSTER_LIST[e.kind]?.id
           const [t, sub] =
             id === 'butcher' ? ['도살자가 광분한다', '고기 비 — 발밑의 붉은 원에서 비켜라 · 더 빨라진다']
@@ -1653,7 +1659,7 @@ export class Renderer3D {
         case 'bzone':
           this.onBossBlast(e, state, localPlayer)
           // 즉사기가 터졌다: 크게 흔들린다
-          if (e.kill) this.shake = Math.max(this.shake, 0.7)
+          if (e.kill) this.shake = Math.max(this.shake, 0.45)
           break
         case 'bossUlt': {
           // 막 보스 즉사기: 보스가 대사를 외치고(검붉은 큰 말풍선) · 화면 경고 · 흔들림 (경보음은 sfx)
@@ -1661,13 +1667,13 @@ export class Renderer3D {
           const ms = (e.t / 60) * 1000
           this.monsterSay(e.m, MONSTER_LIST[e.kind].name, pd?.line ?? '…', false, true, ms + 900)
           this.ultWarn = { name: pd?.name ?? '즉사기', hint: pd?.hint ?? '범위 밖으로', t0: performance.now(), until: performance.now() + ms }
-          this.shake = Math.max(this.shake, 0.35)
+          this.shake = Math.max(this.shake, 0.2)
           break
         }
         case 'ultHit':
           this.spawnRing(e.x * U, e.y * U, 0.2, 2.2, 0.6, 0xff2a1a)
           this.spawnImpact(e.x * U, 1, e.y * U, 0xff2a1a, 3)
-          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.9)
+          if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.5)
           break
         case 'hook': {
           // 도살자 갈고리: 끌려온 길을 따라 핏빛 사슬
@@ -2063,8 +2069,8 @@ export class Renderer3D {
       this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
       // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다(v0.61.0) — 처음 온 사람은 모른다 (2026-09-25 사용자 고른 개선 2)
       if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
-      this.shake = Math.max(this.shake, 0.55)
-      this.punch = Math.max(this.punch, 1)
+      this.shake = Math.max(this.shake, 0.3)
+      this.punch = Math.max(this.punch, 0.5)
       // 등장 장면: 화면 위아래 검은 띠 + 카메라가 보스 쪽으로 다가갔다 돌아온다 (2.2초 — 보스 방 보스는 먼저 치기 전엔 가만히라 안전)
       this.bossCut = { x: m.x * U, z: m.y * U, t: 0 }
       this.hud.cinema(2.2)
@@ -3697,7 +3703,7 @@ export class Renderer3D {
       const light = this.takeLight(color, 14, 9, 1.5)
       light.position.set(x, 1.5, z)
       this.flashes.push({ light, mesh: null, life: 0.25 })
-      if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.25)
+      if (e.p === localPlayer) this.shake = Math.max(this.shake, 0.1)
       const v = this.vis[e.p]
       if (v) {
         v.vsx -= 0.3
@@ -3736,7 +3742,7 @@ export class Renderer3D {
     }
     if (e.id === 'grenade' || e.id === 'roar' || e.id === 'supernova' || e.id === 'trap') {
       this.spawnImpact(x, 0.8, z, color, r * 2.2)
-      this.shake = Math.max(this.shake, 0.25)
+      this.shake = Math.max(this.shake, 0.15)
     }
   }
 
@@ -3950,7 +3956,7 @@ export class Renderer3D {
       burst(x, z, e.r * U * 2.2, 14)
     }
     const me = localPlayer >= 0 ? state.players[localPlayer] : null
-    if (me && Math.hypot(me.x - e.x, me.y - e.y) < 600) this.shake = Math.max(this.shake, 0.3)
+    if (me && Math.hypot(me.x - e.x, me.y - e.y) < 600) this.shake = Math.max(this.shake, 0.15)
   }
 
   /** 수류탄: 던진 곳에서 목표로 포물선 */
@@ -4810,7 +4816,7 @@ export class Renderer3D {
       if (v.hitCd > 0) v.hitCd -= dt
       if (v.swing > 0) v.swing = Math.max(0, v.swing - dt * 4)
     }
-    this.shake = Math.max(0, this.shake - dt * 1.4)
+    this.shake = Math.max(0, this.shake - dt * 2.2)
     this.kick = Math.max(0, this.kick - dt * 5)
     this.punch = Math.max(0, this.punch - dt * 4.5)
     this.blood?.update(dt)
@@ -4905,8 +4911,10 @@ export class Renderer3D {
     }
     // 화면 흔들림 세기 (설정 — 끔 · 약하게 · 보통). 후원 "화면 흔들림" 은 아래에서 그대로
     const sk = shakeScale()
-    let shx = (Math.random() - 0.5) * this.shake * sk
-    let shz = (Math.random() - 0.5) * this.shake * sk
+    // 장마다 무작위로 튀던 떨림이 멀미를 불렀다 (2026-10-08 사용자: "맵 흔들림이 멀미 날 정도") → 부드러운 떨림(사인 둘) · 폭 0.6 배
+    const st = this.t
+    let shx = (Math.sin(st * 29.3) + 0.6 * Math.sin(st * 47.9 + 1.7)) * 0.19 * this.shake * sk
+    let shz = (Math.cos(st * 26.1 + 0.4) + 0.6 * Math.sin(st * 43.7 + 2.9)) * 0.19 * this.shake * sk
     // 후원 "화면 흔들림" (2026-09-26 — core/donate.ts): 화면이 잘게 떨린다 · 0.3초쯤에 걸쳐 들어오고 빠진다. 마우스 조준점도 화면을 따라 움직인다.
     // 처음(v0.68.1)에는 크게 느리게 출렁이고(1초에 한 번 · 0.6칸) 기울기까지 해 멀미가 났다(2026-09-26 사용자) → 기울기를 빼고,
     // 느린 출렁임 대신 **작고 빠른 떨림**(초당 2~4번 · 폭 0.16칸 — 전의 약 ¼)

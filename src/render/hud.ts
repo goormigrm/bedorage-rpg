@@ -3,6 +3,7 @@
 
 import { keyLabel } from '../game/keymap'
 import { bt } from '../game/skin'
+import { aimStyle } from '../ui/settings'
 import { WEAPONS } from '../core/weapons'
 import { CHARACTERS } from '../core/characters'
 import { GameState, PlayerState } from '../core/state'
@@ -570,23 +571,49 @@ export class Hud {
 
   private drawCursor(cur: { x: number; y: number }, me: PlayerState, on: boolean): void {
     const ctx = this.ctx
-    const r = me.ads ? 6 : 12 + me.recoil * 0.4
-    // 상대 위에 올라가 있으면 금색 — 지금 쏘면 헤드샷이 날 수 있다는 신호
-    ctx.strokeStyle = on ? 'rgba(255,216,74,0.95)' : 'rgba(255,255,255,0.9)'
-    ctx.lineWidth = on ? 2.5 : 2
+    // 모양 · 크기는 설정 (2026-10-08 — ui/settings.ts aimStyle)
+    const st = aimStyle()
+    const k = st.size
+    const r = (me.ads ? 6 : 12 + me.recoil * 0.4) * k
+    const tick = 6 * k
+    const col = on ? 'rgba(255,216,74,0.95)' : 'rgba(255,255,255,0.92)'
+    const path = () => {
+      ctx.beginPath()
+      if (st.shape === 'cross' || st.shape === 'crossring') {
+        ctx.moveTo(cur.x - r - tick, cur.y)
+        ctx.lineTo(cur.x - r, cur.y)
+        ctx.moveTo(cur.x + r, cur.y)
+        ctx.lineTo(cur.x + r + tick, cur.y)
+        ctx.moveTo(cur.x, cur.y - r - tick)
+        ctx.lineTo(cur.x, cur.y - r)
+        ctx.moveTo(cur.x, cur.y + r)
+        ctx.lineTo(cur.x, cur.y + r + tick)
+      }
+      if (st.shape === 'crossring' || st.shape === 'ring') {
+        ctx.moveTo(cur.x + r + (st.shape === 'ring' ? 2 * k : 0), cur.y)
+        ctx.arc(cur.x, cur.y, r + (st.shape === 'ring' ? 2 * k : 0), 0, Math.PI * 2)
+      }
+    }
+    // 어두운 테두리 먼저 (☀ 밝은 바닥에서 흰 조준선이 묻혔다) → 그 위에 색
+    const lw = (on ? 2.5 : 2) * Math.max(1, k * 0.85)
+    if (st.shape !== 'dot') {
+      ctx.strokeStyle = 'rgba(20,14,30,0.55)'
+      ctx.lineWidth = lw + 2.2
+      path()
+      ctx.stroke()
+      ctx.strokeStyle = col
+      ctx.lineWidth = lw
+      path()
+      ctx.stroke()
+    }
+    const dr = (st.shape === 'dot' ? 3.2 : on ? 2.2 : 1.5) * k * (st.shape === 'dot' && on ? 1.25 : 1)
+    ctx.fillStyle = 'rgba(20,14,30,0.55)'
     ctx.beginPath()
-    ctx.moveTo(cur.x - r - 6, cur.y)
-    ctx.lineTo(cur.x - r, cur.y)
-    ctx.moveTo(cur.x + r, cur.y)
-    ctx.lineTo(cur.x + r + 6, cur.y)
-    ctx.moveTo(cur.x, cur.y - r - 6)
-    ctx.lineTo(cur.x, cur.y - r)
-    ctx.moveTo(cur.x, cur.y + r)
-    ctx.lineTo(cur.x, cur.y + r + 6)
-    ctx.stroke()
-    ctx.fillStyle = on ? 'rgba(255,216,74,0.95)' : 'rgba(255,255,255,0.9)'
+    ctx.arc(cur.x, cur.y, dr + 1.2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = col
     ctx.beginPath()
-    ctx.arc(cur.x, cur.y, on ? 2.2 : 1.5, 0, Math.PI * 2)
+    ctx.arc(cur.x, cur.y, dr, 0, Math.PI * 2)
     ctx.fill()
     // 히트마커: 네 귀퉁이 사선이 바깥으로 벌어지며 사라진다. 몸통은 **빨강**, 머리는 **금색**으로 더 크고 오래 + 링
     if (this.hitMarkT > 0) {

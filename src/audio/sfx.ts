@@ -321,9 +321,11 @@ export class Sfx {
    * 노이즈를 빼고 낮은 소리만 남긴다. 어택도 2ms → 6ms 로 늘려 시작의 딸깍(클릭)을 없앤다.
    */
   private foot(s: Spatial, right: boolean, mine: boolean): void {
-    const { node, t0 } = this.bus(s, mine ? 0.26 : 0.55)
-    // 녹음 발소리 (2026-10-08 S4) — 좌우 발을 높이로 조금 다르게
-    if (this.sample(this.stepGrass ? 'stepGrass' : 'stepStone', node, t0, 0.8, right ? 1.02 : 0.97, 0.05)) return
+    const { node, t0 } = this.bus(s, mine ? 0.22 : 0.32)
+    // 녹음 발소리 (2026-10-08 S4) — 좌우 발을 높이로 조금 다르게.
+    // 2026-10-08 사용자: "발소리가 깨지는 것처럼 들린다" — 자갈 사각거림(높은 소리)이 걸음마다 · 시작 · 끝이 툭 끊겼다 →
+    // 1.3 kHz 위를 걸러 내고(둔한 발걸음) · 시작 · 끝을 짧게 페이드 · 0.16초에서 끊는다 · 크기 0.8 → 0.5
+    if (this.sample(this.stepGrass ? 'stepGrass' : 'stepStone', node, t0, 0.5, right ? 1.02 : 0.97, 0.05, { lowpass: 1300, maxDur: 0.16 })) return
     const f = right ? 126 : 112
     this.tone(node, t0, 0.07, 'sine', f, f * 0.5, 0.42, 0.006)
   }
@@ -1578,7 +1580,7 @@ export class Sfx {
   }
 
   /** 녹음 소리 하나 (변형 중 무작위 · 높이를 조금씩 바꿔 같은 소리가 되풀이되지 않게). 아직 없으면 false — 부른 쪽이 합성으로 */
-  private sample(g: string, bus: AudioNode, t0: number, vol: number, rate = 1, spread = 0.07): boolean {
+  private sample(g: string, bus: AudioNode, t0: number, vol: number, rate = 1, spread = 0.07, o?: { lowpass?: number; maxDur?: number }): boolean {
     const l = this.samples.get(g)
     const ctx = this.ctx
     if (!l || l.length === 0 || !ctx) return false
@@ -1586,11 +1588,29 @@ export class Sfx {
     src.buffer = l[Math.floor(Math.random() * l.length)]
     src.playbackRate.value = rate * (1 - spread + Math.random() * 2 * spread)
     const gn = ctx.createGain()
-    gn.gain.value = vol
-    src.connect(gn)
+    const extra: AudioNode[] = [gn]
+    if (o) {
+      // 시작 4ms 페이드 인 · 끝 페이드 아웃 (툭 끊기는 딸깍을 없앤다)
+      gn.gain.setValueAtTime(0, t0)
+      gn.gain.linearRampToValueAtTime(vol, t0 + 0.004)
+      if (o.maxDur) {
+        gn.gain.setValueAtTime(vol, t0 + Math.max(0.01, o.maxDur - 0.05))
+        gn.gain.linearRampToValueAtTime(0, t0 + o.maxDur)
+      }
+    } else gn.gain.value = vol
+    if (o?.lowpass) {
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = o.lowpass
+      lp.Q.value = 0.5
+      src.connect(lp)
+      lp.connect(gn)
+      extra.push(lp)
+    } else src.connect(gn)
     gn.connect(bus)
-    this.finish(src, [gn], bus, true)
+    this.finish(src, extra, bus, true)
     src.start(t0)
+    if (o?.maxDur) src.stop(t0 + o.maxDur + 0.02)
     return true
   }
 
@@ -1887,6 +1907,24 @@ export class Sfx {
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
     for (const [i, f] of [523, 659, 784, 1047, 1319].entries()) this.tone(node, t0 + i * 0.07, 0.6, 'triangle', f, f, 0.24, 0.006)
     this.shimmer(0.5, 1)
+  }
+
+  /**
+   * 음성 대화 확인음 (2026-10-08 사용자: "음성 켜기 끄기를 눌러도 소리가 안 난다" — 내 목소리는 나에게 들리지 않아, 눌렀는지 귀로 알 길이 없었다):
+   * 켬 = 오르는 두 음 · 끔 = 내리는 두 음 · 누르고 말하기 시작 = 짧은 똑 · 뗌 = 더 낮은 똑
+   */
+  voiceCue(kind: 'on' | 'off' | 'talk' | 'stop'): void {
+    if (!this.ready()) return
+    const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
+    if (kind === 'on') {
+      this.tone(node, t0, 0.09, 'sine', 660, 660, 0.3, 0.004)
+      this.tone(node, t0 + 0.09, 0.14, 'sine', 990, 990, 0.3, 0.004)
+    } else if (kind === 'off') {
+      this.tone(node, t0, 0.09, 'sine', 880, 880, 0.26, 0.004)
+      this.tone(node, t0 + 0.09, 0.14, 'sine', 587, 587, 0.26, 0.004)
+    } else {
+      this.tone(node, t0, 0.05, 'triangle', kind === 'talk' ? 1320 : 880, kind === 'talk' ? 1500 : 760, 0.22, 0.002)
+    }
   }
 
   /** 짧은 알림음 (창 열기·줍기 등 UI) */
