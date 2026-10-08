@@ -3,7 +3,7 @@
 // 브라우저 자동재생 정책: 첫 클릭/키 입력 전에는 소리가 나지 않는다 (그 전 이벤트는 버린다).
 
 import { isBright } from '../game/skin'
-import { GameState, SPRINT_MUL, SimEvent } from '../core/state'
+import { GameState, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
 import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
@@ -89,6 +89,9 @@ export class Sfx {
   private lastMDeath = 0
   private lastMelee = 0
   private lastKill = 0
+  private lastCasing = 0
+  /** 심장 소리 (체력 30% 아래 — 2026-10-08 손맛) 다음 시각 */
+  private nextBeat = 0
   /** 괴물 목소리 되풀이 제한 (ms 시각): 아무 괴물 · 종류마다 · 보스 · 곁의 괴물 옆 소리 */
   private lastVoice = 0
   private kindVoice = new Map<number, number>()
@@ -255,6 +258,7 @@ export class Sfx {
    */
   updateSteps(state: GameState, localPlayer: number, dt: number): void {
     if (!this.ready() || state.phase !== 'playing') return
+    this.heartbeat(state.players[localPlayer])
     const n = state.players.length
     if (this.stepPhase.length !== n) {
       this.stepPhase = new Array(n).fill(0)
@@ -395,6 +399,18 @@ export class Sfx {
         case 'fire':
           this.gun(e.weapon, sp(e.x, e.y), e.p === localPlayer)
           this.intensity = Math.min(1, this.intensity + 0.06)
+          // 탄피가 바닥에 떨어지는 "팅" (내 총만 · 작게 · 0.12초에 한 번 — 2026-10-08 손맛)
+          if (e.p === localPlayer && performance.now() - this.lastCasing > 120) {
+            const w = WEAPONS[e.weapon]
+            if (w && !w.melee && !w.boom && e.weapon !== 'flamer' && e.weapon !== 'crossbow') {
+              this.lastCasing = performance.now()
+              const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.18)
+              const k = 0.9 + Math.random() * 0.25
+              const at = b.t0 + 0.28 + Math.random() * 0.08
+              this.tone(b.node, at, 0.05, 'triangle', (w.pellets > 1 ? 2400 : 4200) * k, (w.pellets > 1 ? 2000 : 3600) * k, 0.35, 0.001)
+              this.tone(b.node, at + 0.07, 0.04, 'triangle', (w.pellets > 1 ? 2200 : 3900) * k, (w.pellets > 1 ? 1900 : 3400) * k, 0.18, 0.001)
+            }
+          }
           break
         case 'bash':
           this.gun('pan', sp(e.x, e.y), e.p === localPlayer) // 개머리판 휘두르기 = 후라이팬 소리
@@ -490,8 +506,10 @@ export class Sfx {
           this.voice(e.kind, 'death', sp(e.x, e.y), 0.55)
           // 손맛: 내가 잡았으면 묵직한 "퍽" (40ms 에 한 번)
           if (e.by === localPlayer && now - this.lastKill > 40) {
+            // 연속 처치 (2026-10-08 손맛): 2.5초 안에 잇달아 잡으면 처치음 위에 한 음씩 올라가는 "띵"
+            this.combo = now - this.lastKill < 2500 ? this.combo + 1 : 1
             this.lastKill = now
-            this.killThump()
+            this.killThump(this.combo)
           }
           this.intensity = Math.min(1, this.intensity + 0.05)
           break
@@ -926,10 +944,31 @@ export class Sfx {
   }
 
   /** 내가 잡았다: 낮게 울리는 "퍽" + 짧은 파열 (손맛 — 2026-09-19) */
-  private killThump(): void {
+  private combo = 0
+  /** 체력이 30% 아래면 낮은 "쿵-쿵" — 낮을수록 빠르게 (2026-10-08 손맛) */
+  private heartbeat(me: PlayerState | undefined): void {
+    if (!me || !me.alive || me.downed || me.maxHp <= 0) return
+    const frac = me.hp / me.maxHp
+    if (frac >= 0.3) return
+    const now = performance.now()
+    if (now < this.nextBeat) return
+    const low = (0.3 - frac) / 0.3
+    this.nextBeat = now + 900 - low * 350
+    const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.35 + low * 0.25)
+    this.tone(b.node, b.t0, 0.12, 'sine', 70, 42, 0.9, 0.004)
+    this.tone(b.node, b.t0 + 0.17, 0.1, 'sine', 62, 38, 0.6, 0.004)
+  }
+
+  private killThump(combo = 1): void {
     const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.8)
     this.tone(b.node, b.t0, 0.14, 'sine', 120, 42, 0.9, 0.002)
     this.noiseBurst(b.node, b.t0, 0.07, 'lowpass', 1400, 300, 0.5, 1)
+    // 셋째부터 반음씩 올라가는 맑은 "띵" (한 옥타브까지) — 몰아 잡는 맛
+    if (combo >= 3) {
+      const f = 660 * Math.pow(2, Math.min(12, combo - 3) / 12)
+      this.tone(b.node, b.t0 + 0.01, 0.16, 'triangle', f, f, 0.16, 0.002)
+      this.tone(b.node, b.t0 + 0.01, 0.12, 'sine', f * 2, f * 2, 0.06, 0.002)
+    }
   }
 
   // ---------- 괴물 목소리 (2026-09-24 — 종류마다 · 모두 즉석 합성, 파일 없음) ----------

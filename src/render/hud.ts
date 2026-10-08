@@ -143,6 +143,9 @@ export class Hud {
   private hitMarkMax = 0.22
   private hitMarkHead = false
   private killMarkT = 0
+  /** 연속 처치 (2026-10-08 손맛): 수 · 마지막으로 늘어난 시각 */
+  private comboN = 0
+  private comboT = -99
   private overT = 0
   private countdownPulse = 0
   private lastCountdownSec = -1
@@ -175,6 +178,51 @@ export class Hud {
   /** 처치 표시: 조준 표시가 굵은 붉은 X 로 (손맛 — 2026-09-19) */
   killMark(): void {
     this.killMarkT = 0.4
+  }
+
+  /** 연속 처치 수 (renderer — 내가 잡을 때마다) */
+  setCombo(n: number): void {
+    this.comboN = n
+    this.comboT = this.t
+  }
+
+  /** 연속 처치: 셋부터 화면 오른쪽 가운데에 "×N 연속 처치" — 늘 때마다 튀고, 많을수록 크고 뜨거운 색 · 2.5초 뒤 사라진다 */
+  private drawCombo(): void {
+    const age = this.t - this.comboT
+    if (this.comboN < 3 || age > 3) return
+    const ctx = this.ctx
+    const a = age < 2.5 ? 1 : 1 - (age - 2.5) / 0.5
+    const pop = 1 + Math.max(0, 0.35 - age) * 1.6
+    const n = this.comboN
+    const col = n >= 50 ? '#ff5a3a' : n >= 25 ? '#ff8a3a' : n >= 10 ? '#ffc84a' : '#f1e3b8'
+    const x = VIEW_W / 2 + 230
+    const y = VIEW_H * 0.36
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, a)
+    ctx.translate(x, y)
+    ctx.scale(pop, pop)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.lineWidth = 4
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+    ctx.font = `900 ${Math.round(30 + Math.min(18, n * 0.4))}px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
+    const big = `×${n}`
+    ctx.strokeText(big, 0, 0)
+    ctx.fillStyle = col
+    ctx.fillText(big, 0, 0)
+    const w = ctx.measureText(big).width
+    ctx.font = `800 14px "IBM Plex Sans KR", "Malgun Gothic", sans-serif`
+    ctx.lineWidth = 3
+    ctx.strokeText('연속 처치', w + 8, -3)
+    ctx.fillStyle = '#e8dcc0'
+    ctx.fillText('연속 처치', w + 8, -3)
+    // 남은 시간 막대 (다음 처치까지)
+    const left = Math.max(0, 1 - age / 2.5)
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'
+    ctx.fillRect(0, 8, 120, 4)
+    ctx.fillStyle = col
+    ctx.fillRect(0, 8, 120 * left, 4)
+    ctx.restore()
   }
 
   addHitDir(angle: number, big: boolean): void {
@@ -287,13 +335,22 @@ export class Hud {
     ctx.globalAlpha = 1
   }
 
-  drawVignette(): void {
+  /** low = 체력이 낮은 정도 (0~1) — 가장자리가 붉게 숨 쉰다 (2026-10-08 손맛) */
+  drawVignette(low = 0): void {
     const ctx = this.ctx
     const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.5, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.78)
     g.addColorStop(0, 'rgba(0,0,0,0)')
     g.addColorStop(1, 'rgba(0,0,0,0.35)')
     ctx.fillStyle = g
     ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    if (low > 0) {
+      const beat = 0.55 + 0.45 * Math.max(0, Math.sin(this.t * (5 + low * 3)))
+      const r = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.42, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.72)
+      r.addColorStop(0, 'rgba(160,0,0,0)')
+      r.addColorStop(1, `rgba(170,10,10,${(0.18 + 0.32 * low) * beat})`)
+      ctx.fillStyle = r
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    }
   }
 
   drawMain(s: GameState, opts: RenderOptions): void {
@@ -303,6 +360,7 @@ export class Hud {
     this.drawBanner(s, opts)
     const lp = opts.localPlayer
     if (opts.cursor && lp !== -1) this.drawCursor(opts.cursor, s.players[lp], opts.cursorOn === true)
+    this.drawCombo()
   }
 
   private drawPanels(s: GameState, opts: RenderOptions): void {

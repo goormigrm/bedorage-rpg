@@ -117,6 +117,11 @@ interface WorldText {
   big: boolean
   /** 막 뜰 때 튀어 오르는 정도 (기본 0.8, 헤드샷은 더 크게) */
   pop?: number
+  /** 옆으로 흐르는 정도 (월드 단위 — 숫자가 한 줄로 쌓이지 않게) */
+  dx?: number
+  /** 같은 괴물에 잇달아 맞힌 피해를 한 숫자로 합친다 (2026-10-08 손맛) — 그 괴물 · 합 */
+  m?: number
+  sum?: number
 }
 
 interface DuckVis {
@@ -391,7 +396,13 @@ export class Renderer3D {
   private punch = 0
   /** 바닥 핏자국 (인스턴스 — 오래된 것부터 덮어쓴다) */
   private blood: BloodDecals | null = null
-  /** 저격 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위) */
+  /** 연속 처치 (2026-10-08 손맛): 2.5초 안에 다음을 잡으면 이어진다 — HUD 숫자 · 처치음 높이 */
+  private combo = 0
+  private comboAt = -99
+  /** 내 총구 빛 · 근접 멈칫을 너무 자주 켜지 않게 (초) */
+  private lastMuzzle = -99
+  private lastMeleeStop = -99
+  /** 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위 — 2026-10-08 부터 모든 총, 무기마다 세기) */
   private kick = 0
   private kickDir = 0
   /** 저격 조준경 섬광 (0~1). 스코프 안에서는 총구 화염이 안 보여 쐈는지도 몰랐다(제보) */
@@ -942,7 +953,32 @@ export class Renderer3D {
               this.kick = 1.1
               this.kickDir = angleToRad(e.aim)
               this.scopeFlash = 1
-            } else this.shake = Math.max(this.shake, w.pellets > 1 ? 0.12 : 0.05)
+            } else {
+              this.shake = Math.max(this.shake, w.pellets > 1 ? 0.12 : 0.05)
+              // 반동 (2026-10-08 손맛): 모든 총이 쏠 때마다 카메라를 조금 밀어낸다 — 산탄 · 폭발은 크게, 연사 무기는 짧게
+              const kk = w.boom ? 0.5 : w.pellets > 1 ? 0.34 : w.family === 'smg' || w.family === 'mg' ? 0.07 : w.family === 'pistol' ? 0.16 : 0.13
+              this.kick = Math.max(this.kick, kk)
+              this.kickDir = angleToRad(e.aim)
+            }
+            // 총구 빛: 둘레 바닥 · 벽이 번쩍 (내 총만 · 70ms 에 한 번 — 빛은 셰이더 비용)
+            if (this.t - this.lastMuzzle > 0.07) {
+              this.lastMuzzle = this.t
+              const light = this.takeLight(0xffb060, big ? 34 : w.pellets > 1 ? 22 : 12, big ? 9 : 6, 1.6)
+              light.position.copy(tip)
+              this.flashes.push({ light, mesh: null, life: big ? 0.08 : 0.05 })
+            }
+          }
+          // 탄피 (2026-10-08 손맛): 총 옆으로 튀어 바닥에 굴러간다 — 산탄은 붉은 껍데기, 나머지는 놋쇠. 화염방사기 · 쇠뇌 · 발사기는 없다
+          if (!this.hidden[e.p] && !w.boom && w.id !== 'flamer' && w.id !== 'crossbow' && (e.p === localPlayer || Math.random() < 0.4)) {
+            const rad = angleToRad(e.aim)
+            const side = rad - Math.PI / 2
+            const sp = 0.035 + Math.random() * 0.025
+            const shell = w.pellets > 1
+            this.spawnParticle(
+              tip.x - Math.cos(rad) * 0.25, tip.y + 0.05, tip.z - Math.sin(rad) * 0.25,
+              Math.cos(side) * sp - Math.cos(rad) * 0.01, 0.07 + Math.random() * 0.04, Math.sin(side) * sp - Math.sin(rad) * 0.01,
+              1.3, shell ? 0xc8402a : 0xe0b850, shell ? 0.11 : 0.085,
+            )
           }
           break
         }
@@ -1167,13 +1203,35 @@ export class Renderer3D {
             this.hitStop = Math.max(this.hitStop, 0.045)
             this.punch = Math.max(this.punch, 0.45)
           }
+          // 근접 무게감 (2026-10-08 손맛): 내 근접 공격이 닿으면 아주 잠깐 멈칫 + 흔들림 (한 번 휘둘러 여럿을 쳐도 한 번)
+          if (mine) {
+            const by = state.players[e.by]
+            if (by && WEAPONS[by.weapon]?.melee && this.t - this.lastMeleeStop > 0.09) {
+              this.lastMeleeStop = this.t
+              this.hitStop = Math.max(this.hitStop, head ? 0.06 : 0.035)
+              this.shake = Math.max(this.shake, head ? 0.16 : 0.09)
+              this.punch = Math.max(this.punch, head ? 0.5 : 0.2)
+            }
+          }
           if (!hidden && mine) {
-            this.texts.push({
-              x: e.x * U, z: e.y * U, y: head ? 1.7 : 1.5,
-              text: head ? `치명 ${e.dmg}` : `${e.dmg}`,
-              life: head ? 0.9 : 0.6, max: head ? 0.9 : 0.6,
-              color: head ? '#ffd84a' : '#ffffff', big: head, pop: head ? 1.4 : 0.5,
-            })
+            // 잇달아 맞힌 같은 괴물의 숫자는 하나로 합쳐 커진다 (연사 무기 숫자가 화면을 덮지 않게 · 쌓이는 맛) — 치명타는 따로
+            const prev = head ? undefined : this.texts.find((t) => t.m === e.m && t.sum !== undefined && t.max - t.life < 0.3)
+            if (prev) {
+              prev.sum! += e.dmg
+              prev.text = `${prev.sum}`
+              prev.life = prev.max
+              prev.pop = Math.min(1.3, 0.5 + prev.sum! / 300)
+              prev.x = e.x * U
+              prev.z = e.y * U
+            } else {
+              this.texts.push({
+                x: e.x * U, z: e.y * U, y: head ? 1.7 : 1.5,
+                text: head ? `치명 ${e.dmg}` : `${e.dmg}`,
+                life: head ? 0.9 : 0.6, max: head ? 0.9 : 0.6,
+                color: head ? '#ffd84a' : '#ffffff', big: head, pop: head ? 1.4 : 0.5,
+                dx: (Math.random() - 0.5) * 0.7, m: head ? undefined : e.m, sum: head ? undefined : e.dmg,
+              })
+            }
             if (this.texts.length > 80) this.texts.splice(0, this.texts.length - 80)
           }
           if (!hidden) {
@@ -1206,6 +1264,10 @@ export class Renderer3D {
           if (mineKill) {
             this.punch = Math.max(this.punch, rank >= 1 ? 1 : 0.35)
             this.hud.killMark()
+            // 연속 처치: 2.5초 안에 다음을 잡으면 이어진다 (HUD 가 셋부터 보인다)
+            this.combo = this.t - this.comboAt < 2.5 ? this.combo + 1 : 1
+            this.comboAt = this.t
+            this.hud.setCombo(this.combo)
           }
           if (rank >= 1) {
             const big = rank >= 2
@@ -1670,7 +1732,7 @@ export class Renderer3D {
     // HUD
     this.hud.begin(dt)
     const st: ScreenText[] = this.texts.map((t) => {
-      const p = this.worldToScreen(t.x, t.y + (1 - t.life / t.max) * 0.8, t.z)
+      const p = this.worldToScreen(t.x + (t.dx ?? 0) * (1 - t.life / t.max), t.y + (1 - t.life / t.max) * 0.8, t.z)
       const k = t.life / t.max
       // 막 뜰 때 크게 튀었다가 제 크기로 (덕코프 숫자 느낌). 헤드샷은 더 크게 튄다
       return { x: p.x, y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
@@ -1686,7 +1748,12 @@ export class Renderer3D {
     this.drawPings()
     this.drawMarkArrows()
     this.drawNameTags(curr, pos, opts)
-    this.hud.drawVignette()
+    {
+      // 체력이 30% 아래면 화면 가장자리가 붉게 숨 쉰다 (2026-10-08 손맛 — 심장 소리는 sfx)
+      const me = opts.localPlayer >= 0 ? curr.players[opts.localPlayer] : undefined
+      const frac = me && me.alive && !me.downed && me.maxHp > 0 ? me.hp / me.maxHp : 1
+      this.hud.drawVignette(frac < 0.3 ? (0.3 - frac) / 0.3 : 0)
+    }
     if (this.scoped && opts.cursor) {
       const me = pos[opts.localPlayer]
       this.drawScope(opts.cursor, this.worldToScreen(me.x, 0.6, me.z))
