@@ -226,7 +226,15 @@ export class Sfx {
     comp.attack.value = 0.003
     comp.release.value = 0.16
     master.connect(comp)
-    comp.connect(ctx.destination)
+    // 리미터 (2026-10-08 퀄리티 2차 4단계 S5): 큰 소리가 몰려도 깨지지 않게 마지막에 한 번 더 누른다
+    const lim = ctx.createDynamicsCompressor()
+    lim.threshold.value = -1.5
+    lim.knee.value = 0
+    lim.ratio.value = 20
+    lim.attack.value = 0.001
+    lim.release.value = 0.08
+    comp.connect(lim)
+    lim.connect(ctx.destination)
     const bgm = ctx.createGain()
     bgm.gain.value = BGM_LEVEL * volumes().bgm
     bgm.connect(master)
@@ -1789,6 +1797,24 @@ export class Sfx {
 
   /** 배경음 결: 'chase' = 덕의 132BPM 추격(투기장) · 'dark' = 느리고 어두운 던전 · 'bright' = 밝은 분위기의 놀이곡(2026-10-06) */
   private bgmStyle: 'chase' | 'dark' | 'bright' = 'chase'
+  /** 지금 지역의 막(0 ~ 3) · 마을인가 — 막마다 다른 곡 · 마을은 모닥불 곡 · 환경음 (2026-10-08 퀄리티 2차 4단계 S2 · S3) */
+  private musicAct = 0
+  private musicTown = true
+
+  /** 세션이 지역이 바뀔 때 알린다: 배경음을 잠깐 낮췄다 올리며 그 지역의 곡 · 환경음으로 */
+  setArea(act: number, town: boolean): void {
+    if (act === this.musicAct && town === this.musicTown) return
+    this.musicAct = act
+    this.musicTown = town
+    const ctx = this.ctx
+    const g = this.bgmGain
+    if (!ctx || !g) return
+    const base = BGM_LEVEL * volumes().bgm
+    const t = ctx.currentTime
+    g.gain.cancelScheduledValues(t)
+    g.gain.setTargetAtTime(base * 0.2, t, 0.15)
+    g.gain.setTargetAtTime(base, t + 0.7, 0.5)
+  }
 
   setBgmStyle(style: 'chase' | 'dark' | 'bright'): void {
     this.bgmStyle = style
@@ -1825,26 +1851,34 @@ export class Sfx {
     { root: 55.0, pad: [220.0, 233.1, 277.2], bell: 0 }, // A + B♭ (화성 단조의 C#)
   ]
 
+  /** 막마다 공포 곡의 높낮이 (1막 그대로 · 2막 숲 온음 아래 · 3막 하수도 온음 위 · 4막 지옥 반음 아래) */
+  private static readonly ACT_TR = [1, 0.8909, 1.1225, 0.9439]
+
   private scheduleDark(ctx: AudioContext): void {
-    const bar = (60 / 56) * 4
+    if (this.musicTown) return this.scheduleCamp(ctx)
+    const bar = (60 / (this.musicAct === 3 ? 64 : 56)) * 4
     const step16 = bar / 16
     this.intensity = Math.max(0, this.intensity - 0.0012)
+    const tr = Sfx.ACT_TR[this.musicAct] ?? 1
     while (this.bgmNextBeat < ctx.currentTime + 0.4) {
       const t = this.bgmNextBeat
       const step = this.bgmBeatIndex % 64
       const b = (step / 16) | 0
       const s16 = step % 16
-      const ch = Sfx.HORROR[b]
-      const hot = this.intensity > 0.3
+      const h = Sfx.HORROR[b]
+      const ch = { root: h.root * tr, pad: h.pad.map((f) => f * tr), bell: h.bell * tr }
+      // 4막(지옥)은 늘 교전처럼 낮은 맥박 · 북이 깔린다
+      const hot = this.intensity > 0.3 || this.musicAct === 3
       if (s16 === 0) {
         // 낮게 우는 지속음: 두 음 맥놀이 · 필터가 마디 가운데까지 열렸다 닫힌다 (다음 마디와 겹쳐 끊기지 않게 길게)
         this.bgmPad(t, [ch.root * 2, ch.root * 2 * 1.007], bar + 1.6, 0.2, 170, { attack: 1.4, release: 1.6, sweep: 2.2 })
         // 반음으로 부딪는 현악 덩어리 (두 줄씩 조금 어긋나게)
         this.bgmPad(t + 0.3, ch.pad, bar + 1.8, 0.028, 950, { attack: 2.2, release: 2, detune: 9 })
-        // 먼 합창 "아—" (둘째 · 넷째 마디): 입 모양 대역 + 떨림
-        if (b % 2 === 1) this.bgmPad(t + 0.6, [ch.pad[0] * 2, ch.pad[2] * 2], bar, 0.035, 900, { type: 'triangle', band: 760, attack: 1.6, release: 1.8, vib: 5 })
-        // 쇠 종 (첫 · 셋째 마디 — 교전 중엔 작게)
+        // 먼 합창 "아—" (둘째 · 넷째 마디 — 2막 숲은 마디마다): 입 모양 대역 + 떨림
+        if (b % 2 === 1 || this.musicAct === 1) this.bgmPad(t + 0.6, [ch.pad[0] * 2, ch.pad[2] * 2], bar, 0.035, 900, { type: 'triangle', band: 760, attack: 1.6, release: 1.8, vib: 5 })
+        // 쇠 종 (첫 · 셋째 마디 — 교전 중엔 작게 · 3막 하수도는 마디마다 물방울처럼 높게)
         if (ch.bell) this.bgmBell(t + step16 * 2, ch.bell, hot ? 0.03 : 0.055)
+        else if (this.musicAct === 2) this.bgmBell(t + step16 * 6, ch.pad[2] * 4, 0.035)
         // 숨 같은 바람 (넷째 마디)
         if (b === 3) this.bgmWind(t, bar, 0.05)
       }
@@ -1855,6 +1889,93 @@ export class Sfx {
       if (hot && (s16 === 6 || s16 === 14)) this.bgmTom(t, 0.35)
       this.bgmNextBeat += step16
       this.bgmBeatIndex++
+    }
+  }
+
+  // ---------- 마을 모닥불 곡 (2026-10-08 퀄리티 2차 4단계 S2 — 전에는 던전 곡이 마을에도 흘렀다) ----------
+  // 72 BPM · Dm → B♭ → F → C. 따뜻한 지속음 위에 류트처럼 뜯는 8분 아르페지오 · 가끔 먼 종. 안전지대라 심장 · 북은 없다.
+  private static readonly CAMP = [
+    { root: 73.42, arp: [293.7, 349.2, 440.0, 587.3] }, // Dm
+    { root: 58.27, arp: [233.1, 293.7, 349.2, 466.2] }, // B♭
+    { root: 87.31, arp: [261.6, 349.2, 440.0, 523.3] }, // F
+    { root: 65.41, arp: [261.6, 329.6, 392.0, 523.3] }, // C
+  ]
+
+  private scheduleCamp(ctx: AudioContext): void {
+    const bar = (60 / 72) * 4
+    const step16 = bar / 16
+    this.intensity = Math.max(0, this.intensity - 0.002)
+    while (this.bgmNextBeat < ctx.currentTime + 0.4) {
+      const t = this.bgmNextBeat
+      const step = this.bgmBeatIndex % 64
+      const b = (step / 16) | 0
+      const s16 = step % 16
+      const ch = Sfx.CAMP[b]
+      if (s16 === 0) {
+        this.bgmPad(t, [ch.root * 2, ch.root * 3], bar + 1.2, 0.07, 600, { attack: 1.2, release: 1.4 })
+        this.bgmPad(t + 0.2, ch.arp.slice(0, 3), bar + 1.2, 0.018, 1400, { attack: 1.6, release: 1.6, detune: 5 })
+        if (b === 0 || b === 2) this.bgmBell(t + step16 * 4, ch.arp[3] * 2, 0.025)
+      }
+      // 뜯는 아르페지오 (8분 · 마디 끝은 쉰다)
+      if (s16 % 2 === 0 && s16 < 14) {
+        const k = (s16 / 2) % 4
+        const f = ch.arp[k === 3 ? 2 : k]
+        this.pluck(this.bgmGain!, t, f, 0.05)
+      }
+      this.bgmNextBeat += step16
+      this.bgmBeatIndex++
+    }
+  }
+
+  /**
+   * 환경음 (2026-10-08 S3 — 조용한 순간이 비지 않게): 80ms 마다 지역에 맞는 소리를 드물게. 배경음 크기를 따른다.
+   * 마을 모닥불 타닥 · 1막 바람 · 까마귀 · 2막 풀벌레 · 개구리 · 3막 물방울 · 4막 땅울림 · 철면수심전용 새소리
+   */
+  private scheduleAmb(ctx: AudioContext): void {
+    const bus = this.bgmGain!
+    const t = ctx.currentTime + 0.05
+    const r = Math.random()
+    if (this.bgmStyle === 'bright') {
+      if (r < 0.025) {
+        // 새: 두세 번 짧게 올라가는 휘파람
+        const f = 2200 + Math.random() * 1400
+        for (let i = 0; i < 2 + (Math.random() < 0.5 ? 1 : 0); i++) this.tone(bus, t + i * 0.11, 0.07, 'sine', f, f * 1.25, 0.03, 0.005)
+      }
+      return
+    }
+    if (this.musicTown) {
+      // 모닥불 타닥: 아주 짧은 잡음 딸깍 (자주 · 작게)
+      if (r < 0.3) this.noiseBurst(bus, t + Math.random() * 0.06, 0.015 + Math.random() * 0.02, 'bandpass', 1800 + Math.random() * 2500, 1500, 0.05 + Math.random() * 0.05, 3)
+      return
+    }
+    switch (this.musicAct) {
+      case 0:
+        if (r < 0.004) {
+          // 먼 까마귀: 거친 두 번 "까악"
+          for (let i = 0; i < 2; i++) this.tone(bus, t + i * 0.32, 0.22, 'sawtooth', 620, 480, 0.018, 0.01)
+        } else if (r < 0.012) this.bgmWind(t, 3, 0.03)
+        break
+      case 1:
+        if (r < 0.22) {
+          // 풀벌레: 높은 짧은 떨림
+          const f = 4200 + Math.random() * 900
+          for (let i = 0; i < 3; i++) this.tone(bus, t + i * 0.035, 0.02, 'sine', f, f, 0.006, 0.002)
+        } else if (r < 0.235) {
+          // 개구리: 낮은 두 번 "개굴"
+          for (let i = 0; i < 2; i++) this.tone(bus, t + i * 0.13, 0.08, 'square', 180, 150, 0.02, 0.005)
+        }
+        break
+      case 2:
+        if (r < 0.035) {
+          // 물방울: 높은 퐁 + 잔향
+          const f = 1100 + Math.random() * 900
+          this.tone(bus, t, 0.12, 'sine', f * 1.6, f, 0.03, 0.002)
+        }
+        break
+      case 3:
+        if (r < 0.015) this.noiseBurst(bus, t, 1.6, 'lowpass', 140, 70, 0.09, 0.8)
+        else if (r < 0.018) this.tone(bus, t, 0.9, 'sawtooth', 300, 120, 0.012, 0.2)
+        break
     }
   }
 
@@ -1875,22 +1996,28 @@ export class Sfx {
     [784, 0, 0, 0, 659.3, 0, 587.3, 0, 523.3, 0, 587.3, 0, 493.9, 0, 0, 0],
   ]
 
+  /** 철면수심전용 놀이곡: 막마다 높낮이 (1막 그대로 · 2막 온음 위 · 3막 온음 아래 · 4막 반음 위) */
+  private static readonly BRIGHT_TR = [1, 1.1225, 0.8909, 1.0595]
+
   private scheduleBright(ctx: AudioContext): void {
-    const step16 = 60 / 112 / 4
+    // 마을은 조금 느리게 (대기실 — 숨 돌리는 곳) · 막마다 높낮이를 바꾼다 (2026-10-08 S2)
+    const step16 = 60 / (this.musicTown ? 96 : 112) / 4
     this.intensity = Math.max(0, this.intensity - 0.0014)
     while (this.bgmNextBeat < ctx.currentTime + 0.3) {
       const t = this.bgmNextBeat
       const step = this.bgmBeatIndex % 64
       const b = (step / 16) | 0
       const s16 = step % 16
-      const ch = Sfx.PLAY[b]
+      const p0 = Sfx.PLAY[b]
+      const trb = Sfx.BRIGHT_TR[this.musicAct] ?? 1
+      const ch = { root: p0.root * trb, notes: p0.notes.map((f) => f * trb) }
       const hot = this.intensity > 0.3
       // 통통 베이스 (한 박에 하나 · 넷째 박은 위로 튄다)
       if (s16 % 4 === 0) this.bgmMallet(t, ch.root * (s16 === 12 ? 4 : 2), 0.16, 0.32, 0.5)
       // 마림바 반주 (엇박 펼침화음)
       if (s16 % 2 === 1) this.bgmMallet(t, ch.notes[((s16 / 2) | 0) % 4], 0.07, 0.28, 3)
       // 선율: 종소리 + 휘파람 같은 사인 (2 · 4 마디 · 교전 중엔 늘)
-      const f = Sfx.PLAY_TUNE[b][s16]
+      const f = Sfx.PLAY_TUNE[b][s16] * trb
       if (f && (b % 2 === 0 || hot)) {
         this.bgmMallet(t, f, hot ? 0.07 : 0.055, 0.45, 4)
         this.bgmNote(t, f * 2, 'sine', step16 * 2.4, hot ? 0.035 : 0.025, 6000)
@@ -2152,6 +2279,7 @@ export class Sfx {
   private scheduleBgm(): void {
     const ctx = this.ctx
     if (!ctx || !this.bgmGain || ctx.state !== 'running') return
+    if (this.bgmStyle !== 'chase' && this.boss <= 0 && !this.lite) this.scheduleAmb(ctx)
     if (this.bgmStyle === 'dark') {
       if (this.boss > 0) this.scheduleBoss(ctx)
       else this.scheduleDark(ctx)

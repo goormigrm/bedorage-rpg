@@ -725,6 +725,10 @@ export class Session {
     if (want === this.viewArea) return
     this.viewArea = want
     this.renderer.setMap(this.map)
+    if (!this.arena) {
+      const ad = areaDef(want)
+      this.sfx.setArea(ad.act, ad.kind === 'town')
+    }
     this.prev = interpSnapshot(areaView(this.state, want))
     if (this.waypoints?.open) this.waypoints.toggle(false)
     this.areaBanner()
