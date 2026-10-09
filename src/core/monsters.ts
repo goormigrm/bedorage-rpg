@@ -3,6 +3,8 @@
 //
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
+import { angleDiff, atan2A } from './fixedmath'
+
 export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden' | 'shade' | 'demon' | 'lord'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
@@ -226,10 +228,25 @@ export const MONSTERS: Record<MonsterKindId, MonsterDef> = Object.fromEntries(MO
  */
 export const GIANT_VIEW = 4
 export const GIANT_BODY = 2.5
-/** 몸이 커져 더 잘 맞는 만큼 체력을 올린다 (tools/bossfight.ts — 싸움 길이를 예전과 비슷하게: 44 · 51 · 74 · 87초 → 34 · 41 · 42 · 56초였다) */
-export const GIANT_HP = 1.3
+/**
+ * 몸이 커져 더 잘 맞는 만큼 체력을 올렸다(1.3 — tools/bossfight.ts: 44 · 51 · 74 · 87초 → 34 · 41 · 42 · 56초였다).
+ * 2026-10-09 치명타가 등 뒤에서만(fromBehind)이 되며 봇 파티 싸움이 27 · 42 · 32 · 40초 → 52 · 67 · 51 · 73초로 늘어 1.0 으로 되돌렸다
+ * (38 · 52 · 41 · 62초 — 봇은 등 뒤로 돌지 않는다. 사람이 돌아 들어가면 더 빨리 잡는다)
+ */
+export const GIANT_HP = 1.0
 export function isGiant(m: { kind: number; sum?: number }): boolean {
   return !!MONSTER_LIST[m.kind]?.boss && m.sum === undefined && (m as { ally?: number }).ally !== 1
+}
+/**
+ * 거대한 보스의 치명타는 **등 뒤에서만** (2026-10-09 사용자: "보스의 경우에는 크기가 커서 치명타가 너무 쉬우니까 뒤에서 때리면 치명이 뜨는 식으로").
+ * 다른 괴물은 조준점이 약점 위(금색)일 때 치명타인데, 거대한 보스는 몸이 화면을 채워 조준점이 거의 늘 약점 위였다.
+ * 보스가 보는 쪽에서 120° 넘게 돌아간 쪽(등 뒤 ±60°)에서 맞히면 치명타 — 앞에서 탱커가 붙들고 딜러가 돌아 들어가는 싸움이 된다
+ */
+export const BACKSTAB_ARC = 341
+/** (dx, dy) = 보스에게서 때린 쪽으로의 방향(근접은 때린 사람 자리 · 총알은 날아온 쪽) */
+export function fromBehind(m: { aim: number }, dx: number, dy: number): boolean {
+  if (dx === 0 && dy === 0) return false
+  return Math.abs(angleDiff(atan2A(dy, dx), m.aim)) >= BACKSTAB_ARC
 }
 /** 괴물 몸 반지름 (px) — 거대한 보스는 2.5배 */
 export function bodyR(m: { kind: number; sum?: number }): number {

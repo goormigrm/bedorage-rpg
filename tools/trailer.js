@@ -688,7 +688,8 @@ function ultScenes() {
 //     장면 넘김은 앞 장이 녹아 사라지는 것(dissolve — 검은 장 없음) · 준비(셰이더 · 괴물 모델 · 지역 페이드)가 끝날 때까지 담지 않는다 · 편마다 15 ~ 21초
 //   2편 막 보스 — 보스 셋(1막 · 2막 · 파티 드래곤) · 경직 · 최종 보스를 쓰러뜨리는 순간까지
 //   3편 방송 연동 — 채팅 말풍선 · !참여 · 후원 이벤트 · 큰 후원 예고 · !응원
-//   4편 한 바퀴 뒤에도 — 도전의 문 · 도전 놀이(단계 · 진행 막대 · 수호자) · 저주받은 상자 → 끝 카드
+//   4편 한 바퀴 뒤에도 — 저주받은 상자 → 끝 카드 (2026-10-09 사용자: "도전의 문, 도전 놀이는 빼")
+//   ⚠ 2026-10-09 사용자: "캐논 변주곡, 야차라는 말은 트레일러에서 빼" — 자막 · 게임 속 스킬 외침(녹화 중 showShout 거름)
 function timeline() {
   const tl = { t: 0, A: [] }
   tl.at = (dt, fn) => {
@@ -753,7 +754,7 @@ function warpAt(area, tx, ty) {
 
 /**
  * 두 편 (2026-10-09 사용자: "20초 미만으로 하나가 작아졌으면 4개가 아니라 최종 결과물을 2개로 해서 40초 이하 정도씩"):
- *   1편 = 세계와 전투 + 막 보스 (약 30초) · 2편 = 방송 연동 + 한 바퀴 뒤에도 → 끝 카드 (약 40초).
+ *   1편 = 세계와 전투 + 막 보스 (약 30초) · 2편 = 방송 연동 + 저주받은 상자 → 끝 카드 (약 28초 — 도전 놀이는 뺐다).
  * 한 타임라인에 이어 붙인다 — 장면 사이는 녹이기(dissolve)라 한 편 안에서도 검은 장이 없다
  */
 function scenes(part) {
@@ -771,7 +772,8 @@ function scenes(part) {
 
 /**
  * 1편 세계와 전투 (약 15초 — 2026-10-09 사용자: "첫 번째 영상은 특히 임팩트가 세게" · "트레일러에 모든 내용을 넣을 필요는 없고 분량을 줄이라고").
- * 첫 장면부터 괴물 떼 한가운데 철면란 격정 연주(캐논) + 섬광 제목 → 궁극기 야차의 포효 → 파티 스킬 → 전리품. 정예 장면은 뺐다
+ * 첫 장면부터 괴물 떼 한가운데 철면란 격정 연주 + 섬광 제목 → 궁극기 → 파티 스킬 → 전리품. 정예 장면은 뺐다.
+ * ⚠ 2026-10-09 사용자: "캐논 변주곡, 야차라는 말은 트레일러에서 빼" — 자막에 쓰지 않고, 게임 속 스킬 외침도 녹화 중에는 거른다(start — showShout)
  */
 function partWorld(tl = timeline()) {
   const { at, every } = tl
@@ -817,16 +819,16 @@ function partWorld(tl = timeline()) {
   })
   const open = tl.t
   tl.push(open + 1.9, () => ov.title && (ov.title.out = now()))
-  tl.push(open + 2.3, () => caption('고기 바이올린 · 캐논 변주곡', '철면란 격정 연주 — 휘두를 때마다 캐논이 흐른다'))
+  tl.push(open + 2.3, () => caption('고기 바이올린', '철면란 격정 연주 — 휘두를 때마다 선율이 흐른다'))
   tl.push(open + 2.7, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
   every(open + 0.6, open + 6.8, 0.7, () => alive() < 75 && spawn([0, 1, 0, 2], 26, 3, 9))
-  // 궁극기: 야차의 포효 — 몰려 있을 때 쿨다운을 비워 둔다 (봇은 둘레에 다섯 넘게 몰리면 쓴다)
+  // 궁극기 — 몰려 있을 때 쿨다운을 비워 둔다 (봇은 둘레에 다섯 넘게 몰리면 쓴다)
   tl.push(open + 4.2, () => {
     spawn([0, 0, 2], 30, 2, 5)
     st().players[0].cd[2] = 0
   })
   tl.push(open + 4.6, () => {
-    caption('야차의 포효', '궁극기 — 둘레를 한 번에 날려 버린다')
+    caption('궁극기', '둘레의 괴물 떼를 한 번에 날려 버린다')
     flash(0.55)
     zoomTo(1.0, 1.1, 2600)
   })
@@ -989,99 +991,25 @@ function partStream(tl = timeline()) {
   return tl.done()
 }
 
-/** 4편 한 바퀴 뒤에도 (약 21초 — 도전의 문 · 도전 놀이 12단계 · 수호자 · 저주받은 상자 → 끝 카드. 대기실 둘러보기 · 숙련은 뺐다 — 분량) */
+/**
+ * 2편 뒤 묶음 (약 10초 — 저주받은 상자 → 끝 카드).
+ * ⚠ 2026-10-09 사용자: "트레일러에 도전의 문, 도전 놀이는 빼" — 도전의 문 · 도전 놀이 12단계 · 수호자 장면을 뺐다. 대기실 둘러보기 · 숙련도 전에 뺐다(분량)
+ */
 function partEndgame(tl = timeline()) {
   const { at, every } = tl
-  const RIFT_STAGE = 12
-  // 4막 대기실의 도전의 문 (방송 연동에 이어서 — 녹이며)
+  // 저주받은 상자 (4막 들판 — 방송 연동에 이어서 녹이며)
   at(0, () => {
     dissolve()
     holding = true
     ov.cap = null
-    // 방송 연동 장면의 후원 표 · 후원 효과 · 응원 아군은 여기까지 (이어 붙인 2편에서 도전 놀이까지 따라왔다)
+    // 방송 연동 장면의 후원 표 · 후원 효과 · 응원 아군은 여기까지 (이어 붙인 2편에서 다음 장면까지 따라왔다)
     ov.don = false
     for (const q of st().players) if (q.don) q.don.fill(0)
     st().allies = undefined
     for (const m of st().monsters) m.hp = 0
-    S().autopilot = false
-    warpAt(28, 30, 20)
-    window.__bd.zoom(1)
-    S().renderer.setDebugZoom(1.0)
-    ov.bright = 1.45
-  })
-  at(1.4, () => {
-    holding = false
-    cue('calm', { town: true, act: 3 })
-    caption(L('시련의 문', '도전의 문'), L('단계를 골라 열면 — 매번 다른 맵, 끝없이 깊어지는 도전', '단계를 골라 열면 — 매번 다른 놀이, 끝없이 어려워지는 도전'))
-    zoomTo(1.0, 1.05, 2400)
-  })
-  at(2.4, () => {})
-  // 도전 놀이로 (문을 여는 섬광)
-  at(0, () => {
-    dissolve()
-    holding = true
-    ov.cap = null
-    const s = st()
-    const n = s.riftN ?? 0
-    s.riftN = n + 1
-    const id = M.world.riftId(n, 3)
-    s.rift = { area: id, stage: RIFT_STAGE, kills: 0, need: 0, boss: 0, t: 0, by: 0, last: 0 }
-    s.players[0].quests[15] = 3
-    warpParty(id)
+    S().autopilot = true
     S().renderer.setDebugZoom(0.74)
     ov.bright = 1.45
-    S().autopilot = true
-  })
-  at(1.4, () => {
-    const spot = openSpot()
-    if (spot) {
-      st().players[0].x = spot.x
-      st().players[0].y = spot.y
-    }
-    gatherBots()
-    spawn([13, 14, 0, 13], 40, 4, 11)
-  })
-  at(0.3, () => {
-    holding = false
-    flash(0.7)
-    cue('hot', { act: 3 })
-    caption(`${L('시련', '도전 놀이')} ${RIFT_STAGE}단계`, '괴물을 잡아 위의 막대를 채워라 — 10분 안에')
-    zoomTo(1.0, 1.06, 5000)
-  })
-  const rs = tl.t
-  // 막대가 눈에 띄게 차오르게 (영상 길이 안에)
-  every(rs + 0.4, rs + 4.0, 0.4, () => {
-    const r = st().rift
-    if (r && r.boss === 0) r.kills = Math.min(r.need - 1, r.kills + Math.ceil(r.need * 0.1))
-  })
-  every(rs + 0.8, rs + 4.0, 1.0, () => alive() < 50 && spawn([13, 14, 0], 16, 6, 11))
-  // 수호자
-  at(4.2, () => {
-    const r = st().rift
-    if (r) r.kills = r.need
-    window.__bd.zoom(GIANT_ZOOM)
-  })
-  at(0.4, () => {
-    cue('boss')
-    caption(...L(['시련의 수호자', '막대가 차면 그 막의 보스가 — 잡으면 다음 단계가 열린다'], ['도전 놀이 수호자', '막대가 차면 그 놀이의 술래가 — 이기면 다음 단계가 열린다']))
-    const g0 = st().monsters.find((m) => m.rg === 1 && m.hp > 0)
-    if (g0) {
-      g0.target = 0
-      g0.los = 1
-    }
-  })
-  at(3.0, () => {
-    const g0 = st().monsters.find((m) => m.rg === 1 && m.hp > 0)
-    if (g0) g0.hp = 1
-  })
-  at(0.4, () => cue('win'))
-  at(1.2, () => {})
-  // 저주받은 상자 (4막 들판)
-  at(0, () => {
-    dissolve()
-    holding = true
-    ov.cap = null
-    for (const m of st().monsters) m.hp = 0
     warpParty(29)
     window.__bd.zoom(1)
   })
@@ -1676,6 +1604,12 @@ export async function start(opts = {}) {
   sess.renderer.setDebugZoom(0.74)
   // 레벨업 알림 글은 영상에 넣지 않는다 (빛 고리 · 불티는 그대로) — 빈 세이브(1 레벨)로 뜨면 보스 장면 위에
   // "단군란 레벨 5 · 침착란 레벨 5 · 레벨 5!" 가 세 줄 겹쳐 메인 사진을 가렸다 (2026-10-06 노트북에서 처음 뜰 때)
+  // 스킬 외침에서 쓰지 않는 말 (2026-10-09 사용자: "캐논 변주곡, 야차라는 말은 트레일러에서 빼") — 궁극기 "야차의 포효!!" 가 머리 위에 떴다
+  const shout0 = sess.renderer.showShout
+  sess.renderer.showShout = function (p, text, ally) {
+    if (/야차|캐논/.test(text)) return
+    return shout0.call(this, p, text, ally)
+  }
   const hud = sess.renderer.hud
   const notice0 = hud.notice.bind(hud)
   hud.notice = (text, color, life) => {
@@ -1820,6 +1754,7 @@ export async function start(opts = {}) {
     sess.lastTick = realNow()
     sess.last = realNow()
     sess.renderer.setDebugZoom(1)
+    delete sess.renderer.showShout
     sess.ticker.start()
   }
   ve.close()

@@ -61,7 +61,8 @@ function standOnExit(s: GameState, mapOf: (id: number) => GameMap, p: number, to
 }
 
 describe('이어진 세계', () => {
-  it('새 게임은 마을에서 바로 시작한다 — 카운트다운 없음 · 몬스터 없음 · 쏠 수 없고 체력이 찬다', () => {
+  // 2026-10-09 사용자: "대기실에서도 스킬 및 좌클릭 할 수 있게" — 예전에는 마을에서 쏠 수 없었다(tests/townfire.test.ts)
+  it('새 게임은 마을에서 바로 시작한다 — 카운트다운 없음 · 몬스터 없음 · 쏠 수 있고 체력이 찬다', () => {
     const { s, run } = game(['chim'])
     expect(s.phase).toBe('playing')
     expect(s.players[0].area).toBe(TOWN)
@@ -70,8 +71,7 @@ describe('이어진 세계', () => {
     expect(s.players[0].wps & wpBit(TOWN)).not.toBe(0)
     s.players[0].hp = 10
     run(30, () => ({ ...idle(), buttons: BTN_FIRE }))
-    expect(s.bullets.length).toBe(0)
-    expect(s.players[0].shots).toBe(0)
+    expect(s.players[0].shots).toBeGreaterThan(0)
     expect(s.players[0].hp).toBe(s.players[0].maxHp)
   })
 

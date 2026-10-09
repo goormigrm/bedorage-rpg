@@ -7,7 +7,7 @@ import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
-import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, isBossLike, isGiant, shieldUp } from '../core/monsters'
+import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -2084,14 +2084,16 @@ export class Renderer3D {
     let cursorOn = false
     if (opts.cursor && opts.localPlayer >= 0 && curr.players[opts.localPlayer]?.alive) {
       const w = this.aimPoint(opts.cursor.x, opts.cursor.y, curr, curr.players[opts.localPlayer])
+      const me = curr.players[opts.localPlayer]
       for (const m of curr.monsters) {
         if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
-        if (Math.hypot(w.x - m.x, w.y - m.y) <= bodyR(m) * HEAD_AIM_FRAC) {
+        // 거대한 보스는 등 뒤에 있을 때만 금색 (sim 과 같은 규칙 — fromBehind)
+        const giant = isGiant(m)
+        if (Math.hypot(w.x - m.x, w.y - m.y) <= bodyR(m) * (giant ? 1 : HEAD_AIM_FRAC) && (!giant || fromBehind(m, me.x - m.x, me.y - m.y))) {
           cursorOn = true
           break
         }
       }
-      const me = curr.players[opts.localPlayer]
       if (!cursorOn && curr.mode === 'arena') {
         for (const p of curr.players) {
           if (p.id === me.id || !p.alive || p.left || this.hidden[p.id] || p.team === me.team) continue
@@ -2822,20 +2824,23 @@ export class Renderer3D {
     const x = pad
     const y = pad + 28
     ctx.save()
-    ctx.fillStyle = 'rgba(6,8,11,0.82)'
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
-    // 제목: 지역 이름 · 레벨
+    // 검은 바탕을 깔지 않는다 (2026-10-09 사용자: "지도를 열었을 때 검은 바탕이 게임 화면을 너무 가린다 — 지워도 될 것 같다").
+    // 예전에는 화면 전체를 82% 어둡게 덮고 지도 칸도 검게 칠해, 지도 둘레(돌린 맵의 네 모서리)까지 까맸다. 이제 맵 그림만 게임 위에 얹는다
+    // 제목: 지역 이름 · 레벨 (바탕이 없으니 어두운 외곽선으로 읽히게)
     const def = curr.mode === 'dungeon' && curr.curArea >= 0 ? areaDef(curr.curArea) : null
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#f1d58a'
     ctx.font = '800 22px "Nanum Myeongjo", serif'
-    ctx.fillText(def ? `${def.name}${def.level ? ` · 지역 레벨 ${def.level}` : ''}` : '지도', VIEW_W / 2, y - 16)
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = 5
+    ctx.strokeStyle = 'rgba(8,6,4,0.9)'
+    const title = def ? `${def.name}${def.level ? ` · 지역 레벨 ${def.level}` : ''}` : '지도'
+    ctx.strokeText(title, VIEW_W / 2, y - 16)
+    ctx.fillStyle = '#f1d58a'
+    ctx.fillText(title, VIEW_W / 2, y - 16)
     ctx.beginPath()
     roundRect(ctx, x, y, w, h, 8)
     ctx.clip()
-    ctx.fillStyle = '#05070a'
-    ctx.fillRect(x, y, w, h)
     // 회전한 맵이 창에 꽉 차도록: 돌린 뒤의 폭·높이로 배율을 잡는다
     const d = worldDirToScreen(1, 0)
     const rot = Math.atan2(d.y, d.x)
@@ -2849,10 +2854,14 @@ export class Renderer3D {
     ctx.scale(sc, sc)
     ctx.translate(-map.w / 2, -map.h / 2)
     ctx.imageSmoothingEnabled = false
-    ctx.globalAlpha = 0.95
+    const rp = 1 / sc
+    ctx.globalAlpha = 0.92
     ctx.drawImage(this.miniCanvas, 0, 0, map.w, map.h)
     ctx.globalAlpha = 1
-    const rp = 1 / sc
+    // 맵 가장자리 선 — 바탕이 없어도 지도 모양이 게임 화면과 갈린다
+    ctx.strokeStyle = 'rgba(8,6,4,0.85)'
+    ctx.lineWidth = 3 * rp
+    ctx.strokeRect(0, 0, map.w, map.h)
     const dot = (px: number, py: number, color: string, r: number) => {
       ctx.fillStyle = color
       ctx.beginPath()
@@ -2929,8 +2938,12 @@ export class Renderer3D {
       ctx.fillStyle = t.c
       ctx.fillText(t.t, t.x, t.y)
     }
-    ctx.fillStyle = '#8d8170'
-    ctx.font = '500 12px "IBM Plex Sans KR", sans-serif'
+    ctx.font = '600 12px "IBM Plex Sans KR", sans-serif'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = 4
+    ctx.strokeStyle = 'rgba(8,6,4,0.85)'
+    ctx.strokeText('M · Esc 로 닫기', VIEW_W / 2, VIEW_H - 26)
+    ctx.fillStyle = '#e8dcc0'
     ctx.fillText('M · Esc 로 닫기', VIEW_W / 2, VIEW_H - 26)
     ctx.restore()
   }

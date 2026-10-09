@@ -23,8 +23,11 @@ export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT, BTN_SKILL3, BTN_SKIL
 export const BTN_PORTAL = 1 << 10
 /** 물약 (3): 최대 체력 35% 를 3초에 걸쳐 채운다. 충전식 (디아블로 4) */
 export const BTN_POTION = 1 << 11
-/** 마을(안전지대)에서 막는 버튼: 사격·정조준·스킬·포털 */
-export const TOWN_BLOCKED = BTN_FIRE | BTN_ADS | BTN_SKILL1 | BTN_SKILL2 | BTN_ULT | BTN_SKILL3 | BTN_SKILL4 | BTN_PORTAL
+/**
+ * 마을(안전지대)에서 막는 버튼: 포털만 (마을에서 마을로 가는 포털은 쓸 데가 없다).
+ * 2026-10-09 사용자: "대기실에서도 스킬 및 좌클릭 할 수 있게" — 예전에는 사격 · 정조준 · 스킬 · 궁극기도 막았다. 마을에는 괴물이 없어 맞을 것은 없고, 체력은 그대로 가득 찬다
+ */
+export const TOWN_BLOCKED = BTN_PORTAL
 
 export interface Input {
   /** -1, 0, 1 */

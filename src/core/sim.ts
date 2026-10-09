@@ -23,7 +23,7 @@ import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
   BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
-  bodyR, GIANT_HP, isGiant,
+  bodyR, GIANT_HP, fromBehind, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
@@ -1754,7 +1754,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (!input) input = { mx: 0, my: 0, aim: p.aim, buttons: 0, char: 0 }
   const playing = state.phase === 'playing'
   if (input.cmd) runCommand(state, map, p, input.cmd, input.arg ?? 0)
-  // 마을은 안전지대: 쏘지도 스킬을 쓰지도 않고, 체력이 가득 찬다 (GUIDE 5.2)
+  // 마을은 안전지대: 체력이 가득 찬다 (GUIDE 5.2) · 포털만 막는다 — 쏘기 · 스킬은 된다 (2026-10-09 사용자: "대기실에서도 스킬 및 좌클릭")
   if (state.mode === 'dungeon' && isTown(p.area)) {
     input = { ...input, buttons: input.buttons & ~TOWN_BLOCKED }
     if (p.alive && !p.downed) p.hp = p.maxHp
@@ -2369,7 +2369,8 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     const k = knock * (1 - MONSTER_LIST[m.kind].knockRes)
     m.kx += ((m.x - p.x) / d) * k
     m.ky += ((m.y - p.y) / d) * k
-    const crit = m.id === aimed
+    // 거대한 보스는 조준이 아니라 등 뒤에서 휘둘렀는가 (fromBehind — 2026-10-09)
+    const crit = isGiant(m) ? fromBehind(m, p.x - m.x, p.y - m.y) : m.id === aimed
     hurtMonster(state, m, crit ? Math.round(dmg * (headMult(w) + p.st[ST_CRIT] / 100)) : dmg, p.id, crit, m.x, m.y)
     // 집중: 총알 명중처럼 +2 (치명타 +4) — 예전에는 근접이 빠져 철면란 · 승빠란 · 우재란은 저절로 차는 것뿐이었다. 한 번 휘둘러 셋까지
     if (state.mode === 'dungeon' && focusHits < 3) {
@@ -3148,7 +3149,9 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   const dist = len(m.x - b.ox, m.y - b.oy)
   // 치명타 = 덕의 헤드샷: 쏠 때 커서가 이 몬스터의 약점 위였고, 그 탄이 이 몬스터를 맞혔다.
   // 산탄은 정중앙을 지나는 탄만 (일곱 개가 전부 치명타가 되면 과하다). 침착 모드는 전부
-  const crit = b.forceCrit || (b.critMon === m.id && (w.pellets === 1 || partForOffset(dOff, bodyR(m)) === PART_HEAD))
+  // 거대한 보스는 조준이 아니라 **등 뒤에서 날아온 탄**인가 (fromBehind — 2026-10-09 사용자: "보스는 크기가 커서 치명타가 너무 쉽다")
+  const aimOk = isGiant(m) ? fromBehind(m, -b.vx, -b.vy) : b.critMon === m.id
+  const crit = b.forceCrit || (aimOk && (w.pellets === 1 || partForOffset(dOff, bodyR(m)) === PART_HEAD))
   const shooter = state.players[b.owner]
   let dmg = b.damage * b.mul * (crit ? headMult(w) + shooter.st[ST_CRIT] / 100 : 1) * falloff(w, dist)
   if (shooter.char === 'jupeol' && dist < JUPEOL.range) dmg *= JUPEOL.mult
