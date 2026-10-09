@@ -9,6 +9,34 @@ import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } f
 import { VOL_KEYS, VOL_NAMES, VolKey, setVolume, volumes } from '../audio/volume'
 import { palette } from '../core/palette'
 
+/**
+ * 전체 화면 (2026-10-09 사용자: "전체 화면에서 Tab 이나 Esc 를 누르면 바로 창 모드가 된다 — 설정으로만 바꾸게 하고 싶다").
+ * 페이지가 연 전체 화면은 브라우저가 Esc 한 번에 풀어 버린다(보안 규칙 — 페이지가 막을 수 없다). 크롬 · 엣지는 **키보드 잠금**(Keyboard Lock)을
+ * 걸면 짧은 Esc 는 게임으로 오고(메뉴 · 창 닫기), **Esc 를 길게(약 2초) 눌러야** 나간다 — 그 이상(길게 누르기까지 막기)은 브라우저가 허락하지 않는다.
+ * 파이어폭스 · 사파리는 잠금이 없어 예전처럼 Esc 한 번에 풀린다. 나갈 때는 잠금도 푼다
+ */
+type KeyboardLock = { lock?: (keys?: string[]) => Promise<void>; unlock?: () => void }
+const kbLock = (): KeyboardLock | undefined => (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
+export async function enterFullscreen(): Promise<void> {
+  try {
+    if (!document.fullscreenElement) await document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+    await kbLock()?.lock?.(['Escape'])
+  } catch {
+    /* 지원 안 하는 브라우저 · 거절 — 그냥 넘어간다 */
+  }
+}
+export function leaveFullscreen(): void {
+  kbLock()?.unlock?.()
+  if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
+}
+// Esc 를 길게 눌러 나갔을 때도 잠금을 푼다 (창 모드에서 Esc 가 묶여 있지 않게)
+if (typeof document !== 'undefined')
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) kbLock()?.unlock?.()
+  })
+/** Esc 를 길게 눌러야 나가는 브라우저인가 (크롬 · 엣지) */
+const holdEsc = (): boolean => typeof kbLock()?.lock === 'function'
+
 const AUTOPICK_KEY = 'brpg.autopick'
 const REAL_KEY = 'brpg.real'
 const KEYS_KEY = 'brpg.keys'
@@ -200,7 +228,7 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
     onoff('색약 모드', palette.colorblind) +
     `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
-    (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>`) +
+    (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>` + `<p class="apn">${holdEsc() ? '전체 화면에서 나가기: 이 단추 · 또는 Esc 를 길게(약 2초) — Esc 를 짧게 누르면 게임 메뉴입니다.' : '이 브라우저는 Esc 를 누르면 바로 창으로 돌아갑니다(크롬 · 엣지는 Esc 를 길게 눌러야 나갑니다).'}</p>`) +
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
     `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
@@ -372,8 +400,8 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
   const fs = box.querySelector<HTMLButtonElement>('[data-fs]')
   if (fs)
     fs.onclick = () => {
-      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
-      else void document.documentElement.requestFullscreen?.().catch(() => {})
+      if (document.fullscreenElement) leaveFullscreen()
+      else void enterFullscreen()
       setTimeout(redraw, 300)
     }
   box.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {
