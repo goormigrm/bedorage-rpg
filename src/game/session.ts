@@ -50,6 +50,7 @@ import { Sfx } from '../audio/sfx'
 import { LocalInput } from './localInput'
 import { TouchControls, enterLandscape, isTouchDevice } from './touch'
 import { Ticker } from './ticker'
+import { rejectGuestText, sameVersion } from '../ui/update'
 
 /** 마을 준비(idlePrep) 속도 제한 — 걸음 사이 최소 쉼(ms) · 걸음 시간의 몇 배를 쉴지 · 들어선 뒤 기다림 · 끊김 기준(초) · 끊기면 쉼 */
 const PREP_GAP = 160
@@ -1631,6 +1632,11 @@ export class Session {
       }
       case 'joinAsk': {
         if (!this.isHost) break
+        // 판 번호가 다르면 난입을 받지 않는다 (2026-10-09 — ui/update.ts)
+        if (!sameVersion(m.ver)) {
+          this.cfg.link?.sendCtl({ t: 'rejoinNo', why: rejectGuestText(m.ver) }, from)
+          break
+        }
         this.onJoinAsk(m.char as CharacterId, m.name, from, m.sheet)
         break
       }

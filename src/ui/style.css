@@ -1408,3 +1408,38 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .cr-end { margin-top: 60px; font: 800 22px "Nanum Myeongjo", serif; color: #ffcf6a; }
 .ending-skip { position: absolute; right: 28px; bottom: 28px; opacity: 0.75; }
 .ending-skip:hover { opacity: 1; }
+
+/* 판 번호 · 새 판 알림 (2026-10-09 — ui/update.ts). 로비에서만 */
+#ver-tag {
+  position: fixed;
+  left: 10px;
+  bottom: 8px;
+  z-index: 40;
+  font: 500 11px 'IBM Plex Mono', monospace;
+  color: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+}
+#update-bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: rgba(20, 14, 10, 0.92);
+  border: 1px solid rgba(255, 200, 120, 0.55);
+  color: #ffe2b0;
+  font: 600 14px 'IBM Plex Sans KR', sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+#update-bar .btn {
+  padding: 4px 14px;
+}
+#ver-tag[hidden],
+#update-bar[hidden] {
+  display: none;
+}

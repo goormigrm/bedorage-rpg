@@ -73,12 +73,23 @@ function shotEndpoint(): Plugin {
   }
 }
 
-/** 판 번호 (오류 보고에 적는다 — ui/errorReport.ts) */
+/** 판 번호 (오류 보고에 적는다 — ui/errorReport.ts · 로비 구석 · 새 판 알림 ui/update.ts) */
 const version = (JSON.parse(readFileSync(root + 'package.json', 'utf8')) as { version: string }).version
+
+/** 배포본에 version.json 을 같이 낸다 — 열어 둔 탭이 "새 판이 나왔다" 를 알아챈다 (ui/update.ts · 2026-10-09) */
+function versionFile(): Plugin {
+  return {
+    name: 'bd-version',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version }) })
+    },
+  }
+}
 
 export default defineConfig({
   base: '/bedorage-rpg/',
-  plugins: [shotEndpoint()],
+  plugins: [shotEndpoint(), versionFile()],
   define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
     target: 'es2022',

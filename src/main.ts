@@ -10,11 +10,14 @@ import { loadStreamCfg, saveStreamCfg } from './game/stream'
 import { installDevKey } from './game/devmode'
 import { installErrorReport } from './ui/errorReport'
 import { installKoBreak } from './ui/koBreak'
+import { setInLobby, watchUpdates } from './ui/update'
 
 // 오류 보고 단추 (2026-10-08 — 잡히지 않은 오류가 나면 화면 아래에 · ui/errorReport.ts)
 installErrorReport()
 // 한국어 줄바꿈: 가운뎃점 · 줄표가 줄 머리에 오지 않게 (ui/koBreak.ts)
 installKoBreak()
+// 새 판 알림 · 로비 구석 판 번호 (ui/update.ts — 열어 둔 탭이 옛 판으로 계속 돌지 않게)
+watchUpdates()
 
 const app = document.getElementById('app')!
 // 개발자 모드 (Ctrl + Shift + D — 치지직 창의 시험 단추)
@@ -36,6 +39,7 @@ function showLobby(): void {
   if (session === null && location.hash.startsWith('#room=')) history.replaceState(null, '', location.pathname + location.search)
   app.innerHTML = ''
   document.body.style.cursor = ''
+  setInLobby(true)
   lobby = new Lobby(app, {
     lobbyLink,
     onStart: (cfg: Omit<SessionConfig, 'onExit'>) => {
@@ -51,6 +55,7 @@ function showLobby(): void {
 /** 게임 세션 열기 — 로비에서, 그리고 "혼자 이어하기"(호스트가 나갔을 때 지금 판 그대로)에서 */
 function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
   app.innerHTML = ''
+  setInLobby(false)
   session = new Session(app, { ...cfg, onExit: showLobby, onRestart: startSession })
   // 스크린샷·GIF 를 뜰 때(?shot=1)만 세션을 밖에 내놓는다 — 장면 연출용(자리 옮기기, 조준점 계산). 평소엔 없다
   if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session

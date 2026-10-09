@@ -1,7 +1,7 @@
 // 소개 영상 (2026-09-23 사용자: "공지글에 들어갈 webm — 1분 정도 주요 장면, 자막 · 효과를 넣은 게임 소개 영상").
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
-//   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 네 편: t.start({ part: 1 ~ 4, lowMax: 11_500_000 })
+//   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 두 편(2026-10-09 — 네 편을 둘로 합쳤다 · 편마다 40초 안): t.start({ part: 1 ~ 2, lowMax: 20_000_000 })
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -28,12 +28,15 @@ const st = () => window.__bd.state()
 
 let out = null
 let g = null
+/** 장면 넘김에서 녹아 사라질 앞 장 (dissolve) */
+let prev = null
+let pg = null
 let running = false
 /** 보스 목소리 영상인가 (start({ mode: 'ult' })) */
 let ULT = false
 /** 밝은 분위기 영상인가 (start({ skin: 'bright' })) */
 let BRIGHT = false
-/** 몇 편 (start({ part: 1 ~ 4 }) — 2026-10-08 사용자: "40초 분량으로 여러 개") */
+/** 몇 편 (start({ part: 1 ~ 2 }) — 2026-10-08 사용자: "40초 분량으로 여러 개" · 2026-10-09 "최종 결과물을 2개로 해서 40초 이하 정도씩") */
 let PART = 1
 /** 자막 고르기: 어둡게 · 밝게 */
 const L = (dark, bright) => (BRIGHT ? bright : dark)
@@ -458,13 +461,50 @@ function dropLoot() {
   }
 }
 
-/** 장면 넘김: 검게 닫고(0.35초) → 바꾸고 → 검은 데서 연다 (2026-09-24 사용자: "설명이 넘어갈 때 fade in/out 을 섞어서 장면 전환") */
-function cut(at, fn, dur = 0.4) {
-  at(0, () => fadeTo(1, dur * 900))
-  at(dur, () => {
+/**
+ * 장면 넘김 (2026-10-09 사용자: "검은 화면은 생기지 않게 — 특히 맵이 넘어가거나 하는 부분에서 검게 보이거나 로딩하는 부분이 트레일러 영상에
+ * 들어가지 않도록"): 예전에는 검게 닫고 → 바꾸고 → 검은 데서 열었다. 이제 **지금 장을 붙잡아 두고** 준비하는 동안(hold) 영상을 멈춘 뒤,
+ * 새 장면의 첫 장부터 붙잡아 둔 장이 녹아 사라진다(0.38초 — 검은 장이 없다). 첫 장면은 녹일 앞 장이 없다
+ */
+function dissolve(dur = 380) {
+  if (vid === 0 || !pg) return
+  pg.drawImage(out, 0, 0)
+  ov.xfade = { pending: true, at: 0, dur }
+}
+/** 녹이기: 새 장면 위에 앞 장을 옅어지게 (drawGame 다음 · 자막 앞) */
+function drawXfade() {
+  const x = ov.xfade
+  if (!x) return
+  if (x.pending) {
+    x.pending = false
+    x.at = now()
+  }
+  const a = 1 - ease((now() - x.at) / x.dur)
+  if (a <= 0.001) {
+    ov.xfade = null
+    return
+  }
+  g.save()
+  g.globalAlpha = a
+  g.drawImage(prev, 0, 0)
+  g.restore()
+}
+/** 붙잡고 → 바꾸고 → hold 초 뒤 녹이며 연다. 자막 · 다가가기는 열리는 순간부터 센다 */
+function cut(at, fn, hold = 0.4) {
+  at(0, () => {
+    dissolve()
+    holding = true
     fn()
-    fadeTo(0, 520)
   })
+  at(hold, () => {
+    holding = false
+    if (ov.cap) ov.cap.at = now()
+    ov.zoom.at = now()
+  })
+}
+/** 장면 묶음의 끝: 검게 닫지 않는다 — 다음 묶음이 녹이며 열린다 (편의 마지막 멈춤은 scenes 가 붙인다) */
+function endHere(tl, lead = 0) {
+  tl.at(lead, () => {})
 }
 
 /** 파티 넷을 한 지역으로 옮긴다 (보스 방 — 걸어가지 않고) */
@@ -643,10 +683,12 @@ function ultScenes() {
 // 2026-10-08 사용자: "트레일러를 40초 분량으로 여러 개로 나눠서" · "보스를 죽이고 잠깐 멈췄다가 움직이는 게 어색 — 멈추면서 페이드아웃으로 끝" ·
 // "약 25% 지점이 지루하다 — 불필요한 부분은 생략" · "'접두' 같은 흔히 쓰지 않는 말은 쓰지 말 것" → 편마다 한 주제 · 끝은 모두 페이드아웃 → 검은 끝 카드.
 //   1편 세계와 전투 — (2026-10-09 새로) 첫 장면부터 떼 한가운데 철면란 격정 연주(캐논) + 제목 · 궁극기 · 파티 스킬 · 정예 · 전리품
-//   ⚠ 2026-10-09 사용자: "1 · 2 · 3편에는 엔딩 화면 넣지 마 — 자연스럽게 연결되도록" → 1 · 2 · 3편 끝은 segueOut(짧게 어둡게) · 끝 카드는 4편만
-//   2편 막 보스 — 보스 넷 · 경직 · 최종 보스를 쓰러뜨리는 순간 페이드아웃
-//   3편 방송 연동 — 채팅 말풍선 · !참여 · 후원 이벤트 · 큰 후원 예고 · !응원 · 방해 효과
-//   4편 한 바퀴 뒤에도 — 막마다 다른 마을 · 시련(단계 · 진행 막대 · 수호자) · 저주받은 상자 · 숙련
+//   ⚠ 2026-10-09 사용자: "1 · 2 · 3편에는 엔딩 화면 넣지 마 — 자연스럽게 연결되도록" → 1 · 2 · 3편은 그 장면에서 끝(endHere) · 끝 카드는 4편만
+//   ⚠ 2026-10-09 사용자: "검은 화면은 생기지 않게 — 맵이 넘어가거나 로딩하는 부분이 영상에 들어가지 않게" · "모든 내용을 넣을 필요는 없고 분량을 줄여" →
+//     장면 넘김은 앞 장이 녹아 사라지는 것(dissolve — 검은 장 없음) · 준비(셰이더 · 괴물 모델 · 지역 페이드)가 끝날 때까지 담지 않는다 · 편마다 15 ~ 21초
+//   2편 막 보스 — 보스 셋(1막 · 2막 · 파티 드래곤) · 경직 · 최종 보스를 쓰러뜨리는 순간까지
+//   3편 방송 연동 — 채팅 말풍선 · !참여 · 후원 이벤트 · 큰 후원 예고 · !응원
+//   4편 한 바퀴 뒤에도 — 도전의 문 · 도전 놀이(단계 · 진행 막대 · 수호자) · 저주받은 상자 → 끝 카드
 function timeline() {
   const tl = { t: 0, A: [] }
   tl.at = (dt, fn) => {
@@ -659,19 +701,6 @@ function timeline() {
   tl.push = (t, fn) => tl.A.push({ t, fn })
   tl.done = () => tl.A.sort((a, b) => a.t - b.t)
   return tl
-}
-
-/**
- * 1 · 2 · 3편의 끝 (2026-10-09 사용자: "트레일러 1, 2, 3 영상에는 엔딩 화면 넣지 마 — 자연스럽게 연결되도록"): 끝 카드 없이
- * 지금 장면에서 짧게 검게 닫는다 — 다음 편은 검은 데서 열리므로 이어 보면 한 편처럼 넘어간다. 끝 카드는 4편에만
- */
-function segueOut(tl, lead = 0, fadeMs = 650) {
-  tl.at(lead, () => fadeTo(1, fadeMs))
-  tl.at(fadeMs / 1000 + 0.1, () => {
-    ov.cap = null
-    ov.title = null
-  })
-  tl.at(0.05, null)
 }
 
 /** 끝: 지금 장면에서 멈추듯 검게 닫고 → 검은 바탕 끝 카드 → 다시 검게 (2026-10-08 — 멈췄다 다시 움직이지 않게) — 4편만 */
@@ -722,27 +751,34 @@ function warpAt(area, tx, ty) {
   gatherBots()
 }
 
+/**
+ * 두 편 (2026-10-09 사용자: "20초 미만으로 하나가 작아졌으면 4개가 아니라 최종 결과물을 2개로 해서 40초 이하 정도씩"):
+ *   1편 = 세계와 전투 + 막 보스 (약 30초) · 2편 = 방송 연동 + 한 바퀴 뒤에도 → 끝 카드 (약 40초).
+ * 한 타임라인에 이어 붙인다 — 장면 사이는 녹이기(dissolve)라 한 편 안에서도 검은 장이 없다
+ */
 function scenes(part) {
-  if (part === 2) return partBoss()
-  if (part === 3) return partStream()
-  if (part === 4) return partEndgame()
-  return partWorld()
+  const tl = timeline()
+  if (part === 2) {
+    partStream(tl)
+    partEndgame(tl)
+  } else {
+    partWorld(tl)
+    partBoss(tl)
+    tl.at(0, null)
+  }
+  return tl.done()
 }
 
 /**
- * 1편 세계와 전투 (2026-10-09 사용자: "첫 번째 영상은 특히 임팩트가 세야 하는데 되게 약하다 — 첫 번째 영상에 제일 임팩트가 세게").
- * 예전 1편은 고르는 화면 9초 → 마을 → 떼 → 정예 → 전리품으로 앞이 느렸다. 이제 **첫 장면부터 괴물 떼 한가운데**:
- *   철면란 격정 연주(고기 바이올린 캐논 변주곡 — 사선 베기 · 음표) + 섬광과 함께 제목 → 궁극기 야차의 포효로 떼를 날린다 →
- *   파티 스킬 → 정예 → 전리품 → 끝 카드 없이 어두워지며 2편으로
+ * 1편 세계와 전투 (약 15초 — 2026-10-09 사용자: "첫 번째 영상은 특히 임팩트가 세게" · "트레일러에 모든 내용을 넣을 필요는 없고 분량을 줄이라고").
+ * 첫 장면부터 괴물 떼 한가운데 철면란 격정 연주(캐논) + 섬광 제목 → 궁극기 야차의 포효 → 파티 스킬 → 전리품. 정예 장면은 뺐다
  */
-function partWorld() {
-  const tl = timeline()
+function partWorld(tl = timeline()) {
   const { at, every } = tl
   // 들판으로 곧장 (준비하는 동안 영상 멈춤 — 마을 · 고르는 화면은 넣지 않는다)
   at(0, () => {
     holding = true
     ov.cap = null
-    fadeTo(1, 1)
     toExit()
     key('KeyF', true)
   })
@@ -775,27 +811,26 @@ function partWorld() {
   at(1.0, () => {
     holding = false
     cue('hot', { act: 0 })
-    fadeTo(0, 220)
     flash(1)
     zoomTo(1.22, 1.0, 1700)
     ov.title = { text: '배도라지 알PG', sub: L('계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', '계란이 된 배도라지 크루의 놀이 섬 슈팅 RPG'), at: now() }
   })
   const open = tl.t
-  tl.push(open + 2.3, () => ov.title && (ov.title.out = now()))
-  tl.push(open + 2.8, () => caption('고기 바이올린 · 캐논 변주곡', '철면란 격정 연주 — 휘두를 때마다 캐논이 흐른다'))
-  tl.push(open + 3.2, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
-  every(open + 0.6, open + 8.6, 0.7, () => alive() < 75 && spawn([0, 1, 0, 2], 26, 3, 9))
+  tl.push(open + 1.9, () => ov.title && (ov.title.out = now()))
+  tl.push(open + 2.3, () => caption('고기 바이올린 · 캐논 변주곡', '철면란 격정 연주 — 휘두를 때마다 캐논이 흐른다'))
+  tl.push(open + 2.7, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
+  every(open + 0.6, open + 6.8, 0.7, () => alive() < 75 && spawn([0, 1, 0, 2], 26, 3, 9))
   // 궁극기: 야차의 포효 — 몰려 있을 때 쿨다운을 비워 둔다 (봇은 둘레에 다섯 넘게 몰리면 쓴다)
-  tl.push(open + 7.4, () => {
+  tl.push(open + 4.2, () => {
     spawn([0, 0, 2], 30, 2, 5)
     st().players[0].cd[2] = 0
   })
-  tl.push(open + 7.9, () => {
+  tl.push(open + 4.6, () => {
     caption('야차의 포효', '궁극기 — 둘레를 한 번에 날려 버린다')
     flash(0.55)
     zoomTo(1.0, 1.1, 2600)
   })
-  at(10.6, () => {})
+  at(7.2, () => {})
   // 파티 스킬 — 넷이 함께
   cut(at, () => {
     gatherBots()
@@ -805,19 +840,11 @@ function partWorld() {
     }
     spawn([0, 0, 1, 2], 60, 4, 10)
     caption('스킬마다 다른 효과', '불길 · 충격파 · 빛기둥 · 음파 — 탱커 · 딜러 · 힐러가 함께')
-    zoomTo(1.0, 1.06, 6000)
+    zoomTo(1.0, 1.06, 4500)
   })
   const party = tl.t
-  every(party + 0.8, party + 5.6, 0.8, () => alive() < 60 && spawn([0, 1, 2], 20, 4, 10))
-  at(5.8, () => {})
-  // 정예 — 특수 능력
-  cut(at, () => {
-    gatherBots()
-    caption('정예 — 특수 능력 아홉 가지', '서리 · 화염 · 보호막 · 순간이동 · 분열 · 흡혈 …')
-    elites2()
-    spawn([0, 0, 2], 30, 6, 11)
-  })
-  at(5.4, () => {})
+  every(party + 0.6, party + 4.0, 0.8, () => alive() < 60 && spawn([0, 1, 2], 20, 4, 10))
+  at(4.2, () => {})
   // 전리품 — Alt 로 겹친 이름 펼치기
   cut(at, () => {
     ov.canon = false
@@ -825,21 +852,20 @@ function partWorld() {
     gatherBots()
     dropLoot()
     caption('나만의 전리품', '마법 · 희귀 · 전설 · 신화 — Alt 를 누르면 겹친 이름이 펼쳐진다')
-    zoomTo(1.0, 1.06, 5000)
+    zoomTo(1.0, 1.06, 3600)
   })
-  at(1.2, () => key('AltLeft', true))
-  at(3.0, () => key('AltLeft', false))
-  segueOut(tl, 0.1)
+  at(0.8, () => key('AltLeft', true))
+  at(2.6, () => key('AltLeft', false))
+  endHere(tl, 0.1)
   return tl.done()
 }
 
-/** 2편 막 보스 — 마지막은 최종 보스가 쓰러지는 순간 검게 닫힌다 */
-function partBoss() {
-  const tl = timeline()
+/** 2편 막 보스 (약 15초 — 보스 셋: 1막 · 2막 · 파티 드래곤. 3막은 뺐다 — 분량) */
+function partBoss(tl = timeline()) {
   const { at } = tl
   const boss = (area, kind, dist, capText, capSub, pats, stay, extra) => {
-    at(0, () => fadeTo(1, 380))
-    at(0.42, () => {
+    at(0, () => {
+      dissolve()
       holding = true
       ov.cap = null
       ov.don = false
@@ -852,7 +878,6 @@ function partBoss() {
     at(1.2, () => faceBoss(kind, dist))
     at(0.35, () => {
       holding = false
-      fadeTo(0, 520)
       caption(capText, capSub)
       sfxCues.push({ t: vidSec() + 0.45, line: kind })
       zoomTo(1.0, 1.05, stay * 1000)
@@ -865,50 +890,48 @@ function partBoss() {
     S().autopilot = true
     cue('boss')
   })
-  boss(9, 3, 180, L('1막 도살자', '1막 술래 버섯왕'), L('돌진 · 회전 베기 · 갈고리', '돌진 · 회전 베기 · 잠자리채'), [[0.3, 1], [2.0, 2]], 7.4, () => {
+  boss(9, 3, 180, L('1막 도살자', '1막 술래 버섯왕'), L('돌진 · 회전 베기 · 갈고리', '돌진 · 회전 베기 · 잠자리채'), [[0.3, 1], [1.8, 2]], 5.4, () => {
     ov.title = { text: L('막 보스 넷', '놀이 넷'), sub: L('저마다의 보스 방 · 저마다의 패턴', '저마다의 술래 · 저마다의 규칙'), at: now() }
   })
-  tl.push(tl.t + 2.0, () => ov.title && (ov.title.out = now()))
-  // 경직: 막대가 가득 차면 3초 무력 + 받는 피해 증가 (디아블로 4) — 영상에서는 거의 찬 막대를 채워 보인다
-  tl.push(tl.t + 3.4, () => {
+  tl.push(tl.t + 1.8, () => ov.title && (ov.title.out = now()))
+  // 경직: 막대가 가득 차면 3초 무력 + 받는 피해 증가 — 영상에서는 거의 찬 막대를 채워 보인다
+  tl.push(tl.t + 2.6, () => {
     caption('경직 막대', '큰 피해가 쌓여 막대가 차면 — 3초 무력, 받는 피해 증가')
     const b = st().monsters.find((m) => m.kind === 3 && m.hp > 0)
     if (b) b.stag = 990
   })
-  at(7.4, () => {})
-  boss(18, 8, 190, L('2막 거미 여왕', '2막 여왕벌'), L('거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', '꿀 부채 · 도약 · 꿀벌 부르기 · 꽃가루 안개'), [[0.3, 0], [1.9, 1], [3.6, 3]], 6.4)
-  at(6.4, () => {})
-  boss(27, 12, 190, L('3막 관리인', '3막 진행요원 반장'), L('충격파 십자 · 내려찍기 · 방패병', '충격파 십자 · 내려찍기 · 진행요원 부르기'), [[0.3, 2], [2.3, 1]], 6.0)
-  at(6.0, () => {})
-  boss(34, 15, 210, L('최종 보스 — 심연의 군주', '최종 보스 — 파티 드래곤'), L('체력이 줄면 분노 — 광선 · 지옥불 · 그림자', '체력이 줄면 신이 난다 — 무지개 광선 · 축포 · 유령'), [[0.3, 4], [2.3, 3]], 6.5, () => {
+  at(5.4, () => {})
+  boss(18, 8, 190, L('2막 거미 여왕', '2막 여왕벌'), L('거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', '꿀 부채 · 도약 · 꿀벌 부르기 · 꽃가루 안개'), [[0.3, 0], [1.9, 1]], 4.2)
+  at(4.2, () => {})
+  boss(34, 15, 210, L('최종 보스 — 심연의 군주', '최종 보스 — 파티 드래곤'), L('체력이 줄면 분노 — 광선 · 지옥불 · 그림자', '체력이 줄면 신이 난다 — 무지개 광선 · 축포 · 유령'), [[0.3, 4], [2.0, 3]], 4.6, () => {
     cue('rage')
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
-    if (lord) {
-      lord.hp = Math.round(lord.maxHp * 0.6)
-      // 부른 보스로 — 쓰러져도 엔딩 창 · 퀘스트가 열리지 않게 (영상은 이어서 다음 편을 뜬다)
-      lord.sum = 99
-      lord.sumBy = -1
-    }
+    // 부른 보스(sum)로 바꾸지 않는다 — 게임은 부른 보스를 거대하게(4배) 그리지 않아 파티 드래곤이 작게 나왔다 (2026-10-09 사용자)
+    if (lord) lord.hp = Math.round(lord.maxHp * 0.6)
   })
-  tl.push(tl.t + 3.2, () => (snap = 'shot_boss' + (BRIGHT ? '_bright' : '')))
-  // 쓰러뜨린다 → 그 순간(느린 화면) 검게 닫힌다
-  at(5.6, () => {
+  tl.push(tl.t + 2.6, () => (snap = 'shot_boss' + (BRIGHT ? '_bright' : '')))
+  // 쓰러뜨린다 → 느린 화면이 조금 보이고 끝 (다음 편으로)
+  at(4.2, () => {
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
     if (lord) lord.hp = 1
+    // 쓰러져도 엔딩 창이 열리지 않게 — 이 방을 이미 잡은 방으로 적어 둔다 (bossDown 이 나지 않는다 · 영상은 이어서 다음 편을 뜬다)
+    const s0 = st()
+    if (!s0.killed.includes(s0.curArea)) s0.killed.push(s0.curArea)
   })
   at(0.35, () => cue('win'))
-  segueOut(tl, 0.15, 900)
+  endHere(tl, 0.9)
   return tl.done()
 }
 
-/** 3편 방송 연동 (지난 영상의 치지직 장면 — 그대로 · 앞뒤만 다듬었다) */
-function partStream() {
-  const tl = timeline()
+/** 3편 방송 연동 (약 17초 — 말풍선 · !참여 · 후원 이벤트 · 큰 후원 예고 · !응원. 결과 알림 · 방해 효과는 뺐다 — 분량) */
+function partStream(tl = timeline()) {
   const { at, every } = tl
   const t = { get v() { return tl.t } }
   const A = tl.A
   at(0, () => {
+    dissolve()
     holding = true
+    ov.cap = null
     S().autopilot = true
     for (const m of st().monsters) m.hp = 0
     warpParty(1)
@@ -926,103 +949,76 @@ function partStream() {
     holding = false
     cue('hot', { act: 0 })
     ov.title = { text: '치지직 방송 연동', sub: '시청자가 함께 만드는 판', at: now() }
-    fadeTo(0, 500)
   })
-  at(2.2, () => ov.title && (ov.title.out = now()))
-  at(0.5, () => {
+  at(1.8, () => ov.title && (ov.title.out = now()))
+  at(0.4, () => {
     ov.don = true
     caption('시청자 채팅이 말풍선으로', '괴물 머리 위에 — 욕 · 링크는 가려서')
     for (let i = 0; i < 4; i++) M.stream.fakeChat(false)
     spawn([0, 1, 2, 0], 50, 5, 12)
   })
   const cz = tl.t
-  every(cz + 0.3, cz + 31, 0.35, () => M.stream.fakeChat(false))
-  every(cz + 1, cz + 31, 1.0, () => alive() < 55 && spawn([0, 1, 2, 0], 18, 6, 12))
-  A.push({ t: cz + 1.3, fn: () => M.stream.chat({ nick: '지나가던계란', text: '여기서 같이 해요 www.abc.com' }) })
+  every(cz + 0.3, cz + 16, 0.35, () => M.stream.fakeChat(false))
+  every(cz + 1, cz + 16, 1.0, () => alive() < 55 && spawn([0, 1, 2, 0], 18, 6, 12))
+  A.push({ t: cz + 1.0, fn: () => M.stream.chat({ nick: '지나가던계란', text: '여기서 같이 해요 www.abc.com' }) })
   const JOIN = ['콩떡이', '밤톨계란', '국밥한그릇', '새벽두시', '고양이집사', '치즈볶이', '감자튀김', '달걀귀신']
-  at(3.6, () => {
+  at(2.6, () => {
     caption('채팅에 !참여 — 괴물에 내 이름', '추첨으로 정예 · 우두머리 머리 위에 시청자 이름')
     elites()
     elites()
   })
-  A.push({ t: t.v + 0.3, fn: () => JOIN.forEach((nick) => M.stream.chat({ nick, text: '!참여' })) })
-  every(t.v + 0.5, t.v + 3.2, 0.4, () => (S().nameNextAt = 0))
-  A.push({ t: t.v + 2.4, fn: () => { for (const v of S().vnames.values()) M.stream.chat({ nick: v.nick, text: '내가 이 괴물이다 ㅋㅋ' }) } })
-  A.push({ t: t.v + 3.6, fn: () => { const id = [...S().vnames.keys()][0]; const m = st().monsters.find((x) => x.id === id && x.hp > 0); if (m) m.hp = Math.min(m.hp, 20) } })
-  at(4.8, () => {
+  A.push({ t: t.v + 0.2, fn: () => JOIN.forEach((nick) => M.stream.chat({ nick, text: '!참여' })) })
+  every(t.v + 0.4, t.v + 2.6, 0.4, () => (S().nameNextAt = 0))
+  A.push({ t: t.v + 1.8, fn: () => { for (const v of S().vnames.values()) M.stream.chat({ nick: v.nick, text: '내가 이 괴물이다 ㅋㅋ' }) } })
+  at(3.2, () => {
     caption('후원 금액마다 이벤트', L('좀비 떼', '괴물 떼') + ' · 시야 축소 · 정예 무리 · 중간보스 · 막 보스')
-    M.stream.fakeDonation(1000)
     M.stream.fakeDonation(1000)
     M.stream.fakeDonation(5000)
   })
-  at(4.4, () => {
+  at(3.2, () => {
     caption('큰 후원은 3초 예고', '3 · 2 · 1 — 방송인이 준비할 틈')
     M.stream.fakeDonation(10000)
   })
-  at(3.9, () => caption('잡으면 결과 알림', '"○○님의 중간보스 처치!" — 몇 초 만에 잡았는지까지'))
-  A.push({
-    t: t.v + 0.8,
-    fn: () => {
-      const p = st().players[0]
-      for (const m of st().monsters) {
-        if (m.hp <= 0 || m.sum === undefined) continue
-        const a = Math.random() * Math.PI * 2
-        m.x = p.x + Math.cos(a) * 36
-        m.y = p.y + Math.sin(a) * 36
-        m.hp = Math.min(m.hp, 5)
-      }
-    },
-  })
-  at(4.0, () => {
+  at(3.6, () => {
     caption('후원 글에 !응원', '괴롭히는 대신 돕는다 — 아군 괴물 · 아군 보스 · 회복 · 공격 강화')
     M.stream.fakeCheer(10000)
     M.stream.fakeCheer(30000)
     spawn([0, 1, 2, 0], 26, 5, 10)
   })
-  at(5.6, () => {
-    caption('방해 효과 — 방송인이 조절', '스킬 봉인 · 시야 축소 · 거꾸로 걷기 — 길이 · 멈춤 · 보스전 중 대기')
-    M.stream.fakeDonation(20000)
-  })
-  segueOut(tl, 5.2)
+  endHere(tl, 3.4)
   return tl.done()
 }
 
-/** 4편 한 바퀴 뒤에도 — 막마다 다른 마을 · 시련 · 저주받은 상자 · 숙련 */
-function partEndgame() {
-  const tl = timeline()
+/** 4편 한 바퀴 뒤에도 (약 21초 — 도전의 문 · 도전 놀이 12단계 · 수호자 · 저주받은 상자 → 끝 카드. 대기실 둘러보기 · 숙련은 뺐다 — 분량) */
+function partEndgame(tl = timeline()) {
   const { at, every } = tl
   const RIFT_STAGE = 12
-  // 마을 구경 (2막 숲 · 3막 수문 — 짧게) → 4막 시련의 문
-  const town = (area, tx, ty, capT, capS, stay, act) => {
-    at(0, () => fadeTo(1, 300))
-    at(0.35, () => {
-      holding = true
-      ov.cap = null
-      for (const m of st().monsters) m.hp = 0
-      S().autopilot = false
-      warpAt(area, tx, ty)
-      window.__bd.zoom(1)
-      S().renderer.setDebugZoom(1.0)
-      ov.bright = 1.45
-    })
-    at(1.4, () => {
-      holding = false
-      fadeTo(0, 400)
-      cue('calm', { town: true, act })
-      if (capT) caption(capT, capS)
-      zoomTo(1.0, 1.05, stay * 1000)
-    })
-    at(stay, () => {})
-  }
-  town(10, 18, 18, L('막마다 다른 마을', '막마다 다른 대기실'), L('숲 가장자리 야영지 · 수문 야영지 · 심연의 문', '놀이 섬마다 다른 대기실'), 1.9, 1)
-  town(19, 23, 22, null, null, 1.7, 2)
-  town(28, 30, 20, L('시련의 문', '도전의 문'), L('단계를 골라 열면 — 매번 다른 맵, 끝없이 깊어지는 도전', '단계를 골라 열면 — 매번 다른 놀이, 끝없이 어려워지는 도전'), 2.6, 3)
-  // 시련으로 (문 앞 섬광)
+  // 4막 대기실의 도전의 문 (방송 연동에 이어서 — 녹이며)
   at(0, () => {
-    flash(0.8)
-    fadeTo(1, 350)
+    dissolve()
+    holding = true
+    ov.cap = null
+    // 방송 연동 장면의 후원 표 · 후원 효과 · 응원 아군은 여기까지 (이어 붙인 2편에서 도전 놀이까지 따라왔다)
+    ov.don = false
+    for (const q of st().players) if (q.don) q.don.fill(0)
+    st().allies = undefined
+    for (const m of st().monsters) m.hp = 0
+    S().autopilot = false
+    warpAt(28, 30, 20)
+    window.__bd.zoom(1)
+    S().renderer.setDebugZoom(1.0)
+    ov.bright = 1.45
   })
-  at(0.4, () => {
+  at(1.4, () => {
+    holding = false
+    cue('calm', { town: true, act: 3 })
+    caption(L('시련의 문', '도전의 문'), L('단계를 골라 열면 — 매번 다른 맵, 끝없이 깊어지는 도전', '단계를 골라 열면 — 매번 다른 놀이, 끝없이 어려워지는 도전'))
+    zoomTo(1.0, 1.05, 2400)
+  })
+  at(2.4, () => {})
+  // 도전 놀이로 (문을 여는 섬광)
+  at(0, () => {
+    dissolve()
     holding = true
     ov.cap = null
     const s = st()
@@ -1047,20 +1043,20 @@ function partEndgame() {
   })
   at(0.3, () => {
     holding = false
+    flash(0.7)
     cue('hot', { act: 3 })
-    fadeTo(0, 450)
     caption(`${L('시련', '도전 놀이')} ${RIFT_STAGE}단계`, '괴물을 잡아 위의 막대를 채워라 — 10분 안에')
-    zoomTo(1.0, 1.06, 7000)
+    zoomTo(1.0, 1.06, 5000)
   })
   const rs = tl.t
   // 막대가 눈에 띄게 차오르게 (영상 길이 안에)
-  every(rs + 0.5, rs + 6.5, 0.5, () => {
+  every(rs + 0.4, rs + 4.0, 0.4, () => {
     const r = st().rift
-    if (r && r.boss === 0) r.kills = Math.min(r.need - 1, r.kills + Math.ceil(r.need * 0.085))
+    if (r && r.boss === 0) r.kills = Math.min(r.need - 1, r.kills + Math.ceil(r.need * 0.1))
   })
-  every(rs + 1, rs + 6.5, 1.0, () => alive() < 50 && spawn([13, 14, 0], 16, 6, 11))
+  every(rs + 0.8, rs + 4.0, 1.0, () => alive() < 50 && spawn([13, 14, 0], 16, 6, 11))
   // 수호자
-  at(6.8, () => {
+  at(4.2, () => {
     const r = st().rift
     if (r) r.kills = r.need
     window.__bd.zoom(GIANT_ZOOM)
@@ -1074,18 +1070,18 @@ function partEndgame() {
       g0.los = 1
     }
   })
-  at(4.2, () => {
+  at(3.0, () => {
     const g0 = st().monsters.find((m) => m.rg === 1 && m.hp > 0)
     if (g0) g0.hp = 1
   })
   at(0.4, () => cue('win'))
-  at(2.4, () => {})
+  at(1.2, () => {})
   // 저주받은 상자 (4막 들판)
-  cut(at, () => {
-    holding = true
-    for (const m of st().monsters) m.hp = 0
-  })
   at(0, () => {
+    dissolve()
+    holding = true
+    ov.cap = null
+    for (const m of st().monsters) m.hp = 0
     warpParty(29)
     window.__bd.zoom(1)
   })
@@ -1104,30 +1100,15 @@ function partEndgame() {
     holding = false
     cue('hot', { act: 3 })
     caption('저주받은 상자', '열면 괴물 물결 셋 — 다 막으면 희귀 이상이 꼭')
-    zoomTo(1.0, 1.05, 7000)
+    zoomTo(1.0, 1.05, 5200)
   })
   const ch = tl.t
-  // 물결마다 2초쯤 싸우다 쓰러뜨린다 (셋째 물결까지)
-  every(ch + 1.9, ch + 7.6, 1.9, () => {
+  // 물결마다 1.6초쯤 싸우다 쓰러뜨린다 (셋째 물결까지)
+  every(ch + 1.6, ch + 5.0, 1.6, () => {
     for (const m of st().monsters) if (m.pack === 7000 + 990001 && m.hp > 0) m.hp = Math.min(m.hp, 1)
   })
-  at(7.8, () => {})
-  // 숙련 — 레벨 30 뒤에도
-  cut(at, () => {
-    const s = st()
-    const p = s.players[0]
-    p.level = 30
-    p.mxp = M.items.MASTERY_XP - 5
-    gatherBots()
-    spawn([0, 0, 2], 18, 3, 7)
-    caption('레벨 30 뒤에도 — 숙련', '경험치가 숙련 점수로 — 공격 · 체력 · 방어 · 기술에 나눠 쓴다')
-  })
-  every(tl.t + 0.6, tl.t + 3.6, 0.8, () => {
-    const p = st().players[0]
-    const m = st().monsters.find((x) => x.hp > 0 && Math.hypot(x.x - p.x, x.y - p.y) < 6 * T)
-    if (m) m.hp = 1
-  })
-  endCard(tl, 4.2)
+  at(5.2, () => {})
+  endCard(tl, 0, 700)
   return tl.done()
 }
 
@@ -1569,6 +1550,10 @@ export async function start(opts = {}) {
   out.width = W
   out.height = H
   g = out.getContext('2d')
+  prev = document.createElement('canvas')
+  prev.width = W
+  prev.height = H
+  pg = prev.getContext('2d')
   await document.fonts?.ready
   // 영상은 **두 벌**을 한 번에 뜬다 (2026-09-24 사용자: "화질 괜찮은 버전도 만들고, 낮춘 버전으로 해서 2개를 항상"):
   //  trailer.webm    — 게시판용(파일당 40 MB): 720 후보 셋 중 **38 MB 안에서 가장 큰 것**.
@@ -1576,7 +1561,7 @@ export async function start(opts = {}) {
   //                    1.9 · 2.4 Mbps 가 1분 37초에 44.5 · 45.9 MB 였다 → 키 프레임 8초마다 · 720 후보를 더해 뜬 뒤에 크기로 고른다
   //  trailer_hq.webm — 고화질: 1080 · 가변 16 Mbps · 키 2초 (크기는 상관없다)
   // 같은 장을 인코더 넷에 넣는다 — 게임을 한 번만 돌린다. 소리는 한 번 만들어 모두에 붙인다
-  // 네 편을 한 글에 올리려면(게시판 글 하나 50 MB) 편마다 12 MB 안으로 — start({ lowMax: 11_500_000 })
+  // 두 편을 한 글에 올리려면(게시판 글 하나 50 MB) 편마다 20 MB 안으로 — start({ lowMax: 20_000_000 }) (예전 네 편은 12 MB)
   const LOW_MAX = opts.lowMax ?? 38_000_000
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
@@ -1589,7 +1574,7 @@ export async function start(opts = {}) {
     } catch {}
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
-  PART = Math.max(1, Math.min(4, opts.part ?? 1))
+  PART = Math.max(1, Math.min(2, opts.part ?? 1))
   const BASE = (ULT ? 'boss_voice' : `trailer${PART}`) + (BRIGHT ? '_bright' : '')
   const encs = [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
@@ -1709,7 +1694,7 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), count: sec })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, bright: undefined, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
   const acts = ULT ? ultScenes() : scenes(PART)
@@ -1718,6 +1703,7 @@ export async function start(opts = {}) {
   const glc = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)[0]
   let lost = false
   let settle = 0
+  const prepWait = { n: 0, ms: 0 }
   const onLost = (e) => {
     e.preventDefault()
     lost = true
@@ -1757,6 +1743,21 @@ export async function start(opts = {}) {
       sess.renderer.punch = 0
       sess.renderer.kick = 0
       sess.frame(vt)
+      // 준비가 덜 된 장은 담지 않는다 (2026-10-09 사용자: "2편 3막 보스 처음이 그냥 검은 화면 · 파티 드래곤이 큰 크기가 아니라 작은 크기"):
+      // 새 지역 셰이더(areaCompiling — 그동안 3D 를 그리지 않고 어둡다)와 괴물 모델(비동기 컴파일 — 그동안 작은 도형 괴물)은 **진짜 시간**으로
+      // 준비되는데, 가상 시계는 순식간에 흘러 그 사이 장이 그대로 담겼다 → 준비가 끝날 때까지 가상 시계를 멈추고 기다린 뒤 그 장을 다시 그린다
+      const R = sess.renderer
+      // 첫 준비(prepareStart — 판을 열 때 셰이더 전부)도: 끝나기 전에는 3D 를 그리지 않는다(창이 가려져 있으면 수십 초)
+      const unready = () => !R.ready || R.areaCompiling || (R.monsterView?.models ?? []).some((mk) => mk && mk.asked && !mk.shown)
+      if (unready()) {
+        const w0 = realNow()
+        while (unready() && realNow() - w0 < 40000) await new Promise((r) => setTimeout(r, 25))
+        prepWait.n++
+        prepWait.ms += realNow() - w0
+        sess.frame(vt)
+      }
+      // 지역에 들어설 때의 어둠(페이드)도 담지 않는다 — 게임은 흐르고 영상만 멈춘다
+      const areaFade = (R.fade?.t ?? 0) > 0.01
       if (opts.diag && i % 10 === 0) {
         const me = st().players[0]
         const R = sess.renderer
@@ -1787,10 +1788,11 @@ export async function start(opts = {}) {
       cancelAnimationFrame(sess.raf)
       clearTimeout(sess.raf)
       if (settle > 0) settle--
-      if (!holding && settle === 0 && !opts.diag) {
+      if (!holding && !areaFade && settle === 0 && !opts.diag) {
         g.fillStyle = '#000'
         g.fillRect(0, 0, W, H)
         drawGame()
+        drawXfade()
         if (snap) {
           const name = snap
           snap = null
@@ -1806,7 +1808,7 @@ export async function start(opts = {}) {
       if (ve.encodeQueueSize > 8) await ve.flush()
     }
     await ve.flush()
-    log.push(`영상 ${vid}장 (${vidSec().toFixed(1)}초) · 조각 ${chunks.length}`)
+    log.push(`영상 ${vid}장 (${vidSec().toFixed(1)}초) · 조각 ${chunks.length} · 준비 기다림 ${prepWait.n}번 ${(prepWait.ms / 1000).toFixed(1)}초`)
   } finally {
     glc?.removeEventListener('webglcontextlost', onLost)
     glc?.removeEventListener('webglcontextrestored', onBack)

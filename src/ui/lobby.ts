@@ -40,6 +40,7 @@ import '../game/skinThemes'
 import { StreamBadge, openStreamPanel } from './streamPanel'
 import { loadStreamCfg, maskShown } from '../game/stream'
 import { SessionConfig } from '../game/session'
+import { APP_VERSION, rejectGuestText, sameVersion, versionMismatchText } from './update'
 
 export interface LobbyHandlers {
   onStart: (cfg: Omit<SessionConfig, 'onExit'>) => void
@@ -702,9 +703,11 @@ export class Lobby {
         const room = r.count < r.max
         const arenaRoom = r.kind === 'arena'
         const teamsPlaying = arenaRoom && r.state === 'playing' && r.mode === 'teams'
-        const canJoin = r.state === 'open' || (r.state === 'playing' && room && !teamsPlaying)
-        const st =
-          r.state === 'open'
+        const otherVer = !sameVersion(r.ver)
+        const canJoin = !otherVer && (r.state === 'open' || (r.state === 'playing' && room && !teamsPlaying))
+        const st = otherVer
+          ? `<span class="pill" title="방장 ${r.ver ? 'v' + esc(r.ver) : '옛 판'} · 나 v${APP_VERSION} — 판 번호가 같아야 같이 할 수 있습니다">다른 판</span>`
+          : r.state === 'open'
             ? '<span class="pill ok">참가 가능</span>'
             : r.state === 'full'
               ? '<span class="pill">정원 참</span>'
@@ -815,6 +818,7 @@ export class Lobby {
       tier: this.tier,
       kind: this.kind,
       skin: this.skin,
+      ver: APP_VERSION,
       count: this.members.length,
       max: this.roomSize,
       // 목록에서 "나와 비슷한 방인가" 를 보라고 (2026-09-20 요청). 봇 자리는 빼고 사람만 센다
@@ -950,7 +954,7 @@ export class Lobby {
     link.onPeerJoin((id) => {
       if (this.link !== link) return
       // 연결되는 피어마다 자리를 묻는다 (게스트는 무시하고, 호스트만 답한다)
-      link.sendCtl({ t: 'joinAsk', char: this.char, name: this.nick, sheet: sheetOf(this.char) }, id)
+      link.sendCtl({ t: 'joinAsk', char: this.char, name: this.nick, sheet: sheetOf(this.char), ver: APP_VERSION }, id)
       if (!this.bargeSent) {
         this.bargeSent = true
         if (this.barging) this.showJoining(2)
@@ -1068,6 +1072,13 @@ export class Lobby {
       }
       case 'room': {
         if (this.role !== 'guest') return
+        if (!sameVersion(m.ver)) {
+          clearTimeout(this.waitTimer)
+          this.status(versionMismatchText(m.ver, true), 'bad', `<div class="row"><button class="btn secondary" id="btn-cancel">닫기</button></div>`)
+          this.bindCancel()
+          this.closeLink()
+          return
+        }
         clearTimeout(this.waitTimer)
         this.hostId = from
         this.members = m.members
@@ -1147,6 +1158,17 @@ export class Lobby {
       this.link.sendCtl({ t: 'kick' }, from)
       return
     }
+    // 판 번호가 다른 사람은 받지 않는다 (2026-10-09 — 섞이면 같은 판을 다르게 계산해 어긋난다). rejoinNo 는 옛 판 손님도 글을 그대로 띄운다
+    if (!sameVersion(m.ver)) {
+      if (existing) this.members = this.members.filter((x) => x.id !== from)
+      this.link.sendCtl({ t: 'rejoinNo', why: rejectGuestText(m.ver) }, from)
+      if (existing) {
+        this.broadcastRoom()
+        this.announce()
+        this.renderRoom()
+      }
+      return
+    }
     if (existing) {
       existing.char = m.char
       existing.ready = m.ready
@@ -1176,12 +1198,12 @@ export class Lobby {
 
   private broadcastRoom(): void {
     if (this.role !== 'host' || !this.link) return
-    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin })
+    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, ver: APP_VERSION })
   }
 
   private sendHello(to?: string): void {
     if (!this.link) return
-    this.link.sendCtl({ t: 'hello', char: this.char, ready: this.myReady, team: this.myTeam, name: this.nick, sheet: sheetOf(this.char) }, to)
+    this.link.sendCtl({ t: 'hello', char: this.char, ready: this.myReady, team: this.myTeam, name: this.nick, sheet: sheetOf(this.char), ver: APP_VERSION }, to)
   }
 
   /** 내 캐릭터·준비·팀이 바뀌었다: 호스트면 정본 갱신 후 방송, 게스트면 hello */

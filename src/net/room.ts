@@ -57,6 +57,8 @@ export interface RoomInfo {
   kind?: string
   /** 분위기 (dark · bright — game/skin.ts). 그림만 다르다 */
   skin?: string
+  /** 방장의 판 번호 (2026-10-09 — 다르면 목록에서 "다른 판" · 참가 막음 · ui/update.ts). 옛 판은 없다 */
+  ver?: string
   /** 방 사람들의 평균 레벨 · 평균 템 수준 (2026-09-20 — 목록에서 내게 맞는 방을 고르라고) */
   lv?: number
   gs?: number
@@ -204,9 +206,9 @@ export type Member = {
 
 export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
-  | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet }
+  | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet; ver?: string }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string; skin?: string }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string; skin?: string; ver?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */
@@ -247,7 +249,7 @@ export type CtlMessage =
    *   준비가 늦으면(8초) 호스트가 joinCancel 로 자리를 되돌리고 그 사람을 돌려보낸다(rejoinNo).
    * 기존 사람들은 3·4 사이에도 그 자리를 기다리지 않으므로 **난입 때문에 멈추는 일이 없다.**
    */
-  | { t: 'joinAsk'; char: string; name: string; sheet?: Sheet }
+  | { t: 'joinAsk'; char: string; name: string; sheet?: Sheet; ver?: string }
   /** 난입자 → 호스트: 모두와 연결됐다 (호스트가 준 피어 목록 기준) */
   | { t: 'joinReady' }
   /**
