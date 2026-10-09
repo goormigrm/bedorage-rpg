@@ -3,9 +3,9 @@
 
 import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
-import { botSheet, gearLevelOf } from '../core/botsheet'
+import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_ATTR, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
+import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
@@ -32,7 +32,7 @@ import './skinText'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { Sheet, attrFree, sanitizeSheet } from '../core/items'
+import { Sheet, sanitizeSheet } from '../core/items'
 import { GfxMode, bindSettings, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
 import { commitSheet } from './save'
@@ -891,12 +891,13 @@ export class Session {
     const hostBonus = questPoints(hostQuests)
     // 템 수준도 방장에 맞춘다 (레벨만 보면 장비를 안 갈아입은 방장 곁에 봇만 번쩍인다)
     const hostIlvl = gearLevelOf(host)
+    const hostMlv = host?.mlv ?? 0
     return this.cfg.chars.map((c, i) => {
       const s = sheets?.[i]
       // 퀘스트·웨이포인트는 이 판의 난이도 것으로 (악몽·지옥은 따로 진행한다 — 디아블로 2)
       if (s) return { ...s, quests: tierQuests(s, tier), wps: tier > 0 ? (s.twps?.[tier] ?? 0) : s.wps }
       const botSeat = this.cfg.mode === 'solo' || this.cfg.bots?.[i]
-      return botSeat ? botSheet(c, hostLvl, hostIlvl, this.cfg.seed + i * 977, hostQuests, hostBonus) : undefined
+      return botSeat ? botSheet(c, hostLvl, hostIlvl, this.cfg.seed + i * 977, hostQuests, hostBonus, hostMlv) : undefined
     })
   }
 
@@ -939,10 +940,11 @@ export class Session {
     const v = areaView(this.state, a)
     if (this.arena) return pvpBotInput(v, this.mapOf(a), i, this.bots[i] as PvpBotMemory, diff)
     const inp = botInput(v, this.mapOf(a), i, this.bots[i] as BotMemory, diff)
-    // 봇 동료는 능력치 포인트가 생기면 추천대로 쓴다 (명령으로 — 모두의 sim 이 같게)
+    // 봇 동료는 레벨이 오르면 포인트를 스스로 쓴다 (명령으로 — 모두의 sim 이 같게): 능력치는 추천대로 · 스킬은 판을 시작할 때와 같은 차례로
+    // (botSkillNext — 2026-10-09 예전에는 게임 중 레벨업의 스킬 포인트를 남겨 두었다) · 숙련은 고르게
     const bp = this.state.players[i]
-    if (bp && !inp.cmd && attrFree(bp.level, bp.attr) > 0) return { ...inp, cmd: CMD_ATTR, arg: 10 }
-    return inp
+    const spend = bp && !inp.cmd ? botSpendCmd(bp) : null
+    return spend ? { ...inp, ...spend } : inp
   }
 
   private get isHost(): boolean {
