@@ -13,6 +13,7 @@
 //   마을 천막 → 숙소(돼지 저금통 · 큰 시계 · 이층 침대). 바닥엔 분필 ♡ ☆ ◇. 판정(sim)은 그대로.
 
 import { isBright } from '../game/skin'
+import { BRIGHT_FLOOR, applyGrain, hash, paintBrightBand } from './brightFloor'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GameMap, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
@@ -34,14 +35,6 @@ export interface World3D {
   /** 매 프레임: 횃불·모닥불 깜빡임, 가까운 횃불에 빛 옮기기 (x, z = 카메라가 보는 곳) */
   update(t: number, x: number, z: number): void
   dispose(): void
-}
-
-/** 타일 좌표 해시 (0..1) — 같은 맵이면 같은 모습 */
-function hash(tx: number, ty: number, salt = 0): number {
-  let h = (Math.imul(tx, 73856093) ^ Math.imul(ty, 19349663) ^ Math.imul(salt + 1, 83492791)) >>> 0
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0
-  h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0
-  return ((h ^ (h >>> 15)) >>> 0) / 4294967296
 }
 
 /**
@@ -172,7 +165,11 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   // ---- 바닥 ----
   const floorTex = painted ?? paintFloor(map, style)
   disposables.push(floorTex)
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(map.w, map.h), new THREE.MeshLambertMaterial({ map: floorTex }))
+  const floorMat = new THREE.MeshLambertMaterial({ map: floorTex })
+  // ☀ 맵별 바닥 (brightFloor — 없는 맵은 예전 바닥)
+  const fdef = bright ? BRIGHT_FLOOR[map.id] : undefined
+  if (fdef) disposables.push(applyGrain(floorMat, map, fdef))
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(map.w, map.h), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.position.set(map.w / 2, 0, map.h / 2)
   floor.receiveShadow = true
@@ -468,7 +465,11 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     )
   }
   grassMat.customProgramCacheKey = () => 'grass-sway'
-  const grass = P.has('grass') ? inst(grassGeometry(), grassMat, floors.length, false) : null
+  // ☀ 맵별 바닥: 풀은 바깥에서만 · 반으로 줄이고 그 자리 일부를 작은 꽃으로 (실내 · 대기실 마루에는 없다)
+  const grass = P.has('grass') && (!fdef || fdef.outdoor) ? inst(grassGeometry(), grassMat, floors.length, false) : null
+  const grassUntil = fdef ? 0.125 : 0.2
+  const petals = fdef?.outdoor ? inst(flowerGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length, false) : null
+  const flowerMid = petals ? inst(new THREE.SphereGeometry(0.048, 6, 4).scale(1, 0.5, 1).translate(0, 0.05, 0), new THREE.MeshLambertMaterial({ color: 0xffd34a }), floors.length, false) : null
   const shroomGeo = mergeGeometries([new THREE.CylinderGeometry(0.03, 0.04, 0.16, 5).translate(0, 0.08, 0), new THREE.SphereGeometry(0.11, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.6, 1).translate(0, 0.16, 0)])!
   const shrooms = P.has('shroom') ? inst(shroomGeo, new THREE.MeshBasicMaterial({ color: bright ? 0xff9ec4 : 0x8ad8a8 }), floors.length, false) : null
   // 밝게: 짚더미 → 빈백 쿠션
@@ -494,8 +495,19 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     } else if (candleM && wallSide && r < 0.09) {
       put(candleM, x, 0, z, 1, 0.7 + hash(tx, ty, 34) * 0.8, 1, 0, bright ? col.setHex(toy(tx, ty, 44)) : undefined)
       candles.push({ x, z })
-    } else if (grass && r < 0.2) put(grass, x, 0, z, 0.8 + hash(tx, ty, 35) * 0.6, 0.7 + hash(tx, ty, 36) * 0.8, 1, rot)
-    else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1, 0, bright ? col.setHex(toy(tx, ty, 45)) : undefined)
+    } else if (P.has('grass') && r < 0.2) {
+      // 풀 자리 (☀ 바닥에서 풀이 없어도 이 자리는 비워 둔다 — 빈백 · 버섯 수가 늘지 않게)
+      if (grass && r < grassUntil) put(grass, x, 0, z, 0.8 + hash(tx, ty, 35) * 0.6, 0.7 + hash(tx, ty, 36) * 0.8, 1, rot)
+      else if (petals && flowerMid && r < 0.16) {
+        for (let k = 0; k < 3; k++) {
+          const fx = x + (hash(tx, ty, 60 + k) - 0.5) * 0.7
+          const fz = z + (hash(tx, ty, 63 + k) - 0.5) * 0.7
+          const s = 0.8 + hash(tx, ty, 66 + k) * 0.5
+          put(petals, fx, 0, fz, s, s, s, hash(tx, ty, 69 + k) * 6.28, col.setHex(FLOWER[Math.floor(hash(tx, ty, 72 + k) * FLOWER.length)]))
+          put(flowerMid, fx, 0, fz, s, s, s)
+        }
+      }
+    } else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1, 0, bright ? col.setHex(toy(tx, ty, 45)) : undefined)
     else if (shrooms && r < 0.24) put(shrooms, x, 0, z, 0.8 + hash(tx, ty, 40) * 1.4, 0.8 + hash(tx, ty, 41) * 1.6, 0.8 + hash(tx, ty, 40) * 1.4, rot)
     else if (tombs && wallSide && r < 0.26) {
       if (bright) put(tombs, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 46)))
@@ -777,14 +789,21 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
   const shade = (c: THREE.Color, k: number) => `rgb(${Math.round(c.r * 255 * k)},${Math.round(c.g * 255 * k)},${Math.round(c.b * 255 * k)})`
   g.fillStyle = hex(t.floor)
   g.fillRect(0, 0, fc.width, fc.height)
+  // ☀ 맵별 바닥: 바탕 무늬는 띠마다 brightFloor 가 그리고, 아래 칸마다는 구석 그늘 · 낙서만 얹는다
+  const fdef = bright ? BRIGHT_FLOOR[map.id] : undefined
+  const pal = { floor: base, alt, line: new THREE.Color(t.floorLine).convertLinearToSRGB() }
+  const decal = fdef ? { crack: fdef.chalk ? look.decal.crack : 0, blood: look.decal.blood * 0.35, moss: 0 } : look.decal
   for (let ty = 0; ty < map.h; ty++) {
     if (ty > 0 && ty % rows === 0) yield
+    if (fdef && ty % rows === 0) paintBrightBand(fdef, g, map, px, ty, Math.min(map.h, ty + rows), pal)
     for (let tx = 0; tx < map.w; tx++) {
       const x = tx * px
       const y = ty * px
       const r = hash(tx, ty, 50)
       const k = 0.82 + 0.3 * hash(tx, ty, 51)
-      if (look.floor === 'flag' || look.floor === 'marble') {
+      if (fdef) {
+        // 바탕은 띠에서 그렸다
+      } else if (look.floor === 'flag' || look.floor === 'marble') {
         const c = look.floor === 'marble' && (tx + ty) % 2 === 0 ? alt : base
         g.fillStyle = shade(c, k)
         g.fillRect(x + 1, y + 1, px - 2, px - 2)
@@ -828,7 +847,7 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         g.fillRect(dx < 0 ? x : dx > 0 ? x + px - d : x, dy < 0 ? y : dy > 0 ? y + px - d : y, dx !== 0 ? d : px, dy !== 0 ? d : px)
       }
       // 금 (밝은 분위기: 운동장 분필 선)
-      if (hash(tx, ty, 70) < look.decal.crack) {
+      if (hash(tx, ty, 70) < decal.crack) {
         g.strokeStyle = bright ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)'
         g.lineWidth = 1.2
         g.beginPath()
@@ -843,7 +862,7 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         g.stroke()
       }
       // 핏자국 (밝은 분위기: 물감 방울 — 분홍 · 민트 · 노랑)
-      if (hash(tx, ty, 80) < look.decal.blood) {
+      if (hash(tx, ty, 80) < decal.blood) {
         g.fillStyle = bright ? PAINT_RGBA[Math.floor(hash(tx, ty, 95) * PAINT_RGBA.length)] : 'rgba(70,6,6,0.6)'
         for (let s = 0; s < 4; s++) {
           g.beginPath()
@@ -852,9 +871,9 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
         }
       }
       // 분필 기호 ♡ ☆ ◇ (밝은 분위기 — 운동장 낙서)
-      if (bright && hash(tx, ty, 97) < 0.012) chalkSymbol(g, x + px / 2, y + px / 2, 7 + hash(tx, ty, 98) * 4, Math.floor(hash(tx, ty, 99) * 3))
+      if (bright && (!fdef || fdef.chalk) && hash(tx, ty, 97) < 0.012) chalkSymbol(g, x + px / 2, y + px / 2, 7 + hash(tx, ty, 98) * 4, Math.floor(hash(tx, ty, 99) * 3))
       // 이끼 (밝은 분위기: 노란 · 흰 꽃무리)
-      if (hash(tx, ty, 90) < look.decal.moss) {
+      if (hash(tx, ty, 90) < decal.moss) {
         g.fillStyle = bright ? (hash(tx, ty, 96) < 0.5 ? 'rgba(255,226,120,0.55)' : 'rgba(255,255,255,0.5)') : 'rgba(60,78,40,0.45)'
         g.beginPath()
         g.arc(x + hash(tx, ty, 91) * px, y + hash(tx, ty, 92) * px, 5 + hash(tx, ty, 93) * 8, 0, Math.PI * 2)
@@ -1004,6 +1023,14 @@ function bunkBed(c: Cluster, i: number): THREE.Group {
 }
 
 /** 풀 한 포기: 엇갈린 잎 셋 */
+/** ☀ 작은 꽃 색 (꽃잎 — 가운데는 노랑) */
+const FLOWER = [0xffffff, 0xffc2da, 0xdccbff, 0xc4e4ff]
+
+/** ☀ 작은 꽃: 납작한 꽃잎 다섯 (바닥에 붙어 핀다 — 가운데 노란 점은 따로) */
+function flowerGeometry(): THREE.BufferGeometry {
+  return mergeGeometries(Array.from({ length: 5 }, (_, k) => new THREE.SphereGeometry(0.08, 6, 4).scale(1, 0.3, 0.62).translate(0.085, 0.04, 0).rotateY((k * Math.PI * 2) / 5)))!
+}
+
 function grassGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
   for (let k = 0; k < 3; k++) {
