@@ -314,6 +314,15 @@ export interface RoomLink {
 
 export const ROOM_MAX = MAX_PLAYERS
 
+/**
+ * 입력 전용 빠른 채널 (2026-10-17 성능 · 네트워크 검토): Trystero 는 피어마다 데이터 채널을 **하나**(순서 보장 · 재전송)만 열고
+ * 입력 · 제어 · 채팅 · 리싱크 상태(판 JSON 약 200 KB)를 모두 그 한 줄로 보낸다. 패킷 하나만 잃어도 재전송될 때까지 뒤 패킷이 모두
+ * 기다리고(head-of-line), 큰 메시지 뒤에도 줄을 서 락스텝이 넷 모두 멈췄다. 입력은 최근 8틱을 겹쳐 보내 잃어도 되므로(lockstep.ts)
+ * 순서 · 재전송 없는 채널을 따로 연다. 양쪽이 같은 번호로 미리 정해 연다(negotiated — Trystero 의 ondatachannel 에 잡히지 않는다).
+ * 상대 쪽이 아직 안 열었으면 보낸 것이 사라지므로, 상대에게서 이 채널로 처음 받기 전까지는 원래 줄로도 같이 보낸다
+ */
+const FAST_IN_ID = 77
+
 /** 우리가 나간 방 객체. Trystero 는 leave 가 끝나기 전(또는 중간에 멈추면 영영) 같은 방 id 로 옛 객체를 돌려준다 */
 const leftRooms = new WeakSet<Room>()
 
@@ -336,6 +345,41 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   const inCbs: ((buf: Uint8Array, from: string) => void)[] = []
   const voiceCbs: ((s: MediaStream, from: string) => void)[] = []
   let voice: MediaStream | null = null
+  /** 피어별 빠른 입력 채널 · 그 채널로 받은 적이 있는 피어 (FAST_IN_ID) */
+  const fast = new Map<string, RTCDataChannel>()
+  const fastHeard = new Set<string>()
+  const openFast = (id: string) => {
+    if (fast.has(id)) return
+    const pc = room.getPeers()[id] as RTCPeerConnection | undefined
+    if (!pc || typeof pc.createDataChannel !== 'function') return
+    try {
+      const ch = pc.createDataChannel('bd-in', { negotiated: true, id: FAST_IN_ID, ordered: false, maxRetransmits: 0 })
+      ch.binaryType = 'arraybuffer'
+      ch.onmessage = (e) => {
+        fastHeard.add(id)
+        const buf = new Uint8Array(e.data as ArrayBuffer)
+        for (const cb of [...inCbs]) cb(buf, id)
+      }
+      ch.onclose = () => {
+        if (fast.get(id) !== ch) return
+        fast.delete(id)
+        fastHeard.delete(id)
+      }
+      fast.set(id, ch)
+    } catch {
+      /* 못 열면 원래 줄로만 보낸다 */
+    }
+  }
+  const closeFast = (id: string) => {
+    const ch = fast.get(id)
+    fast.delete(id)
+    fastHeard.delete(id)
+    try {
+      ch?.close()
+    } catch {
+      /* 이미 닫힘 */
+    }
+  }
 
   const link: RoomLink = {
     code,
@@ -357,9 +401,26 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
       }
     },
     sendInput(buf, to) {
+      // 한 피어에게 몰아 보내는 지난 입력(최대 255틱 묶음)은 잃으면 안 되므로 원래 줄로
       if (to !== undefined) {
         if (peers.has(to)) void sendInRaw(buf, to)
-      } else if (peers.size > 0) void sendInRaw(buf)
+        return
+      }
+      if (peers.size === 0) return
+      const slow: string[] = []
+      for (const id of peers) {
+        const ch = fast.get(id)
+        const open = ch !== undefined && ch.readyState === 'open'
+        if (open) {
+          try {
+            ch.send(buf as Uint8Array<ArrayBuffer>)
+          } catch {
+            /* 닫히는 중 */
+          }
+        }
+        if (!open || !fastHeard.has(id)) slow.push(id)
+      }
+      if (slow.length > 0) void sendInRaw(buf, slow)
     },
     onCtl(cb) {
       ctlCbs.push(cb)
@@ -388,6 +449,7 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
       voiceCbs.push(cb)
     },
     leave() {
+      for (const id of [...fast.keys()]) closeFast(id)
       voiceCbs.length = 0
       clearInterval(pingTimer)
       joinCbs.length = 0
@@ -419,11 +481,13 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
     for (const [id, pc] of Object.entries(room.getPeers())) {
       if (peers.has(id) || pc.connectionState !== 'connected') continue
       peers.add(id)
+      openFast(id)
       for (const cb of [...joinCbs]) cb(id)
     }
   }, 0)
   room.onPeerJoin((id) => {
     peers.add(id)
+    openFast(id)
     // 음성을 켜 둔 채면 새로 붙은 사람에게도 보낸다
     if (voice) for (const p of room.addStream(voice, id)) void p.catch(() => {})
     for (const cb of [...joinCbs]) cb(id)
@@ -434,6 +498,7 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   room.onPeerLeave((id) => {
     peers.delete(id)
     rtts.delete(id)
+    closeFast(id)
     for (const cb of [...leaveCbs]) cb(id)
   })
   onCtlRaw((m, from) => {

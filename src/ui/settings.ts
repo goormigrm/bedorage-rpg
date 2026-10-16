@@ -44,6 +44,7 @@ const MUTE_KEY = 'brpg.muted'
 const HUD_KEY = 'brpg.hud'
 const SHAKE_KEY = 'brpg.shake'
 const DMGNUM_KEY = 'brpg.dmgnum'
+const FPSCAP_KEY = 'brpg.fpscap'
 const CB_KEY = 'brpg.colorblind'
 const GFX_KEY = 'brpg.gfx'
 const AIM_KEY = 'brpg.aim'
@@ -134,6 +135,13 @@ export const dmgNumbersOn = (): boolean => dmgNum
 export const setDmgNumbers = (on: boolean): void => {
   dmgNum = on
   set(DMGNUM_KEY, on ? '1' : '0')
+}
+/** 프레임 제한: 고주사율 모니터에서도 1초에 약 60번만 그린다 (기본 켬 — game/ticker.ts shouldDraw) */
+let fpsCap = get(FPSCAP_KEY) !== '0'
+export const fpsCapOn = (): boolean => fpsCap
+export const setFpsCap = (on: boolean): void => {
+  fpsCap = on
+  set(FPSCAP_KEY, on ? '1' : '0')
 }
 /** 색약 모드: 우리 편 초록 → 파랑 · 세트 초록 → 하늘색 (core/palette.ts) */
 palette.colorblind = get(CB_KEY) === '1'
@@ -226,6 +234,8 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     shakeRowHtml() +
     (isTouchDevice() ? '' : aimRowsHtml()) +
     onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
+    onoff('프레임 제한', fpsCapOn(), '60fps', '모니터에 맞춤') +
+    `<p class="apn">판은 1초에 60번 움직입니다. 120 · 144Hz 모니터에서 그보다 자주 그리면 CPU 만 더 쓰고, 같이 하는 사람이 기다릴 수 있습니다.</p>` +
     onoff('색약 모드', palette.colorblind) +
     `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
     (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>` + `<p class="apn">${holdEsc() ? '전체 화면에서 나가기: 이 단추 · 또는 Esc 를 길게(약 2초) — Esc 를 짧게 누르면 게임 메뉴입니다.' : '이 브라우저는 Esc 를 누르면 바로 창으로 돌아갑니다(크롬 · 엣지는 Esc 를 길게 눌러야 나갑니다).'}</p>`) +
@@ -361,6 +371,8 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
         setBossVoice(on)
       } else if (name === '피해 숫자') {
         setDmgNumbers(on)
+      } else if (name === '프레임 제한') {
+        setFpsCap(on)
       } else if (name === '색약 모드') {
         setColorblind(on)
       } else {

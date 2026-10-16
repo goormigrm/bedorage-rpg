@@ -33,7 +33,7 @@ import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, sanitizeSheet } from '../core/items'
-import { GfxMode, bindSettings, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
+import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
 import { commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
@@ -49,7 +49,7 @@ import { Renderer3D, VIEWER_TAG } from '../render3d/renderer3d'
 import { Sfx } from '../audio/sfx'
 import { LocalInput } from './localInput'
 import { TouchControls, enterLandscape, isTouchDevice } from './touch'
-import { Ticker } from './ticker'
+import { Ticker, shouldDraw } from './ticker'
 import { rejectGuestText, sameVersion } from '../ui/update'
 
 /** 마을 준비(idlePrep) 속도 제한 — 걸음 사이 최소 쉼(ms) · 걸음 시간의 몇 배를 쉴지 · 들어선 뒤 기다림 · 끊김 기준(초) · 끊기면 쉼 */
@@ -552,7 +552,7 @@ export class Session {
     this.ticker = new Ticker(() => this.tick())
     this.ticker.start()
     this.showLoading()
-    this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
+    this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.rafFrame)
     // 디버그·운영 훅. others = 나와 봇 자리를 뺀 '사람' 수 (방 지키기 스크립트가 판을 이어갈지 방을 다시 열지 정한다)
     ;(window as unknown as { __bd?: unknown }).__bd = {
       tick: () => this.state.tick,
@@ -1938,6 +1938,25 @@ export class Session {
     else if (now - this.playedAt > 5000) this.notePlayed()
   }
 
+  /** 화면 신호(rAF)의 간격 (부드럽게 잰 값 — shouldDraw) */
+  private rafIv = 1000 / 60
+  private lastRaf = 0
+  /**
+   * 화면 신호마다: 고주사율 모니터면 1/60초가 다 되기 전의 신호는 건너뛴다 (설정 "프레임 제한" — game/ticker.ts shouldDraw).
+   * 영상 도구 · 자동 조종처럼 frame 을 직접 부르는 길은 늘 그린다
+   */
+  private rafFrame = (now: number): void => {
+    if (this.disposed) return
+    const iv = now - this.lastRaf
+    this.lastRaf = now
+    if (iv > 0 && iv < 50) this.rafIv += (iv - this.rafIv) * 0.1
+    if (fpsCapOn() && !shouldDraw(now - this.last, this.rafIv)) {
+      this.raf = requestAnimationFrame(this.rafFrame)
+      return
+    }
+    this.frame(now)
+  }
+
   private frame = (now: number): void => {
     if (this.disposed) return
     this.lastFrameAt = performance.now()
@@ -2035,7 +2054,7 @@ export class Session {
       this.prepStarted = true
       void this.renderer.prepareStart().then(() => this.hideLoading())
     }
-    this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.frame)
+    this.raf = this.autopilot ? (setTimeout(() => this.frame(performance.now()), 500) as unknown as number) : requestAnimationFrame(this.rafFrame)
   }
 
   /** 게임 위 반투명 DOM 의 자리 (논리 좌표 — 무대 배율을 되돌린다). 바닥 이름표가 그 밑에 깔리지 않게 (RenderOptions.uiRects) */
