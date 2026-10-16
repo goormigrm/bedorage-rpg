@@ -297,7 +297,7 @@ function drawOverlay() {
     g.fillText('goormigrm.github.io/bedorage-rpg', W / 2, H / 2 + 100)
     g.font = '600 32px "IBM Plex Sans KR", sans-serif'
     g.fillStyle = '#b8a67e'
-    g.fillText('오픈 베타 — 의견은 게시글 댓글로', W / 2, H / 2 + 175)
+    g.fillText('정식 서비스 — 의견은 게시글 댓글로', W / 2, H / 2 + 175)
     g.restore()
   }
 
