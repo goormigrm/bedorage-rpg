@@ -589,7 +589,8 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const fireLight = fire ? torchSpots[torchSpots.length - 1] : null
 
   // ---- 조명 ----
-  const hemi = new THREE.HemisphereLight(t.ambientColor, darken(t.floor, 0.5), t.dark ? t.dark.hemi : 0.9)
+  // ☀ 아래쪽 빛(땅에서 튄 빛)을 밝게 — 벽 옆면 · 그늘이 탁하지 않게
+  const hemi = new THREE.HemisphereLight(t.ambientColor, darken(t.floor, bright ? 0.7 : 0.5), t.dark ? t.dark.hemi : 0.9)
   group.add(hemi)
   const sun = makeSun(t.sunColor, t.dark ? t.dark.sun : 2.2)
   group.add(sun, sun.target)
@@ -684,6 +685,7 @@ const PAINT_RGBA = ['rgba(255,120,170,0.45)', 'rgba(90,210,180,0.45)', 'rgba(255
  * 빛을 받지 않는 그림(MeshBasic)이라 조명 세기만큼 미리 어둡게 한다. 256 칸 그림(작다 — 얼룩은 크고 가장자리는 벽이 덮는다)
  */
 function paintOutside(map: GameMap): THREE.CanvasTexture {
+  const bright = isBright()
   const t = map.theme
   const N = 256
   const c = document.createElement('canvas')
@@ -729,6 +731,7 @@ function paintOutside(map: GameMap): THREE.CanvasTexture {
       const k = Math.min(1, Math.max(0, (d - 2) / 12))
       col.lerp(out, k * k * (3 - 2 * k))
       col.lerp(fog, fa)
+      if (bright) col.convertLinearToSRGB() // 바닥 그림과 같은 까닭 (paintFloorSteps)
       const i = (py * N + px) * 4
       img.data[i] = Math.round(col.r * 255)
       img.data[i + 1] = Math.round(col.g * 255)
@@ -766,6 +769,11 @@ export function* paintFloorSteps(map: GameMap, style: WorldStyle, rows: number):
   const base = new THREE.Color(t.floor)
   const alt = new THREE.Color(t.floorAlt)
   const line = hex(t.floorLine)
+  // ☀ 캔버스는 sRGB 값을 받는데 Color 는 선형이다 — 그대로 쓰면 파스텔이 어둡고 누렇게 진해졌다(2026-10-17). 🌙 은 그 색에 맞춰져 있어 그대로
+  if (bright) {
+    base.convertLinearToSRGB()
+    alt.convertLinearToSRGB()
+  }
   const shade = (c: THREE.Color, k: number) => `rgb(${Math.round(c.r * 255 * k)},${Math.round(c.g * 255 * k)},${Math.round(c.b * 255 * k)})`
   g.fillStyle = hex(t.floor)
   g.fillRect(0, 0, fc.width, fc.height)

@@ -1,7 +1,7 @@
 // 화면 후처리: 빛 번짐(bloom) + 막마다 색감 (2026-10-08 퀄리티 2차 2단계 — 상용 게임과 견준 검토 G1 · G2).
 // 전에는 장면을 화면에 바로 그렸다(후처리 없음). 이제 장면을 HDR 그림(반정밀 · MSAA 4)에 그리고 —
 //  ① 밝은 곳만 1/4 크기로 걸러(문턱 · 부드러운 무릎) ② 1/4 · 1/8 에서 가로세로로 번지게 하고
-//  ③ 마지막 한 번에: 장면 + 번짐 → 색감(채도 · 대비 · 그늘/밝은 곳 빛깔) → 톤 매핑(ACES) → sRGB 로 화면에.
+//  ③ 마지막 한 번에: 장면 + 번짐 → 색감(채도 · 대비 · 그늘/밝은 곳 빛깔) → 톤 매핑(렌더러 것 — 🌙 ACES · ☀ Neutral) → sRGB 로 화면에.
 // 가벼운 방식만 쓴다(번짐은 작은 그림에서만). 자동 화질이 낮아지면 끄고 예전처럼 바로 그린다(enabled = false).
 
 import * as THREE from 'three'
@@ -37,8 +37,9 @@ const DARK_ACT: Grade[] = [
 ]
 /** 마을: 모닥불 곁의 따뜻한 빛 */
 const DARK_TOWN: Grade = { bloom: 0.55, threshold: 0.95, knee: 0.6, sat: 1.04, contrast: 1.04, shadow: [0.96, 0.98, 1.04], high: [1.06, 1.0, 0.9], exposure: 1.03 }
-/** 철면수심전용(밝은 낮): 장면이 밝아 문턱을 높이고 번짐은 옅게 — 파스텔이 하얗게 날아가지 않게 */
-const BRIGHT_GRADE: Grade = { bloom: 0.3, threshold: 1.2, knee: 0.6, sat: 1.08, contrast: 1.02, shadow: [1.0, 0.98, 1.05], high: [1.03, 1.01, 0.97], exposure: 1 }
+/** 철면수심전용(밝은 낮): 장면이 밝아 문턱을 높이고 번짐은 옅게 — 파스텔이 하얗게 날아가지 않게.
+ *  채도 1.08 → 1.02: Neutral 톤 매핑은 ACES 처럼 색을 바래게 하지 않아 덜 올린다 (2026-10-17 — 화면 바닥색을 재서) */
+const BRIGHT_GRADE: Grade = { bloom: 0.3, threshold: 1.2, knee: 0.6, sat: 1.02, contrast: 1.02, shadow: [1.0, 0.98, 1.05], high: [1.03, 1.01, 0.97], exposure: 1 }
 
 /** 지역의 색감. 보스가 깨어 있으면 대비 · 번짐을 조금 올린다 */
 export function gradeFor(act: number, town: boolean, bright: boolean, boss: boolean): Grade {
@@ -121,7 +122,9 @@ void main() {
   c *= mix(uShadow, uHigh, smoothstep(0.02, 0.7, l));
   c = 0.18 * pow(max(c, vec3(0.0)) / 0.18, vec3(uContrast));
   gl_FragColor = vec4(c, 1.0);
-  #ifdef ACES_FILMIC_TONE_MAPPING
+  #if defined(NEUTRAL_TONE_MAPPING)
+    gl_FragColor.rgb = NeutralToneMapping(gl_FragColor.rgb);
+  #elif defined(ACES_FILMIC_TONE_MAPPING)
     gl_FragColor.rgb = ACESFilmicToneMapping(gl_FragColor.rgb);
   #endif
   #ifdef SRGB_TRANSFER
@@ -170,7 +173,8 @@ export class PostFx {
         uBloom: { value: 0.5 }, uSat: { value: 1 }, uContrast: { value: 1 }, uShadow: { value: new THREE.Vector3(1, 1, 1) }, uHigh: { value: new THREE.Vector3(1, 1, 1) },
         uExposure: { value: 1 }, toneMappingExposure: { value: 1 },
       },
-      { ACES_FILMIC_TONE_MAPPING: '', SRGB_TRANSFER: '' },
+      // 분위기는 렌더러를 만들기 전에 정해진다(session) → 판 도중 바뀌지 않아 define 으로 충분하다
+      { [gl.toneMapping === THREE.NeutralToneMapping ? 'NEUTRAL_TONE_MAPPING' : 'ACES_FILMIC_TONE_MAPPING']: '', SRGB_TRANSFER: '' },
     )
   }
 

@@ -512,8 +512,9 @@ export class Renderer3D {
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
-    this.gl.toneMapping = THREE.ACESFilmicToneMapping
-    this.gl.toneMappingExposure = 1.05
+    // ☀ 은 Neutral — ACES 는 파스텔 · 흰색을 회색 쪽으로 바래게 했다(2026-10-17 그래픽 개편 A). Neutral 은 같은 노출에서 어두워 노출을 올린다
+    this.gl.toneMapping = isBright() ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping
+    this.gl.toneMappingExposure = isBright() ? 1.2 : 1.05
     this.post = new PostFx(this.gl)
 
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, VIEW_W / VIEW_H, 0.5, 140)
