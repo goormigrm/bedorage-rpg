@@ -14,6 +14,8 @@
 
 import { isBright } from '../game/skin'
 import { BRIGHT_FLOOR, applyGrain, hash, paintBrightBand } from './brightFloor'
+import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture } from './brightWalls'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GameMap, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
@@ -216,7 +218,10 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     return false
   }
   const vis = walls.filter(([tx, ty]) => touching(tx, ty))
-  if (look.wall === 'stone') {
+  // ☀ 맵별 벽 (brightWalls — 레고 블록 · 수영장 타일 · 생울타리 · 모래성 …). 대기실은 아래 마을 가지(울타리 · 숙소)
+  const bwall = bright ? BRIGHT_WALL[map.id] : undefined
+  if (bwall) bwall({ map, vis, t, wallH: look.wallH, inst, put, isWall, isFloor, shade: groundShade, toy, disposables })
+  else if (look.wall === 'stone') {
     const wtex = wallTexture(bright)
     disposables.push(wtex)
     const side = new THREE.MeshLambertMaterial({ color: 0xffffff, map: wtex })
@@ -297,11 +302,36 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     // 마을: 테두리는 목책(끝이 뾰족한 말뚝), 안쪽 벽 덩어리는 천막
     const stakeGeo = mergeGeometries([new THREE.CylinderGeometry(0.13, 0.15, 1.7, 6).translate(0, 0.85, 0), new THREE.ConeGeometry(0.13, 0.35, 6).translate(0, 1.87, 0)])!
     // 밝게: 흰색 · 분홍 줄무늬 울타리
-    const stakes = inst(groundShade(stakeGeo, 0, 1.0, bright ? 0.7 : 0.5), new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0x5a4330, vertexColors: true }), vis.length * 3)
+    const stakes = inst(groundShade(stakeGeo, 0, 1.0, bright ? 0.7 : 0.5), new THREE.MeshLambertMaterial({ color: bright ? 0xffffff : 0x5a4330, vertexColors: true }), vis.length * (bright ? 6 : 3))
     const clusters = wallClusters(map)
+    // ☀ 진짜 울타리: 울타리 줄을 따라 말뚝을 가지런히 + 가로대 둘 + 가끔 바닥 쪽에 꽃 화분 (그래픽 개편 C)
+    const rail = bright ? inst(new THREE.BoxGeometry(1.02, 0.09, 0.07), new THREE.MeshLambertMaterial({ color: 0xffffff }), vis.length * 4) : null
+    const pot = bright ? inst(new THREE.CylinderGeometry(0.2, 0.15, 0.3, 10).translate(0, 0.15, 0), new THREE.MeshLambertMaterial({ color: 0xffb08a }), 40) : null
+    const bloom = bright ? inst(new THREE.SphereGeometry(0.2, 10, 7).translate(0, 0.42, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), 40, false) : null
     for (const [tx, ty] of vis) {
       const border = tx <= 3 || ty <= 3 || tx >= map.w - 4 || ty >= map.h - 4
       if (!border && clusters.has(ty * map.w + tx)) continue
+      if (bright && rail && pot && bloom) {
+        const alongX = isFloor(tx, ty - 1) || isFloor(tx, ty + 1)
+        const alongZ = isFloor(tx - 1, ty) || isFloor(tx + 1, ty)
+        for (const [ax, rot] of [[alongX, 0], [alongZ, Math.PI / 2]] as const) {
+          if (!ax) continue
+          for (let k = 0; k < 3; k++) {
+            const o = -0.3 + k * 0.3
+            put(stakes, tx + 0.5 + (rot ? 0 : o), 0, ty + 0.5 + (rot ? o : 0), 1, 0.9, 1, 0, col.setHex((tx + ty + k) % 2 ? 0xffffff : 0xffc2da))
+          }
+          put(rail, tx + 0.5, 0.55, ty + 0.5, 1, 1, 1, rot)
+          put(rail, tx + 0.5, 1.15, ty + 0.5, 1, 1, 1, rot)
+        }
+        if (!alongX && !alongZ) put(stakes, tx + 0.5, 0, ty + 0.5, 1, 0.9, 1, 0, col.setHex(0xffffff))
+        // 꽃 화분: 바닥 쪽 한 칸 안으로 (밟히지 않는 장식)
+        const d = ([[0, 1], [1, 0], [0, -1], [-1, 0]] as const).find(([dx, dy]) => isFloor(tx + dx, ty + dy))
+        if (d && pot.count < 40 && hash(tx, ty, 30) < 0.07) {
+          put(pot, tx + 0.5 + d[0] * 0.75, 0, ty + 0.5 + d[1] * 0.75, 1, 1, 1)
+          put(bloom, tx + 0.5 + d[0] * 0.75, 0, ty + 0.5 + d[1] * 0.75, 1, 1, 1, 0, col.setHex(toy(tx, ty, 31)))
+        }
+        continue
+      }
       for (let k = 0; k < 3; k++) put(stakes, tx + 0.2 + k * 0.3, 0, ty + 0.5 + (hash(tx, ty, k) - 0.5) * 0.3, 1, 0.85 + hash(tx, ty, 10 + k) * 0.3, 1, hash(tx, ty, 20 + k) * 6, bright ? col.setHex((tx + ty + k) % 2 ? 0xffffff : 0xffc2da) : undefined)
     }
     // 천막: 덩어리마다 하나 — 천 벽 + 박공 지붕 + 꼭대기 깃발
@@ -357,13 +387,14 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const isFire = (tx: number, ty: number) => !!fire && tx >= fire[0] && tx < fire[0] + 2 && ty >= fire[1] && ty < fire[1] + 2
   const cc = new THREE.Color(t.crate)
   if (bright && look.crate === 'coffin') {
-    // 선물 상자: 색 상자 + 흰 리본 두 줄 + 나비 매듭
-    const box = inst(new THREE.BoxGeometry(0.66, 0.52, 0.66).translate(0, 0.26, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
+    // 선물 상자: 둥근 모서리 색 상자 + 흰 리본 두 줄 + 큰 나비 매듭 (그래픽 개편 C — 매듭을 키우고 비스듬히)
+    const box = inst(new RoundedBoxGeometry(0.66, 0.52, 0.66, 1, 0.05).translate(0, 0.26, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
     const ribbonGeo = mergeGeometries([
       new THREE.BoxGeometry(0.14, 0.545, 0.685).translate(0, 0.2725, 0),
       new THREE.BoxGeometry(0.685, 0.545, 0.14).translate(0, 0.2725, 0),
-      new THREE.TorusGeometry(0.09, 0.03, 6, 12).translate(-0.08, 0.6, 0),
-      new THREE.TorusGeometry(0.09, 0.03, 6, 12).translate(0.08, 0.6, 0),
+      new THREE.TorusGeometry(0.13, 0.04, 6, 14).rotateY(0.5).translate(-0.12, 0.64, 0),
+      new THREE.TorusGeometry(0.13, 0.04, 6, 14).rotateY(-0.5).translate(0.12, 0.64, 0),
+      new THREE.SphereGeometry(0.06, 8, 6).translate(0, 0.56, 0),
     ])!
     const ribbon = inst(ribbonGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
     for (const [tx, ty] of crates) {
@@ -387,18 +418,26 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   } else if (bright && look.crate === 'barrel') {
     // 장난감 북: 같은 통 모양에 색만
     const drum = inst(new THREE.CylinderGeometry(0.3, 0.3, 0.6, 12).translate(0, 0.3, 0), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length * 2)
+    // 위 · 아래 테 (흰 고리 둘 — 그래픽 개편 C)
+    const rimGeo = mergeGeometries([new THREE.TorusGeometry(0.3, 0.035, 6, 20).rotateX(Math.PI / 2).translate(0, 0.04, 0), new THREE.TorusGeometry(0.3, 0.035, 6, 20).rotateX(Math.PI / 2).translate(0, 0.56, 0)])!
+    const rim = inst(rimGeo, new THREE.MeshLambertMaterial({ color: 0xfff8ee }), crates.length * 2)
     for (const [tx, ty] of crates) {
       if (isFire(tx, ty)) continue
       put(drum, tx + 0.32, 0, ty + 0.4, 1, 1, 1, 0, col.setHex(toy(tx, ty, 6)))
-      if (hash(tx, ty, 1) < 0.6) put(drum, tx + 0.7, 0, ty + 0.62, 0.9, 0.9, 0.9, 0, col.setHex(toy(tx, ty, 7)))
+      put(rim, tx + 0.32, 0, ty + 0.4, 1, 1, 1)
+      if (hash(tx, ty, 1) < 0.6) {
+        put(drum, tx + 0.7, 0, ty + 0.62, 0.9, 0.9, 0.9, 0, col.setHex(toy(tx, ty, 7)))
+        put(rim, tx + 0.7, 0, ty + 0.62, 0.9, 0.9, 0.9)
+      }
     }
   } else if (bright) {
-    // 커다란 공 (바위 · 돌무더기 대신) — 놀이터 공
-    const ball = inst(new THREE.SphereGeometry(0.42, 16, 12), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length * 2)
+    // 커다란 공 (바위 · 돌무더기 대신) — 비치볼 (체육관은 농구공 — 그래픽 개편 C · 무늬가 색이라 인스턴스 색은 흰색)
+    const ballTex = ballTexture({ disposables }, map.id === 'cathedral')
+    const ball = inst(new THREE.SphereGeometry(0.42, 16, 12), new THREE.MeshLambertMaterial({ color: 0xffffff, map: ballTex }), crates.length * 2)
     for (const [tx, ty] of crates) {
       const s = 0.95 + hash(tx, ty, 1) * 0.25
-      put(ball, tx + 0.5, 0.42 * s, ty + 0.5, s, s, s, hash(tx, ty, 2) * 6, col.setHex(toy(tx, ty, 3)))
-      if (hash(tx, ty, 4) < 0.5) put(ball, tx + 0.2 + hash(tx, ty, 5) * 0.6, 0.2, ty + 0.2 + hash(tx, ty, 6) * 0.6, 0.48, 0.48, 0.48, 0, col.setHex(toy(tx, ty, 8)))
+      put(ball, tx + 0.5, 0.42 * s, ty + 0.5, s, s, s, hash(tx, ty, 2) * 6)
+      if (hash(tx, ty, 4) < 0.5) put(ball, tx + 0.2 + hash(tx, ty, 5) * 0.6, 0.2, ty + 0.2 + hash(tx, ty, 6) * 0.6, 0.48, 0.48, 0.48, hash(tx, ty, 7) * 6)
     }
   } else if (look.crate === 'coffin') {
     const box = inst(new THREE.BoxGeometry(0.62, 0.5, 0.95), new THREE.MeshLambertMaterial({ color: 0xffffff }), crates.length)
@@ -486,12 +525,14 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     const x = tx + 0.2 + hash(tx, ty, 31) * 0.6
     const z = ty + 0.2 + hash(tx, ty, 32) * 0.6
     const rot = hash(tx, ty, 33) * 6.28
+    // ☀ 소품은 1.3배 (화면에서 너무 작았다 — 그래픽 개편 C)
+    const ps = 1.3
     if (bones && r < 0.035) {
-      if (bright) put(bones, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 42)))
+      if (bright) put(bones, x, 0, z, ps, ps, ps, rot, col.setHex(toy(tx, ty, 42)))
       else put(bones, x, 0.04, z, 1, 1, 1, rot)
     } else if (skulls && r < 0.05) {
       // 딱지: 파랑 · 빨강 (접은 종이)
-      if (bright) put(skulls, x, 0, z, 1, 1, 1, rot, col.setHex(hash(tx, ty, 43) < 0.5 ? 0x4a7bd8 : 0xe8606a))
+      if (bright) put(skulls, x, 0, z, ps, 1, ps, rot, col.setHex(hash(tx, ty, 43) < 0.5 ? 0x4a7bd8 : 0xe8606a))
       else put(skulls, x, 0.09, z, 1, 1, 1, rot)
     } else if (candleM && wallSide && r < 0.09) {
       put(candleM, x, 0, z, 1, 0.7 + hash(tx, ty, 34) * 0.8, 1, 0, bright ? col.setHex(toy(tx, ty, 44)) : undefined)
@@ -508,13 +549,16 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
           put(flowerMid, fx, 0, fz, s, s, s)
         }
       }
-    } else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, 1, 1, 1, 0, bright ? col.setHex(toy(tx, ty, 45)) : undefined)
+    } else if (straw && wallSide && r < 0.205) put(straw, x, 0, z, bright ? ps : 1, bright ? ps : 1, bright ? ps : 1, 0, bright ? col.setHex(toy(tx, ty, 45)) : undefined)
     else if (shrooms && r < 0.24) put(shrooms, x, 0, z, 0.8 + hash(tx, ty, 40) * 1.4, 0.8 + hash(tx, ty, 41) * 1.6, 0.8 + hash(tx, ty, 40) * 1.4, rot)
     else if (tombs && wallSide && r < 0.26) {
-      if (bright) put(tombs, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 46)))
+      if (bright) put(tombs, x, 0, z, ps, ps, ps, rot, col.setHex(toy(tx, ty, 46)))
       else put(tombs, x, 0, z, 1, 0.8 + hash(tx, ty, 37) * 0.5, 1, rot)
     } else if (bloodM && r < (fdef ? 0.08 : 0.3)) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39), 0, bright ? col.setHex(toy(tx, ty, 47)) : undefined)
   }
+  // ☀ 맵 주제 소품 (운동장 콘 · 줄넘기 · 체육관 농구공 · 뜀틀 · 오리 튜브 · 사탕 · 꿀단지 · 볼풀 공 · 별 스티커 — brightWalls)
+  const bprops = bright ? BRIGHT_PROPS[map.id] : undefined
+  if (bprops) bprops({ map, vis, t, wallH: look.wallH, inst, put, isWall, isFloor, shade: groundShade, toy, disposables, floors, nearWall })
   for (const m of group.children) if (m instanceof THREE.InstancedMesh) {
     m.instanceMatrix.needsUpdate = true
     if (m.instanceColor) m.instanceColor.needsUpdate = true
@@ -1027,9 +1071,10 @@ function bunkBed(c: Cluster, i: number): THREE.Group {
 /** ☀ 작은 꽃 색 (꽃잎 — 가운데는 노랑) */
 const FLOWER = [0xffffff, 0xffc2da, 0xdccbff, 0xc4e4ff]
 
-/** ☀ 작은 꽃: 납작한 꽃잎 다섯 (바닥에 붙어 핀다 — 가운데 노란 점은 따로) */
+/** ☀ 작은 꽃: 꽃잎 다섯 (바닥에 붙어 핀다 — 가운데 노란 점은 따로) */
 function flowerGeometry(): THREE.BufferGeometry {
-  return mergeGeometries(Array.from({ length: 5 }, (_, k) => new THREE.SphereGeometry(0.08, 6, 4).scale(1, 0.3, 0.62).translate(0.085, 0.04, 0).rotateY((k * Math.PI * 2) / 5)))!
+  // 납작한 원판 꽃잎 (위에서 내려다보므로 두께가 필요 없다 — 꽃이 수백 개라 면을 아낀다)
+  return mergeGeometries(Array.from({ length: 5 }, (_, k) => new THREE.CircleGeometry(0.08, 6).rotateX(-Math.PI / 2).scale(1, 1, 0.62).translate(0.085, 0.04, 0).rotateY((k * Math.PI * 2) / 5)))!
 }
 
 function grassGeometry(): THREE.BufferGeometry {
