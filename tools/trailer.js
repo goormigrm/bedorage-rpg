@@ -2,6 +2,7 @@
 // 미리보기 창 크기를 **1920×1080** 으로 흉내 낸 뒤(1080 · HUD 작게로 그대로 담는다 — start 가 창 크기를 확인해 log 에 적는다)
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
 //   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 두 편(2026-10-09 — 네 편을 둘로 합쳤다 · 편마다 40초 안): t.start({ part: 1 ~ 2, lowMax: 20_000_000 })
+//   ⚠ 2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다" → 출력은 docs/img/patch{1,2}_{dark,bright}.webm (+ _hq). 🌙 판: t.start({ part, skin: 'dark', lowMax })
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -1430,7 +1431,8 @@ async function startGameFromLobby() {
   if (window.__lobby) window.__lobby.botChars = BOT_CHARS
   btn('게임 만들기')?.click()
   await sleep(700)
-  if (BRIGHT) document.querySelector('#seg-skin button[data-v="bright"]')?.click()
+  // 로비는 지난 분위기를 기억한다 — 🌙 판을 뜰 때도 직접 고른다 (2026-10-17 패치 플레이 영상 두 벌)
+  document.querySelector(`#seg-skin button[data-v="${BRIGHT ? 'bright' : 'dark'}"]`)?.click()
   await sleep(200)
   btn('만들기')?.click()
   await sleep(1600)
@@ -1503,7 +1505,8 @@ export async function start(opts = {}) {
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
   PART = Math.max(1, Math.min(2, opts.part ?? 1))
-  const BASE = (ULT ? 'boss_voice' : `trailer${PART}`) + (BRIGHT ? '_bright' : '')
+  // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
+  const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `patch${PART}_${BRIGHT ? 'bright' : 'dark'}`
   const encs = [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
     { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
