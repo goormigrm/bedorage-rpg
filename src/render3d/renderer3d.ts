@@ -42,6 +42,7 @@ import { FxAt, SkillFx } from './skillfx'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
+import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
@@ -3788,9 +3789,10 @@ export class Renderer3D {
       const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
       if (s.x < -40 || s.y < -20 || s.x > VIEW_W + 40 || s.y > VIEW_H + 20) continue
       const name = itemName(d.item)
-      ctx.font = `700 ${held ? 13 : 12}px "IBM Plex Sans KR", sans-serif`
-      const w = ctx.measureText(name).width + (held ? 16 : 12)
-      const h = held ? 21 : 18
+      // 12 → 16px (펼치기 중 17px) · 바탕은 HUD 칸과 같은 결 (dropLabelPanel — 2026-10-17 사용자: "아이템 이름 칸이 퀄리티가 유독 낮다")
+      ctx.font = `700 ${held ? 17 : 16}px "IBM Plex Sans KR", sans-serif`
+      const w = ctx.measureText(name).width + (held ? 24 : 20)
+      const h = held ? 28 : 26
       // 한자리에 여럿 떨어지면 이름이 포개졌다 → 디아블로처럼 위로 쌓는다 (떨어진 차례대로라 쌓인 자리가 바뀌지 않는다)
       const y = this.placeLabel(s.x, s.y, w, h + (held ? 2 : 0))
       if (y === null) continue
@@ -3798,13 +3800,12 @@ export class Renderer3D {
       const y0 = y - h / 2
       const hover = held && !!cursor && cursor.x >= x0 && cursor.x <= x0 + w && cursor.y >= y0 && cursor.y <= y0 + h
       const col = itemColor(d.item)
-      ctx.fillStyle = hover ? 'rgba(48,40,28,0.95)' : 'rgba(8,7,6,0.8)'
-      ctx.fillRect(x0, y0, w, h)
-      ctx.strokeStyle = hover ? '#ffffff' : col
-      ctx.globalAlpha = hover ? 1 : 0.6
-      ctx.lineWidth = hover ? 1.5 : 1
-      ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1)
-      ctx.globalAlpha = 1
+      dropLabelPanel(ctx, x0, y0, w, h, col, hover)
+      // 글씨에 얇은 어두운 외곽선 — 바탕이 비쳐도 또렷하게
+      ctx.lineJoin = 'round'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+      ctx.strokeText(name, s.x, y + 0.5)
       ctx.fillStyle = col
       ctx.fillText(name, s.x, y + 0.5)
       if (held) this.dropHits.push({ id: d.id, x0, y0, x1: x0 + w, y1: y0 + h })

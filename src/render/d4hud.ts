@@ -99,6 +99,29 @@ function thinBar(c: CanvasRenderingContext2D, x: number, y: number, w: number, h
 }
 
 /** 쇠 패널: 어두운 바탕 + 금테 두 줄 + 모서리 마름모 장식 */
+/**
+ * 바닥 아이템 이름표 바탕 (2026-10-17 사용자: "바닥에 떨어진 아이템 이름 칸이 퀄리티가 유독 낮아 보인다 — 글씨 배경이 검은색에 흐릿하고
+ * 작아 따로 있는 느낌"): 예전에는 거의 불투명한 검은 네모에 얇은 테두리였다. 이제 HUD 칸과 같은 결(🌙 쇠빛 · ☀ 캔디 나이트 그라데이션 ·
+ * 둥근 모서리)에 등급 색 테두리 — 뒤가 살짝 비친다. hover = 펼치기(Alt) 중 마우스를 올린 이름
+ */
+export function dropLabelPanel(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, edge: string, hover: boolean): void {
+  const P = hudSkin()
+  c.save()
+  const g = c.createLinearGradient(0, y, 0, y + h)
+  g.addColorStop(0, P.top)
+  g.addColorStop(1, P.bottom)
+  c.globalAlpha = hover ? 1 : 0.74
+  c.fillStyle = g
+  rr(c, x, y, w, h, 5)
+  c.fill()
+  c.globalAlpha = hover ? 1 : 0.85
+  c.strokeStyle = hover ? '#ffffff' : edge
+  c.lineWidth = hover ? 2 : 1.5
+  rr(c, x + 0.75, y + 0.75, w - 1.5, h - 1.5, 5)
+  c.stroke()
+  c.restore()
+}
+
 export function ironPanel(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, ornate = true): void {
   c.save()
   const P = hudSkin()
