@@ -15,3 +15,6 @@ art-src/
 proxy/.wrangler/
 # 파이썬 캐시 (tools/simplify.py)
 __pycache__/
+
+# 지식 그래프 (graphify — 로컬에서 만든다)
+graphify-out/
