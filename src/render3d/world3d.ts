@@ -15,6 +15,7 @@
 import { isBright } from '../game/skin'
 import { BRIGHT_FLOOR, applyGrain, hash, paintBrightBand } from './brightFloor'
 import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture } from './brightWalls'
+import { buildLandmarks, planLandmarks } from './brightLandmarks'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
@@ -217,7 +218,11 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (isFloor(tx + dx, ty + dy) || map.tiles[(ty + dy) * map.w + tx + dx] === TILE_CRATE) return true
     return false
   }
-  const vis = walls.filter(([tx, ty]) => touching(tx, ty))
+  // ☀ 놀이터 랜드마크 자리(꽉 찬 사각형 벽 덩어리)는 벽으로 그리지 않는다 — 그 칸은 sim 에서 여전히 벽 (brightLandmarks)
+  const marks = bright ? planLandmarks(map) : []
+  const markTiles = new Set(marks.flatMap((m) => m.tiles))
+  const vis = walls.filter(([tx, ty]) => touching(tx, ty) && !markTiles.has(ty * map.w + tx))
+  if (marks.length) buildLandmarks(marks, inst, put)
   // ☀ 맵별 벽 (brightWalls — 레고 블록 · 수영장 타일 · 생울타리 · 모래성 …). 대기실은 아래 마을 가지(울타리 · 숙소)
   const bwall = bright ? BRIGHT_WALL[map.id] : undefined
   if (bwall) bwall({ map, vis, t, wallH: look.wallH, inst, put, isWall, isFloor, shade: groundShade, toy, disposables })

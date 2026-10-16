@@ -6,10 +6,24 @@ import { BOSS_PATS } from '../src/core/monsters'
 import '../src/game/skinText'
 import { MapTheme } from '../src/core/maps'
 import { BRIGHT_FLOOR } from '../src/render3d/brightFloor'
+import { planLandmarks } from '../src/render3d/brightLandmarks'
+import { TILE_WALL } from '../src/core/map'
 
 afterEach(() => setSkin('dark'))
 
 describe('분위기', () => {
+  it('☀ 랜드마크는 꽉 찬 벽 덩어리(2 × 2 · 3 × 2) 자리 안에만 — 충돌과 겉모습이 맞다 (그래픽 개편 D)', () => {
+    for (const area of [1, 6, 11, 14, 22, 25, 29, 30, 33]) {
+      const map = buildAreaMap(area, 1)
+      const marks = planLandmarks(map)
+      expect(marks.length, map.id).toBeGreaterThan(0)
+      for (const m of marks) {
+        expect([4, 6]).toContain(m.tiles.length)
+        for (const t of m.tiles) expect(map.tiles[t]).toBe(TILE_WALL)
+      }
+    }
+  })
+
   it('☀ 쓰이는 지역 맵마다 맵별 바닥이 있다 (그래픽 개편 B — brightFloor)', () => {
     const missing = [...new Set(AREAS.filter((a) => !a.retired).map((a) => a.map))].filter((id) => !BRIGHT_FLOOR[id])
     expect(missing).toEqual([])

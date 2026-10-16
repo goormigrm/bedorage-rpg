@@ -382,7 +382,7 @@ export interface PropCtx extends WallCtx {
 type PropKind = (c: PropCtx) => void
 
 /** 정점 색 하나로 칠한 조각 (합친 소품의 부분마다 색 — 인스턴스 색 없이) */
-function vc(geo: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
+export function vc(geo: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
   const col = new THREE.Color(hex)
   const n = geo.getAttribute('position').count
   const a = new Float32Array(n * 3)
