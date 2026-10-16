@@ -5,10 +5,16 @@ import { ACTS, AREAS, NPC_NAMES, QUESTS, buildAreaMap } from '../src/core/world'
 import { BOSS_PATS } from '../src/core/monsters'
 import '../src/game/skinText'
 import { MapTheme } from '../src/core/maps'
+import { BRIGHT_FLOOR } from '../src/render3d/brightFloor'
 
 afterEach(() => setSkin('dark'))
 
 describe('분위기', () => {
+  it('☀ 쓰이는 지역 맵마다 맵별 바닥이 있다 (그래픽 개편 B — brightFloor)', () => {
+    const missing = [...new Set(AREAS.filter((a) => !a.retired).map((a) => a.map))].filter((id) => !BRIGHT_FLOOR[id])
+    expect(missing).toEqual([])
+  })
+
   it('모르는 값은 어둡게', () => {
     expect(asSkin('bright')).toBe('bright')
     expect(asSkin('x')).toBe('dark')

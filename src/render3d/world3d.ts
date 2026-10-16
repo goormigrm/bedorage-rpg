@@ -478,6 +478,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   // 밝게: 묘비 → 벽에 기댄 훌라후프 · 핏물 → 물감
   const hoopGeo = new THREE.TorusGeometry(0.34, 0.035, 6, 24).rotateX(-0.25).translate(0, 0.34, 0)
   const tombs = P.has('tomb') ? (bright ? inst(hoopGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), floors.length) : inst(tombGeo, new THREE.MeshLambertMaterial({ color: 0x6a6a64 }), floors.length)) : null
+  // ☀ 맵별 바닥 위 물감 웅덩이는 드물게(칸의 25% → 3% — 카펫 · 마당이 물방울 무늬가 됐다)
   const bloodM = P.has('blood') ? inst(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: bright ? 0xffffff : 0x3a0606, transparent: true, opacity: bright ? 0.7 : 0.8, depthWrite: false }), floors.length, false) : null
   for (const [tx, ty] of floors) {
     const r = hash(tx, ty, 30)
@@ -512,7 +513,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     else if (tombs && wallSide && r < 0.26) {
       if (bright) put(tombs, x, 0, z, 1, 1, 1, rot, col.setHex(toy(tx, ty, 46)))
       else put(tombs, x, 0, z, 1, 0.8 + hash(tx, ty, 37) * 0.5, 1, rot)
-    } else if (bloodM && r < 0.3) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39), 0, bright ? col.setHex(toy(tx, ty, 47)) : undefined)
+    } else if (bloodM && r < (fdef ? 0.08 : 0.3)) put(bloodM, x, 0.012, z, 0.6 + hash(tx, ty, 38), 1, 0.6 + hash(tx, ty, 39), 0, bright ? col.setHex(toy(tx, ty, 47)) : undefined)
   }
   for (const m of group.children) if (m instanceof THREE.InstancedMesh) {
     m.instanceMatrix.needsUpdate = true
