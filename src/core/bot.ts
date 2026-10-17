@@ -160,13 +160,19 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
   const w = WEAPONS[me.weapon]
   const tick = state.tick
 
-  // 1) 쓰러진 동료가 가까우면 일으키러 간다 (몬스터가 코앞이 아니면)
+  // 1) 쓰러진 동료가 가까우면 일으키러 간다 (몬스터가 코앞이 아니면).
+  // **사람 캐릭터가 쓰러졌으면 싸움보다 먼저** — 같은 지역이면 거리 상관없이 달려가 일으킨다(가는 동안 표적은 계속 쏜다)
+  // (2026-10-17 사용자: "유저의 캐릭터가 쓰러졌을 때 봇은 전투보다 최우선으로 유저 캐릭터를 부활시키게")
   let downed: PlayerState | null = null
+  let rescue: PlayerState | null = null
   for (const p of state.players) {
     if (p.id === idx || !p.alive || !p.downed || p.left) continue
-    if (len(p.x - me.x, p.y - me.y) > 12 * TILE) continue
-    if (!downed || len(p.x - me.x, p.y - me.y) < len(downed.x - me.x, downed.y - me.y)) downed = p
+    const d = len(p.x - me.x, p.y - me.y)
+    if (isHumanSeat(p) && p.area === me.area && (!rescue || d < len(rescue.x - me.x, rescue.y - me.y))) rescue = p
+    if (d > 12 * TILE) continue
+    if (!downed || d < len(downed.x - me.x, downed.y - me.y)) downed = p
   }
+  if (rescue) downed = rescue
 
   // 2) 표적: 사거리 안에서 보이는 깨어 있는 몬스터 중 가장 가까운 것. 20틱마다 다시 고른다
   let target = mem.target >= 0 ? findMonster(state, mem.target) : null
@@ -236,8 +242,8 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
   } else {
   }
 
-  // 4) 표적이 없을 때: 쓰러진 동료 → 이끄는 사람 → (없으면) 가장 가까운 몬스터를 찾아간다
-  if (downed && (!target || len(target.x - me.x, target.y - me.y) > 150)) {
+  // 4) 쓰러진 사람(늘 먼저) · 표적이 없거나 멀면 쓰러진 동료 → 이끄는 사람 → (없으면) 가장 가까운 몬스터를 찾아간다
+  if (downed && (downed === rescue || !target || len(target.x - me.x, target.y - me.y) > 150)) {
     const d = len(downed.x - me.x, downed.y - me.y)
     if (d > 36) {
       const dir = pathDir(state, map, me.x, me.y, downed.x, downed.y)
@@ -281,8 +287,9 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     }
   }
 
-  // 5) 피하기: 나를 노리고 예고 중인 몬스터가 가까우면 옆으로 구른다
-  for (const m of state.monsters) {
+  // 5) 피하기: 나를 노리고 예고 중인 몬스터가 가까우면 옆으로 구른다 (쓰러진 사람을 일으키는 중이면 버틴다 — 구르면 일으키기가 끊긴다)
+  const reviving = !!rescue && len(rescue.x - me.x, rescue.y - me.y) <= 48
+  for (const m of reviving ? [] : state.monsters) {
     if (m.hp <= 0 || m.st !== MS_WINDUP || m.target !== idx || m.t > 12) continue
     const def = MONSTER_LIST[m.kind]
     const d = len(m.x - me.x, m.y - me.y)

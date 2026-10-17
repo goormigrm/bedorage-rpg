@@ -104,7 +104,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.8.1 배포)
+## 현재 상태 (2026-10-17 · v1.8.2 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

@@ -234,12 +234,35 @@ const P: Record<BaseSkillId, Painter> = {
     line(c, [[-k * 0.9, k * 0.55], [k * 0.2, k * 0.05]], s * 0.04)
     c.globalAlpha = 1
   },
-  // 아홉 목숨: 9
+  // 아홉 목숨: 눈 감고 웃는 고양이 머리 + 둘레 목숨 불꽃 아홉 (2026-10-17 사용자: 숫자 "9" 는 재사용 대기 시간으로 오해하기 쉽다)
   ninelives: (c, s) => {
-    c.font = `800 ${Math.round(s * 0.7)}px "Nanum Myeongjo", serif`
-    c.textAlign = 'center'
-    c.textBaseline = 'middle'
-    c.fillText('9', 0, s * 0.03)
+    const k = s / 2
+    c.beginPath()
+    c.arc(0, k * 0.1, k * 0.4, 0, Math.PI * 2)
+    c.fill()
+    for (const g of [-1, 1]) {
+      c.beginPath()
+      c.moveTo(g * k * 0.38, -k * 0.02)
+      c.lineTo(g * k * 0.34, -k * 0.5)
+      c.lineTo(g * k * 0.06, -k * 0.24)
+      c.closePath()
+      c.fill()
+    }
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI * 2) / 9
+      c.beginPath()
+      c.arc(Math.cos(a) * k * 0.84, Math.sin(a) * k * 0.84 + k * 0.04, k * 0.085, 0, Math.PI * 2)
+      c.fill()
+    }
+    // 감은 눈 (웃는 선)
+    c.globalCompositeOperation = 'destination-out'
+    for (const g of [-1, 1]) {
+      c.lineWidth = s * 0.055
+      c.beginPath()
+      c.arc(g * k * 0.17, k * 0.1, k * 0.1, Math.PI * 1.1, Math.PI * 1.9)
+      c.stroke()
+    }
+    c.globalCompositeOperation = 'source-over'
   },
   // ---- D7 여섯
   // 섬광: 가운데 별 + 빛살
