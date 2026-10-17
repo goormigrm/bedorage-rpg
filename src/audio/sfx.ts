@@ -352,7 +352,8 @@ export class Sfx {
     // 녹음 발소리 (2026-10-08 S4) — 좌우 발을 높이로 조금 다르게.
     // 2026-10-08 사용자: "발소리가 깨지는 것처럼 들린다" — 자갈 사각거림(높은 소리)이 걸음마다 · 시작 · 끝이 툭 끊겼다 →
     // 1.3 kHz 위를 걸러 내고(둔한 발걸음) · 시작 · 끝을 짧게 페이드 · 0.16초에서 끊는다 · 크기 0.8 → 0.5
-    if (this.sample(this.stepGrass ? 'stepGrass' : 'stepStone', node, t0, 0.5, right ? 1.02 : 0.97, 0.05, { lowpass: 1300, maxDur: 0.16 })) return
+    // 2026-10-17 크기 재기(tools/sfxlevels.js): 거른 뒤 원래 합성 발소리보다 돌 10 · 풀 7 dB 작았다 → 돌 1.0 · 풀 0.8 (합성 −3dB 안팎) — 모노로 섞은 뒤 × √2 → 1.41 · 1.13
+    if (this.sample(this.stepGrass ? 'stepGrass' : 'stepStone', node, t0, this.stepGrass ? 1.13 : 1.41, right ? 1.02 : 0.97, 0.05, { lowpass: 1300, maxDur: 0.16 })) return
     const f = right ? 126 : 112
     this.tone(node, t0, 0.07, 'sine', f, f * 0.5, 0.42, 0.006)
   }
@@ -476,7 +477,7 @@ export class Sfx {
           if (e.rarity >= 2) this.tone(b.node, b.t0 + 0.08, 0.2, 'sine', f * 1.5, f * 1.5, 0.3, 0.004)
           if (e.rarity >= 3) this.tone(b.node, b.t0 + 0.16, 0.4, 'sine', f * 2, f * 2, 0.3, 0.004)
           // 가죽 주머니에 넣는 소리 (2026-10-08 S4)
-          this.sample('pouch', b.node, b.t0, 0.8)
+          this.sample('pouch', b.node, b.t0, 2)
           break
         }
         case 'loot': {
@@ -509,7 +510,7 @@ export class Sfx {
         case 'equip':
           if (e.p === localPlayer) {
             const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
-            if (!this.sample('equip', b.node, b.t0, 0.9)) this.blip()
+            if (!this.sample('equip', b.node, b.t0, 0.79)) this.blip()
           }
           break
         // ---- 2026-10-08 퀄리티 2차 1단계: 소리가 없던 일들 ----
@@ -530,7 +531,7 @@ export class Sfx {
         case 'stagger': {
           // 보스 경직: 묵직한 쿵 + 종 (기회다!) — 녹음 종소리를 한 겹 (2026-10-08 S4)
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.9)
-          this.sample('bell', b.node, b.t0, 0.7, 0.9, 0.02)
+          this.sample('bell', b.node, b.t0, 1.6, 0.9, 0.02)
           this.tone(b.node, b.t0, 0.5, 'sine', 90, 40, 0.7, 0.004)
           this.noiseBurst(b.node, b.t0, 0.25, 'lowpass', 900, 200, 0.4, 0.7)
           for (const [i, f] of [784, 1047, 1319].entries()) this.tone(b.node, b.t0 + 0.08 + i * 0.06, 0.9, 'triangle', f, f, 0.22, 0.004)
@@ -539,7 +540,7 @@ export class Sfx {
         case 'bagFull':
           if (e.p === localPlayer) {
             const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
-            if (this.sample('error', b.node, b.t0, 0.8)) break
+            if (this.sample('error', b.node, b.t0, 0.32)) break
             this.tone(b.node, b.t0, 0.09, 'square', 220, 200, 0.18, 0.004)
             this.tone(b.node, b.t0 + 0.11, 0.12, 'square', 196, 170, 0.18, 0.004)
           }
@@ -627,8 +628,8 @@ export class Sfx {
           // 상자 뚜껑: 나무 삐걱 + 쿵 (금빛 상자는 짤랑까지) · 항아리는 깨지는 소리 — 녹음 (2026-10-08 S4)
           const b = this.bus(sp(e.x, e.y), 0.6)
           if (e.kind === OBJ_URN) {
-            if (this.sample('pot', b.node, b.t0, 0.9)) break
-          } else if (this.sample('creak', b.node, b.t0, 0.8, 1.1)) {
+            if (this.sample('pot', b.node, b.t0, 0.92)) break
+          } else if (this.sample('creak', b.node, b.t0, 1, 1.1)) {
             this.tone(b.node, b.t0 + 0.14, 0.14, 'sine', 130, 60, 0.35, 0.003)
             if (e.kind === OBJ_GOLDCHEST) this.coins(3, 0.2)
             break
@@ -798,7 +799,7 @@ export class Sfx {
         }
         case 'drop': {
           const b = this.bus(sp(e.x, e.y), 0.5)
-          if (this.sample('drop', b.node, b.t0, 0.9)) break
+          if (this.sample('drop', b.node, b.t0, 0.58)) break
           this.tone(b.node, b.t0, 0.12, 'sine', 420, 300, 0.3, 0.004)
           break
         }
@@ -822,12 +823,12 @@ export class Sfx {
           if (now - this.lastClang < 150) break
           this.lastClang = now
           const b = this.bus(sp(e.x, e.y), 0.6)
-          if (!this.sample('clang', b.node, b.t0, 0.7, 1.15)) this.tone(b.node, b.t0, 0.2, 'triangle', 1400, 1200, 0.2, 0.002)
+          if (!this.sample('clang', b.node, b.t0, 0.28, 1.15)) this.tone(b.node, b.t0, 0.2, 'triangle', 1400, 1200, 0.2, 0.002)
           break
         }
         case 'break': {
           const b = this.bus(sp((e.tx + 0.5) * 32, (e.ty + 0.5) * 32), 0.9)
-          this.sample('wood', b.node, b.t0, 0.8)
+          this.sample('wood', b.node, b.t0, 0.95)
           this.noiseBurst(b.node, b.t0, 0.4, 'lowpass', 900, 200, 0.8)
           this.tone(b.node, b.t0, 0.3, 'triangle', 150, 50, 0.4)
           break
@@ -1192,7 +1193,7 @@ export class Sfx {
     if (mine) {
       this.tone(node, t0, 0.055, 'sine', 170 * k, 70, 0.55, 0.002)
       // 내 총알이 박히는 살 소리 한 겹 (2026-10-08 S4 — 남의 명중은 많아 합성만)
-      if (!isBright()) this.sample('flesh', node, t0, 0.35, 1.1)
+      if (!isBright()) this.sample('flesh', node, t0, 0.4, 1.1)
     }
     if (head) {
       // 헤드샷: 높은 '팅' 두 겹 — 몸통 명중과 확실히 구분되게
@@ -1206,7 +1207,7 @@ export class Sfx {
     // 바이올린은 휘두를 때마다 치므로 조금 작게 (2026-09-24 — 공격 소리가 너무 크다)
     const { node, t0 } = this.bus(s, fam === 'violin' ? 0.65 : 0.95)
     // 녹음 타격음 (2026-10-08 S4): 바이올린 = 퍽 · 검 = 베기 · 후라이팬 = 쇠판 — 묵직함은 낮은 합성 쿵을 조금 더한다
-    if (this.sample(fam === 'violin' ? 'punch' : fam === 'rapier' ? 'blade' : 'pan', node, t0, fam === 'violin' ? 0.9 : 0.8)) {
+    if (this.sample(fam === 'violin' ? 'punch' : fam === 'rapier' ? 'blade' : 'pan', node, t0, fam === 'violin' ? 0.73 : fam === 'rapier' ? 0.44 : 0.63)) {
       if (fam === 'violin') this.tone(node, t0, 0.1, 'sine', 140, 50, 0.4, 0.002)
       if (crit) this.tone(node, t0 + 0.01, 0.16, 'triangle', 2300, 1800, 0.3)
       return
@@ -1634,11 +1635,19 @@ export class Sfx {
   // ---------- 녹음 효과음 (2026-10-08 퀄리티 2차 S4 — 사용자 허락 · Kenney CC0 · public/sfx 45개 435 KB) ----------
   // 총소리는 묶음에 없어 합성 그대로. 타격 · 발소리 · 줍기 · 상자 · 창 · 단추 · 막기 · 경직에 녹음 소리를 쓴다.
   // 받기 전(첫 1 ~ 2초)이나 받지 못한 브라우저는 예전 합성 소리가 난다.
+  // 세기 (2026-10-17 — `tools/sfxlevels.js` 로 출력 크기를 재서): 합성 소리를 **대신하는** 자리는 원래 합성 크기 +2dB 안 ·
+  // 합성 위에 **겹치는** 자리는 합친 크기가 합성보다 +2 ~ 3dB. 부르는 곳의 vol 을 바꾸면 이 도구로 다시 잰다(판 안 · 소리 꺼도 된다).
   private static readonly SAMPLE_GROUPS: Record<string, number> = {
     punch: 4, blade: 3, pan: 3, flesh: 3, stepStone: 5, stepGrass: 5, coins: 2, pouch: 2, equip: 2, drop: 1,
     creak: 2, pot: 3, bookOpen: 1, bookClose: 1, click: 2, error: 1, clang: 2, bell: 1, wood: 2,
   }
+  /**
+   * 변형끼리 크기를 맞추는 배율 (파일 번호 차례 — 2026-10-17 `tools/sfxlevels.js files()` 로 잰 K 가중 크기를 묶음 평균에).
+   * 금화는 두 파일이 11dB 달라 짤랑마다 크기가 들쭉날쭉했다. ±1dB 안인 묶음은 1
+   */
+  private static readonly SAMPLE_TRIM: Record<string, number[]> = { coins: [0.54, 1.86], blade: [1, 0.79, 1.26], equip: [0.89, 1.12] }
   private samples = new Map<string, AudioBuffer[]>()
+  private sampleTrim = new WeakMap<AudioBuffer, number>()
   private samplesFor: BaseAudioContext | null = null
   /** 발밑이 풀 · 흙인가 (들판 · 숲 · 늪 · 마을) — 아니면 돌바닥 발소리 */
   private stepGrass = false
@@ -1655,6 +1664,7 @@ export class Sfx {
           .then((a) => ctx.decodeAudioData(a))
           .then((b) => {
             const l = this.samples.get(g) ?? []
+            this.sampleTrim.set(b, Sfx.SAMPLE_TRIM[g]?.[i] ?? 1)
             l.push(b)
             this.samples.set(g, l)
           })
@@ -1670,8 +1680,13 @@ export class Sfx {
     if (!l || l.length === 0 || !ctx) return false
     const src = ctx.createBufferSource()
     src.buffer = l[Math.floor(Math.random() * l.length)]
+    vol *= this.sampleTrim.get(src.buffer) ?? 1
     src.playbackRate.value = rate * (1 - spread + Math.random() * 2 * spread)
     const gn = ctx.createGain()
+    // 모노로 섞어 갈래에 넣는다 (2026-10-17): 녹음 파일이 스테레오라 갈래가 스테레오가 되면, 같은 갈래의 합성음이 좌우 분배 규칙상
+    // √2배(+3dB) 커지고(녹음이 겹친 자리만 들쭉날쭉) · 좌우 위치(투기장 발소리)도 합성음과 다르게 났다
+    gn.channelCount = 1
+    gn.channelCountMode = 'explicit'
     const extra: AudioNode[] = [gn]
     if (o) {
       // 시작 4ms 페이드 인 · 끝 페이드 아웃 (툭 끊기는 딸깍을 없앤다)
@@ -1955,8 +1970,8 @@ export class Sfx {
     this.lastCoin = now
     const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.4)
     // 녹음 짤랑 (2026-10-08 S4) — 여러 번이면 조금 늦춰 한 번 더
-    if (this.sample('coins', b.node, b.t0 + delay, 0.9)) {
-      if (n >= 3) this.sample('coins', b.node, b.t0 + delay + 0.18, 0.6)
+    if (this.sample('coins', b.node, b.t0 + delay, 0.72)) {
+      if (n >= 3) this.sample('coins', b.node, b.t0 + delay + 0.18, 0.48)
       return
     }
     for (let i = 0; i < n; i++) {
@@ -1980,7 +1995,8 @@ export class Sfx {
     if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.45)
     // 녹음: 책 펴고 덮는 소리 (2026-10-08 S4)
-    if (this.sample(open ? 'bookOpen' : 'bookClose', node, t0, 0.8)) return
+    // 펴는 소리 파일이 덮는 소리보다 16dB 작다 (2026-10-17 크기 재기) — 따로 맞춘다
+    if (this.sample(open ? 'bookOpen' : 'bookClose', node, t0, open ? 1.34 : 0.27)) return
     this.noiseBurst(node, t0, 0.08, 'bandpass', open ? 900 : 2600, open ? 2600 : 900, 0.2, 1.4)
     this.tone(node, t0 + 0.01, 0.07, 'sine', open ? 660 : 880, open ? 990 : 587, 0.22, 0.005)
   }
@@ -2015,7 +2031,7 @@ export class Sfx {
   blip(): void {
     if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
-    if (this.sample('click', node, t0, 0.8)) return
+    if (this.sample('click', node, t0, 1)) return
     this.tone(node, t0, 0.08, 'sine', 880, 1320, 0.4, 0.005)
   }
 
