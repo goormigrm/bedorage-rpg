@@ -204,6 +204,23 @@ export type Member = {
   sheet?: Sheet
 }
 
+/**
+ * 투기장 시작을 막는 까닭 (없으면 null) — 호스트의 시작과 대기실 안내가 같은 규칙을 쓴다.
+ * 빈 자리를 봇으로 채우면 혼자여도 시작한다 (2026-10-17 사용자: 혼자 방 · 봇 채우기 · 준비 → "모두 준비. 시작합니다…" 에서 멈춤)
+ */
+export function arenaStartBlock(members: Member[], size: number, mode: RoomMode, fillBots: boolean): string | null {
+  const bots = fillBots && members.length < size
+  if (members.length < 2 && !bots) return '상대가 있어야 시작합니다 — 기다리거나 "빈 자리는 봇으로 채우기" 를 켜세요.'
+  if (mode === 'teams' && !bots && !(members.some((m) => m.team === 0) && members.some((m) => m.team === 1))) return '두 팀에 한 명씩은 있어야 시작합니다 — "팀 바꾸기" 를 누르세요.'
+  return null
+}
+
+/** 빈 자리의 팀: 사람이 적은 쪽 (봇이 한쪽에 몰려 3 대 1 이 되지 않게) */
+export function seatTeam(players: Member[]): number {
+  const a = players.filter((p) => p.team === 0).length
+  return a <= players.length - a ? 0 : 1
+}
+
 export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet; ver?: string }

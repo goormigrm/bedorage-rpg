@@ -25,7 +25,7 @@ import { sanitizeSheet } from '../core/items'
 import { SAVE_SLOTS, activeSlot, backupNag, clearSlot, exportSave, importSave, levelOf, playTimeOf, setActiveSlot, sheetOf, slotSummary } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
-  CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
+  CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode, arenaStartBlock, seatTeam,
   makeRoomCode, openLobby, openRoom,
 } from '../net/room'
 import { banPeer, isBanned } from '../net/bans'
@@ -1298,10 +1298,8 @@ export class Lobby {
   private maybeStart(): void {
     if (this.role !== 'host' || this.starting || !this.link) return
     const link = this.link
-    // 던전은 혼자여도 시작한다(남은 자리는 게임 중 난입으로) — 투기장은 상대가 있어야 한다
-    if (this.members.length < (this.kind === 'arena' ? 2 : MIN_PLAYERS)) return
-    if (!this.members.every((m) => m.ready)) return
-    if (this.roomMode === 'teams' && (!this.members.some((m) => m.team === 0) || !this.members.some((m) => m.team === 1))) return
+    // 던전은 혼자여도 시작한다(남은 자리는 게임 중 난입으로) — 투기장은 상대(사람이나 봇)가 있어야 한다
+    if (this.members.length < MIN_PLAYERS || !this.members.every((m) => m.ready) || this.startBlock()) return
     this.starting = true
     const seed = (Math.random() * 0xffffffff) >>> 0
     // 입력 지연(틱). RTT 가 낮아도 **지터**(왔다 갔다 하는 값)가 있으면 한 틱만 늦어도 전원이 멈춘다.
@@ -1312,10 +1310,6 @@ export class Lobby {
     const delay = people > 1 ? Math.max(4, Math.min(9, Math.ceil(link.rtt / 2 / 16.7) + 3)) : Math.max(3, Math.min(8, Math.ceil(link.rtt / 2 / 16.7) + 2))
     // 자리는 **정원만큼** 잡아 둔다. 빈 자리는 판에 나오지 않다가 난입으로 채워진다 — 또는 (호스트가 켰으면) 봇이 앉는다
     const teamsOn = this.kind === 'arena' && this.roomMode === 'teams'
-    if (teamsOn && (!this.members.some((m) => m.team === 0) || !this.members.some((m) => m.team === 1))) {
-      this.starting = false
-      return
-    }
     const players: Member[] = this.members.map((m, i) => ({ ...m, team: teamsOn ? m.team : i }))
     while (players.length < this.roomSize) {
       const bot = this.fillBots
@@ -1323,7 +1317,7 @@ export class Lobby {
         id: '',
         char: bot ? this.pickBotChar(players) : 'cheolmyeon',
         ready: false,
-        team: teamsOn ? players.length % 2 : players.length,
+        team: teamsOn ? seatTeam(players) : players.length,
         name: '',
         bot,
       })
@@ -1336,6 +1330,11 @@ export class Lobby {
     link.sendCtl({ t: 'start', seed, targetKills: kills, delay, map, scale, mode, players, botDiff, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin })
     this.announce('playing')
     setTimeout(() => this.launchFrom(players, seed, delay, mode, map, kills, scale, botDiff), 150)
+  }
+
+  /** 시작을 막는 까닭 (투기장만 · 없으면 null) — 게스트는 호스트가 알려 준 봇 채우기로 */
+  private startBlock(): string | null {
+    return this.kind === 'arena' ? arenaStartBlock(this.members, this.roomSize, this.roomMode, this.role === 'host' ? this.fillBots : this.fillBotsRemote) : null
   }
 
   /** 대기실 제목용 호스트 이름 (닉네임 → 캐릭터 이름 → '호스트') */
@@ -1491,7 +1490,7 @@ export class Lobby {
         <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : this.role === 'host' ? '▶ 게임 시작' : '준비'}</button>
         ${teams ? `<button class="btn secondary" id="btn-team" ${connected ? '' : 'disabled'}>팀 바꾸기</button>` : ''}
       </div>
-      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이고 모두 준비를 누르면 시작합니다. 빈 자리는 봇으로 채울 수 있습니다.' : '"게임 시작" 을 누르면 바로 시작합니다(들어온 사람이 있으면 모두 준비한 뒤). 남은 자리는 게임 중에도 들어올 수 있습니다.'}</p>`
+      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이거나 빈 자리를 봇으로 채우고, 모두 준비를 누르면 시작합니다.' : '"게임 시작" 을 누르면 바로 시작합니다(들어온 사람이 있으면 모두 준비한 뒤). 남은 자리는 게임 중에도 들어올 수 있습니다.'}</p>`
     const readyCount = this.members.filter((m) => m.ready).length
     const st = !connected
       ? '연결 중… (최대 20초)'
@@ -1500,7 +1499,7 @@ export class Lobby {
           ? '방 목록에 올라갔습니다. 상대가 들어오길 기다리는 중…'
           : '다른 사람이 들어오길 기다리는 중…'
         : readyCount === this.members.length
-          ? '모두 준비. 시작합니다…'
+          ? (this.startBlock() ?? '모두 준비. 시작합니다…')
           : this.myReady
             ? `준비 ${readyCount}/${this.members.length} · 나머지를 기다리는 중…`
             : this.role === 'host'
@@ -1537,6 +1536,7 @@ export class Lobby {
         this.fillBots = chk.checked
         this.broadcastRoom()
         this.renderRoom()
+        this.maybeStart() // 이미 준비한 채로 켰으면 바로
       }
       this.host.querySelectorAll<HTMLButtonElement>('#seg-botdiff button').forEach((b) => {
         b.onclick = () => {
