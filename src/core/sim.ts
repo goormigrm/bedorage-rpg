@@ -2403,8 +2403,8 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
       if (len(dx, dy) > range + PLAYER_RADIUS) continue
       if (Math.abs(angleDiff(atan2A(dy, dx), p.aim)) > arc) continue
       if (rayCast(map, p.x, p.y, victim.x, victim.y, 'bullet', true).blocked) continue
-      // 투기장 배율은 근접에도 (2026-09-19 — 예전에는 총알에만 걸렸다)
-      hurtPvp(state, p, victim, Math.round(dmg * (WEAPONS[p.weapon].pvp ?? 1)), PART_BODY, victim.x, victim.y)
+      // 투기장 배율은 근접에도 (2026-09-19 — 예전에는 총알에만 걸렸다) · 캐릭터 배율도 (2026-10-17 — 근접 캐릭터는 CHAR_PVP 가 안 걸렸다)
+      hurtPvp(state, p, victim, Math.round(dmg * (WEAPONS[p.weapon].pvp ?? 1) * (CHAR_PVP[p.char] ?? 1)), PART_BODY, victim.x, victim.y)
       n++
     }
   }

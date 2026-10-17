@@ -52,8 +52,11 @@ export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.8
  * 캐릭터별 투기장 피해 배율 (`tools/arena.ts` 1:1 리그로 맞춘다 — 목표 45~55%).
  * 무기 계열의 `pvp` 로 맞추면 같은 무기를 쓰는 다른 캐릭터까지 흔들려서, 캐릭터 한 명만 올릴 때 쓴다.
  * 2026-09-20: 우원란 · 단군란은 권총(1.12 배율)에서 SMG 로 옮기며 27% 까지 떨어졌다. 풍월란은 탱커가 되며 구르기 특혜를 뗐다.
+ * 2026-10-17 (사용자: "나머지는 개발 진행" — 미뤄 둔 투기장 수치): 세 맵(마당 · 스튜디오 · 주차장) × 시드 12 평균으로 다시 —
+ * 풍월 69 · 철면 66 … 통천 41 · 침착 39% → 모두 46 ~ 54%. 근접(철면 · 승빠 · 우재)에도 이 배율이 걸리게 했다(전에는 총알에만).
+ * 맵마다 차이는 남는다(좁은 주차장에서 산탄 · 근접이 강하고 트인 마당에서 소총 · 저격이 강하다 — 맵의 성격)
  */
-export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.35, uwon: 1.22, dangun: 1.22, giyeol: 1.12 }
+export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.14, uwon: 1.26, dangun: 1.24, giyeol: 1.1, cheolmyeon: 0.89, chim: 1.07, tongdak: 1.04, seungwoo: 1.12, juwoojae: 1.06, oknyang: 1.09, magic: 0.9, jupeol: 0.98 }
 export const UWON = { invulnAfterDash: 24 }
 /**
  * 던전 구르기 끝의 무적 유예 틱 (2026-09-25 사용자: "구르는 시간이 0.3초쯤 되나? 늘리면 너무 쉬워지지 않나 — 수치로 정해 줘").
