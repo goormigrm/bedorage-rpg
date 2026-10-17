@@ -7,7 +7,7 @@ import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -2193,7 +2193,9 @@ export class Session {
     if (!cfg.bubbles) return
     if (cfg.antiSpam && !c.test && !this.spam.allow(nick, raw, now)) return
     this.chatQueue.push({ ...c, nick, text: maskText(raw, cfg), at: now })
-    if (this.chatQueue.length > 12) this.chatQueue.shift()
+    // 말풍선 양(방송 개선 ③): 기다리는 줄 상한 — 넘치면 오래된 것부터 버린다
+    const max = bubbleFlow(cfg, this.bossFight()).max
+    while (this.chatQueue.length > max) this.chatQueue.shift()
     // 시험인데 지금 화면에 괴물이 없으면 알린다 (나타나면 30초 안에 그 머리 위에 뜬다)
     if (c.test && this.renderer.pickSpeaker(this.view()) < 0) {
       this.message = '채팅 시험 — 괴물이 화면에 보이면 그 머리 위에 뜹니다'
@@ -2304,7 +2306,7 @@ export class Session {
 
   private nameMonster(id: number, nick: string, area: number, now: number): void {
     this.vnames.set(id, { nick, area, at: now })
-    if (area === this.viewArea) this.renderer.notice(`${nick} 등장! — 시청자 이름 괴물`, VIEWER_TAG, 2.6)
+    if (area === this.viewArea) this.renderer.notice(`${nick} 등장! — 시청자 이름 괴물`, VIEWER_TAG, 2.6, this.renderer.sayScale)
   }
 
   /** 이름 붙은 괴물이 쓰러졌다 (모두의 화면 — 그 지역에 있으면 알린다) */
@@ -2312,7 +2314,7 @@ export class Session {
     const v = this.vnames.get(id)
     if (!v) return
     this.vnames.delete(id)
-    if (v.area === this.viewArea) this.renderer.notice(`${v.nick} 처치!`, VIEWER_TAG, 3)
+    if (v.area === this.viewArea) this.renderer.notice(`${v.nick} 처치!`, VIEWER_TAG, 3, this.renderer.sayScale)
   }
 
   private thankBubble(nick: string, line: string): void {
@@ -2514,12 +2516,14 @@ export class Session {
       this.assignViewerName(now)
     }
     // 괴물 머리 위에만. 말할 괴물이 없으면(마을 · 빈 방) 기다리고, 8초(시험은 30초) 넘게 못 한 말은 버린다 — 채팅 칸으로도 캐릭터 머리 위로도 돌리지 않는다
-    while (this.chatQueue.length > 0 && now - this.chatQueue[0].at > (this.chatQueue[0].test ? 30000 : 8000)) this.chatQueue.shift()
-    if (this.chatQueue.length > 0 && now >= this.chatNextAt) {
+    // 말풍선 양(방송 개선 ③ — 적게 · 보통 · 많이 · 보스전 줄이기): 기다리는 한도 · 다음 말풍선까지
+    const flow = this.chatQueue.length > 0 ? bubbleFlow(loadStreamCfg(), this.bossFight()) : null
+    while (flow && this.chatQueue.length > 0 && now - this.chatQueue[0].at > (this.chatQueue[0].test ? 30000 : flow.wait)) this.chatQueue.shift()
+    if (flow && this.chatQueue.length > 0 && now >= this.chatNextAt) {
       const c = this.chatQueue[0]
       if (this.viewerSay(c.nick, c.text)) {
         this.chatQueue.shift()
-        this.chatNextAt = now + 300
+        this.chatNextAt = now + flow.gap
       } else this.chatNextAt = now + 250
     }
     if (now >= this.donTableAt) {
@@ -2579,7 +2583,7 @@ export class Session {
       const secs = Math.max(1, Math.round((now - w.at) / 1000))
       const title = `${w.nick}님의 ${w.name} 처치!`
       if (w.ev >= 6) this.renderer.banner(title, `${secs}초 만에`, '#ffd24a')
-      else this.renderer.notice(`${title} (${secs}초)`, '#ffd24a', 3)
+      else this.renderer.notice(`${title} (${secs}초)`, '#ffd24a', 3, this.renderer.sayScale)
     }
     this.donWatch = keep
   }
@@ -2595,7 +2599,7 @@ export class Session {
     const vn = this.vnames.get(by)
     if (vn) {
       this.downNoteAt = now + 1500
-      this.renderer.notice(`💀 ${who} — ${vn.nick}에게 당했다!`, VIEWER_TAG, 3)
+      this.renderer.notice(`💀 ${who} — ${vn.nick}에게 당했다!`, VIEWER_TAG, 3, this.renderer.sayScale)
       return
     }
     const m = areaView(this.state, q.area).monsters.find((x) => x.id === by)
@@ -2604,7 +2608,7 @@ export class Session {
     const ev = info ? donateEvent(info.ev) : undefined
     if (!info || !ev) return
     this.downNoteAt = now + 1500
-    this.renderer.notice(`💀 ${who} — ${info.nick}님의 ${ev.name}에게 쓰러짐!`, '#ffae4a', 3)
+    this.renderer.notice(`💀 ${who} — ${info.nick}님의 ${ev.name}에게 쓰러짐!`, '#ffae4a', 3, this.renderer.sayScale)
   }
 
   /** 큰 후원 예고를 띄운다 (가운데 3 · 2 · 1 + 초 읽기 소리) */
@@ -2618,6 +2622,11 @@ export class Session {
   private donHeld(): boolean {
     if (stream.hold) return true
     if (!loadStreamCfg().holdBoss) return false
+    return this.bossFight()
+  }
+
+  /** 보스전: 보는 지역의 막 보스가 맞기 시작했다 (방해 이벤트 대기 · 말풍선 줄이기가 같이 쓴다) */
+  private bossFight(): boolean {
     return this.view().monsters.some((m) => m.hp > 0 && isGiant(m) && m.hitTick >= 0)
   }
 
@@ -2650,6 +2659,9 @@ export class Session {
     const el = this.donTable
     if (!el) return
     const cfg = loadStreamCfg()
+    // 방송 글자 크기(방송 개선 ⑤): 말풍선 · 방송 알림은 렌더러가, 후원 표는 CSS 변수로 곱한다
+    this.renderer.sayScale = cfg.textScale
+    el.style.setProperty('--dk', String(cfg.textScale))
     const show = stream.live && cfg.table && !this.arena
     if (el.hidden !== !show) el.hidden = !show
     if (!show) {
@@ -2698,6 +2710,9 @@ export class Session {
       el.dataset.h = html
       el.innerHTML = html
     }
+    // 큰 글자 표가 작은 창에서 체력 오브(왼쪽 끝 = 가운데 − 366, d4hud drawBottom)를 가리면 그 앞까지만 키운다 (1배 아래로는 안 줄인다)
+    const room = ((VIEW_W / 2 - 366) * this.stage.clientWidth) / VIEW_W - 20
+    if (cfg.textScale > 1 && el.offsetWidth > room) el.style.setProperty('--dk', String(Math.max(1, (cfg.textScale * room) / el.offsetWidth)))
     // 채팅 칸은 후원 표 위로 (둘 다 왼쪽 아래 — 표가 커지면 겹쳤다, 2026-09-23). 표를 고친 뒤에 잰다
     this.chat?.setBottom(Math.max(222, 12 + el.offsetHeight + 14))
   }

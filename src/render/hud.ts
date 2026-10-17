@@ -143,6 +143,8 @@ interface Notice {
   color: string
   life: number
   max: number
+  /** 글자 배율 (방송 알림은 방송 글자 크기 — StreamCfg.textScale) */
+  k: number
 }
 
 
@@ -331,8 +333,8 @@ export class Hud {
   }
 
   /** life: 떠 있는 초 (긴 안내는 길게) */
-  notice(text: string, color: string, life = 2.2): void {
-    this.notices.push({ text, color, life, max: life })
+  notice(text: string, color: string, life = 2.2, k = 1): void {
+    this.notices.push({ text, color, life, max: life, k })
     if (this.notices.length > 3) this.notices.shift()
   }
 
@@ -516,24 +518,28 @@ export class Hud {
     // 알림: 최근 것이 맨 위. 지역 이름 배너(위 20% 자리 · 띠 높이 100)가 떠 있으면 그 아래로 —
     // 들어서자마자 웨이포인트 · 퀘스트 알림이 뜨면 배너 글자와 겹쳤다 (2026-10-08)
     const top = this.d4.banner && opts.showHud && s.mode === 'dungeon' ? VIEW_H * 0.2 + 50 + 24 : 110
+    let y = top
     for (let n = 0; n < this.notices.length && s.phase !== 'over'; n++) {
       const b = this.notices[this.notices.length - 1 - n]
       const k = b.life / b.max
       const inK = Math.min(1, (b.max - b.life) * 6)
       ctx.globalAlpha = Math.min(1, k * 4) * inK
-      const y = top + n * 44
-      ctx.font = '400 24px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+      // 배율(b.k)만큼 띠가 커지면 다음 줄도 그만큼 아래로
+      y += 22 * (b.k - 1)
+      ctx.font = `400 ${Math.round(24 * b.k)}px "Black Han Sans", "IBM Plex Sans KR", sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      const tw = ctx.measureText(b.text).width + 48
+      const tw = ctx.measureText(b.text).width + 48 * b.k
+      const bh = 38 * b.k
       ctx.fillStyle = 'rgba(13,17,23,0.82)'
-      roundRect(ctx, VIEW_W / 2 - tw / 2, y - 19, tw, 38, 6)
+      roundRect(ctx, VIEW_W / 2 - tw / 2, y - bh / 2, tw, bh, 6)
       ctx.fill()
       ctx.fillStyle = b.color
-      roundRect(ctx, VIEW_W / 2 - tw / 2, y - 19, 5, 38, 3)
+      roundRect(ctx, VIEW_W / 2 - tw / 2, y - bh / 2, 5, bh, 3)
       ctx.fill()
       ctx.fillText(b.text, VIEW_W / 2, y + 1)
       ctx.globalAlpha = 1
+      y += 44 * b.k - 22 * (b.k - 1)
     }
     if (s.phase === 'over' && s.winner !== -1) {
       const arena = s.mode === 'arena'

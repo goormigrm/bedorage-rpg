@@ -45,6 +45,26 @@ export interface StreamCfg {
   holdBoss: boolean
   /** 대기실 전체 채팅을 숨긴다 — 방 밖의 누구나 쓸 수 있어 방송 화면에 그대로 뜬다 (2026-09-26 방송 개선 4) */
   hideLobbyChat: boolean
+  /** 말풍선 양 (2026-10-17 방송 개선 ③) — BUBBLE_FLOW */
+  bubbleAmount: BubbleAmount
+  /** 보스전(막 보스와 싸우는 중)에는 말풍선을 '적게'로 — 패턴 예고를 가리지 않게 */
+  bubbleBossLess: boolean
+  /** 방송 화면 글자 크기 배율 (2026-10-17 방송 개선 ⑤): 말풍선 · 후원 표 · 방송 알림 — TEXT_SCALES */
+  textScale: number
+}
+
+export type BubbleAmount = 'few' | 'normal' | 'many'
+/** 말풍선 양마다: 다음 말풍선까지 ms · 기다리는 줄 상한 · 못 띄우고 기다리는 한도 ms ('보통' = 예전 그대로) */
+export const BUBBLE_FLOW: Record<BubbleAmount, { gap: number; max: number; wait: number }> = {
+  few: { gap: 900, max: 4, wait: 5000 },
+  normal: { gap: 300, max: 12, wait: 8000 },
+  many: { gap: 150, max: 20, wait: 10000 },
+}
+export const TEXT_SCALES = [1, 1.25, 1.5]
+
+/** 지금 말풍선 흐름 — 보스전 줄이기가 켜져 있고 보스전이면 '적게' */
+export function bubbleFlow(c: Pick<StreamCfg, 'bubbleAmount' | 'bubbleBossLess'>, bossFight: boolean): { gap: number; max: number; wait: number } {
+  return BUBBLE_FLOW[c.bubbleBossLess && bossFight ? 'few' : c.bubbleAmount]
 }
 
 /**
@@ -71,6 +91,9 @@ export function defaultStreamCfg(): StreamCfg {
     named: true,
     holdBoss: false,
     hideLobbyChat: false,
+    bubbleAmount: 'normal',
+    bubbleBossLess: false,
+    textScale: 1,
   }
 }
 
@@ -103,6 +126,9 @@ export function loadStreamCfg(): StreamCfg {
       named: v.named ?? d.named,
       holdBoss: v.holdBoss ?? d.holdBoss,
       hideLobbyChat: v.hideLobbyChat ?? d.hideLobbyChat,
+      bubbleAmount: typeof v.bubbleAmount === 'string' && Object.hasOwn(BUBBLE_FLOW, v.bubbleAmount) ? v.bubbleAmount : d.bubbleAmount,
+      bubbleBossLess: v.bubbleBossLess ?? d.bubbleBossLess,
+      textScale: TEXT_SCALES.includes(Number(v.textScale)) ? Number(v.textScale) : d.textScale,
     }
   } catch {
     return d

@@ -4,7 +4,7 @@
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
 import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES, DonateEvent } from '../core/donate'
-import { DEFAULT_BANNED, StreamStatus, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { BUBBLE_FLOW, BubbleAmount, DEFAULT_BANNED, StreamStatus, TEXT_SCALES, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
 import { isDev, onDevChange } from '../game/devmode'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
@@ -131,6 +131,12 @@ export function openStreamPanel(host: HTMLElement, onClose?: () => void): () => 
   return close
 }
 
+/** 여러 칸 중 하나 (말풍선 양 · 글자 크기 — 2026-10-17 방송 개선 ③ ⑤) */
+const seg = (key: string, name: string, opts: string[][], cur: string) =>
+  `<div class="cztg"><b>${name}</b><div class="seg small" data-seg="${key}">` +
+  opts.map(([v, label]) => `<button type="button" data-v="${v}" class="${v === cur ? 'on' : ''}">${label}</button>`).join('') +
+  `</div></div>`
+
 const toggle = (key: string, name: string, on: boolean, yes = '켜기', no = '끄기') =>
   `<div class="cztg"><b>${name}</b><div class="seg small" data-tg="${key}">` +
   `<button type="button" data-on="1" class="${on ? 'on' : ''}">${yes}</button>` +
@@ -213,7 +219,11 @@ function panelHtml(): string {
     `<div class="czcol">` +
     `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
+    seg('bub', '말풍선 양', [['few', '적게'], ['normal', '보통'], ['many', '많이']], c.bubbleAmount) +
+    toggle('bubbleBossLess', '보스전 중에는 말풍선 적게', c.bubbleBossLess) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
+    seg('tsc', '방송 글자 크기', TEXT_SCALES.map((k, i) => [String(k), ['보통', '크게', '아주 크게'][i] ?? `${k}배`]), String(c.textScale)) +
+    `<p class="czn">말풍선 양 — 적게 0.9초 · 보통 0.3초 · 많이 0.15초에 하나, 밀린 채팅은 적게 4 · 보통 12 · 많이 20 줄까지 기다립니다. 글자 크기는 말풍선 · 후원 표 · 방송 알림(시청자 이름 괴물 · 후원 결과)에 같이 걸립니다.</p>` +
     (dev
       ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
         `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요. 창은 닫히지 않으니 여러 번 눌러 보세요. 여럿이 하는 판에서는 방장만 됩니다.</p>`
@@ -333,7 +343,19 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       else if (tg === 'maskLinks') c.maskLinks = on
       else if (tg === 'antiSpam') c.antiSpam = on
       else if (tg === 'named') c.named = on
+      else if (tg === 'bubbleBossLess') c.bubbleBossLess = on
       else c.table = on
+      saveStreamCfg(c)
+      redraw()
+    }
+  })
+  box.querySelectorAll<HTMLButtonElement>('[data-seg] button').forEach((b) => {
+    b.onclick = () => {
+      const c = loadStreamCfg()
+      const key = (b.parentElement as HTMLElement).dataset.seg
+      const v = b.dataset.v ?? ''
+      if (key === 'bub' && Object.hasOwn(BUBBLE_FLOW, v)) c.bubbleAmount = v as BubbleAmount
+      else if (key === 'tsc' && TEXT_SCALES.includes(Number(v))) c.textScale = Number(v)
       saveStreamCfg(c)
       redraw()
     }

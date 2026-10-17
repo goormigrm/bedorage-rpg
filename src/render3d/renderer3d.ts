@@ -402,9 +402,11 @@ export class Renderer3D {
   }
 
   /** 화면 가운데 아래 짧은 알림 (가방이 가득 · 획득 …) */
-  notice(text: string, color: string, life?: number): void {
-    this.hud.notice(text, color, life)
+  notice(text: string, color: string, life?: number, k?: number): void {
+    this.hud.notice(text, color, life, k)
   }
+  /** 방송 글자 크기 배율 (StreamCfg.textScale — 세션이 넣는다): 시청자 말풍선 · 후원 소환 · 시청자 이름표 */
+  sayScale = 1
   private shake = 0
   /** 후원 "화면 흔들림"의 세기 0~1 (걸리면 차오르고 끝나면 빠진다 — updateCamera) */
   private donShake = 0
@@ -4687,7 +4689,7 @@ export class Renderer3D {
       const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)
       if (who) {
         ctx.save()
-        ctx.font = `800 12px ${SAY_FONT}`
+        ctx.font = `800 ${Math.round(12 * this.sayScale)}px ${SAY_FONT}`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'alphabetic'
         ctx.lineWidth = 3
@@ -4697,14 +4699,14 @@ export class Renderer3D {
         ctx.fillStyle = '#7dffc4'
         ctx.fillText(label, head.x, head.y - 14)
         ctx.restore()
-        head = { x: head.x, y: head.y - 16 }
+        head = { x: head.x, y: head.y - 16 * this.sayScale }
       }
     }
     // 시청자 이름 괴물: 머리 위에 하늘빛 닉네임 (말풍선은 그 위)
     const viewer = m.sum === undefined ? this.viewerLabel?.(m.id) : undefined
     if (viewer) {
       ctx.save()
-      ctx.font = `800 14px ${SAY_FONT}`
+      ctx.font = `800 ${Math.round(14 * this.sayScale)}px ${SAY_FONT}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'alphabetic'
       ctx.lineWidth = 3.5
@@ -4713,7 +4715,7 @@ export class Renderer3D {
       ctx.fillStyle = VIEWER_TAG
       ctx.fillText(viewer, head.x, head.y - 14)
       ctx.restore()
-      head = { x: head.x, y: head.y - 18 }
+      head = { x: head.x, y: head.y - 18 * this.sayScale }
     }
     const say = this.says.get(m.id)
     if (!say) return
@@ -4772,19 +4774,22 @@ export class Renderer3D {
     if (left <= 0) return
     ctx.save()
     ctx.globalAlpha = Math.min(1, left / 350)
-    // 보스 즉사기 대사(warn): 크고 검붉게 — 무엇이 오는지 한눈에
+    // 보스 즉사기 대사(warn): 크고 검붉게 — 무엇이 오는지 한눈에. 방송 글(시청자 · 후원)은 방송 글자 크기(sayScale)를 곱한다
     const warn = !!say.warn
-    ctx.font = warn ? `800 19px ${SAY_FONT}` : `700 14px ${SAY_FONT}`
+    const k = warn ? 1 : this.sayScale
+    const textFont = warn ? `800 19px ${SAY_FONT}` : `700 ${Math.round(14 * k)}px ${SAY_FONT}`
+    const nickFont = `800 ${warn ? 13 : Math.round(11 * k)}px ${SAY_FONT}`
+    ctx.font = textFont
     const tw = ctx.measureText(say.text).width
-    ctx.font = `800 ${warn ? 13 : 11}px ${SAY_FONT}`
+    ctx.font = nickFont
     const nw = ctx.measureText(say.nick).width
-    const w = Math.max(tw, nw) + (warn ? 30 : 22)
-    const h = warn ? 52 : 40
+    const w = Math.max(tw, nw) + (warn ? 30 : 22 * k)
+    const h = warn ? 52 : 40 * k
     const bx = head.x - w / 2
     const flip = under !== undefined && head.y - 26 - h < 62
     const by = flip ? under + 8 : head.y - 26 - h
     ctx.fillStyle = warn ? '#2a0406' : say.gold ? '#fff4d0' : '#ffffff'
-    roundRect(ctx, bx, by, w, h, 10)
+    roundRect(ctx, bx, by, w, h, 10 * k)
     ctx.fill()
     if (say.gold || warn) {
       ctx.strokeStyle = warn ? `rgba(255,60,40,${0.6 + 0.4 * Math.sin(performance.now() / 70)})` : '#d8a83a'
@@ -4805,12 +4810,12 @@ export class Renderer3D {
     ctx.fill()
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = `800 ${warn ? 13 : 11}px ${SAY_FONT}`
+    ctx.font = nickFont
     ctx.fillStyle = warn ? '#ff8a6a' : say.gold ? '#9a6a10' : '#12a86a'
-    ctx.fillText(say.nick, head.x, by + (warn ? 15 : 12))
-    ctx.font = warn ? `800 19px ${SAY_FONT}` : `700 14px ${SAY_FONT}`
+    ctx.fillText(say.nick, head.x, by + (warn ? 15 : 12 * k))
+    ctx.font = textFont
     ctx.fillStyle = warn ? '#ffffff' : '#1a1f26'
-    ctx.fillText(say.text, head.x, by + (warn ? 36 : 28))
+    ctx.fillText(say.text, head.x, by + (warn ? 36 : 28 * k))
     ctx.restore()
   }
 
