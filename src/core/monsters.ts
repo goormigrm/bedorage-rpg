@@ -431,6 +431,15 @@ export const BOSS_PLANS: Partial<Record<MonsterKindId, BossPlan>> = {
 export const ELITE = { hp: 4, pow: 1.4, xp: 4, lootBonus: 0.18 }
 
 /**
+ * 괴물 체력 · 무리 수 (2026-10-17 사용자: "일반 몬스터들도 체력이 많아서 재미가 없어 — 게임 전체적으로 체력을 줄이되 숫자를 늘리는 방향으로"):
+ * 막 보스가 아닌 괴물의 체력 ×MOB_HP (dungeon.ts makeMonster — 무리 · 정예 · 우두머리 · 소환 · 저주받은 상자 모두) · 무리의 마릿수 ×MOB_COUNT
+ * (packMembers). 무리 하나의 체력 합은 0.9배. 졸개 한 마리의 경험치(xpFor) · 골드 · 아이템(sim reward)은 1/MOB_COUNT —
+ * 마릿수가 늘어도 레벨 오르는 속도 · 벌이는 그대로. 회복 구슬은 그대로(한꺼번에 덤비는 수가 늘었다). 막 보스는 패턴에 맞춘 체력이라 그대로
+ */
+export const MOB_HP = 0.6
+export const MOB_COUNT = 1.5
+
+/**
  * 정예 접두 능력 (디아블로의 "빠른 · 불타는 …"). Monster.elite 는 비트 묶음 — 1 = 정예, 나머지 비트 = 능력.
  * 1~2층은 하나, 3층부터 둘. 무리 rng 로 고르므로 결정론.
  */
@@ -509,7 +518,7 @@ export const tierOf = (t: number | undefined) => TIERS[Math.max(0, Math.min(TIER
 export const levelHp = (level: number) => HP_BASE * (1 + LEVEL_HP * (level - 1))
 export const levelPow = (level: number) => Math.round(100 * (1 + LEVEL_POW * (level - 1)))
 export function xpFor(m: { kind: number; elite: number; lvl: number }): number {
-  const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1
+  const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1 / MOB_COUNT
   return MONSTER_LIST[m.kind].xp * k * (1 + XP_PER_MLEVEL * (Math.max(1, m.lvl) - 1))
 }
 

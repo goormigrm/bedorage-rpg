@@ -4,7 +4,7 @@ import { botInput, makeBot } from '../src/core/bot'
 import { CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap } from '../src/core/map'
-import { MONSTER_LIST } from '../src/core/monsters'
+import { MOB_COUNT, MONSTER_LIST } from '../src/core/monsters'
 import { ACTS, areaLayout } from '../src/core/world'
 import { createState, hashState, snapshot, step } from '../src/core/sim'
 import { GameState, MS_SLEEP } from '../src/core/state'
@@ -140,7 +140,7 @@ describe('층 크기', () => {
     expect(b.w).toBe(a.w)
     expect(b.h).toBe(a.h)
     const s = createState({ area: 4, seed: 3, chars: PARTY }, b)
-    // D7 에서 무리를 약 1.8배로 늘렸다(지하 묘지 1층 약 270) — 맵이 네 배로 커졌다면 1000 을 넘는다
-    expect(s.monsters.length).toBeLessThan(400)
+    // D7 에서 무리를 약 1.8배로 늘렸다(지하 묘지 1층 약 270) · 2026-10-17 마릿수 ×MOB_COUNT(약 430) — 맵이 네 배로 커졌다면 1500 을 넘는다
+    expect(s.monsters.length).toBeLessThan(400 * MOB_COUNT)
   })
 })

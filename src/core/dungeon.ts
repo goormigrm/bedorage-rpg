@@ -3,7 +3,7 @@
 // 모든 추첨은 시드로 만든 전용 Rng 로 한다(같은 시드 = 모든 브라우저에서 같은 배치).
 
 import { GameMap, TILE, TILE_FLOOR, walkField } from './map'
-import { ELITE, ELITE_AFFIXES, MONSTER_LIST, hpScaleFor, levelHp, levelPow, EA_SPLIT, EA_STOUT, tierOf } from './monsters'
+import { ELITE, ELITE_AFFIXES, MONSTER_LIST, MOB_COUNT, MOB_HP, hpScaleFor, levelHp, levelPow, EA_SPLIT, EA_STOUT, tierOf } from './monsters'
 import { PackDef } from './world'
 import { Rng, makeRng, rand, randInt } from './rng'
 import { GameState, MS_SLEEP, Monster } from './state'
@@ -24,7 +24,8 @@ export function entryOf(map: GameMap): { x: number; y: number } {
 
 export function makeMonster(state: GameState, kind: number, x: number, y: number, pack: number, hpMul: number, pow = 100, lvl = 1): Monster {
   const def = MONSTER_LIST[kind]
-  const hp = Math.round(def.hp * hpMul)
+  // 막 보스가 아니면 체력 ×MOB_HP (monsters.ts — 체력을 줄이고 수를 늘린다)
+  const hp = Math.max(1, Math.round(def.hp * hpMul * (def.boss ? 1 : MOB_HP)))
   return {
     id: state.nextMonsterId++,
     kind,
@@ -78,7 +79,8 @@ function packMembers(rng: Rng, packs: PackDef[]): number[] {
   }
   const out: number[] = []
   for (const [kind, lo, hi] of pick.groups) {
-    const n = randInt(rng, lo, hi + 1)
+    // 마릿수 ×MOB_COUNT (monsters.ts — 체력을 줄이고 수를 늘린다)
+    const n = Math.round(randInt(rng, lo, hi + 1) * MOB_COUNT)
     for (let i = 0; i < n; i++) out.push(kind)
   }
   return out

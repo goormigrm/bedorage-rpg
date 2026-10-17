@@ -22,7 +22,7 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MOB_HP, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
   bodyR, GIANT_HP, fromBehind, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
@@ -2311,11 +2311,10 @@ function aoe(state: GameState, map: GameMap, caster: PlayerState, x: number, y: 
   })
   hit.sort((a, b) => a.id - b.id)
   for (const m of hit) {
-    const def = MONSTER_LIST[m.kind]
     if (o.tag !== undefined) m.tag = o.tag
     if (o.knock) {
       const d = len(m.x - x, m.y - y) || 1
-      const k = o.knock * (1 - def.knockRes)
+      const k = o.knock * knockMul(m)
       m.kx += ((m.x - x) / d) * k
       m.ky += ((m.y - y) / d) * k
     }
@@ -2366,7 +2365,7 @@ function swingAt(state: GameState, map: GameMap, p: PlayerState, range: number, 
     const d = len(m.x - p.x, m.y - p.y) || 1
     // 격정 연주(철면란 E) · 다지기 연타 중 휘두르기에 맞은 괴물은 느려진다 (총의 탄막과 같은 효과)
     if (p.fx[FX_FREEAMMO] > 0) m.slow = Math.max(m.slow, 60)
-    const k = knock * (1 - MONSTER_LIST[m.kind].knockRes)
+    const k = knock * knockMul(m)
     m.kx += ((m.x - p.x) / d) * k
     m.ky += ((m.y - p.y) / d) * k
     // 거대한 보스는 조준이 아니라 등 뒤에서 휘둘렀는가 (fromBehind — 2026-10-09)
@@ -3160,7 +3159,7 @@ function applyHit(state: GameState, b: Bullet, m: Monster, dOff: number): boolea
   b.hitSomeone = true
   shooter.streak = Math.min(99, shooter.streak + (shooter.fx[FX_KING] > 0 ? 2 : 1))
   const speed = len(b.vx, b.vy) || 1
-  const k = w.knock * (1 - def.knockRes)
+  const k = w.knock * knockMul(m)
   m.kx += (b.vx / speed) * k
   m.ky += (b.vy / speed) * k
   // 탄막(철면란 E): 맞은 괴물은 잠깐 느려진다
@@ -3487,7 +3486,7 @@ function spawnAllies(state: GameState, map: GameMap, p: PlayerState, c: CheerDef
   const lvl = areaLevel(p.area, state.tier)
   const seats = state.players.length
   // 시련이면 그 단계의 괴물 체력에 맞춰 아군도 세게 친다 (riftHere)
-  const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp * (riftHere(state, p.area)?.hp ?? 1)
+  const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * MOB_HP * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp * (riftHere(state, p.area)?.hp ?? 1)
   const melee = summonPool(act).filter((k) => MONSTER_LIST[k].attack === 'melee')
   const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
   for (let i = 0; i < c.allies && state.allies.length < ALLY_CAP; i++) {
@@ -3710,6 +3709,14 @@ function spill(state: GameState, p: PlayerState, x: number, y: number, lvl: numb
   }
 }
 
+/**
+ * 넉백 배율: **정예 · 우두머리는 밀리지 않는다** (2026-10-17 사용자: "정예 몬스터가 체력은 많은데 넉백이 돼서 근접 탱커는 때리기가 너무 어렵다") ·
+ * 나머지는 넉백 저항만큼. 태풍의 끌어당기기는 넉백이 아니라 따로(그대로 끌린다)
+ */
+function knockMul(m: Monster): number {
+  return m.elite ? 0 : 1 - MONSTER_LIST[m.kind].knockRes
+}
+
 /** 괴물이 쓰러지면 가까운 파티원 **모두**에게 경험치·골드, 그리고 각자 몫의 전리품을 굴린다 (디아블로 3·4 개인 전리품) */
 const SHARE_RANGE = 30 * TILE
 function reward(state: GameState, m: Monster, def: MonsterDef): void {
@@ -3730,8 +3737,9 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const lvl = Math.max(1, areaLevel(state.curArea, state.tier))
     const boss = !!def.boss
     const fountain = boss || unique || m.kind === GOBLIN_KIND
-    const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 ? 1 : 0
-    const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot ? 1 : 0
+    // 졸개는 마릿수가 MOB_COUNT 배라 한 마리 몫은 1/MOB_COUNT (monsters.ts — 벌이 그대로)
+    const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 / MOB_COUNT ? 1 : 0
+    const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot / MOB_COUNT ? 1 : 0
     const tier = tierOf(state.tier)
     const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
     // 첫 아이템 희귀 이상 확정은 막 보스만 (우두머리 · 보물 고블린은 뺐다 — 2026-09-24 "저렙에서도 희귀 · 전설이 너무 쉽다")
@@ -4027,7 +4035,7 @@ function runBooms(state: GameState, map: GameMap, grid: Grid): void {
     hit.sort((a, c) => a.id - c.id)
     for (const m of hit) {
       const d = len(m.x - b.x, m.y - b.y) || 1
-      const k = 6 * (1 - MONSTER_LIST[m.kind].knockRes)
+      const k = 6 * knockMul(m)
       m.kx += ((m.x - b.x) / d) * k
       m.ky += ((m.y - b.y) / d) * k
       hurtMonster(state, m, b.dmg, b.by, false, m.x, m.y)

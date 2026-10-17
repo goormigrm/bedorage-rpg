@@ -138,3 +138,38 @@ describe('거대한 보스 — 등 뒤에서만 치명타', () => {
     expect(fromBehind({ aim: 0 }, 0, 0)).toBe(false)
   })
 })
+
+/** 정예는 밀리지 않는다 (2026-10-17 사용자: "정예 몬스터가 체력은 많은데 넉백이 돼서 근접 탱커는 때리기가 너무 어렵다") */
+function pushed(elite: number): number {
+  const map = buildMap('ruins', 1, 81)
+  const s = createState({ area: 22, seed: 81, chars: ['cheolmyeon'] }, map)
+  const { tx, ty } = lane(map, 4)
+  const p = s.players[0]
+  p.x = (tx + 0.5) * TILE
+  p.y = (ty + 0.5) * TILE
+  const mx = p.x + 48
+  const m = makeMonster(s, MONSTER_LIST.findIndex((d) => d.id === 'ghoul'), mx, p.y, 900, 1, 100, 20)
+  m.st = MS_CHASE
+  m.elite = elite
+  m.maxHp = m.hp = 100000
+  s.monsters.length = 0
+  s.monsters.push(m)
+  s.monstersTotal = 1
+  let most = 0
+  for (let t = 0; t < 120; t++) {
+    step(s, map, [{ ...idle(), buttons: BTN_FIRE, aim: 0, aimDist: 12 }])
+    most = Math.max(most, m.kx, m.x - mx) // 사람에게서 멀어진 만큼 (다가오는 걸음은 빼고)
+    m.x = mx
+    m.y = p.y
+    m.kx = m.ky = 0
+    m.cd = 999
+  }
+  return most
+}
+
+describe('넉백', () => {
+  it('근접으로 때리면 졸개는 밀리고 정예는 제자리', () => {
+    expect(pushed(0)).toBeGreaterThan(1)
+    expect(pushed(1)).toBe(0)
+  })
+})

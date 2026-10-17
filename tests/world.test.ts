@@ -492,7 +492,8 @@ describe('2막 안개 숲 (D6)', () => {
     const { s, mapOf, run } = game(['chim'], 60, { area: 15 })
     const shaman = s.monsters.find((m) => MONSTER_LIST[m.kind].attack === 'heal' && !m.elite)!
     expect(shaman).toBeTruthy()
-    const mate = s.monsters.find((m) => m !== shaman && m.pack === shaman.pack && !MONSTER_LIST[m.kind].boss && !m.elite)!
+    // 동료는 주술사가 아닌 괴물 — 주술사끼리는 서로 고치지 않는다 (무리가 커져 한 무리에 주술사가 둘 이상일 수 있다)
+    const mate = s.monsters.find((m) => m !== shaman && m.pack === shaman.pack && !MONSTER_LIST[m.kind].boss && !m.elite && MONSTER_LIST[m.kind].attack !== 'heal')!
     expect(mate).toBeTruthy()
     const p = s.players[0]
     // 사람 · 동료를 세울 자리: 주술사에서 벽 없이 곧게 트인 방향 (맵 모양이 바뀌어도 — 2026-10-08 던전 맵을 트이게 하며 왼쪽 200px 이 벽 너머가 됐다)
