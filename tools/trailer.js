@@ -1636,8 +1636,8 @@ export async function start(opts = {}) {
   const glc0 = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)
   log.push('캔버스 ' + glc0.map((c) => `${c.width}×${c.height}`).join(' · '))
   // 영상에 나오는 괴물의 실사 모델을 먼저 받아 굽는다 — 녹화 도중 처음 나오면 도형 모습에서 실사로 한순간 바뀌어 튀어 보였다
-  // 들판 떼 · 막 보스 넷과 그 부하(새끼 거미 · 방패병 · 그림자) · 포격 악마
-  const kinds = [0, 1, 2, 3, 6, 8, 9, 12, 13, 14, 15]
+  // 들판 떼 · 막 보스 넷과 그 부하(새끼 거미 · 방패병 · 그림자) · 포격 악마 · 총잡이 넷(v1.6.7 — 막마다 무리에 섞인다)
+  const kinds = [0, 1, 2, 3, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19]
   sess.renderer.monsterView.prefetch(kinds)
   for (let k = 0; k < 120; k++) {
     const r = window.__bd.models()
