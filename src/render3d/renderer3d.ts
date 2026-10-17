@@ -1323,6 +1323,10 @@ export class Renderer3D {
         case 'questReward':
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
+        case 'shopRestock':
+          // 진열이 저절로 새로 들어왔다 (시간 — 마을에 들어선 사람과 같은 마을이면)
+          if (localPlayer >= 0 && state.players[e.p]?.area === state.players[localPlayer]?.area) this.hud.notice('상인 진열에 새 물건이 들어왔다', '#ffd86a')
+          break
         // ---- 저주받은 상자 (2026-10-08 D4) ----
         case 'curse':
           if (e.wave === 1) this.hud.banner(bt('저주받은 상자!'), `괴물 물결 ${CURSE_WAVES}개를 막아라 — 다 잡으면 상자가 열린다`, '#c88aff')

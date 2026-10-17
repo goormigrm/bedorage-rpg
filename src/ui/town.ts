@@ -11,7 +11,7 @@ import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, GAMBLE_PITY, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_PICK, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -28,7 +28,12 @@ export function questList(q: number[], buttons: boolean): string {
     const st = q[i] ?? 0
     if (st < 0) return ''
     const tag = ['아직 모름', '진행 중', bt('이룸 — 촌장에게 보고'), '끝'][st]
-    const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${i}">보상 받기 — ${d.reward}</button>` : ''
+    // 전설 보상은 부위를 골라 받는다 (2026-10-17 "퀘스트 보상 고르기")
+    const claim =
+      st === 2 && d.legend
+        ? `<div class="q-pick"><span>보상 받기 — ${d.reward} · 부위를 고른다</span>${SLOT_NAMES.map((n, s) => `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${QUEST_PICK + i * SLOT_COUNT + s}">${n}</button>`).join('')}</div>`
+        : `<button class="btn tp-claim" data-cmd="${CMD_QUEST}" data-arg="${i}">보상 받기 — ${d.reward}</button>`
+    const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? claim : ''
     const say = st === 3 ? d.thanks : d.ask
     return `<div class="q-row q${st}"><div class="q-h"><b>${d.name}</b><span>${tag}</span></div>
       ${st === 0 && !buttons ? '' : `<p class="q-say">"${say}"</p>`}

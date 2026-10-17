@@ -13,7 +13,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -532,6 +532,11 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   if (from !== to && !isTown(to)) carryAllies(state, map, p, from, a)
   // 마을에 들어서면 그 마을의 웨이포인트가 열린다
   if (isTown(to)) p.wps |= wpBit(to)
+  // 상인 진열: 마지막으로 깐 뒤 SHOP_RESTOCK_TICKS 가 지났으면 마을에 들어선 사람의 레벨로 공짜로 새로 (진열은 파티 공용)
+  if (isTown(to) && from !== to && p.merc < 0 && state.tick - (state.shopAt ?? 0) >= SHOP_RESTOCK_TICKS) {
+    restockShop(state, p.level, state.rng)
+    state.events.push({ type: 'shopRestock', p: p.id })
+  }
   // 이 게임에서 누군가 가 본 가장 뒤 막 (난입한 사람이 설 마을을 정한다)
   state.act = Math.max(state.act, areaDef(to).act)
   state.events.push({ type: 'areaEnter', p: p.id, area: to, from, how })
@@ -746,8 +751,15 @@ function buildCommand(state: GameState, p: PlayerState, cmd: number, arg: number
 /** 촌장 (마을): 퀘스트를 받는다 · 이룬 퀘스트의 보상을 받는다 */
 function questCommand(state: GameState, p: PlayerState, i: number): void {
   if (state.mode !== 'dungeon' || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'elder') return
+  // 전설 보상의 부위를 골라 받는다 (arg = QUEST_PICK + 퀘스트 × SLOT_COUNT + 장비 칸 — 2026-10-17 "퀘스트 보상 고르기")
+  let slot = -1
+  if (i >= QUEST_PICK) {
+    slot = (i - QUEST_PICK) % SLOT_COUNT
+    i = Math.floor((i - QUEST_PICK) / SLOT_COUNT)
+    if (!QUESTS[i]?.legend) return
+  }
   // 막 이동 (arg = 100 + 막): 앞 막의 보스를 쓰러뜨렸으면 그 막의 마을로 (디아블로 2 — 촌장이 길을 안내한다)
-  if (i >= 100) {
+  if (slot < 0 && i >= 100) {
     const act = i - 100
     if (!ACTS[act] || act > actReached(p.quests) || act === areaDef(p.area).act) return
     queueMove(p, { to: ACTS[act].town, how: 'wp' })
@@ -765,7 +777,7 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
   const qd = QUESTS[i]
   if (qd.legend) {
     // 전설 하나 (가방이 차 있으면 발밑에)
-    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 'boss', tierOf(state.tier).loot, 3)
+    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 'boss', tierOf(state.tier).loot, 3, slot)
     if (p.bag.length < p.bagMax) p.bag.push(it)
     else state.drops.push({ id: state.nextDropId++, owner: p.id, x: p.x, y: p.y + 30, item: it, gold: 0, pot: 0, ttl: 60 * 600, lock: 30 })
   }
@@ -817,6 +829,7 @@ function hireCommand(state: GameState, p: PlayerState, arg: number): void {
  */
 function restockShop(state: GameState, level: number, rng: Rng): void {
   state.shop.length = 0
+  state.shopAt = state.tick
   const kinds = WEAPON_IDS.filter((id) => !WEAPONS[id].retired)
   for (let k = 0; k < 10; k++) state.shop.push(rollItem(rng, state.nextItemUid++, level + 1, kinds[k % kinds.length], 'shop', 0, 1))
 }

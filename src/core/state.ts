@@ -698,6 +698,8 @@ export type SimEvent =
   /** 퀘스트: 목표를 이뤘다(모두) · 보상을 받았다(한 사람) */
   | { type: 'questDone'; q: number }
   | { type: 'questReward'; p: number; q: number }
+  /** 상인 진열이 저절로 새로 들어왔다 (시간 — 마을에 들어선 사람 p) */
+  | { type: 'shopRestock'; p: number }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }
@@ -847,6 +849,8 @@ export interface GameState {
   portals: Portal[]
   /** 상인 진열 (게임마다 새로 — 모두가 같은 진열을 보고, 먼저 산 사람이 가져간다) */
   shop: Item[]
+  /** 상인 진열을 마지막으로 새로 깐 틱 (시간이 지나면 저절로 — items.ts SHOP_RESTOCK_TICKS) */
+  shopAt?: number
   /** 이벤트가 어느 지역 것인지: [시작, 끝, 지역] 셋씩. 해시·스냅샷 대상 아님 */
   evSpans: number[]
   /** 0 = 층 정리, 1 = 전멸. -1 = 아직 */

@@ -390,6 +390,13 @@ export function stashUpPrice(stashMax: number): number {
 }
 /** 상인 진열을 새로 받는 값 (2026-09-25 — 돈 쓸 곳. 도박보다 싸고, 판 전체의 진열이 바뀐다) */
 export const shopNewPrice = (level: number) => 150 + level * 20
+/**
+ * 상인 진열은 시간이 지나면 저절로 새로 들어온다 (2026-10-17 RPG 기능 후보 "상인 재고 새로고침 — 골드 또는 시간"):
+ * 마지막으로 새로 깐 뒤 이만큼(틱) 지나 누군가 마을에 들어서면 공짜로 새로 (골드로 새로 받기는 그대로)
+ */
+export const SHOP_RESTOCK_TICKS = 10 * 60 * 60
+/** 전설 보상 부위 고르기: CMD_QUEST arg = QUEST_PICK + 퀘스트 번호 × SLOT_COUNT + 장비 칸 (2026-10-17 "퀘스트 보상 고르기") */
+export const QUEST_PICK = 150
 
 /**
  * 골드 글자는 **여기 하나**로 만든다 (2026-09-25 사용자: "골드 표시를 통일해 줘").

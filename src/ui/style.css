@@ -829,6 +829,10 @@ body { background: var(--bg); }
 .q-say { font: 500 12.5px "Nanum Myeongjo", serif; color: #d8cfbf; margin: 6px 0; line-height: 1.6; }
 .q-task { font-size: 11px; color: #9a8a70; margin: 4px 0; }
 .tp-claim { margin-top: 4px; }
+/* 전설 보상 부위 고르기 (2026-10-17) */
+.q-pick { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+.q-pick > span { width: 100%; font-size: 12px; color: #ffd86a; }
+.q-pick .tp-claim { margin-top: 0; flex: 1 1 0; min-width: 52px; padding: 4px 6px; }
 
 /* 엔딩 (4막 끝) — 어둠 위로 명조체 글이 한 줄씩 떠오른다 */
 .ending { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default;
