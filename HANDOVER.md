@@ -17,6 +17,7 @@
   - 내구도는 **지역별 · 판 내내**: `GameState.cover[지역][타일] = 남은 ‰`(0 = 부서짐). 깎기 `sim damageCover`(플레이어 탄 · 괴물 탄 — 240 × 지역 레벨 체력 배율) · 타일 맞추기 `syncCover`(`ensureArea` 에서 매 틱 — 재접속 · 리싱크로 맵을 새로 만들어도 맞다). 헤드샷 넘김 = `aimsAtHead` 에 던전 치명타 대상(`critMon`)을 더했다.
   - 그림: `world3d coverParts` — 구조물 조각을 인스턴스 자리로 타일마다 묶어 깎이면 어둡게 · 부서지면 숨긴다(`breakSandbag` · `setSandbagHealth` 가 둘 다 처리). 렌더러 `updateSandbags` 가 판의 `cover` 를 보고 맞춘다(리싱크 뒤에도).
   - 고르지 않은 것: ☀ 랜드마크(미끄럼틀 · 정글짐 — 벽 덩어리)와 벽은 그대로(시야를 가리는 벽이라 부수면 맵이 바뀐다) · 투기장 · 마을 상자도 그대로.
+  - v1.8.0: 🌙 안개 덮개(`vision.ts` — 타일마다 네모)가 부서진 자리에 남던 것 → 부서지면 `refreshStructures` 로 다시 만든다(`break` 이벤트 · `updateSandbags`).
 - 배운 것: `TaskStop` 으로 백그라운드 vite 를 멈춰도 node 가 남아 포트 · 폴더를 잡는다 → `Get-CimInstance Win32_Process` 로 명령줄을 보고 `Stop-Process`. 숨은 창에서는 화면 크기가 0 이라 마우스 조준이 안 된다 — 확인할 때는 `renderer.aimPoint` 를 잠깐 바꿔 겨눈다.
 
 ## 🔖 같은 날 세이브 칸 셋 (2026-10-17 · 메인 PC — v1.7.6)
@@ -102,7 +103,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.7.9 배포)
+## 현재 상태 (2026-10-17 · v1.8.0 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

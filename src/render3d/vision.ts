@@ -145,6 +145,8 @@ export class Vision {
   private mat: THREE.ShaderMaterial
   private sideMat: THREE.ShaderMaterial
   private geos: THREE.BufferGeometry[] = []
+  /** 구조물(벽 · 상자 · 모래주머니) 덮개 — 부서지면 다시 만든다 (refreshStructures) */
+  private structures: THREE.Mesh[] = []
   private fogScene = new THREE.Scene()
   private fogCam: THREE.OrthographicCamera
   private fans: { mesh: THREE.Mesh; geo: THREE.BufferGeometry; pos: Float32Array; alpha: Float32Array; mat: THREE.ShaderMaterial }[] = []
@@ -199,14 +201,34 @@ export class Vision {
     this.geos.push(floorGeo)
     // 밝은 판: 구조물은 재질이 안개를 섞는다 (fogStructures) — 네모 덮개를 만들지 않는다
     if (this.soft) return
-    // 벽·상자 윗면 덮개 (타일마다 사각형, uv 는 맵 좌표)
-    this.group.add(this.topQuads(TILE_WALL, WALL_H + 0.02))
-    this.group.add(this.topQuads(TILE_CRATE, CRATE_H + 0.02))
-    this.group.add(this.topQuads(TILE_SANDBAG, SANDBAG_H + 0.02))
-    // 벽·상자 옆면 덮개: 바닥과 맞닿은 면마다 세로 사각형. 밝기는 그 앞 바닥 타일이 보이는지로 정한다
-    this.group.add(this.sideQuads(TILE_WALL, WALL_H))
-    this.group.add(this.sideQuads(TILE_CRATE, CRATE_H))
-    this.group.add(this.sideQuads(TILE_SANDBAG, SANDBAG_H))
+    this.buildStructures()
+  }
+
+  private buildStructures(): void {
+    for (const m of this.structures) {
+      this.group.remove(m)
+      m.geometry.dispose()
+      this.geos.splice(this.geos.indexOf(m.geometry), 1)
+    }
+    this.structures = [
+      // 벽·상자 윗면 덮개 (타일마다 사각형, uv 는 맵 좌표)
+      this.topQuads(TILE_WALL, WALL_H + 0.02),
+      this.topQuads(TILE_CRATE, CRATE_H + 0.02),
+      this.topQuads(TILE_SANDBAG, SANDBAG_H + 0.02),
+      // 벽·상자 옆면 덮개: 바닥과 맞닿은 면마다 세로 사각형. 밝기는 그 앞 바닥 타일이 보이는지로 정한다
+      this.sideQuads(TILE_WALL, WALL_H),
+      this.sideQuads(TILE_CRATE, CRATE_H),
+      this.sideQuads(TILE_SANDBAG, SANDBAG_H),
+    ]
+    this.group.add(...this.structures)
+  }
+
+  /**
+   * 모래주머니 · 던전 구조물이 부서져 타일이 바닥이 됐다 → 덮개를 다시 만든다.
+   * 안 그러면 🌙 안개 속에 빈 바닥 위로 네모 덮개가 떠 있고, 그 옆 벽의 새로 드러난 면에는 덮개가 없다 (2026-10-17)
+   */
+  refreshStructures(): void {
+    if (!this.soft) this.buildStructures()
   }
 
   /** 보는 사람 하나의 부채꼴: 가운데 1 + 광선 끝 RAYS + 흐림 띠 끝 RAYS */

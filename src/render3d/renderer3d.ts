@@ -1758,6 +1758,7 @@ export class Renderer3D {
         }
         case 'break': {
           this.world.breakSandbag(e.tx, e.ty)
+          this.vision.refreshStructures()
           this.miniCanvas = null
           // 던전 구조물은 그 색 부스러기 (모래주머니는 모래색)
           const bits = this.map.crateIdx?.includes(e.ty * this.map.w + e.tx) ? this.map.theme.crate : 0xc7ad76
@@ -2311,7 +2312,10 @@ export class Renderer3D {
         const k = Math.round(cover[i] / 200) / 5
         if (this.bagShown.get(i) === k) continue
         this.bagShown.set(i, k)
-        if (k <= 0) this.world.breakSandbag(i % this.map.w, Math.floor(i / this.map.w))
+        if (k <= 0) {
+          this.world.breakSandbag(i % this.map.w, Math.floor(i / this.map.w))
+          this.vision.refreshStructures()
+        }
         else this.world.setSandbagHealth(i % this.map.w, Math.floor(i / this.map.w), k)
       }
     }
