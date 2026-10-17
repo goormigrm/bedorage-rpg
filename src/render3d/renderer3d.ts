@@ -760,6 +760,12 @@ export class Renderer3D {
     // 한꺼번에 컴파일해 1초 넘게 멈췄다(2026-10-08 계측: gl.render 1188ms · 프로그램 97 → 110). 끝날 때까지(늦어도 2.5초) 3D 를 그리지 않고 어둡게 둔다
     const job = ++this.areaJob
     this.areaCompiling = true
+    // 컴파일이 끝나도 바로 걷지 않는다: 텍스처를 올리고 몇 장을 덮개 뒤에서 그려 본 뒤 매끄러우면 걷는다 (areaHold — 2026-10-17 사용자:
+    // "처음 던전에 들어갔을 때 버벅거림 — 렌더링하는 데 시간이 필요하면 페이드나 로딩 화면으로 안 느껴지게")
+    this.areaHold = true
+    this.holdAt = performance.now()
+    this.holdTex = false
+    this.warmGood = 0
     const done = () => {
       if (this.areaJob === job) this.areaCompiling = false
     }
@@ -787,6 +793,34 @@ export class Renderer3D {
   /** 지역에 들어선 뒤 셰이더를 비동기로 컴파일하는 중 (그동안 3D 를 그리지 않는다 — 페이드가 덮는다) */
   private areaCompiling = false
   private areaJob = 0
+  /**
+   * 컴파일 뒤 덮개를 쥐고 있는 중: 장면의 텍스처를 한 번에 올리고(첫 던전 바닥 그림 1728 × 1296 을 처음 그릴 때 올리느라 0.45초 멈췄다),
+   * 남은 준비 줄을 마저 하며 덮개 뒤에서 그려 보다가, 줄이 비고 세 장 잇달아 매끄러우면(늦어도 4.5초) 걷는다
+   */
+  private areaHold = false
+  private holdAt = 0
+  private holdTex = false
+  private warmGood = 0
+
+  /** 장면 재질의 텍스처를 모두 GPU 로 올린다 (이미 올린 것은 three 가 건너뛴다) */
+  private uploadSceneTextures(): void {
+    const seen = new Set<THREE.Texture>()
+    const take = (v: unknown) => {
+      if (v && (v as THREE.Texture).isTexture && !seen.has(v as THREE.Texture)) {
+        seen.add(v as THREE.Texture)
+        this.gl.initTexture(v as THREE.Texture)
+      }
+    }
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined
+      for (const mm of Array.isArray(m) ? m : m ? [m] : []) {
+        const r = mm as unknown as Record<string, unknown>
+        for (const k of ['map', 'alphaMap', 'gradientMap', 'emissiveMap', 'normalMap', 'aoMap']) take(r[k])
+        const u = (mm as THREE.ShaderMaterial).uniforms
+        if (u) for (const k in u) take(u[k].value)
+      }
+    })
+  }
 
   /**
    * 다음 지역을 미리 만드는 **한 걸음** (마을에서 — session.idlePrep). 한 일이 있으면 true, 다 만들었으면 false.
@@ -2221,7 +2255,7 @@ export class Renderer3D {
     if (!this.ready) return
     // 새 지역 셰이더를 비동기로 컴파일하는 동안: 3D 는 건너뛰고 페이드를 꽉 채워 둔다 (setMap)
     const compiling = this.areaCompiling
-    if (compiling) this.fade.t = this.fade.max
+    if (compiling || this.areaHold) this.fade.t = this.fade.max
     // 색감: 지역(막 · 마을) · 보스가 깨어 있나에 따라 서서히 바뀐다
     if (this.post.enabled && curr.mode === 'dungeon' && curr.curArea >= 0) {
       const a = areaDef(curr.curArea)
@@ -2229,7 +2263,26 @@ export class Renderer3D {
       this.post.blend(gradeFor(a.act, a.kind === 'town', isBright(), boss), this.gradeSnap ? 1 : 1 - Math.exp(-dt * 2.5))
       this.gradeSnap = false
     }
-    if (!compiling) this.post.render(this.scene, this.camera)
+    let prepBusy = false
+    if (!compiling) {
+      if (this.areaHold) {
+        if (!this.holdTex) {
+          this.holdTex = true
+          this.uploadSceneTextures()
+        }
+        // 준비 줄(빛 수마다의 셰이더 · 텍스처)을 덮개 뒤에서 마저 한다 — 방을 만들고 마을에서 곧장 나오면 남아 있어,
+        // 첫 싸움에서 빛 수가 바뀔 때마다 모든 재질을 다시 컴파일하며 0.3초씩 멈췄다 (2026-10-17 계측)
+        const t1 = performance.now()
+        do prepBusy = this.prepStep(12)
+        while (prepBusy && performance.now() - t1 < 12 && performance.now() >= this.warmUntil)
+      }
+      const r0 = performance.now()
+      this.post.render(this.scene, this.camera)
+      if (this.areaHold) {
+        this.warmGood = performance.now() - r0 < 25 && this.lastDt < 0.05 ? this.warmGood + 1 : 0
+        if ((!prepBusy && this.warmGood >= 3) || performance.now() - this.holdAt > 4500) this.areaHold = false
+      }
+    }
 
     // HUD
     this.hud.begin(dt)
@@ -2297,6 +2350,17 @@ export class Renderer3D {
       const ctx = this.hud.ctx
       ctx.fillStyle = `rgba(${this.fade.rgb},${(k * k * (3 - 2 * k)).toFixed(3)})`
       ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+      // 덮개를 쥐고 0.3초가 넘으면 "이동 중" — 짧은 이동은 번쩍이지 않게 글 없이
+      if ((compiling || this.areaHold) && performance.now() - this.holdAt > 300) {
+        const dots = '.'.repeat(1 + (Math.floor(performance.now() / 350) % 3))
+        ctx.save()
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.font = '700 15px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+        ctx.fillStyle = 'rgba(255,238,205,0.85)'
+        ctx.fillText(`길을 여는 중${dots}`, VIEW_W / 2, VIEW_H / 2)
+        ctx.restore()
+      }
     }
     this.hud.drawMain(curr, { ...opts, cursorOn })
     if (opts.showHud) this.drawMinimap(curr, opts)
@@ -5184,8 +5248,15 @@ export class Renderer3D {
     }
     this.particles.length = live
     pm.count = live
-    pm.instanceMatrix.needsUpdate = true
-    pc.needsUpdate = true
+    // 쓴 칸만 올린다 (1,200 칸 통째로 매 프레임 올리던 것 — 끊김 줄이기 2026-10-17)
+    if (live > 0) {
+      pm.instanceMatrix.clearUpdateRanges()
+      pm.instanceMatrix.addUpdateRange(0, live * 16)
+      pm.instanceMatrix.needsUpdate = true
+      pc.clearUpdateRanges()
+      pc.addUpdateRange(0, live * 3)
+      pc.needsUpdate = true
+    }
     for (let i = this.texts.length - 1; i >= 0; i--) {
       this.texts[i].life -= dt
       if (this.texts[i].life <= 0) this.texts.splice(i, 1)

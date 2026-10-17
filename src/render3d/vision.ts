@@ -228,8 +228,11 @@ export class Vision {
    * 안 그러면 🌙 안개 속에 빈 바닥 위로 네모 덮개가 떠 있고, 그 옆 벽의 새로 드러난 면에는 덮개가 없다 (2026-10-17)
    */
   refreshStructures(): void {
-    if (!this.soft) this.buildStructures()
+    // 바로 만들지 않고 표시만 — 폭발 하나에 여럿이 부서져도 다음 update 에서 한 번, 0.25초에 한 번까지 (맵 전체 덮개를 다시 만들어 무겁다 — 끊김 2026-10-17)
+    if (!this.soft) this.structDirty = true
   }
+  private structDirty = false
+  private structAt = -1
 
   /** 보는 사람 하나의 부채꼴: 가운데 1 + 광선 끝 RAYS + 흐림 띠 끝 RAYS */
   private makeFan(): Vision['fans'][number] {
@@ -349,6 +352,11 @@ export class Vision {
 
   /** 시청자(들) 기준으로 마스크 모양을 다시 잰다. radius 는 타일 단위 (스코프 조준 시 넓어진다). 그리기는 draw() */
   update(viewers: Viewer[], radiusTiles = VIEW_RADIUS_TILES): void {
+    if (this.structDirty && performance.now() - this.structAt > 250) {
+      this.structDirty = false
+      this.structAt = performance.now()
+      this.buildStructures()
+    }
     // 보는 자리(2px 단위) · 반경이 그대로면 그대로 둔다 — 서 있을 때는 광선도 그리기도 없다
     let key = radiusTiles.toFixed(2)
     for (let i = 0; i < viewers.length && i < MAX_VIEWERS; i++) key += '|' + Math.round(viewers[i].x / 2) + ',' + Math.round(viewers[i].y / 2)

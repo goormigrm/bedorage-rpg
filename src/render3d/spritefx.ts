@@ -187,10 +187,12 @@ export class SpriteFx {
     this.list.length = live
     this.geo.instanceCount = live
     if (live > 0) {
-      this.aCenter.needsUpdate = true
-      this.aColor.needsUpdate = true
-      this.aSize.needsUpdate = true
-      this.aRot.needsUpdate = true
+      // 산 알갱이 칸만 올린다 (끊김 줄이기 2026-10-17)
+      for (const a of [this.aCenter, this.aColor, this.aSize, this.aRot]) {
+        a.clearUpdateRanges()
+        a.addUpdateRange(0, live * a.itemSize)
+        a.needsUpdate = true
+      }
     }
   }
 

@@ -222,6 +222,24 @@ interface MVis extends Anim {
 }
 
 const CAP = 220
+
+/**
+ * 이번 프레임에 쓴 인스턴스(n 개)만 GPU 로 올린다 (2026-10-17 사용자: "약간의 끊김"). 전에는 괴물 종류마다 부품 묶음
+ * (지금 168 개)을 **보이지 않는 종류까지** 매 프레임 통째로(220 칸 × 64 바이트 + 색) 올렸다 — 초당 수백 MB 를 보내
+ * 윈도우 크롬(ANGLE · D3D11)이 0.15초씩 멈췄다
+ */
+function upload(mesh: THREE.InstancedMesh, n: number, color: boolean): void {
+  const m = mesh.instanceMatrix
+  m.clearUpdateRanges()
+  m.addUpdateRange(0, n * 16)
+  m.needsUpdate = true
+  const c = mesh.instanceColor
+  if (color && c) {
+    c.clearUpdateRanges()
+    c.addUpdateRange(0, n * 3)
+    c.needsUpdate = true
+  }
+}
 /** 네 발 짐승 (쓰러지면 옆으로 눕는다): 늑대 · 독거미 · 거미 여왕 · 산성 토사꾼(기는 사람 — 2026-09-24) · 포격 악마 · 심연의 군주(balrog — 2026-09-23) — MONSTER_LIST 번호 */
 const QUADRUPEDS = new Set([5, 6, 8, 11, 14, 15])
 const SPIDER_KIND = 6
@@ -1363,12 +1381,11 @@ export class MonsterView {
     }
     this.corpses = still
     this.blob.count = this.blobN
-    if (this.blobN > 0) this.blob.instanceMatrix.needsUpdate = true
+    if (this.blobN > 0) upload(this.blob, this.blobN, false)
     this.kinds.forEach((parts, k) => {
       for (const p of parts) {
         p.mesh.count = counts[k]
-        p.mesh.instanceMatrix.needsUpdate = true
-        if (p.flashes && p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true
+        if (counts[k] > 0) upload(p.mesh, counts[k], p.flashes)
       }
     })
     this.models.forEach((mk, k) => {
@@ -1377,8 +1394,7 @@ export class MonsterView {
       for (const mesh of mk.meshes) {
         mesh.count = n
         if (n === 0) continue
-        mesh.instanceMatrix.needsUpdate = true
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+        upload(mesh, n, true)
       }
       if (n > 0) {
         mk.frame.clearUpdateRanges()
@@ -1387,7 +1403,7 @@ export class MonsterView {
       }
       for (const ex of mk.extras) {
         ex.mesh.count = n
-        if (n > 0) ex.mesh.instanceMatrix.needsUpdate = true
+        if (n > 0) upload(ex.mesh, n, false)
       }
     })
   }

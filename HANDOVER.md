@@ -69,6 +69,7 @@
 - **B 바닥(v1.2.0 · v1.3.0)**: `src/render3d/brightFloor.ts` — 맵 24 곳마다 다른 바닥(`BRIGHT_FLOOR[map.id]` · 띠마다 `paintBrightBand`) + 반복 결 텍스처(`applyGrain`) · 풀은 바깥만 · 작은 꽃.
 - **C 벽 · 소품(v1.4.0)**: `src/render3d/brightWalls.ts` — `BRIGHT_WALL`(레고 · 수영장 타일 · 거울 · 생울타리 · 모래성 · 쿠키 · 벌집 기둥 · 쿠션 · 솜사탕 나무 · 젤리 버섯) · `BRIGHT_PROPS`(맵 주제 소품) · `ballTexture`(비치볼 · 농구공) · 대기실 울타리 가로대.
 - **D 랜드마크(v1.5.0)**: `src/render3d/brightLandmarks.ts` — 꽉 찬 3 × 2 · 2 × 2 벽 덩어리 자리 안에만(`planLandmarks`) · 종류마다 InstancedMesh 하나(`buildLandmarks`) · 9 맵 15 종.
+- **끊김(v1.8.1)**: ⚠ InstancedMesh 는 **쓴 칸만 올린다** — `instanceMatrix.clearUpdateRanges(); addUpdateRange(0, n * 16); needsUpdate = true`(색은 n * 3). 통째로 매 프레임 올리면 윈도우 크롬(ANGLE)이 버퍼 올리기에서 0.15초씩 멈춘다(괴물 부품 168 묶음이 그랬다 — `monsters3d upload`). 끊김을 잴 때는 `S.frame` · `R.draw` · `gl.render` 와 WebGL 호출(`bufferSubData` · `texImage2D` · `getProgramParameter`)을 감싸 프레임마다 쌓아 본다(내장 브라우저 창이 보여야 숫자가 맞다). 지역을 옮기면 덮개(`areaHold`)가 텍스처 올리기 · 남은 준비 줄(`prepStep`)을 끝낼 때까지 쥔다.
 - **덕코프식(v1.7.9 — 사용자: "덕코프 모래주머니처럼 · 덕코프 영상처럼 타격감")**: 모래주머니 = 베개 모양 자루 8개 벽돌 쌓기 · 삼베 겉감 · 줄 방향으로 눕힘(`world3d.ts sandbagStackGeometry · sandbagRot`) · 탄이 막힌 자리 = 겉(모래주머니 · 벽 · 구조물 — `renderer3d surfaceAt`)마다 먼지 구름 · 부스러기 · 탄 꼬리(`tracerPool`) · 몽글몽글한 연기(`spritefx uCloud`) · 탄피가 보이게. ⚠ `spawnParticle` 의 크기는 조각 상자(0.1칸)의 **배율**이다(0.5 = 0.05칸).
 - **이어서(v1.6.6 — 사용자: "그래픽 4가지 이어서 모두 진행해줘")**: ☀ 보스 방 넷 고리 벽 = 칸마다 주제 조각(`brightLandmarks.ts RING`) · ☀ 투기장 셋 = 밝은 테마로 던전 그리기(`buildDark` — 모래주머니도 여기로 옮겼다) · 근접 초승달 궤적 띠(`renderer3d spawnTrail · shapeTrail`) · 괴물 탄 빛점 궤적(quarks `trail` · `updateShots`). 자세히는 계획서 7.4.
 - **E 이펙트(v1.6.0)**: `src/render3d/quarksfx.ts` — `QuarksFx.burst(name, x, y, z, n, {dir, color, speed})` · 프리셋 13 · 묶음 ☀ 2 / 🌙 4 · 입자 2,500 상한. 렌더러가 명중 · 처치 · 총구 · 근접 궤적 · 금화 · 스킬 시전 · 범위 · 보스 예고 · 등장 · 경직 · 폭발에서 부른다.
@@ -103,7 +104,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.8.0 배포)
+## 현재 상태 (2026-10-17 · v1.8.1 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 
