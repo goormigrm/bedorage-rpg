@@ -487,6 +487,16 @@ export class Sfx {
           this.sample('pouch', b.node, b.t0, 2)
           break
         }
+        case 'runeGet':
+        case 'runeSet': {
+          // 룬 (소켓 · 룬 — 2026-10-17): 돌이 맑게 울린다 · 박을 때는 낮은 쇳소리를 더한다
+          if (e.p !== localPlayer) break
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.55)
+          this.tone(b.node, b.t0, 0.3, 'sine', 1320, 1320, 0.3, 0.004)
+          this.tone(b.node, b.t0 + 0.06, 0.45, 'sine', 1980, 1980, 0.22, 0.004)
+          if (e.type === 'runeSet') this.tone(b.node, b.t0, 0.25, 'triangle', 330, 300, 0.4, 0.002)
+          break
+        }
         case 'loot': {
           // 전설이 떨어지면 따로 공들인 소리 (PLAN 6장)
           if (e.rarity < 3 || (e.owner !== localPlayer && e.owner !== -1)) break

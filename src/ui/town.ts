@@ -7,7 +7,7 @@ import { clickSuppressed, makeDraggable } from './dragItem'
 import { bt, isBright, registerText } from '../game/skin'
 import { npcPortrait } from './portrait'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
-import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
+import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SOCKET, CMD_RUNE, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
@@ -17,7 +17,7 @@ import {
 import { GameState, PlayerState } from '../core/state'
 import { ItemTip, cellHtml, itemHtml } from './inventory'
 import { WEAPONS } from '../core/weapons'
-import { WEAPON_IDS, SLOT_WEAPON } from '../core/items'
+import { WEAPON_IDS, SLOT_WEAPON, SLOT_HELM, SLOT_ARMOR, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, socketMax, socketPrice } from '../core/items'
 import { keyLabel } from '../game/keymap'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_MAX, RIFT_TICKS, actReached, areaDef, questDiscount, riftOpen, riftScale } from '../core/world'
 import { CMD_QUEST } from '../core/input'
@@ -164,7 +164,7 @@ export class TownPanel {
   open: NpcId | null = null
   private tab: 'buy' | 'sell' = 'buy'
   /** 대장장이 탭 (강화 · 전설 벼리기) */
-  private smithTab: 'up' | 'forge' = 'up'
+  private smithTab: 'up' | 'forge' | 'sock' = 'up'
   /** "전부 팔기" 를 한 번 눌렀다 (한 번 더 눌러야 실제로 판다 — 실수 방지) */
   private sellArmed = false
   /** 벼리기에서 고른 재료 등급 (1 마법 · 2 희귀 · 3 전설) */
@@ -252,7 +252,8 @@ export class TownPanel {
   private sigOf(me: PlayerState, s: GameState): string {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
     return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
-      .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
+      .map((i) => (i ? i.uid + ':' + (i.up ?? 0) + ':' + (i.so ?? 0) : '-'))
+      .concat(me.runes?.join(',') ?? '')
       .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}|${this.riftStage}|${me.riftBest}|${
       s.rift ? `${s.rift.area}:${s.rift.boss}:${Math.floor((s.rift.kills / Math.max(1, s.rift.need)) * 20)}:${s.players.some((q) => !q.left && q.area === s.rift!.area)}` : ''
     }`
@@ -309,7 +310,36 @@ export class TownPanel {
       body = tabs + shopSvc + bulk + fullNote + `<div class="tp-list">${list}</div>`
     } else if (npc === 'smith') {
       // 대장장이는 둘을 한다: **강화**(같은 부위·등급을 녹여 단계 올리기)와 **벼리기**(같은 등급 여럿 → 윗 등급을 노린다)
-      const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">벼리기</button></div>`
+      const tabs = `<div class="tp-tabs"><button data-stab="up" class="${this.smithTab === 'up' ? 'on' : ''}">강화</button><button data-stab="forge" class="${this.smithTab === 'forge' ? 'on' : ''}">벼리기</button><button data-stab="sock" class="${this.smithTab === 'sock' ? 'on' : ''}">구멍 뚫기</button></div>`
+      if (this.smithTab === 'sock') {
+        // 구멍 뚫기 (소켓 · 룬 — 2026-10-17): 낀 무기 · 투구 · 갑옷에 소켓 하나씩 — 상한은 부위 · 등급마다
+        const list = [SLOT_WEAPON, SLOT_HELM, SLOT_ARMOR]
+          .map((k) => {
+            const it = me.equip[k]
+            if (!it) return ''
+            const so = it.so ?? 0
+            const max = socketMax(it)
+            if (so >= max) return row(it, `낀 것 · 소켓 ${so} / ${max} 최대`, '', true)
+            const g = socketPrice(it)
+            return row(it, `낀 것 · 소켓 ${so} → ${so + 1} (최대 ${max})<br>${g} 골드`, `data-cmd="${CMD_SOCKET}" data-arg="${k}"`, me.gold < g)
+          })
+          .join('')
+        // 룬 합치기: 같은 룬 셋 → 다음 룬 하나 (남는 룬을 쓸 곳)
+        const ups = RUNES.slice(0, -1)
+          .map((d, r) => {
+            const n = me.runes?.[r] ?? 0
+            if (n < RUNE_UP_N) return ''
+            const g = runeUpPrice(r)
+            return `<button class="btn" data-cmd="${CMD_RUNE}" data-arg="${RUNE_UP + r}" ${me.gold >= g ? '' : 'disabled'} style="--ru:${d.color}">${d.name} ${RUNE_UP_N} → ${RUNES[r + 1].name} 1 — ${g} 골드<small>가진 것 ${n}</small></button>`
+          })
+          .join('')
+        body =
+          tabs +
+          `<p class="tp-note">낀 <b>무기 · 투구 · 갑옷</b>에 소켓을 뚫는다 — 괴물이 떨어뜨린 <b>룬</b>을 가방 창의 룬 주머니에서 박으면 그 부위에 맞는 능력이 붙는다(뺄 수 없다).
+            상한: 일반 · 마법 3 · 희귀 2 · 전설 · 신화 1 (투구는 2까지).</p><div class="tp-list">${list || '<p class="tp-empty">낀 무기 · 투구 · 갑옷이 없다.</p>'}</div>
+          <p class="tp-note"><b>룬 합치기</b> — 같은 룬 ${RUNE_UP_N}개를 녹여 다음 룬 하나로.</p><div class="tp-svc rune-up">${ups || `<p class="tp-empty">같은 룬이 ${RUNE_UP_N}개 넘게 모이면 합칠 수 있다.</p>`}</div>`
+        return this.paint(npc, me, body)
+      }
       if (this.smithTab === 'forge') {
         // 재료 등급을 고르면 그 **윗 등급**을 노린다 (2026-09-20 요청). 재료는 가방 + 보관함
         const rar = this.forgeRarity
@@ -617,7 +647,7 @@ export class TownPanel {
     })
     this.el.querySelectorAll<HTMLButtonElement>('[data-stab]').forEach((b) => {
       b.onclick = () => {
-        this.smithTab = b.dataset.stab === 'forge' ? 'forge' : 'up'
+        this.smithTab = b.dataset.stab === 'forge' ? 'forge' : b.dataset.stab === 'sock' ? 'sock' : 'up'
         this.render()
       }
     })

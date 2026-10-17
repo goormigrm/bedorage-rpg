@@ -252,6 +252,8 @@ export interface PlayerState {
   /** 물약: 남은 칸 · 칸 수 · 회복 남은 틱 · 다시 마실 때까지 */
   potions: number
   potMax: number
+  /** 룬 주머니 (RUNES 번호마다 개수 — Sheet.runes) */
+  runes: number[]
   potHot: number
   potCd: number
   /** 제단 축복 종류 · 남은 틱 */
@@ -543,6 +545,8 @@ export interface Drop {
   gold: number
   /** 물약이면 1 */
   pot: number
+  /** 룬이면 RUNES 번호 (룬 주머니로 — 가방 칸을 차지하지 않는다) */
+  rn?: number
   ttl: number
   lock: number
 }
@@ -698,6 +702,9 @@ export type SimEvent =
   /** 퀘스트: 목표를 이뤘다(모두) · 보상을 받았다(한 사람) */
   | { type: 'questDone'; q: number }
   | { type: 'questReward'; p: number; q: number }
+  /** 룬을 주웠다 · 박았다 (소켓 · 룬) */
+  | { type: 'runeGet'; p: number; r: number; x: number; y: number }
+  | { type: 'runeSet'; p: number; slot: number; r: number }
   /** 상인 진열이 저절로 새로 들어왔다 (시간 — 마을에 들어선 사람 p) */
   | { type: 'shopRestock'; p: number }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }

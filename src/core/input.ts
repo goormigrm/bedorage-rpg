@@ -110,6 +110,10 @@ export const CMD_DONCAP = 29
 export const CMD_PICK = 30
 /** 시련의 문 (마을): arg = 단계(1 ~) 열고 들어가기 · 0 열린 시련에 들어가기 */
 export const CMD_TRIAL = 31
+/** 룬 박기 (어디서나): arg = 장비 칸 × 8 + 룬 번호 — 룬 주머니에서 하나를 그 장비의 빈 소켓에 (뺄 수 없다) */
+export const CMD_RUNE = 32
+/** 대장장이 구멍 뚫기: arg = 장비 칸 — 골드로 소켓 하나 (socketMax 까지) */
+export const CMD_SOCKET = 33
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

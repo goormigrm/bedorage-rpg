@@ -56,7 +56,7 @@ import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
-import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, RUNES, SLOT_NAMES, affixText, itemColor, itemName, runeStat } from '../core/items'
 
 export { VIEW_W, VIEW_H }
 export type { RenderOptions }
@@ -337,6 +337,9 @@ export class Renderer3D {
     neck: new THREE.CylinderGeometry(0.035, 0.04, 0.12, 6),
     neckMat: new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }),
     box: new THREE.BoxGeometry(0.22, 0.12, 0.3),
+    /** 룬 (소켓 · 룬): 빛나는 팔면체 — 룬 색마다 재질 하나 */
+    rune: new THREE.OctahedronGeometry(0.14),
+    runeMats: [] as THREE.MeshLambertMaterial[],
     beams: [] as THREE.CylinderGeometry[],
     beamMats: [] as THREE.MeshBasicMaterial[],
     boxMats: [] as THREE.MeshLambertMaterial[],
@@ -1369,6 +1372,18 @@ export class Renderer3D {
         case 'potGet':
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: '+물약', life: 0.9, max: 0.9, color: '#ff7a7a', big: false, pop: 0.4 })
           break
+        // 소켓 · 룬 (2026-10-17)
+        case 'runeGet':
+          if (e.p === localPlayer) {
+            this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${RUNES[e.r]?.name ?? '룬'}`, life: 1.2, max: 1.2, color: RUNES[e.r]?.color ?? '#ffffff', big: false, pop: 0.5 })
+            this.hud.notice(`${RUNES[e.r]?.name ?? '룬'} — 룬 주머니(${keyLabel('bag')})`, RUNES[e.r]?.color ?? '#ffffff')
+          }
+          break
+        case 'runeSet': {
+          const it = state.players[e.p]?.equip[e.slot]
+          if (e.p === localPlayer && it) this.hud.notice(`${RUNES[e.r]?.name ?? '룬'}을 ${SLOT_NAMES[e.slot]}에 박았다 — ${affixText(...runeStat(e.r, e.slot))}`, RUNES[e.r]?.color ?? '#ffffff')
+          break
+        }
         case 'potion': {
           const p = state.players[e.p]
           if (p) this.spawnRing(p.x * U, p.y * U, 0.2, 1.2, 0.5, 0xff4a4a)
@@ -3849,7 +3864,14 @@ export class Renderer3D {
         // 골드 더미(금화 몇 닢) · 물약(붉은 병)
         g = new THREE.Group()
         const R = this.dropRes
-        if (d.gold > 0) {
+        if (d.rn !== undefined) {
+          const c = new THREE.Color(RUNES[d.rn]?.color ?? '#ffffff')
+          R.runeMats[d.rn] ??= new THREE.MeshLambertMaterial({ color: c, emissive: c, emissiveIntensity: 0.9 })
+          const stone = new THREE.Mesh(R.rune, R.runeMats[d.rn])
+          stone.position.y = 0.24
+          stone.scale.set(1, 1.4, 1)
+          g.add(stone)
+        } else if (d.gold > 0) {
           const n = Math.min(6, 2 + Math.floor(d.gold / 15))
           for (let k = 0; k < n; k++) {
             const coin = new THREE.Mesh(R.coin, R.coinMat)
@@ -3869,6 +3891,8 @@ export class Renderer3D {
       }
       if (!d.item) {
         g!.position.set(d.x * U, 0, d.y * U)
+        // 룬은 천천히 돈다
+        if (d.rn !== undefined) g!.children[0].rotation.y = this.t * 2 + d.id
         continue
       }
       if (!g) {
@@ -3919,11 +3943,13 @@ export class Renderer3D {
     ctx.textBaseline = 'middle'
     let n = 0
     for (const d of curr.drops) {
-      if ((d.owner !== lp && d.owner !== -1) || n > (held ? 60 : 24) || !d.item) continue
+      // 룬도 이름을 띄운다 (소켓 · 룬 — 작은 돌이라 이름이 없으면 지나친다). 누르기는 아이템만 (룬은 곁을 지나면 주워진다)
+      const rune = !d.item && d.rn !== undefined ? RUNES[d.rn] : undefined
+      if ((d.owner !== lp && d.owner !== -1) || n > (held ? 60 : 24) || (!d.item && !rune)) continue
       if (Math.hypot(d.x - me.x, d.y - me.y) > (held ? 22 : 10) * 32) continue
       const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
       if (s.x < -40 || s.y < -20 || s.x > VIEW_W + 40 || s.y > VIEW_H + 20) continue
-      const name = itemName(d.item)
+      const name = d.item ? itemName(d.item) : rune!.name
       // 12 → 16px (펼치기 중 17px) · 바탕은 HUD 칸과 같은 결 (dropLabelPanel — 2026-10-17 사용자: "아이템 이름 칸이 퀄리티가 유독 낮다")
       ctx.font = `700 ${held ? 17 : 16}px "IBM Plex Sans KR", sans-serif`
       const w = ctx.measureText(name).width + (held ? 24 : 20)
@@ -3934,7 +3960,7 @@ export class Renderer3D {
       const x0 = s.x - w / 2
       const y0 = y - h / 2
       const hover = held && !!cursor && cursor.x >= x0 && cursor.x <= x0 + w && cursor.y >= y0 && cursor.y <= y0 + h
-      const col = itemColor(d.item)
+      const col = d.item ? itemColor(d.item) : rune!.color
       dropLabelPanel(ctx, x0, y0, w, h, col, hover)
       // 글씨에 얇은 어두운 외곽선 — 바탕이 비쳐도 또렷하게
       ctx.lineJoin = 'round'
@@ -3943,7 +3969,7 @@ export class Renderer3D {
       ctx.strokeText(name, s.x, y + 0.5)
       ctx.fillStyle = col
       ctx.fillText(name, s.x, y + 0.5)
-      if (held) this.dropHits.push({ id: d.id, x0, y0, x1: x0 + w, y1: y0 + h })
+      if (held && d.item) this.dropHits.push({ id: d.id, x0, y0, x1: x0 + w, y1: y0 + h })
       n++
     }
     ctx.restore()

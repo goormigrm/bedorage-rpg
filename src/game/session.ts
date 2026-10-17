@@ -1748,7 +1748,7 @@ export class Session {
   private restart(seed: number): void {
     // 다시 하기: 이번 판에서 키운 것을 들고 간다 (내 것은 세이브에도 적는다)
     this.saveMine(true)
-    this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
+    this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, runes: p.runes }))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.cfg.seed = seed
     this.maps.clear()
