@@ -4442,31 +4442,6 @@ export class Renderer3D {
         }
         ctx.restore()
       }
-      if (m.st === MS_WINDUP && def.attack === 'melee' && m.mode === 0 && !def.boss && def.arc) {
-        // 근접 공격 예고 (2026-10-08 퀄리티 2차 3단계 F1 — 전에는 몸짓뿐이었다): 휘두를 부채꼴이 바닥에 붉게 차오른다.
-        // 다 차면 맞는다 — 그 전에 부채꼴 밖으로 구르거나 비키면 된다
-        const k = Math.max(0, Math.min(1, 1 - m.t / def.windup))
-        const reach = (bodyR(m) + PLAYER_RADIUS + def.range + 8) * U
-        // arc 는 반각(1024 단계 — sim 이 |조준과의 차이| > arc 면 안 맞는다)
-        const half = (def.arc / 1024) * Math.PI * 2
-        const a0 = (m.aim / 1024) * Math.PI * 2
-        ctx.save()
-        ctx.beginPath()
-        const o = this.worldToScreen(at.x, 0.05, at.z)
-        ctx.moveTo(o.x, o.y)
-        for (let i = 0; i <= 10; i++) {
-          const a = a0 - half + (i / 10) * half * 2
-          const pnt = this.worldToScreen(at.x + Math.cos(a) * reach, 0.05, at.z + Math.sin(a) * reach)
-          ctx.lineTo(pnt.x, pnt.y)
-        }
-        ctx.closePath()
-        ctx.fillStyle = `rgba(255,60,40,${(0.1 + 0.28 * k).toFixed(3)})`
-        ctx.fill()
-        ctx.strokeStyle = `rgba(255,90,70,${(0.35 + 0.5 * k).toFixed(3)})`
-        ctx.lineWidth = 1.5
-        ctx.stroke()
-        ctx.restore()
-      }
       if (m.st === MS_WINDUP && ((def.attack === 'ranged' && m.mode === 0) || m.mode === 1)) {
         const k = 1 - m.t / def.windup
         const a = this.worldToScreen(at.x, 0.9, at.z)
