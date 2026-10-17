@@ -2398,6 +2398,8 @@ export class Session {
       `${keyLabel('dash')} 구르기 동안은 맞지 않는다 — 두 번까지 모아 둔다`,
       '정예(금빛 이름표)는 체력 구슬을 꼭 떨어뜨린다',
       '보스 방의 보스는 먼저 공격하기 전에는 움직이지 않는다',
+      `룬은 ${keyLabel('bag')} 가방 칸 아래 룬 주머니에서 소켓에 박는다 — 소켓은 대장장이가 뚫는다`,
+      '총잡이 괴물의 붉은 조준선 — 선 밖으로 비키면 다 빗나간다',
       `${keyLabel('map')} 전체 지도 · ${keyLabel('quest')} 퀘스트 기록 · ${keyLabel('attr')} 능력치`,
     ]
     const el = document.createElement('div')
