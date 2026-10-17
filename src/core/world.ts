@@ -4,7 +4,7 @@
 // 결정론: 이 표는 상수다. 지역의 맵은 (게임 시드, 지역 번호)로 만들고, 출구·웨이포인트 자리는 맵에서 계산한다
 // (`areaLayout` — 같은 맵이면 모든 브라우저에서 같은 자리). 상태에는 지역 번호만 들어간다.
 
-import { GameMap, TILE, TILE_FLOOR, buildMap, walkField } from './map'
+import { GameMap, TILE, TILE_CRATE, TILE_FLOOR, buildMap, walkField } from './map'
 import { MAPS, MapId } from './maps'
 import { tierOf } from './monsters'
 
@@ -370,7 +370,10 @@ export function buildAreaMap(seed: number, area: number): GameMap {
     const base = MAPS[def.map]
     return buildMap({ ...base, gen: { style: 'scatter', density: 3, crates: 0, sandbags: 0, maxLen: 4, forts: false } }, 1, areaSeed(seed, area))
   }
-  return buildMap(def.map, 1, areaSeed(seed, area))
+  const m = buildMap(def.map, 1, areaSeed(seed, area))
+  // 던전 구조물은 모래주머니처럼 (map.ts crateIdx) — 마을 상자는 그대로
+  if (def.kind !== 'town') m.crateIdx = m.tiles.reduce<number[]>((out, t, i) => (t === TILE_CRATE && out.push(i), out), [])
+  return m
 }
 
 // ---------------------------------------------------------------- 퀘스트 (GUIDE 10장 — D5)

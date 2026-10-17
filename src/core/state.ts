@@ -860,6 +860,8 @@ export interface GameState {
   winner: number
   /** 살아있는 모래주머니: 타일 인덱스 → 남은 내구도 (던전에는 없다 — 덕 코드 호환) */
   sandbags: Record<number, number>
+  /** 던전 구조물(상자 타일) 내구도: 지역 → 타일 인덱스 → 남은 ‰ (0 = 부서짐 · 없으면 멀쩡). 한 판 내내 남는다 (sim damageCover) */
+  cover?: Record<number, Record<number, number>>
   /** 이번 step 에서 발생한 이벤트. 해시/스냅샷 대상 아님. */
   events: SimEvent[]
   /** 지금 열린 시련 (반복 끝 콘텐츠 — world.ts RIFT_*). 한 판에 하나 */

@@ -1723,13 +1723,15 @@ export class Renderer3D {
         case 'break': {
           this.world.breakSandbag(e.tx, e.ty)
           this.miniCanvas = null
+          // 던전 구조물은 그 색 부스러기 (모래주머니는 모래색)
+          const bits = this.map.crateIdx?.includes(e.ty * this.map.w + e.tx) ? this.map.theme.crate : 0xc7ad76
           const cx = (e.tx + 0.5) * 1
           const cz = (e.ty + 0.5) * 1
           for (let i = 0; i < 10; i++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.03 + Math.random() * 0.07
-            if (i % 2 === 0) this.spawnPuff(cx, 0.3, cz, Math.cos(a) * sp * 0.4, 0.01, Math.sin(a) * sp * 0.4, 1, 0xc7ad76, 0.4, 0.5)
-            else this.spawnParticle(cx, 0.3, cz, Math.cos(a) * sp, 0.06 + Math.random() * 0.07, Math.sin(a) * sp, 0.7, 0xc7ad76, 0.9)
+            if (i % 2 === 0) this.spawnPuff(cx, 0.3, cz, Math.cos(a) * sp * 0.4, 0.01, Math.sin(a) * sp * 0.4, 1, bits, 0.4, 0.5)
+            else this.spawnParticle(cx, 0.3, cz, Math.cos(a) * sp, 0.06 + Math.random() * 0.07, Math.sin(a) * sp, 0.7, bits, 0.9)
           }
           this.spawnRing(cx, cz, 0.2, 1.2, 0.4, 0xd6bc84)
           break
@@ -2248,8 +2250,19 @@ export class Renderer3D {
     if (opts.showHud && this.mapOpen && curr.mode === 'dungeon') this.drawFullMap(curr, opts)
   }
 
-  /** 모래주머니가 닳으면 색이 어두워진다 (곧 터진다는 신호) */
+  /** 모래주머니 · 던전 구조물이 닳으면 색이 어두워진다 (곧 터진다는 신호). 구조물은 부서진 것도 여기서 지운다 (재접속 · 리싱크 뒤에도 맞게) */
   private updateSandbags(curr: GameState): void {
+    const cover = curr.cover?.[curr.curArea]
+    if (cover) {
+      for (const key in cover) {
+        const i = Number(key)
+        const k = Math.round(cover[i] / 200) / 5
+        if (this.bagShown.get(i) === k) continue
+        this.bagShown.set(i, k)
+        if (k <= 0) this.world.breakSandbag(i % this.map.w, Math.floor(i / this.map.w))
+        else this.world.setSandbagHealth(i % this.map.w, Math.floor(i / this.map.w), k)
+      }
+    }
     for (const key in curr.sandbags) {
       const i = Number(key)
       const k = Math.round((curr.sandbags[i] / SANDBAG_HP) * 5) / 5

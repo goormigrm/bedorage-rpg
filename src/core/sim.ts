@@ -16,7 +16,7 @@ import {
   AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
-import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
+import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
 import { SNIPER_GRAZE_FRAC, WeaponId } from './weapons'
 import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentHitsCircle } from './physics'
 import { makeRng, rand, randInt, Rng } from './rng'
@@ -474,6 +474,7 @@ function curseWave(state: GameState, map: GameMap, o: MapObj, pack: number): voi
 
 /** 지역이 없으면 만들어 채운다 (처음 들어설 때 · 버린 뒤 다시 올 때) */
 function ensureArea(state: GameState, id: number, map: GameMap, fill = true): AreaState {
+  syncCover(state, id, map)
   let a = findArea(state, id)
   if (a) return a
   a = newArea(id, state.tick)
@@ -2267,20 +2268,31 @@ function aimedEnemy(state: GameState, p: PlayerState): number {
   return -1
 }
 
-/** 투기장: 이 각도의 탄이 적의 머리(중심)를 정확히 겨누는가 → 모래주머니를 넘어간다 (덕 그대로) */
-function aimsAtHead(state: GameState, map: GameMap, shooter: PlayerState, mx: number, my: number, a: number, headTarget: number): boolean {
+/**
+ * 이 각도의 탄이 머리(약점)를 정확히 겨누는가 → 모래주머니 · 던전 구조물을 넘어간다.
+ * 투기장 = 커서가 올라간 적 플레이어 (덕 그대로) · 던전 = 약점을 겨눈 괴물 (치명타 대상 — 2026-10-17 "헤드샷이면 통과")
+ */
+function aimsAtHead(state: GameState, map: GameMap, shooter: PlayerState, mx: number, my: number, a: number, headTarget: number, critMon = -1): boolean {
+  if (critMon >= 0) {
+    const m = state.monsters.find((q) => q.id === critMon)
+    return !!m && m.hp > 0 && lineHitsHead(map, mx, my, a, m.x, m.y, bodyR(m) * HEAD_FRAC)
+  }
   if (headTarget < 0) return false
-  const dx = cosA(a)
-  const dy = sinA(a)
   for (const e of state.players) {
     if (e.id !== headTarget || !isEnemy(shooter, e) || !e.alive || e.left) continue
-    const t = (e.x - mx) * dx + (e.y - my) * dy
-    if (t <= 0 || t > 1200) continue
-    if (len(mx + dx * t - e.x, my + dy * t - e.y) > PLAYER_RADIUS * HEAD_FRAC * headHitScale(e.char)) continue
-    if (rayCast(map, mx, my, e.x, e.y, 'sight').blocked) continue
-    return true
+    if (lineHitsHead(map, mx, my, a, e.x, e.y, PLAYER_RADIUS * HEAD_FRAC * headHitScale(e.char))) return true
   }
   return false
+}
+
+/** 총구에서 각도 a 로 곧게 간 선이 (x, y) 둘레 r 안을 지나는가 (1200px 안 · 높은 벽에 가리지 않고) */
+function lineHitsHead(map: GameMap, mx: number, my: number, a: number, x: number, y: number, r: number): boolean {
+  const dx = cosA(a)
+  const dy = sinA(a)
+  const t = (x - mx) * dx + (y - my) * dy
+  if (t <= 0 || t > 1200) return false
+  if (len(mx + dx * t - x, my + dy * t - y) > r) return false
+  return !rayCast(map, mx, my, x, y, 'sight').blocked
 }
 
 interface AoeOpts {
@@ -2467,7 +2479,7 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
     if (n > 0) p.streak = Math.min(99, p.streak + 1)
     return
   }
-  // 투기장: 모래주머니에 붙어 쏘면(엄폐) 내가 기댄 자루만 넘어간다 (덕 그대로)
+  // 모래주머니(던전은 구조물)에 붙어 쏘면(엄폐) 내가 기댄 것만 넘어간다 (덕 그대로)
   const overR = nearSandbag(map, p.x, p.y) ? COVER_REACH : 0
   const headTarget = aimedEnemy(state, p)
   const critMon = aimedMonster(state, map, p)
@@ -2488,7 +2500,7 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
   for (let i = 0; i < w.pellets; i++) {
     const off = spread > 0 ? randInt(state.rng, -spread, spread + 1) : 0
     const a = (p.aim + off) & 1023
-    spawnBullet(state, p, mx, my, a, p.weapon, { headTarget, critMon, over: aimsAtHead(state, map, p, mx, my, a, headTarget), overR, pierce, mul })
+    spawnBullet(state, p, mx, my, a, p.weapon, { headTarget, critMon, over: aimsAtHead(state, map, p, mx, my, a, headTarget, critMon), overR, pierce, mul })
   }
   if (state.mode === 'dungeon' && !w.suppressed && !SILENT_CHARS.has(p.char)) noise(state, p.x, p.y)
   p.shots += w.pellets // 명중률을 탄 단위로 재야 산탄총이 왜곡되지 않는다
@@ -3071,6 +3083,7 @@ function stepBullets(state: GameState, map: GameMap, grid: Grid): void {
     const tileHit = rayCast(map, b.px, b.py, b.x, b.y, 'bullet', b.over || near)
     if (tileHit.blocked) {
       if (tileHit.tile === TILE_SANDBAG) damageSandbag(state, map, tileHit.tx, tileHit.ty, b.damage)
+      else if (tileHit.tile === TILE_CRATE && map.crateIdx) damageCover(state, map, tileHit.tx, tileHit.ty, b.damage)
       state.events.push({ type: 'wall', x: b.x, y: b.y, aim: state.players[b.owner].aim })
       dead = true
     }
@@ -3233,6 +3246,38 @@ function damageSandbag(state: GameState, map: GameMap, tx: number, ty: number, d
   } else {
     state.sandbags[i] = left
   }
+}
+
+/**
+ * 던전 구조물(상자 타일 — 선물 상자 · 관 · 북 …)은 모래주머니처럼 (2026-10-17 사용자: "벽이 아닌 구조물은 모양은 그대로, 모래주머니처럼"):
+ * 멀리서 맞으면(괴물 탄도) 깎이다 부서져 바닥이 된다. 내구도 = 모래주머니 240 을 지역 레벨만큼 키운 것
+ * (괴물 체력과 같은 비율 — 플레이어 피해도 그만큼 자라니 레벨이 올라도 몇 발에 부서지는지 비슷하다)
+ */
+function damageCover(state: GameState, map: GameMap, tx: number, ty: number, dmg: number): void {
+  const i = ty * map.w + tx
+  const per = ((state.cover ??= {})[state.curArea] ??= {})
+  const left = per[i] ?? 1000
+  if (left <= 0) return
+  const full = (SANDBAG_HP * levelHp(Math.max(1, areaLevel(state.curArea, state.tier))) * tierOf(state.tier).hp) / levelHp(1)
+  per[i] = Math.max(0, left - Math.max(1, Math.round((dmg * 1000) / full)))
+  if (per[i] > 0) return
+  map.tiles[i] = TILE_FLOOR
+  map.version++
+  state.events.push({ type: 'break', tx, ty })
+}
+
+/** 지역 맵의 구조물 타일을 판(정본)에 맞춘다 — 리싱크 · 재접속으로 맵을 새로 만들었거나 다른 판이 같은 맵을 썼을 때 */
+function syncCover(state: GameState, area: number, map: GameMap): void {
+  if (!map.crateIdx) return
+  const per = state.cover?.[area]
+  let changed = false
+  for (const i of map.crateIdx) {
+    const t = per?.[i] === 0 ? TILE_FLOOR : TILE_CRATE
+    if (map.tiles[i] === t) continue
+    map.tiles[i] = t
+    changed = true
+  }
+  if (changed) map.version++
 }
 
 /** 상태(정본)에 맞춰 맵의 모래주머니 타일을 되돌린다 (리싱크 후) */
@@ -4892,7 +4937,10 @@ function stepShots(state: GameState, map: GameMap): void {
     s.y += s.vy
     s.life--
     let dead = s.life <= 0
-    if (!dead && rayCast(map, px, py, s.x, s.y, 'bullet').blocked) {
+    const hit = dead ? null : rayCast(map, px, py, s.x, s.y, 'bullet')
+    if (hit?.blocked) {
+      // 괴물 탄도 구조물을 깎는다 (붙어 숨어도 오래 버티지는 못한다 — 덕의 모래주머니처럼)
+      if (hit.tile === TILE_CRATE && map.crateIdx) damageCover(state, map, hit.tx, hit.ty, s.dmg)
       state.events.push({ type: 'shotEnd', x: s.x, y: s.y, kind: s.kind })
       dead = true
     }

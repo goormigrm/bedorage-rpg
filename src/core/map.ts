@@ -37,6 +37,11 @@ export interface GameMap {
   tiles: Uint8Array
   /** 처음 생성된 모래주머니 타일 인덱스 (부서져도 유지 — 리싱크 복원용) */
   sandbagIdx: number[]
+  /**
+   * 던전: 상자 타일(선물 상자 · 관 · 북 같은 벽이 아닌 구조물)이 **모래주머니처럼** — 붙어 쏘면 넘기고 · 멀리서 맞으면 깎이다 부서지고 ·
+   * 헤드샷은 넘어간다 (2026-10-17 사용자). 처음 자리 (부서져도 유지). 없으면(투기장 · 마을) 상자는 예전처럼 늘 막는다
+   */
+  crateIdx?: number[]
   spawns: { x: number; y: number }[]
   /** 픽셀 단위 */
   pw: number
@@ -627,14 +632,15 @@ export function isWallAt(map: GameMap, px: number, py: number): boolean {
   return isWall(map, Math.floor(px / TILE), Math.floor(py / TILE))
 }
 
-/** 이 지점이 모래주머니에 붙어 있는가 (엄폐 중) */
+/** 이 지점이 모래주머니(던전은 구조물도)에 붙어 있는가 (엄폐 중) */
 export function nearSandbag(map: GameMap, px: number, py: number, dist = COVER_DIST): boolean {
   const r = Math.ceil(dist / TILE)
   const ctx0 = Math.floor(px / TILE)
   const cty0 = Math.floor(py / TILE)
   for (let ty = cty0 - r; ty <= cty0 + r; ty++) {
     for (let tx = ctx0 - r; tx <= ctx0 + r; tx++) {
-      if (tileAt(map, tx, ty) !== TILE_SANDBAG) continue
+      const t = tileAt(map, tx, ty)
+      if (t !== TILE_SANDBAG && !(t === TILE_CRATE && map.crateIdx)) continue
       const cx = Math.max(tx * TILE, Math.min((tx + 1) * TILE, px))
       const cy = Math.max(ty * TILE, Math.min((ty + 1) * TILE, py))
       if ((cx - px) ** 2 + (cy - py) ** 2 <= dist * dist) return true
@@ -651,7 +657,7 @@ export interface RayHit {
 }
 
 /**
- * 격자 레이캐스트 (DDA). mode 'sight' 는 높은 벽만, 'bullet' 은 벽·상자와 (over 가 아니면) 모래주머니.
+ * 격자 레이캐스트 (DDA). mode 'sight' 는 높은 벽만, 'bullet' 은 벽·상자와 (over 가 아니면) 모래주머니 · 던전 구조물.
  * 막혔으면 막은 타일을 함께 돌려준다.
  */
 export function rayCast(
@@ -681,7 +687,7 @@ export function rayCast(
     const blocks =
       mode === 'sight'
         ? tile === TILE_WALL || tx < 0 || ty < 0 || tx >= map.w || ty >= map.h
-        : tile === TILE_WALL || tile === TILE_CRATE || (tile === TILE_SANDBAG && !over)
+        : tile === TILE_WALL || (tile === TILE_CRATE && !(over && map.crateIdx)) || (tile === TILE_SANDBAG && !over)
     if (blocks) return { blocked: true, tx, ty, tile }
     if (tx === tx1 && ty === ty1) return { blocked: false, tx, ty, tile }
     if (tMaxX < tMaxY) {

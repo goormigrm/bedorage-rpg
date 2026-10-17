@@ -31,9 +31,9 @@ export const U = 1 / TILE
 export interface World3D {
   group: THREE.Group
   sun: THREE.DirectionalLight
-  /** 부서진 모래주머니를 화면에서 지운다 */
+  /** 부서진 모래주머니 · 던전 구조물을 화면에서 지운다 */
   breakSandbag(tx: number, ty: number): void
-  /** 남은 내구도 비율(0~1)에 따라 색을 어둡게 — 곧 터진다는 신호 */
+  /** 남은 내구도 비율(0~1)에 따라 색을 어둡게 — 곧 터진다는 신호 (던전 구조물도) */
   setSandbagHealth(tx: number, ty: number, k: number): void
   /** 매 프레임: 횃불·모닥불 깜빡임, 가까운 횃불에 빛 옮기기 (x, z = 카메라가 보는 곳) */
   update(t: number, x: number, z: number): void
@@ -386,6 +386,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   }
 
   // ---- 장애물 (상자 타일) ----
+  const crateFrom = group.children.length
   const crates: [number, number][] = []
   for (let ty = 0; ty < map.h; ty++) for (let tx = 0; tx < map.w; tx++) if (map.tiles[ty * map.w + tx] === TILE_CRATE) crates.push([tx, ty])
   const fire = MAPS[map.id]?.fire
@@ -480,6 +481,8 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
       if (hash(tx, ty, 4) < 0.5) put(rock, tx + 0.2 + hash(tx, ty, 5) * 0.6, 0.18, ty + 0.2 + hash(tx, ty, 6) * 0.6, 0.6, 0.5, 0.6, hash(tx, ty, 7) * 6, col.copy(cc).multiplyScalar(0.7))
     }
   }
+
+  const cover = coverParts(group.children.slice(crateFrom), map.w)
 
   // ---- 소품 (밟히지 않는 장식 — sim 과 무관) ----
   const floors: [number, number][] = []
@@ -674,6 +677,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     group,
     sun,
     breakSandbag(tx: number, ty: number) {
+      cover.hide(ty * map.w + tx)
       const id = bagIndex.get(ty * map.w + tx)
       if (id === undefined || !bags) return
       bags.setMatrixAt(id, hiddenBag)
@@ -681,6 +685,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
       bagIndex.delete(ty * map.w + tx)
     },
     setSandbagHealth(tx: number, ty: number, k: number) {
+      cover.tint(ty * map.w + tx, k)
       const id = bagIndex.get(ty * map.w + tx)
       if (id === undefined || !bags) return
       bags.setColorAt(id, col.copy(bagBase).multiplyScalar(0.6 + 0.4 * Math.max(0, Math.min(1, k))))
@@ -1244,6 +1249,7 @@ function buildClassic(map: GameMap): World3D {
   walls.instanceMatrix.needsUpdate = true
   crates.instanceMatrix.needsUpdate = true
   group.add(walls, crates)
+  const cover = coverParts([crates], map.w)
 
   // ---- 모래주머니 (허리 높이 엄폐물) ----
   const bagM = new THREE.MeshLambertMaterial({ color: 0xdcd3b4 })
@@ -1296,6 +1302,7 @@ function buildClassic(map: GameMap): World3D {
     group,
     sun,
     breakSandbag(tx: number, ty: number) {
+      cover.hide(ty * map.w + tx)
       const id = bagIndex.get(ty * map.w + tx)
       if (id === undefined) return
       bags.setMatrixAt(id, hidden)
@@ -1303,6 +1310,7 @@ function buildClassic(map: GameMap): World3D {
       bagIndex.delete(ty * map.w + tx)
     },
     setSandbagHealth(tx: number, ty: number, k: number) {
+      cover.tint(ty * map.w + tx, k)
       const id = bagIndex.get(ty * map.w + tx)
       if (id === undefined) return
       const t2 = Math.max(0, Math.min(1, k))
@@ -1322,6 +1330,52 @@ function buildClassic(map: GameMap): World3D {
 }
 
 /** 자루 6개(아래 4 + 위 2)를 쌓은 더미 하나. 타일 1칸 크기 */
+/**
+ * 던전 구조물(상자 타일) 조각을 타일마다 묶는다 — 모래주머니처럼 깎이면 어둡게 · 부서지면 숨긴다 (2026-10-17).
+ * 조각이 어느 타일 것인지는 인스턴스 자리(타일 안)로 안다. 인스턴스 색이 없던 메시는 흰색으로 채워 둔다(재질 색에 곱해진다)
+ */
+function coverParts(meshes: THREE.Object3D[], w: number): { hide(i: number): void; tint(i: number, k: number): void } {
+  const parts = new Map<number, { m: THREE.InstancedMesh; k: number; c: THREE.Color }[]>()
+  const m4 = new THREE.Matrix4()
+  const p = new THREE.Vector3()
+  const white = new THREE.Color(1, 1, 1)
+  for (const o of meshes) {
+    if (!(o instanceof THREE.InstancedMesh)) continue
+    const colored = !!o.instanceColor
+    for (let k = 0; k < o.count; k++) {
+      o.getMatrixAt(k, m4)
+      p.setFromMatrixPosition(m4)
+      const c = white.clone()
+      if (colored) o.getColorAt(k, c)
+      else o.setColorAt(k, white)
+      const i = Math.floor(p.z) * w + Math.floor(p.x)
+      const list = parts.get(i)
+      if (list) list.push({ m: o, k, c })
+      else parts.set(i, [{ m: o, k, c }])
+    }
+    if (o.instanceColor) o.instanceColor.needsUpdate = true
+  }
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0)
+  const shade = new THREE.Color()
+  return {
+    hide(i) {
+      for (const q of parts.get(i) ?? []) {
+        q.m.setMatrixAt(q.k, hidden)
+        q.m.instanceMatrix.needsUpdate = true
+      }
+      parts.delete(i)
+    },
+    tint(i, k) {
+      const t = Math.max(0, Math.min(1, k))
+      for (const q of parts.get(i) ?? []) {
+        // 모래주머니와 같은 색 단계: 닳을수록 어둡고 붉게
+        q.m.setColorAt(q.k, shade.setRGB(q.c.r * (0.55 + 0.45 * t), q.c.g * (0.42 + 0.58 * t), q.c.b * (0.36 + 0.64 * t)))
+        if (q.m.instanceColor) q.m.instanceColor.needsUpdate = true
+      }
+    },
+  }
+}
+
 function sandbagStackGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
   const bag = (x: number, y: number, z: number, sx: number, sy: number, sz: number, rot: number) => {
