@@ -716,6 +716,12 @@ export class Sfx {
         case 'mshot': {
           if (tnow - this.lastMShot < 60) break
           this.lastMShot = tnow
+          // 총잡이는 그 총 소리 (사람 총과 같은 소리 — 분위기마다 다르게 나는 것도 같다)
+          const gun = MONSTER_LIST[e.kind]?.gun
+          if (gun) {
+            this.gun(gun.weapon, sp(e.x, e.y), false)
+            break
+          }
           const b = this.bus(sp(e.x, e.y), 0.6)
           this.tone(b.node, b.t0, 0.14, 'triangle', 760, 380, 0.35, 0.002)
           this.noiseBurst(b.node, b.t0, 0.06, 'highpass', 3000, 1500, 0.2)

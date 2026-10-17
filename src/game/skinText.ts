@@ -27,6 +27,10 @@ const MONSTER_NAMES: Record<string, string> = {
   shade: '장난꾸러기 유령',
   demon: '폭죽 꼬마 도깨비',
   lord: '파티 드래곤',
+  gunner: '물총 진행요원',
+  hunter: '물뿌리개 진행요원',
+  trooper: '연발 물총 진행요원',
+  sniper: '저격 물총 진행요원',
 }
 for (const def of MONSTER_LIST) {
   const n = MONSTER_NAMES[def.id]

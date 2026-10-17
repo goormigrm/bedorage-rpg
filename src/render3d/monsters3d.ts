@@ -21,7 +21,7 @@ interface ModelKind {
   /** 마리마다 (프레임 a, 프레임 b, 섞는 비율) — 부품 지오메트리 모두가 같이 쓴다 */
   frame: THREE.InstancedBufferAttribute
   depth: THREE.Material
-  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean }[]
+  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean; rx?: number }[]
   /** 보이게 했나 (처음엔 숨겨 두고 데우기가 끝나거나 괴물이 화면에 나오면 — 2026-09-23) */
   shown: boolean
   /** 비동기 컴파일을 부탁했다 (askShow — 2026-10-08) */
@@ -35,7 +35,8 @@ interface ModelKind {
  * at = 붙일 뼈(monsterModels FILE_ANCHORS) — 그 뼈가 첫 장면(대기 첫 장)에서 움직인 만큼 부품도 움직인다(자리 값은 첫 장면 기준).
  * still = 도형 부품 자체의 예고 · 휘두름 움직임을 끈다 (손에 든 것 — 모델의 팔이 대신 휘두른다).
  */
-const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: number; dz?: number; at?: AnchorName; still?: boolean }[]> = {
+type Extra = { part: number; s: number; dx?: number; dy: number; dz?: number; at?: AnchorName; still?: boolean; rx?: number }
+const MODEL_EXTRAS: Record<number, Extra[]> = {
   // 해골 모델 (궁수 · 방패병 · 강령술사 · 그림자 · 관리인): 기준 자세는 UAL 대기 첫 장(곧게 선 자세, 두개골이 맨 위).
   // 자리 값은 굽기가 적어 둔 뼈 자리(anchorRest)에서 계산했다 — 머리 뼈는 두개골 아래끝, 몸이 조금 뒤(-z) · 머리가 조금 오른쪽(-x)
   1: [
@@ -49,6 +50,30 @@ const MODEL_EXTRAS: Record<number, { part: number; s: number; dx?: number; dy: n
     { part: 4, s: 0.72, dx: 0.05, dy: 0.17, dz: -0.21, at: 'chest' }, // 방패 징
   ],
   // 고블린 · 버섯 주술사 · 강령술사 · 산성 토사꾼 · 그림자는 2026-09-24 제 모델이 생겨 도형 부품을 뺐다
+  // 총잡이 (2026-10-17): 총은 도형 부품을 오른손에 — 쉴 때는 총구가 아래(rx = 90°), 겨누는 동작(UAL 권총 쏘기)이 손을 들면 앞을 본다
+  16: [
+    // 자리 = 손 뼈 첫 자리(-0.184 · 0.674 · -0.15) - 부품 자세(0.12 · 0.84 · 0.22) × s
+    { part: 4, s: 0.88, dx: -0.29, dy: -0.065, dz: -0.344, at: 'handR', still: true, rx: Math.PI / 2 }, // 소총
+    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
+  ],
+  // 구울 손은 쉴 때도 앞으로 들려 있어 총구를 앞으로 둔다(돌리지 않음 — 겨누면 허리에서 앞을 본다)
+  17: [{ part: 8, s: 0.8, dx: -0.295, dy: 0.084, dz: -0.062, at: 'handR', still: true }], // 산탄총 (구울 손 -0.199 · 0.756 · 0.114)
+  // 경비병은 겨누는 동작이 없는 모델(칼 휘두르기뿐) — 기관단총을 허리에 앞으로 든다
+  18: [{ part: 5, s: 0.85, dx: -0.222, dy: -0.094, dz: -0.037, at: 'chest', still: true }], // 오른쪽 허리 앞(-0.12 · 0.62 · 0.15)
+  19: [
+    { part: 4, s: 0.88, dx: -0.29, dy: -0.065, dz: -0.344, at: 'handR', still: true, rx: Math.PI / 2 }, // 저격총
+    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
+  ],
+}
+/** 밝은 분위기에서 겹쳐 그리는 부품 — 총잡이 진행요원의 물총만 (다른 귀여운 모델은 제 모습 그대로) */
+// 진행요원 손(가운뎃손가락 뿌리 -0.431 · 0.232 · -0.231)은 쉴 때 낮게 늘어져 있고 'Weapon' 동작도 팔을 높이 들지 않는다 → 총구를 앞으로 둔 채 손에
+const CUTE_HAND: Extra = { part: 4, s: 0.8, dx: -0.527, dy: -0.44, dz: -0.407, at: 'handR', still: true }
+const CUTE_EXTRAS: Record<number, Extra[]> = {
+  16: [CUTE_HAND],
+  17: [{ ...CUTE_HAND, part: 8 }],
+  // 가슴 뼈(0.016 · 0.459 · -0.269) 아래 오른쪽 허리 앞(-0.2 · 0.33 · 0.12)
+  18: [{ part: 5, s: 0.8, dx: -0.296, dy: -0.342, dz: -0.056, at: 'chest', still: true }],
+  19: [CUTE_HAND],
 }
 
 /**
@@ -88,6 +113,11 @@ function frameShader(mat: THREE.Material): void {
 const BRIGHT_BADGE: Record<number, { shape: 0 | 1 | 2; color: number }> = {
   9: { shape: 0, color: 0xffffff }, // 분홍 진행요원 ♡
   12: { shape: 2, color: 0xffe066 }, // 진행요원 반장 ◇
+  // 물총 진행요원 넷 ☆ (2026-10-17 총잡이 — 물총 색과 같은 별)
+  16: { shape: 1, color: 0x3fc8ff },
+  17: { shape: 1, color: 0xff5f9e },
+  18: { shape: 1, color: 0xffc21f },
+  19: { shape: 1, color: 0xa77bff },
 }
 const badgeGeos: THREE.BufferGeometry[] = []
 /** 기호 모양 (0 = ♡ · 1 = ☆ · 2 = ◇) — 너비 약 0.34, 바닥에 눕혀 위를 본다(위쪽 끝이 화면 위) */
@@ -280,11 +310,11 @@ function ghoulParts(skinColor = 0x7d8479, eyeColor = 0xd6ff5c, darkColor = 0x3d3
 }
 
 /** 해골 궁수: 누더기 두건 · 갈비뼈 · 해골 · 붉은 눈구멍 · 활 */
-function archerParts(): Part[] {
-  const bone = lambert(0xd9d1bb)
-  const cloth = lambert(0x2e2530)
+function archerParts(boneColor = 0xd9d1bb, clothColor = 0x2e2530, eyeColor = 0xff3b24): Part[] {
+  const bone = lambert(boneColor)
+  const cloth = lambert(clothColor)
   const wood = lambert(0x5c3b22)
-  const eye = glow(0xff3b24)
+  const eye = glow(eyeColor)
   return [
     // 두건 망토 (원뿔 치마)
     part(new THREE.ConeGeometry(0.3, 0.72, 10, 1, true), cloth, false, (a, o) => {
@@ -858,12 +888,54 @@ function lordParts(): Part[] {
   ]
 }
 
+type GunKind = 'rifle' | 'shotgun' | 'smg' | 'sniper'
+/** ☀ 물총 색 (진행요원 별과 같다) · 🌙 검은 쇠 */
+const TOY_GUN: Record<GunKind, number> = { rifle: 0x3fc8ff, shotgun: 0xff5f9e, smg: 0xffc21f, sniper: 0xa77bff }
+/**
+ * 총 (2026-10-17 총잡이): 손잡이가 원점 · 총구가 +z. 자세는 가슴 앞에서 앞을 겨눈다(도형 괴물) — 실사 모델에는 MODEL_EXTRAS 가
+ * 손 · 가슴 뼈에 붙이고(rx 로 쉴 때 총구를 아래로), 예고 때 조금 들어 올린다
+ */
+function gunPart(kind: GunKind): Part {
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number) => new THREE.BoxGeometry(w, h, d).translate(x, y, z)
+  const tube = (r: number, l: number, x: number, y: number, z: number) => new THREE.CylinderGeometry(r, r, l, 8).rotateX(Math.PI / 2).translate(x, y, z)
+  const g =
+    kind === 'rifle'
+      ? [box(0.06, 0.08, 0.46, 0, 0.03, 0.12), tube(0.018, 0.26, 0, 0.04, 0.48), box(0.05, 0.1, 0.18, 0, 0.0, -0.18), box(0.04, 0.1, 0.05, 0, -0.06, 0.0), box(0.035, 0.1, 0.05, 0, -0.04, 0.14)]
+      : kind === 'shotgun'
+        ? [tube(0.026, 0.46, -0.026, 0.05, 0.3), tube(0.026, 0.46, 0.026, 0.05, 0.3), box(0.1, 0.09, 0.2, 0, 0.03, 0.02), box(0.06, 0.12, 0.2, 0, -0.01, -0.16), box(0.04, 0.1, 0.05, 0, -0.06, 0.0)]
+        : kind === 'smg'
+          ? [box(0.07, 0.09, 0.28, 0, 0.03, 0.06), tube(0.02, 0.12, 0, 0.04, 0.26), box(0.04, 0.16, 0.05, 0, -0.08, 0.1), box(0.04, 0.1, 0.05, 0, -0.06, -0.03)]
+          : [box(0.05, 0.07, 0.56, 0, 0.03, 0.12), tube(0.016, 0.4, 0, 0.04, 0.6), tube(0.03, 0.2, 0, 0.11, 0.1), box(0.05, 0.11, 0.2, 0, 0.0, -0.24), box(0.04, 0.1, 0.05, 0, -0.06, 0.0)]
+  return part(mergeGeometries(g)!, lambert(isBright() ? TOY_GUN[kind] : 0x34343c), false, (a, o) => {
+    const up = Math.max(a.wind, a.swing)
+    o.position.set(0.12, 0.84 + up * 0.04, 0.22 + up * 0.06)
+    o.rotation.set(0, 0, 0)
+    o.scale.setScalar(1)
+  })
+}
+/** 해골 소총수 · 심연 저격수: 궁수 뼈대에 활 대신 총 (부품 4) */
+function gunSkeletonParts(kind: GunKind, bone?: number, cloth?: number, eye?: number): Part[] {
+  const p = archerParts(bone, cloth, eye)
+  p[4] = gunPart(kind)
+  return p
+}
+/** 사냥꾼 구울: 갈색 구울 + 산탄총 (부품 8) */
+function hunterParts(): Part[] {
+  return [...ghoulParts(0x8a7a62, 0xffa040, 0x4a3a2a), gunPart('shotgun')]
+}
+/** 지하도 경비병: 방패 없는 방패병 + 기관단총 (부품 5) */
+function trooperParts(): Part[] {
+  const p = shieldParts()
+  return [p[0], p[1], p[2], p[5], p[6], gunPart('smg')]
+}
+
 /** 부품 목록: MONSTER_LIST 순서 */
 const BUILDERS = [
-  () => ghoulParts(), archerParts, bloaterParts, butcherParts, goblinParts,
+  () => ghoulParts(), () => archerParts(), bloaterParts, butcherParts, goblinParts,
   wolfParts, () => spiderParts(), shamanParts, () => spiderParts(true),
   shieldParts, necroParts, spitterParts, wardenParts,
   shadeParts, demonParts, lordParts,
+  () => gunSkeletonParts('rifle'), hunterParts, trooperParts, () => gunSkeletonParts('sniper', 0x6a5048, 0x401818, 0xffd060),
 ]
 
 /** 머리 위 체력 바를 띄울 높이 (타일 단위) */
@@ -880,7 +952,7 @@ function viewScale(giant: boolean, kind: number, elite: number): number {
 /** 네 발 짐승 (거대한 보스를 겨눌 때 옆으로 넓다) */
 export const isQuadruped = (kind: number): boolean => QUADRUPEDS.has(kind)
 
-export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 0.85, 0.8, 0.8, 1.2, 0.8, 1.3, 1.3, 0.7, 1.25, 1.3, 0.9, 1.4]
+export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 0.85, 0.8, 0.8, 1.2, 0.8, 1.3, 1.3, 0.7, 1.25, 1.3, 0.9, 1.4, 1.45, 1.05, 1.3, 1.45]
 
 export class MonsterView {
   readonly group = new THREE.Group()
@@ -1038,22 +1110,23 @@ export class MonsterView {
    * 지금 그려지는 종류(살아 있거나 시체)는 두고, 다시 만나면 새로 굽는다(파일은 굽기 쪽이 들고 있어 다시 받지 않는다).
    * 텍스처는 같은 파일의 다른 종류와 같이 쓰므로 치우지 않는다.
    */
-  release(keep: Set<number>): number[] {
+  release(keep: Set<number>, later: (f: () => void) => void = (f) => f()): number[] {
     const inUse = new Set(this.corpses.map((c) => c.kind))
     const out: number[] = []
     this.models.forEach((mk, k) => {
       if (!mk || typeof mk === 'string' || keep.has(k) || inUse.has(k) || this.mcounts[k] > 0) return
-      for (const mesh of mk.meshes) {
-        this.group.remove(mesh)
-        mesh.geometry.dispose()
-        ;(mesh.material as THREE.Material).dispose()
-        mesh.dispose()
-      }
-      mk.depth.dispose()
-      for (const ex of mk.extras) {
-        this.group.remove(ex.mesh)
-        ex.mesh.dispose()
-      }
+      for (const mesh of mk.meshes) this.group.remove(mesh)
+      for (const ex of mk.extras) this.group.remove(ex.mesh)
+      // 지우기는 도는 셰이더 컴파일이 끝난 뒤 (later — 렌더러가 넘긴다. 컴파일 중에 재질을 지우면 three 가 "isReady" 오류로 죽는다)
+      later(() => {
+        for (const mesh of mk.meshes) {
+          mesh.geometry.dispose()
+          ;(mesh.material as THREE.Material).dispose()
+          mesh.dispose()
+        }
+        mk.depth.dispose()
+        for (const ex of mk.extras) ex.mesh.dispose()
+      })
       this.models[k] = undefined
       out.push(k)
     })
@@ -1095,14 +1168,14 @@ export class MonsterView {
           return mesh
         })
         // 겹쳐 그리는 도형 부품(활 · 방패 …)은 실사 모델에만 — 귀여운 모델은 제 모습 그대로 (밝은 분위기)
-        const extras: ModelKind['extras'] = (isBright() ? [] : (MODEL_EXTRAS[kind] ?? [])).map((e) => {
+        const extras: ModelKind['extras'] = ((isBright() ? CUTE_EXTRAS : MODEL_EXTRAS)[kind] ?? []).map((e) => {
           const src = this.kinds[kind][e.part < 0 ? this.kinds[kind].length + e.part : e.part]
           const mesh = new THREE.InstancedMesh(src.mesh.geometry, src.mesh.material, CAP) as InstancedMesh
           mesh.count = 0
           mesh.frustumCulled = false
           mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
           this.group.add(mesh)
-          return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still }
+          return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still, rx: e.rx }
         })
         // 밝은 분위기: 진행요원 머리 위 기호 (♡ · ◇)
         const badge = isBright() ? BRIGHT_BADGE[kind] : undefined
@@ -1447,6 +1520,7 @@ export class MonsterView {
       this.o.rotation.set(0, 0, 0)
       this.o.scale.setScalar(1)
       ex.pose(ex.still ? STILL : a, this.o)
+      if (ex.rx) this.o.rotateX(ex.rx)
       this.o.position.multiplyScalar(ex.s)
       this.o.position.x += ex.dx
       this.o.position.y += ex.dy

@@ -566,7 +566,7 @@ export class Renderer3D {
         // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
         const was = objs.map((o) => o.visible)
         for (const o of objs) o.visible = true
-        const jobs = objs.map((o) => this.gl.compileAsync(o, this.camera, this.scene).catch(() => {}))
+        const jobs = objs.map((o) => this.compileAsync(o, this.scene))
         objs.forEach((o, i) => (o.visible = was[i]))
         return Promise.all(jobs).then(() => {})
       },
@@ -721,9 +721,9 @@ export class Renderer3D {
     for (const g of this.objMeshes.values()) this.scene.remove(g)
     this.objMeshes.clear()
     this.scene.remove(this.world.group)
-    this.world.dispose()
     this.scene.remove(this.vision.group)
-    this.vision.dispose()
+    const old = [this.world, this.vision]
+    this.afterCompiles(() => old.forEach((d) => d.dispose()))
     this.map = map
     // 만들다 만 것이면 남은 걸음을 지금 끝낸다 (한 일은 그대로 쓴다)
     const gen = this.prebuilding.get(map)
@@ -757,7 +757,24 @@ export class Renderer3D {
       if (this.areaJob === job) this.areaCompiling = false
     }
     this.padLights()
-    void Promise.race([this.gl.compileAsync(this.scene, this.camera).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
+    void Promise.race([this.compileAsync(this.scene, this.scene), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
+  }
+
+  /** 지금 도는 비동기 셰이더 컴파일 — 그동안 그 재질을 지우면 three 의 컴파일 확인이 죽는다(currentProgram 이 사라져 "isReady" 오류) */
+  private compiling = new Set<Promise<unknown>>()
+  private compileAsync(o: THREE.Object3D, scene: THREE.Scene): Promise<unknown> {
+    const p = this.gl.compileAsync(o, this.camera, scene).catch(() => {})
+    this.compiling.add(p)
+    void p.finally(() => this.compiling.delete(p))
+    return p
+  }
+  /**
+   * 도는 컴파일이 끝난 뒤에 한다 (2026-10-17: 마을에 들어서자마자 다른 지역으로 가면 앞 지역 · 이웃 지역 재질을 컴파일하는 중에
+   * 지워 "Cannot read properties of undefined (reading 'isReady')" 가 났다 — 오류 보고 단추가 떴다)
+   */
+  private afterCompiles(f: () => void): void {
+    if (this.compiling.size === 0) f()
+    else void Promise.allSettled([...this.compiling]).then(f)
   }
 
   /** 지역에 들어선 뒤 셰이더를 비동기로 컴파일하는 중 (그동안 3D 를 그리지 않는다 — 페이드가 덮는다) */
@@ -810,8 +827,10 @@ export class Renderer3D {
         for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
       })
     }
-    p.world.dispose()
-    p.vision.dispose()
+    this.afterCompiles(() => {
+      p.world.dispose()
+      p.vision.dispose()
+    })
   }
 
   /**
@@ -887,7 +906,7 @@ export class Renderer3D {
       const one = Object.create(job.obj) as THREE.Object3D
       one.children = []
       one.visible = true
-      const done = this.gl.compileAsync(one, this.camera, this.warmScene).catch(() => {})
+      const done = this.compileAsync(one, this.warmScene)
       if ((programs?.length ?? 0) > p0) {
         this.warmUntil = t0 + 3000
         void done.finally(() => (this.warmUntil = 0))
@@ -961,7 +980,7 @@ export class Renderer3D {
     this.quarks.update(1 / 60)
     const timeout = new Promise<void>((r) => setTimeout(r, 20000))
     try {
-      await Promise.race([Promise.all([this.gl.compileAsync(this.scene, this.camera), this.post.warm(this.camera)]), timeout])
+      await Promise.race([Promise.all([this.compileAsync(this.scene, this.scene), this.post.warm(this.camera)]), timeout])
     } catch {
       /* 컴파일 실패는 그릴 때 다시 — 시작은 막지 않는다 */
     }
@@ -2061,7 +2080,7 @@ export class Renderer3D {
         this.prefetchedAct = act
         const kinds = Renderer3D.actKinds(act)
         // 앞 막 괴물의 모델은 내려놓는다 (GPU 메모리 — 되돌아가면 다시 굽는다)
-        this.monsterView.release(new Set(kinds))
+        this.monsterView.release(new Set(kinds), (f) => this.afterCompiles(f))
         this.monsterView.prefetch(kinds)
       }
     }
@@ -4371,11 +4390,13 @@ export class Renderer3D {
         this.scene.add(sp)
       }
       const p = prevById.get(s0.id) ?? s0
-      const color = MONSTER_LIST[s0.kind]?.shotColor ?? 0xff5a2a
+      const sd = MONSTER_LIST[s0.kind]
+      // 총잡이 탄은 작고 밝게 (☀ 물방울 하늘색)
+      const color = sd?.gun && isBright() ? 0x3fc8ff : (sd?.shotColor ?? 0xff5a2a)
       sp.material.color.setHex(color)
       sp.visible = true
       sp.position.set((p.x + (s0.x - p.x) * alpha) * U, 0.9, (p.y + (s0.y - p.y) * alpha) * U)
-      sp.scale.setScalar(0.55 + Math.sin(this.t * 20 + s0.id) * 0.06)
+      sp.scale.setScalar((sd?.gun ? 0.36 : 0.55) + Math.sin(this.t * 20 + s0.id) * 0.06)
       // 궤적: 탄이 지나간 자리에 빛점 하나 (60분의 1초마다 — 화면 주사율이 높아도 같은 길이 · 탄 종류는 가리지 않는다)
       if (trail) this.quarks.burst('trail', sp.position.x, 0.9, sp.position.z, 1, { color })
       n++
@@ -5323,15 +5344,17 @@ export class Renderer3D {
     this.post.dispose()
     this.glow.dispose()
     this.puff.dispose()
-    this.monsterView.dispose()
     void this.lastKiller
-    this.vision.dispose()
-    this.world.dispose()
     for (const p of this.prebuilt.values()) this.dropPrebuilt(p)
     this.prebuilt.clear()
     this.prebuilding.clear()
     this.prepJobs = []
-    this.gl.dispose()
+    this.afterCompiles(() => {
+      this.monsterView.dispose()
+      this.vision.dispose()
+      this.world.dispose()
+      this.gl.dispose()
+    })
     this.canvas.remove()
     this.hud.canvas.remove()
   }

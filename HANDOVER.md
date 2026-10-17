@@ -10,6 +10,14 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
+## 🔖 같은 날 총잡이 인계 (2026-10-17 · 메인 PC — v1.6.7 · 총 쏘는 괴물 넷 · 지역 옮길 때 오류 · 봇 머뭇거림)
+
+- 사용자: "몬스터들도 다양한 총을 사용하고 레벨에 맞게 총의 연사속도나 데미지를 조정해서 총 쏘는 몬스터를 추가". 괴물 16 ~ 19: 해골 소총수(1막 · 소총) · 사냥꾼 구울(2막 · 산탄 다섯) · 지하도 경비병(3막 · 기관단총 끊어 쏘기) · 심연 저격수(4막 · 저격) — ☀ 물총 진행요원 넷.
+- **총은 `MonsterDef.gun`**(`weapon` 소리 · `pellets` 산탄 · `spread` · `burst` · `gap`) — `attack: 'ranged'` 위에 얹었다(sim `resolveAttack` 의 ranged 갈래). 연발은 예고 없이 `MS_WINDUP` 에 머물며 gap 틱마다(`Monster.burst` 남은 발). 레벨: `gunCooldown`(30레벨 1.5배 빠르게) · `gunBurst`(gap 이 있는 총은 12레벨마다 +1) · 피해는 levelPow 그대로.
+- 모습은 있는 모델을 다시 쓴다(`monsterModels` 16 ~ 19 · 방패병 칼은 `hide`). 총 부품은 도형(`monsters3d gunPart`)을 `MODEL_EXTRAS` · `CUTE_EXTRAS` 로 손 · 가슴 뼈에 붙인다 — 자리 = 뼈 첫 자리(`__bd.mv().models[k].baked.anchorRest`) − 부품 자세 × s. `rx` 는 쉴 때 총구 방향(해골은 아래 → 권총 쏘기 동작이 팔을 들면 앞 · 구울 · 진행요원은 앞 그대로). 확인은 개발 서버에서 괴물을 사람 곁에 세우고(`makeMonster` · `m.st = 2` · `m.t` 를 계속 작게) `/__shot` 으로 캔버스를 떠서 본다.
+- **"isReady" 오류**: three 의 `compileAsync` 가 도는 동안 그 재질을 지우면 컴파일 확인(setTimeout)에서 죽는다 — 지울 것은 `renderer3d afterCompiles` 로(지역 바꾸기 · 이웃 지역 버리기 · 괴물 모델 내려놓기 `release(keep, later)` · 끝). 새로 `compileAsync` 를 부르면 꼭 `this.compileAsync`(도는 것을 센다)로.
+- **봇**: 표적이 벽에 가려 안 보이면 거리 두기(물러서기 · 옆걸음) 대신 다가간다(`bot.ts`) — 보스 방 고리 벽 너머에서 몇 분씩 머뭇거렸다.
+
 ## 🔖 같은 날 밸런스 인계 (2026-10-17 · 메인 PC — v1.6.3 · 정예 넉백 없음 · 체력 ↓ 수 ↑)
 
 - 사용자: "정예 몬스터가 체력은 많은데 넉백이 돼서 근접 탱커는 때리기가 너무 어렵다 — 정예는 넉백이 되지 않도록" · "일반 몬스터들도 체력이 많아서 재미가 없다 — 체력을 줄이되 숫자를 늘리는 방향으로".
@@ -69,7 +77,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.6.6 배포)
+## 현재 상태 (2026-10-17 · v1.6.7 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

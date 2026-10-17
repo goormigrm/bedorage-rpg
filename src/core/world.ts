@@ -75,6 +75,10 @@ const WARDEN = 12
 const SHADE = 13
 const DEMON = 14
 const LORD = 15
+const GUNNER = 16
+const HUNTER = 17
+const TROOPER = 18
+const SNIPER = 19
 
 export interface ActDef {
   name: string
@@ -100,11 +104,13 @@ export const ACTS: ActDef[] = [
     xp: 1.6,
     packs: [
       // 구울 떼 + 궁수 한둘
-      { w: 0.55, groups: [[GHOUL, 5, 9], [ARCHER, 0, 2]] },
+      { w: 0.45, groups: [[GHOUL, 5, 9], [ARCHER, 0, 2]] },
       // 궁수 무리를 구울이 지킨다
-      { w: 0.25, groups: [[ARCHER, 3, 4], [GHOUL, 1, 2]] },
+      { w: 0.2, groups: [[ARCHER, 3, 4], [GHOUL, 1, 2]] },
       // 부푼 시체 떼 — 구울 사이에서 터지면 구울도 날아간다
       { w: 0.2, groups: [[BLOATER, 2, 3], [GHOUL, 2, 3]] },
+      // 해골 소총수가 구울 뒤에서 쏜다
+      { w: 0.15, groups: [[GUNNER, 2, 3], [GHOUL, 3, 5]] },
     ],
   },
   {
@@ -115,13 +121,15 @@ export const ACTS: ActDef[] = [
     xp: 2.5,
     packs: [
       // 늑대 떼 — 빠르게 둘러싼다
-      { w: 0.4, groups: [[WOLF, 5, 8]] },
+      { w: 0.32, groups: [[WOLF, 5, 8]] },
       // 독거미 무리를 늑대가 지킨다 (거미줄에 걸리면 늑대를 못 떨친다)
-      { w: 0.25, groups: [[SPIDER, 3, 5], [WOLF, 1, 2]] },
+      { w: 0.22, groups: [[SPIDER, 3, 5], [WOLF, 1, 2]] },
       // 주술사가 뒤에서 고친다 — 먼저 잡아라
-      { w: 0.2, groups: [[SHAMAN, 1, 1], [WOLF, 3, 5], [SPIDER, 0, 1]] },
+      { w: 0.18, groups: [[SHAMAN, 1, 1], [WOLF, 3, 5], [SPIDER, 0, 1]] },
       // 숲까지 흘러나온 시체들
-      { w: 0.15, groups: [[GHOUL, 4, 6], [BLOATER, 1, 2]] },
+      { w: 0.12, groups: [[GHOUL, 4, 6], [BLOATER, 1, 2]] },
+      // 사냥꾼 구울이 늑대를 몰고 온다 (산탄 — 가까이 붙기 전에)
+      { w: 0.16, groups: [[HUNTER, 2, 3], [WOLF, 2, 3]] },
     ],
   },
   {
@@ -132,13 +140,15 @@ export const ACTS: ActDef[] = [
     xp: 1.9,
     packs: [
       // 방패 줄 뒤에서 토사꾼이 뱉는다 — 옆으로 돌아 들어가라
-      { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
+      { w: 0.25, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
       // 강령술사가 구울을 일으킨다 — 먼저 잡아라
-      { w: 0.25, groups: [[NECRO, 1, 1], [GHOUL, 4, 6], [SHIELD, 0, 1]] },
+      { w: 0.2, groups: [[NECRO, 1, 1], [GHOUL, 4, 6], [SHIELD, 0, 1]] },
       // 토사꾼 떼 — 웅덩이를 피해 다녀야 한다
-      { w: 0.2, groups: [[SPITTER, 2, 3], [GHOUL, 2, 4]] },
+      { w: 0.17, groups: [[SPITTER, 2, 3], [GHOUL, 2, 4]] },
       // 방패 뒤의 궁수
-      { w: 0.25, groups: [[SHIELD, 2, 3], [ARCHER, 2, 3]] },
+      { w: 0.18, groups: [[SHIELD, 2, 3], [ARCHER, 2, 3]] },
+      // 방패 뒤의 경비병 (끊어 쏘기)
+      { w: 0.2, groups: [[TROOPER, 2, 3], [SHIELD, 1, 2]] },
     ],
   },
   {
@@ -149,30 +159,35 @@ export const ACTS: ActDef[] = [
     xp: 2.2,
     packs: [
       // 그림자 떼 — 도망쳐도 등 뒤에 나타난다
-      { w: 0.3, groups: [[SHADE, 3, 5]] },
+      { w: 0.25, groups: [[SHADE, 3, 5]] },
       // 방패 줄 뒤의 포격 악마
-      { w: 0.25, groups: [[DEMON, 1, 2], [SHIELD, 2, 3]] },
+      { w: 0.2, groups: [[DEMON, 1, 2], [SHIELD, 2, 3]] },
       // 그림자가 붙잡고 악마가 쏜다
-      { w: 0.25, groups: [[SHADE, 2, 3], [DEMON, 1, 1], [GHOUL, 3, 4]] },
+      { w: 0.2, groups: [[SHADE, 2, 3], [DEMON, 1, 1], [GHOUL, 3, 4]] },
       // 심연의 사제
-      { w: 0.2, groups: [[NECRO, 1, 1], [SHADE, 2, 3], [SPITTER, 0, 1]] },
+      { w: 0.15, groups: [[NECRO, 1, 1], [SHADE, 2, 3], [SPITTER, 0, 1]] },
+      // 저격수가 멀리서 노리고 경비병이 끊어 쏜다
+      { w: 0.2, groups: [[SNIPER, 1, 2], [TROOPER, 1, 2], [SHADE, 1, 2]] },
     ],
   },
 ]
 
 const WOLVES: PackDef[] = [
-  { w: 0.7, groups: [[WOLF, 6, 9]] },
-  { w: 0.3, groups: [[WOLF, 3, 5], [SPIDER, 1, 2]] },
+  { w: 0.55, groups: [[WOLF, 6, 9]] },
+  { w: 0.25, groups: [[WOLF, 3, 5], [SPIDER, 1, 2]] },
+  { w: 0.2, groups: [[HUNTER, 1, 2], [WOLF, 4, 6]] },
 ]
 const SPORES: PackDef[] = [
-  { w: 0.45, groups: [[SHAMAN, 1, 1], [GHOUL, 3, 5], [SPIDER, 1, 2]] },
-  { w: 0.35, groups: [[SPIDER, 3, 5], [SHAMAN, 0, 1]] },
-  { w: 0.2, groups: [[BLOATER, 2, 3], [SHAMAN, 1, 1]] },
+  { w: 0.4, groups: [[SHAMAN, 1, 1], [GHOUL, 3, 5], [SPIDER, 1, 2]] },
+  { w: 0.3, groups: [[SPIDER, 3, 5], [SHAMAN, 0, 1]] },
+  { w: 0.15, groups: [[BLOATER, 2, 3], [SHAMAN, 1, 1]] },
+  { w: 0.15, groups: [[HUNTER, 2, 2], [GUNNER, 1, 2]] },
 ]
 
 const GUARDS: PackDef[] = [
-  { w: 0.6, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2], [GHOUL, 1, 2]] },
-  { w: 0.4, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
+  { w: 0.45, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2], [GHOUL, 1, 2]] },
+  { w: 0.3, groups: [[SHIELD, 2, 3], [SPITTER, 1, 2]] },
+  { w: 0.25, groups: [[SHIELD, 2, 2], [TROOPER, 2, 3]] },
 ]
 const SPITTERS: PackDef[] = [
   { w: 0.6, groups: [[SPITTER, 3, 4], [GHOUL, 2, 3]] },
@@ -180,18 +195,21 @@ const SPITTERS: PackDef[] = [
 ]
 // 포격 악마는 무리마다 하나 안팎 — 둘셋씩 넣으니 재의 들판에 45명(브라우저 확인), 화면이 폭발 예고로 덮였다
 const FIRES: PackDef[] = [
-  { w: 0.55, groups: [[DEMON, 1, 2], [GHOUL, 3, 5]] },
-  { w: 0.45, groups: [[DEMON, 1, 1], [SPITTER, 1, 2], [SHIELD, 1, 2]] },
+  { w: 0.45, groups: [[DEMON, 1, 2], [GHOUL, 3, 5]] },
+  { w: 0.35, groups: [[DEMON, 1, 1], [SPITTER, 1, 2], [SHIELD, 1, 2]] },
+  { w: 0.2, groups: [[SNIPER, 1, 1], [TROOPER, 1, 2], [GHOUL, 2, 3]] },
 ]
 const SHADOWS: PackDef[] = [
-  { w: 0.6, groups: [[SHADE, 3, 5], [GHOUL, 1, 2]] },
-  { w: 0.4, groups: [[SHADE, 3, 4], [NECRO, 1, 1]] },
+  { w: 0.5, groups: [[SHADE, 3, 5], [GHOUL, 1, 2]] },
+  { w: 0.3, groups: [[SHADE, 3, 4], [NECRO, 1, 1]] },
+  { w: 0.2, groups: [[SNIPER, 1, 2], [SHADE, 2, 3]] },
 ]
 // 강령술사는 무리 열에 넷쯤 — 모두에게 붙이면 일으킨 구울이 지역을 덮는다(브라우저 확인: 2층에 강령술사 24)
 const RITES: PackDef[] = [
-  { w: 0.4, groups: [[NECRO, 1, 1], [GHOUL, 4, 6]] },
-  { w: 0.35, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2]] },
-  { w: 0.25, groups: [[GHOUL, 5, 7], [SPITTER, 0, 1]] },
+  { w: 0.35, groups: [[NECRO, 1, 1], [GHOUL, 4, 6]] },
+  { w: 0.3, groups: [[SHIELD, 2, 3], [ARCHER, 1, 2]] },
+  { w: 0.2, groups: [[GHOUL, 5, 7], [SPITTER, 0, 1]] },
+  { w: 0.15, groups: [[TROOPER, 2, 2], [GHOUL, 3, 4]] },
 ]
 
 const GHOULS: PackDef[] = [
@@ -199,9 +217,10 @@ const GHOULS: PackDef[] = [
   { w: 0.25, groups: [[GHOUL, 3, 5], [BLOATER, 1, 2]] },
 ]
 const ARCHERS: PackDef[] = [
-  { w: 0.45, groups: [[ARCHER, 3, 5], [GHOUL, 1, 3]] },
-  { w: 0.35, groups: [[GHOUL, 5, 8], [ARCHER, 1, 2]] },
-  { w: 0.2, groups: [[BLOATER, 2, 3], [ARCHER, 1, 2]] },
+  { w: 0.38, groups: [[ARCHER, 3, 5], [GHOUL, 1, 3]] },
+  { w: 0.3, groups: [[GHOUL, 5, 8], [ARCHER, 1, 2]] },
+  { w: 0.17, groups: [[BLOATER, 2, 3], [ARCHER, 1, 2]] },
+  { w: 0.15, groups: [[GUNNER, 2, 3], [ARCHER, 1, 1], [GHOUL, 1, 2]] },
 ]
 
 /** 1막 (GUIDE 5.1 표). 번호 = 배열 자리 */

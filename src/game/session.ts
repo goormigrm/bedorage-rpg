@@ -1900,7 +1900,7 @@ export class Session {
       for (const e of this.state.events) {
         if (e.type === 'donate') this.onDonateEvent(e)
         else if (e.type === 'mdeath' && this.vnames.size > 0) this.onNamedDeath(e.m)
-        else if (e.type === 'down') this.onDownBy(e.p, e.by ?? -1)
+        else if (e.type === 'down') this.onDownBy(e.p, e.by ?? -1, e.sum, e.sumBy)
       }
       for (const e of this.state.events) {
         if (e.type === 'over') {
@@ -2589,7 +2589,7 @@ export class Session {
   }
 
   /** 누가 쓰러졌다: 후원 괴물 · 시청자 이름 괴물에게면 알린다 (2026-09-26 방송 개선 1) */
-  private onDownBy(p: number, by: number): void {
+  private onDownBy(p: number, by: number, sum?: number, sumBy?: number): void {
     if (by < 0) return
     const q = this.state.players[p]
     if (!q || q.area !== this.viewArea) return
@@ -2602,7 +2602,8 @@ export class Session {
       this.renderer.notice(`💀 ${who} — ${vn.nick}에게 당했다!`, VIEWER_TAG, 3, this.renderer.sayScale)
       return
     }
-    const m = areaView(this.state, q.area).monsters.find((x) => x.id === by)
+    // 터진 괴물(부푼 시체)은 이미 사라졌다 — 이벤트에 실린 소환 표로
+    const m = areaView(this.state, q.area).monsters.find((x) => x.id === by) ?? (sum !== undefined ? { sum, sumBy } : undefined)
     if (!m || m.sum === undefined) return
     const info = this.donNames.get(`${m.sumBy ?? -1}:${(m.sum - 1) & 15}`)
     const ev = info ? donateEvent(info.ev) : undefined

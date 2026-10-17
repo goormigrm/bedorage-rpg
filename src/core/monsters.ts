@@ -4,8 +4,9 @@
 // 원형(archetype)이 행동을 정하고, 수치가 난이도를 정한다. 지역이 바뀌면 원형은 같고 겉모습·수치만 바꾼다(PLAN 5.3).
 
 import { angleDiff, atan2A } from './fixedmath'
+import type { WeaponId } from './weapons'
 
-export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden' | 'shade' | 'demon' | 'lord'
+export type MonsterKindId = 'ghoul' | 'archer' | 'bloater' | 'butcher' | 'goblin' | 'wolf' | 'spider' | 'shaman' | 'queen' | 'shield' | 'necro' | 'spitter' | 'warden' | 'shade' | 'demon' | 'lord' | 'gunner' | 'hunter' | 'trooper' | 'sniper'
 
 /** 공격 방식. melee = 예고 뒤 부채꼴 · ranged = 예고 뒤 느린 투사체 · explode = 붙으면 부풀었다가 터짐 */
 export type Attack = 'melee' | 'ranged' | 'explode' | 'flee' | 'heal' | 'lob'
@@ -68,6 +69,11 @@ export interface MonsterDef {
   guard?: number
   /** 정예가 됐을 때의 체력 배율 (없으면 ELITE.hp). 주술사처럼 **먼저 잡아야 하는** 것은 낮게 둔다 */
   eliteHp?: number
+  /**
+   * ranged 총잡이: weapon = 소리 · 그림의 무기(weapons.ts) · pellets = 한 번에 부채꼴로 나가는 탄(산탄) · spread = 퍼짐(1024 단위 — 산탄은 부채꼴 너비,
+   * 아니면 한 발마다 흔들림) · burst = 한 번 예고에 이어 쏘는 발 수 · gap = 그 사이 틱(있으면 레벨이 오를수록 한 발씩 는다 — gunBurst)
+   */
+  gun?: { weapon: WeaponId; pellets?: number; spread?: number; burst?: number; gap?: number }
 }
 
 const deg = (d: number) => Math.round((d / 360) * 1024)
@@ -208,6 +214,45 @@ export const MONSTER_LIST: MonsterDef[] = [
     attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
     shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
     knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
+  },
+  // ---------------- 총잡이 (2026-10-17 사용자: "캐릭터들은 총을 쏘는데 몬스터는 범위 마법 · 근접이 많다 — 몬스터도 다양한 총을") ----------------
+  // 막마다 하나씩 들어온다(world.ts 무리 틀) · 궁수처럼 예고(빨간 조준선) 동안 선 밖으로 비키면 빗나간다 · 탄은 화살보다 빠르고 작다.
+  // 레벨이 오르면 피해(levelPow)에 더해 연사가 빨라지고(gunCooldown) · 끊어 쏘는 총은 12레벨마다 한 발 더(gunBurst)
+  {
+    // 해골 소총수 (1막 ~): 소총 — 빠른 탄 한 발 (13레벨부터 두 발)
+    id: 'gunner', idx: 16, name: '해골 소총수',
+    hp: 52, speed: 1.7, r: 12,
+    attack: 'ranged', dmg: 10, range: 320, windup: 26, recover: 18, cooldown: 70,
+    shotSpeed: 9, shotLife: 44, shotR: 5, keepDist: 220, shotColor: 0xffc04a,
+    knockRes: 0.2, globe: 0.06, xp: 8, loot: 0.09,
+    gun: { weapon: 'rifle', burst: 1, gap: 10 },
+  },
+  {
+    // 사냥꾼 구울 (2막 ~): 산탄총 — 다가와서 다섯 발을 부채꼴로. 멀면 흩어져 덜 맞는다
+    id: 'hunter', idx: 17, name: '사냥꾼 구울',
+    hp: 88, speed: 2.2, r: 13,
+    attack: 'ranged', dmg: 6, range: 230, windup: 28, recover: 24, cooldown: 100,
+    shotSpeed: 8, shotLife: 32, shotR: 4, keepDist: 140, shotColor: 0xffa040,
+    knockRes: 0.2, globe: 0.07, xp: 9, loot: 0.11,
+    gun: { weapon: 'shotgun', pellets: 5, spread: deg(34) },
+  },
+  {
+    // 지하도 경비병 (3막 ~): 기관단총 — 조준한 자리로 세 발을 끊어 쏜다(25레벨부터 다섯 발). 첫 예고선 밖으로 비키면 다 빗나간다
+    id: 'trooper', idx: 18, name: '지하도 경비병',
+    hp: 100, speed: 1.8, r: 14,
+    attack: 'ranged', dmg: 6, range: 330, windup: 26, recover: 26, cooldown: 110,
+    shotSpeed: 8.5, shotLife: 50, shotR: 5, keepDist: 230, shotColor: 0xffb050,
+    knockRes: 0.4, globe: 0.08, xp: 12, loot: 0.14,
+    gun: { weapon: 'smg', burst: 3, gap: 6, spread: deg(6) },
+  },
+  {
+    // 심연 저격수 (4막): 저격총 — 긴 조준(빨간 선이 차오른다) 끝에 아주 빠른 한 발. 아프다 — 선 밖으로
+    id: 'sniper', idx: 19, name: '심연 저격수',
+    hp: 80, speed: 1.6, r: 12,
+    attack: 'ranged', dmg: 30, range: 520, windup: 56, recover: 30, cooldown: 150,
+    shotSpeed: 15, shotLife: 40, shotR: 5, keepDist: 360, shotColor: 0xffe08a,
+    knockRes: 0.2, globe: 0.08, xp: 13, loot: 0.15,
+    gun: { weapon: 'sniper' },
   },
 ]
 
@@ -517,6 +562,14 @@ export const TIER_LABEL = ['보통', '악몽', '지옥']
 export const tierOf = (t: number | undefined) => TIERS[Math.max(0, Math.min(TIERS.length - 1, t ?? 0))]
 export const levelHp = (level: number) => HP_BASE * (1 + LEVEL_HP * (level - 1))
 export const levelPow = (level: number) => Math.round(100 * (1 + LEVEL_POW * (level - 1)))
+/**
+ * 총잡이의 레벨 (2026-10-17 사용자: "레벨에 맞게 총의 연사속도나 데미지를 조정"): 피해는 다른 괴물처럼 levelPow ·
+ * 쉬는 틱은 30레벨에서 1.5배 빠르게(GUN_RATE) · 끊어 쏘는 총(gap 이 있는 것)은 GUN_BURST_LV 레벨마다 한 발 더
+ */
+const GUN_RATE = 0.5 / 29
+const GUN_BURST_LV = 12
+export const gunCooldown = (def: MonsterDef, lvl: number) => Math.round(def.cooldown / (1 + GUN_RATE * (Math.max(1, lvl) - 1)))
+export const gunBurst = (def: MonsterDef, lvl: number) => (def.gun?.burst ?? 1) + (def.gun?.gap ? Math.floor((Math.max(1, lvl) - 1) / GUN_BURST_LV) : 0)
 export function xpFor(m: { kind: number; elite: number; lvl: number }): number {
   const k = m.elite & EA_UNIQUE ? UNIQUE.xp : m.elite ? ELITE.xp : 1 / MOB_COUNT
   return MONSTER_LIST[m.kind].xp * k * (1 + XP_PER_MLEVEL * (Math.max(1, m.lvl) - 1))

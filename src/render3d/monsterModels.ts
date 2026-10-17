@@ -49,6 +49,8 @@ export interface ModelSpec {
   glow?: Record<string, number>
   /** 받은 모델의 빛 텍스처(emissive) 세기 (없으면 1 · 0 이면 끈다) */
   emissive?: number
+  /** 굽지 않는 재질 이름 (방패병 모델의 칼 — 같은 모델을 쓰는 경비병은 총을 든다) */
+  hide?: string[]
 }
 
 // "UAL_" 로 시작하는 동작은 Quaternius Universal Animation Library(CC0)에서 옮겨 붙인 것 (tools/retarget.mjs · 2026-09-19).
@@ -154,6 +156,15 @@ MODEL_SPECS[15] = {
   clips: { walk: { clip: 'Armature|ArmatureAction', frames: 14 }, attack: { clip: 'Armature|ArmatureAction', frames: 8 } },
   windup: 0.5,
 }
+// ---- 총잡이 (2026-10-17 — 받을 파일이 늘지 않게 있는 모델을 다시 쓴다 · 총은 도형 부품 monsters3d MODEL_EXTRAS) ----
+// 해골 소총수 — 궁수 해골(겨누기 = UAL 권총 쏘기) · 조금 누런 뼈
+MODEL_SPECS[16] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(AIM), windup: 0.4, tint: [1.1, 1.02, 0.86] }
+// 사냥꾼 구울 — 구울 모델 + 갈색 · 주황 눈 (구울 파일에도 UAL 권총 쏘기를 옮겨 붙여 두었다)
+MODEL_SPECS[17] = { file: 'ghoul', size: 1.0, clips: { ...GHOUL_CLIPS, attack: AIM }, windup: 0.4, tint: [1.1, 0.92, 0.72], glow: { 'Sphere.001': 0xffa040, 'Sphere_1.001': 0xffa040 } }
+// 지하도 경비병 — 방패병 모델(칼은 빼고) · 푸른 쇠. 겨누는 동작이 없는 모델이라 쏠 때는 대기 동작 그대로(총은 허리에 앞으로)
+MODEL_SPECS[18] = { file: 'shield', size: 1.2, tint: [1.3, 1.45, 1.7], clips: skeletonClips({ clip: 'UAL_Idle_Loop', frames: 4 }), windup: 0.4, hide: ['Undead_Sword'] }
+// 심연 저격수 — 궁수 해골을 그을린 검붉은 색으로 · 조준이 길다
+MODEL_SPECS[19] = { file: 'archer', size: 1.2, yaw: -Math.PI / 2, clips: skeletonClips(AIM), windup: 0.6, tint: [0.85, 0.42, 0.38] }
 // 굶주린 늑대 — Grey Wolf (Rigged and Animated) · rhcreations · CC BY 4.0
 // (머리가 -x 를 본다 → 90° 돌려 +z 로. 회색 털이 등불 아래 하얗게 뜨지 않게 조금 어둡게)
 // (2026-09-19: 게임에서 "길쭉하게 늘어나 보인다" 고 꺼 두었는데, 쿼터뷰에서 카메라 쪽 · 반대쪽을 향한 네 발 짐승이
@@ -229,6 +240,11 @@ CUTE_SPECS[12] = { file: 'cute_yeti', size: 1.1, clips: big('Punch'), windup: 0.
 CUTE_SPECS[13] = { file: 'cute_ghost', size: 1.0, clips: fly('Headbutt'), windup: 0.45 } // 그림자 → 장난꾸러기 유령
 CUTE_SPECS[14] = { file: 'cute_imp', size: 0.95, clips: big('Weapon'), windup: 0.4 } // 포격 악마 → 폭죽 꼬마 도깨비
 CUTE_SPECS[15] = { file: 'cute_dragon', size: 1.25, clips: fly('Headbutt'), windup: 0.5 } // 심연의 군주 → 파티 드래곤
+// 총잡이 넷 → 물총 진행요원 (2026-10-17 · 분홍 진행요원과 같은 모델 · 옷 색 · 별 색 · 물총 색으로 가른다)
+CUTE_SPECS[16] = { file: 'cute_ninja', size: 1.05, clips: big('Weapon'), windup: 0.4, tint: [1.1, 1.9, 3.2] } // 해골 소총수 → 물총 진행요원 (하늘)
+CUTE_SPECS[17] = { file: 'cute_ninja', size: 1.05, clips: big('Weapon'), windup: 0.4, tint: [3.0, 1.3, 2.0] } // 사냥꾼 구울 → 물뿌리개 진행요원 (분홍)
+CUTE_SPECS[18] = { file: 'cute_ninja', size: 1.05, clips: big('Weapon'), windup: 0.4, tint: [3.0, 2.6, 0.9] } // 지하도 경비병 → 연발 물총 진행요원 (노랑)
+CUTE_SPECS[19] = { file: 'cute_ninja', size: 1.05, clips: big('Weapon'), windup: 0.5, tint: [2.1, 1.5, 3.2] } // 심연 저격수 → 저격 물총 진행요원 (보라)
 
 /** 지금 분위기의 괴물 모델 (없으면 도형 괴물) */
 export const specOf = (kind: number): ModelSpec | undefined => (isBright() ? CUTE_SPECS[kind] : MODEL_SPECS[kind])
@@ -247,6 +263,8 @@ export const FILE_ANCHORS: Record<string, Partial<Record<AnchorName, string>>> =
   warden: { head: 'head_2_062', chest: 'chest_2_013', hips: 'hips_2_01', handR: 'R_wrist_2_041', handL: 'L_wrist_2_017' },
   // 방패병 — 방패 도형을 가슴에 (GLTFLoader 가 '.' 과 ' ' 를 다듬는다: "Hand.L_68" → "HandL_68")
   shield: { head: 'Head_47', chest: 'Torso_49', hips: 'Pelvis_52', handR: 'HandR_86', handL: 'HandL_68' },
+  // 물총 진행요원 (Quaternius — 손 뼈가 없어 가운뎃손가락 뿌리를 손으로)
+  cute_ninja: { head: 'Head', chest: 'Torso', hips: 'Hips', handR: 'Middle1R', handL: 'Middle1L' },
 }
 
 export interface BakedModel {

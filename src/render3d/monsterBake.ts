@@ -47,7 +47,8 @@ async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
   const root = cloneSkinned(gltf.scene)
   const meshes: THREE.Mesh[] = []
   root.traverse((o) => {
-    if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh)
+    const mesh = o as THREE.Mesh
+    if (mesh.isMesh && !spec.hide?.includes((mesh.material as THREE.Material).name)) meshes.push(mesh)
   })
   const segs = SEG_ORDER.filter((s) => spec.clips[s])
   const seg: BakedModel['seg'] = {}

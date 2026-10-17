@@ -484,16 +484,21 @@ describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
     p.hp = 1
     p.invuln = 0
     let by = -2
+    let sum: number | undefined
     for (let t = 0; t < 600 && by === -2; t++) {
       lead.x = p.x + 20
       lead.y = p.y
       g.run(() => idle())
-      for (const e of g.s.events) if (e.type === 'down' && e.p === 0) by = e.by ?? -1
+      for (const e of g.s.events)
+        if (e.type === 'down' && e.p === 0) {
+          by = e.by ?? -1
+          sum = e.sum
+        }
       p.hp = Math.min(p.hp, 1)
     }
     expect(by).toBeGreaterThanOrEqual(0)
-    const killer = areaView(g.s, 1).monsters.find((m) => m.id === by)
-    expect(killer?.sum).toBe(4)
+    // 쓰러뜨린 괴물이 터져 사라졌어도(부푼 시체) 이벤트에 소환 표가 실린다
+    expect(areaView(g.s, 1).monsters.find((m) => m.id === by)?.sum ?? sum).toBe(4)
   })
 })
 

@@ -216,7 +216,8 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
     if (guarding(target, me) && !w.melee) {
       fx = -(target.y - me.y) * mem.strafeDir + (target.x - me.x) * 0.3
       fy = (target.x - me.x) * mem.strafeDir + (target.y - me.y) * 0.3
-    } else if (w.melee || d > pref * 1.15) {
+    } else if (w.melee || d > pref * 1.15 || !mem.seen) {
+      // 벽에 가려 안 보이면 물러서지 않고 보이는 자리로 간다 (2026-10-17: 보스 방 고리 벽 너머 보스 앞에서 다가갔다 · 물러났다를 몇 분씩 되풀이했다)
       const dir = pathDir(state, map, me.x, me.y, target.x, target.y)
       fx = dir.x
       fy = dir.y

@@ -22,7 +22,7 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MOB_HP, MonsterDef, UNIQUE, isBossLike, xpFor, xpGapMul,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MOB_HP, MonsterDef, gunBurst, gunCooldown, UNIQUE, isBossLike, xpFor, xpGapMul,
   bodyR, GIANT_HP, fromBehind, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
@@ -66,7 +66,8 @@ const CHARGE_SPEED = 12
 
 /** 틱 안에서만 쓰는 폭발 대기열 (틱이 끝나면 늘 비어 있다 → 상태가 아니다) */
 /** safe = 플레이어는 다치지 않는다 (전설 "시체 폭탄") */
-const booms: { x: number; y: number; r: number; dmg: number; by: number; safe?: boolean }[] = []
+/** by = 공을 받을 사람(몬스터를 맞히면) · mon = 터진 괴물(사람을 쓰러뜨리면 그 괴물이 쓰러뜨린 것 — "○○님의 막 보스에게 쓰러짐") */
+const booms: { x: number; y: number; r: number; dmg: number; by: number; safe?: boolean; mon?: number }[] = []
 /** 분열 정예가 낳을 구울 (이번 틱 끝에 넣는다 — 몬스터 배열을 도는 중에 늘리지 않게) */
 const spawns: { kind: number; x: number; y: number; pack: number; hpMul: number; pow: number; lvl: number }[] = []
 const grids = new WeakMap<GameMap, Grid>()
@@ -2154,7 +2155,8 @@ function downPlayer(state: GameState, p: PlayerState, by = -1): void {
   p.killStreak = 0
   p.fx.fill(0)
   p.rateMul = 1
-  state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y, by })
+  const k = by >= 0 ? state.monsters.find((q) => q.id === by) : undefined
+  state.events.push({ type: 'down', p: p.id, x: p.x, y: p.y, by, sum: k?.sum, sumBy: k?.sumBy })
 }
 
 /**
@@ -3360,7 +3362,7 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
     const nGlobe = isBossLike(m) ? 2 : m.elite ? 1 : rand(state.rng) < def.globe * GLOBE_DROP_MUL ? 1 : 0
     for (let k = 0; k < nGlobe; k++) dropGlobe(state, m.x + k * 20, m.y + k * 8, GLOBE_HEAL_FRAC)
     // 쓰러뜨려도 터진다 — 약하게
-    if (def.attack === 'explode') booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round(def.dmg * DEATH_BLAST_MULT), by })
+    if (def.attack === 'explode') booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round(def.dmg * DEATH_BLAST_MULT), by, mon: m.id })
   }
   if (m.elite & EA_VOLATILE) {
     const t = AFFIX_TUNE.fuseTicks
@@ -4022,7 +4024,7 @@ function runBooms(state: GameState, map: GameMap, grid: Grid): void {
       if (!isActive(p) || b.safe) continue
       if (len(p.x - b.x, p.y - b.y) > b.r + PLAYER_RADIUS) continue
       if (rayBlocked(map, b.x, b.y, p.x, p.y)) continue
-      hurtPlayer(state, p, b.dmg, -1, b.x, b.y)
+      hurtPlayer(state, p, b.dmg, b.mon ?? -1, b.x, b.y)
     }
     if (b.by === -2) continue
     const hit: Monster[] = []
@@ -4267,6 +4269,7 @@ function stepMonsters(state: GameState, map: GameMap): void {
       if (attack) {
         m.st = MS_WINDUP
         m.t = def.windup
+        if (def.gun) m.burst = 0
         m.aim = face
         m.ax = tp.x
         m.ay = tp.y
@@ -4764,19 +4767,34 @@ function resolveAttack(state: GameState, m: Monster, def: MonsterDef): void {
     m.t = def.recover
     m.cd = def.cooldown
   } else if (def.attack === 'ranged') {
-    const a = atan2A(m.ay - m.y, m.ax - m.x)
+    const a0 = atan2A(m.ay - m.y, m.ax - m.x)
     const sp = def.shotSpeed ?? 5
-    const sx = m.x + cosA(a) * (def.r + 4)
-    const sy = m.y + sinA(a) * (def.r + 4)
-    state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: def.shotSlow ?? 0, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
+    const g = def.gun
+    const n = g?.pellets ?? 1
+    const sx = m.x + cosA(a0) * (def.r + 4)
+    const sy = m.y + sinA(a0) * (def.r + 4)
+    for (let k = 0; k < n; k++) {
+      // 산탄은 부채꼴로 고르게 · 한 발짜리 총은 발마다 조금 흔들린다
+      const off = n > 1 ? Math.round((k / (n - 1) - 0.5) * (g!.spread ?? 0)) : g?.spread ? Math.round((rand(state.rng) - 0.5) * g.spread) : 0
+      const a = (a0 + off) & 1023
+      state.mshots.push({ id: state.nextShotId++, kind: m.kind, by: m.id, slow: def.shotSlow ?? 0, x: sx, y: sy, vx: cosA(a) * sp, vy: sinA(a) * sp, life: def.shotLife ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), r: def.shotR ?? 6 })
+    }
     state.events.push({ type: 'mshot', m: m.id, kind: m.kind, x: sx, y: sy })
+    if (g) {
+      // 연발: 남은 발이 있으면 예고 없이 gap 틱 뒤 또 — 조준한 자리 그대로(첫 예고선 밖으로 비키면 다 빗나간다)
+      m.burst = (m.burst || gunBurst(def, m.lvl)) - 1
+      if (m.burst > 0) {
+        m.t = g.gap ?? 6
+        return
+      }
+    }
     m.st = MS_RECOVER
     m.t = def.recover
-    m.cd = def.cooldown
+    m.cd = g ? gunCooldown(def, m.lvl) : def.cooldown
   } else {
     // 부풀었다가 터진다 — 스스로 죽는다
     killMonster(state, m, -1, true)
-    booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), by: -1 })
+    booms.push({ x: m.x, y: m.y, r: def.blast ?? 80, dmg: Math.round((def.dmg * m.pow) / 100), by: -1, mon: m.id })
   }
 }
 

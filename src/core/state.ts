@@ -484,6 +484,8 @@ export interface Monster {
   stagT?: number
   /** 시련의 수호자 (1) — 막 보스 모습이지만 막 보스 처치 · 퀘스트 · 업적으로 치지 않고 즉사기도 없다 */
   rg?: number
+  /** 총잡이: 이번 연발에 남은 발 (0 이면 다음 발에서 gunBurst 로 새로 센다) */
+  burst?: number
 }
 
 /** 몬스터 상태 */
@@ -653,7 +655,8 @@ export type SimEvent =
   /** 플레이어가 맞음 (by = 몬스터 id, 플레이어가 아니다) */
   | { type: 'hurt'; p: number; by: number; x: number; y: number; dmg: number }
   /** by = 쓰러뜨린 것(몬스터 id · 사람은 -(번호+1) · 모르면 -1) — 후원 결과 알림 "○○님의 막 보스에게 쓰러짐"(2026-09-26) */
-  | { type: 'down'; p: number; x: number; y: number; by?: number }
+  /** sum · sumBy = 쓰러뜨린 괴물의 후원 소환 표 (터져서 이미 사라진 괴물도 알림을 띄울 수 있게) */
+  | { type: 'down'; p: number; x: number; y: number; by?: number; sum?: number; sumBy?: number }
   | { type: 'revive'; p: number; by: number; x: number; y: number }
   /** 죽음. by = 죽인 플레이어 (투기장), 던전은 -1 */
   | { type: 'death'; p: number; by: number; x: number; y: number; out: boolean }
