@@ -6,6 +6,8 @@ import { BOSS_PATS, MONSTER_LIST } from '../core/monsters'
 import { DONATE_EVENTS } from '../core/donate'
 import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_TEXT } from '../core/world'
 import { registerText } from './skin'
+import { ACHIEVEMENTS } from '../core/stats'
+import { LEGENDS, SETS } from '../core/items'
 
 // ---- 괴물 (행동은 그대로 · 이름 · 모습만) ----
 const MONSTER_NAMES: Record<string, string> = {
@@ -198,6 +200,37 @@ for (const p of BOSS_PATS) {
   if (t[1] && p.line) registerText(p, 'line', t[1])
   if (t[2] && p.hint) registerText(p, 'hint', t[2])
 }
+
+// ---- 업적 · 전설 · 세트 이름 (업적 배너 · 기록 창 · 아이템 이름표 — 효과는 그대로) ----
+const ACH_TEXT: Record<string, [string | null, string]> = {
+  goblin10: ['토끼 잡이', '보물 토끼 10마리'],
+  boss1: ['버섯 따기', '1막 보스 술래 버섯왕을 이긴다'],
+  boss2: ['꿀단지를 열고', '2막 보스 여왕벌을 이긴다'],
+  boss3: ['깃발을 빼앗다', '3막 보스 진행요원 반장을 이긴다'],
+  boss4: ['마지막 도장', '최종 보스 파티 드래곤을 이긴다'],
+  nightmare: [null, '악몽 난이도의 파티 드래곤'],
+  hell: [null, '지옥 난이도의 파티 드래곤'],
+}
+for (const a of ACHIEVEMENTS) {
+  const t = ACH_TEXT[a.id]
+  if (!t) continue
+  if (t[0]) registerText(a, 'name', t[0])
+  registerText(a, 'desc', t[1])
+}
+registerText(LEGENDS[0], 'name', '달콤한 갈증')
+registerText(LEGENDS[1], 'name', '풍선 폭탄')
+registerText(LEGENDS[1], 'desc', '처치하면 25% 확률로 그 자리가 퐁 터진다 (주위 적에게 그 적 최대 체력의 30%)')
+const SET_TEXT: [string, string][] = [
+  ['참가자의 다짐', '참가자'],
+  ['버섯왕의 잠자리채', '버섯왕'],
+  ['여왕벌의 날개', '벌 날개'],
+  ['드래곤의 약속', '드래곤'],
+]
+SETS.forEach((d, i) => {
+  if (!SET_TEXT[i]) return
+  registerText(d, 'name', SET_TEXT[i][0])
+  registerText(d, 'tag', SET_TEXT[i][1])
+})
 
 // ---- 후원 이벤트 이름 (효과 · 금액은 그대로) ----
 const DON_TEXT: Record<string, string> = { horde: '괴물 떼', hell: '깜짝 파티' }

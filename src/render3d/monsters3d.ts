@@ -870,8 +870,12 @@ const BUILDERS = [
 // 도살자(3)는 실사 모델(Pig Demon)이 구부정해 1.05 → 0.8 · 포격 악마(14)는 네 발 짐승(balrog)이 되어 1.3 → 0.9 (2026-09-23 — 보스 이름표가 머리 위로 한참 떴다)
 // 고블린 · 주술사 · 방패병 · 강령술사 · 토사꾼 · 그림자는 2026-09-24 제 모델 키에 맞췄다 (0.85 · 1.2 · 1.3 · 1.3 · 0.7 · 1.3)
 /** 괴물 키 (월드 단위 — 이름표 · 말풍선 자리) */
-export function monsterTop(m: { kind: number; sum?: number }): number {
-  return MONSTER_TOP[m.kind] * (MONSTER_LIST[m.kind].r / 13) * (isGiant(m) ? GIANT_VIEW : m.kind === GOBLIN_KIND ? GOBLIN_VIEW : 1)
+export function monsterTop(m: { kind: number; sum?: number; elite?: number }): number {
+  return MONSTER_TOP[m.kind] * (MONSTER_LIST[m.kind].r / 13) * viewScale(isGiant(m), m.kind, m.elite ?? 0)
+}
+/** 그릴 때 크기 배율 — 모델(put)과 이름표 · 체력 막대 높이(monsterTop)가 같이 쓴다 (정예 막대가 이마에 · 우두머리 이름표가 가슴에 박혔다) */
+function viewScale(giant: boolean, kind: number, elite: number): number {
+  return giant ? GIANT_VIEW : kind === GOBLIN_KIND ? GOBLIN_VIEW : elite & 64 ? 1.7 : elite ? 1.35 : 1
 }
 /** 네 발 짐승 (거대한 보스를 겨눌 때 옆으로 넓다) */
 export const isQuadruped = (kind: number): boolean => QUADRUPEDS.has(kind)
@@ -1327,7 +1331,7 @@ export class MonsterView {
     else counts[kind]++
     const def = MONSTER_LIST[kind]
     // 구울(13px) 기준 크기 · 정예·우두머리는 더 크게 · 보스 방의 막 보스는 네 배 (화면을 거의 채운다)
-    const size = (def.r / 13) * (a.giant ? GIANT_VIEW : kind === GOBLIN_KIND ? GOBLIN_VIEW : a.unique ? 1.7 : a.elite ? 1.35 : 1)
+    const size = (def.r / 13) * viewScale(!!a.giant, kind, a.unique ? 64 : a.elite ? 1 : 0)
     // 발밑 그림자: 실사 떼 괴물 (살아 있을 때 · 쓰러지는 동안은 옅게 사라진다)
     if (model && !def.boss && corpseT === 0 && a.dead < 1 && this.blobN < CAP * 4) {
       const r = size * (QUADRUPEDS.has(kind) ? 0.55 : 0.42) * (1 - a.dead * 0.6)

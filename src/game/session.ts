@@ -1130,7 +1130,7 @@ export class Session {
         const now = performance.now()
         if (now - this.lastWpHint > 5000) {
           this.lastWpHint = now
-          this.renderer.hud.notice('웨이포인트 — 적을 정리한 뒤 F 로 이동 창', '#7ab8ff')
+          this.renderer.hud.notice(`웨이포인트 — 적을 정리한 뒤 ${keyLabel('use')} 로 이동 창`, '#7ab8ff')
         }
         return
       }

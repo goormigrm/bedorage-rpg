@@ -4,7 +4,7 @@
 
 import { itemIconUrl } from './itemIcons'
 import { clickSuppressed, makeDraggable } from './dragItem'
-import { bt, isBright } from '../game/skin'
+import { bt, isBright, registerText } from '../game/skin'
 import { npcPortrait } from './portrait'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
 import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
@@ -149,6 +149,10 @@ const LINES: Record<NpcId, string> = {
   captain: '혼자 가기 무서우면 말해. 쓸 만한 녀석을 붙여 주지.',
   trial: '문 너머는 매번 다르다. 버티는 만큼 깊이 내려간다.',
 }
+// ☀ 철면수심전용 말투 (퀘스트 글처럼 "~해요") — 이름만 바뀐 사람이 어두운 대사를 하던 것 (2026-10-17 검토)
+registerText(LINES, 'elder', '어서 와요, 참가자 여러분! 할 일이 생기면 저한테 물어봐요 — 서로 도와요.')
+registerText(LINES, 'captain', '혼자 가기 무서우면 말해요. 같이 뛸 친구를 붙여 줄게요.')
+registerText(LINES, 'trial', '문 너머 놀이는 매번 달라요. 이기는 만큼 다음 판으로!')
 
 export class TownPanel {
   readonly el: HTMLElement

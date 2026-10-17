@@ -7,7 +7,7 @@ import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE } from '../core/map'
 import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
-import { ACID, BOSS_PATS, EA_SHIELD, EA_UNIQUE, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
+import { ACID, BOSS_PATS, EA_SHIELD, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
 /** 팔 묶음의 제자리 높이 (내려치기에서 잠깐 올렸다가 되돌린다) */
 function armsBaseY(rig: { arms: THREE.Object3D }): number {
@@ -19,6 +19,8 @@ function armsBaseY(rig: { arms: THREE.Object3D }): number {
 /** 보스 등장 배너의 한 줄 (막 보스 넷) */
 /** 밝은 분위기의 색종이 (맞음 · 쓰러짐 — 피 대신) */
 const CONFETTI = [0xff6fa8, 0x4fd6b0, 0xffc845, 0x6aa8ff, 0xb98cff, 0xffffff]
+/** 마을 이름표 높이 — 모자 위 · 궤짝 위 · 시련의 문 위 (npc3d 모양 높이 + 0.3). 사람은 1.8 */
+const NPC_LABEL_H: Record<string, number> = { stash: 1.4, trial: 2.8 }
 
 const BOSS_INTRO: Record<string, string> = {
   butcher: '성당 지하의 푸줏간 — 갈고리에 걸린 것은 모두 고기가 된다',
@@ -1276,7 +1278,7 @@ export class Renderer3D {
           const qd = QUESTS[e.q]
           const nextAct = e.q === actBossQuest(qd.act) ? qd.act + 1 : -1
           if (nextAct > 0 && nextAct < ACTS.length) {
-            this.hud.banner(`${qd.act + 1}막을 끝냈다 — ${ACTS[nextAct].name}`, bt('보스가 섰던 자리에 문이 열렸다 · F 로 건너간다 (마을 촌장에게도 부탁할 수 있다)'), '#e0a8ff')
+            this.hud.banner(`${qd.act + 1}막을 끝냈다 — ${ACTS[nextAct].name}`, bt(`보스가 섰던 자리에 문이 열렸다 · ${keyLabel('use')} 로 건너간다 (마을 촌장에게도 부탁할 수 있다)`), '#e0a8ff')
           } else {
             this.hud.banner(`퀘스트 이룸 — ${qd.name}`, bt('마을의 촌장 카인에게 보고하라'), '#ffd86a')
           }
@@ -1305,8 +1307,8 @@ export class Renderer3D {
         case 'riftDone': {
           const mm = Math.floor(e.t / 3600)
           const ss = String(Math.floor((e.t % 3600) / 60)).padStart(2, '0')
-          if (e.ok) this.hud.banner(bt(`시련 ${e.stage}단계 성공`), bt(`${mm}:${ss} · 다음 단계가 열렸다 — 보랏빛 문(F)으로 마을에 가서 시련의 문에서 다음 단계`), '#d8b8ff')
-          else this.hud.banner(bt(`시련 ${e.stage}단계 끝`), bt(`시간 초과(${mm}:${ss}) — 단계는 그대로 · 보랏빛 문(F)으로 마을에`), '#ff9a8a')
+          if (e.ok) this.hud.banner(bt(`시련 ${e.stage}단계 성공`), bt(`${mm}:${ss} · 다음 단계가 열렸다 — 보랏빛 문(${keyLabel('use')})으로 마을에 가서 시련의 문에서 다음 단계`), '#d8b8ff')
+          else this.hud.banner(bt(`시련 ${e.stage}단계 끝`), bt(`시간 초과(${mm}:${ss}) — 단계는 그대로 · 보랏빛 문(${keyLabel('use')})으로 마을에`), '#ff9a8a')
           break
         }
         case 'mastery': {
@@ -1351,7 +1353,7 @@ export class Renderer3D {
         case 'wpFound':
           if (e.p === localPlayer) {
             // 창은 띄우지 않는다 — 알리기만 (2026-09-25 사용자: "찍었을 때 알려만 주고")
-            this.hud.notice(`웨이포인트 열림 — ${areaDef(e.area).name} · F 로 이동 창`, '#7ab8ff')
+            this.hud.notice(`웨이포인트 열림 — ${areaDef(e.area).name} · ${keyLabel('use')} 로 이동 창`, '#7ab8ff')
             const l = areaLayout(e.area, this.map)
             if (l.wp) this.spawnRing(l.wp.x * U, l.wp.y * U, 0.3, 2.4, 0.7, 0x7ab8ff)
           }
@@ -2087,10 +2089,11 @@ export class Renderer3D {
     // HUD
     this.hud.begin(dt)
     const st: ScreenText[] = this.texts.map((t) => {
-      const p = this.worldToScreen(t.x + (t.dx ?? 0) * (1 - t.life / t.max), t.y + (1 - t.life / t.max) * 0.8, t.z)
       const k = t.life / t.max
+      const p = this.worldToScreen(t.x, t.y + (1 - k) * 0.8, t.z)
       // 막 뜰 때 크게 튀었다가 제 크기로 (덕코프 숫자 느낌). 헤드샷은 더 크게 튄다
-      return { x: p.x + (t.sx ?? 0), y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
+      // 옆으로 흩어지는 것(dx)은 화면 가로로 — 맵 x 에 더하면 쿼터뷰에서 오른쪽 아래로 흘러 숫자마다 뜨는 높이가 달랐다
+      return { x: p.x + (t.sx ?? 0) + (t.dx ?? 0) * 40 * (1 - k), y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
     this.drawMonsterBars(curr)
     this.drawAllyTags(curr)
@@ -2921,16 +2924,16 @@ export class Renderer3D {
         ctx.strokeStyle = isTown(e.to) ? '#ffd88a' : '#ff9a5a'
         ctx.lineWidth = 2.5 * rp
         ctx.strokeRect(e.x / TILE - 4 * rp, e.y / TILE - 4 * rp, 8 * rp, 8 * rp)
-        place(e.x, e.y - 34, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+        place(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
       }
       if (l.wp) {
         dot(l.wp.x, l.wp.y, '#7ab8ff', 4)
-        place(l.wp.x, l.wp.y - 34, '웨이포인트', '#9ac8ff')
+        place(l.wp.x, l.wp.y, '웨이포인트', '#9ac8ff')
       }
       const gdef = areaDef(curr.curArea)
       if (gdef.gate !== undefined && l.special && me && gateOpen(gdef, me)) {
         dot(l.special.x, l.special.y, '#c86aff', 5)
-        place(l.special.x, l.special.y - 34, `→ ${AREAS[gdef.gate].name}`, '#e0a8ff')
+        place(l.special.x, l.special.y, `→ ${AREAS[gdef.gate].name}`, '#e0a8ff')
       }
       for (const q of curr.portals) {
         const at = isTown(curr.curArea) ? townPortalSpot(l, q.owner) : q.area === curr.curArea ? q : null
@@ -2939,7 +2942,7 @@ export class Renderer3D {
       for (const n of townNpcs(curr.curArea)) {
         const c = NPC_DOT[n.id] ?? '#e8d6a8'
         dot(n.x, n.y, c, 4)
-        place(n.x, n.y - 30, NPC_NAMES[n.id], c)
+        place(n.x, n.y, NPC_NAMES[n.id], c)
       }
     }
     // 사람들 (나는 노랑 · 동료는 파랑). 내 것은 테두리와 바라보는 방향까지 — 넓은 지도에서 점 하나는 잘 안 보인다
@@ -2970,13 +2973,15 @@ export class Renderer3D {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = '700 12px "Nanum Myeongjo", serif'
+    // 이름표는 점 바로 위(화면 px) — 돌린 지도에서 맵 y 를 빼서 올리면 오른쪽 위로 비껴 나 점을 덮었다
     for (const t of labels) {
       if (t.x < x || t.x > x + w || t.y < y || t.y > y + h) continue
       const tw = ctx.measureText(t.t).width + 10
+      const ly = t.y - 16
       ctx.fillStyle = 'rgba(8,7,6,0.78)'
-      ctx.fillRect(t.x - tw / 2, t.y - 9, tw, 18)
+      ctx.fillRect(t.x - tw / 2, ly - 9, tw, 18)
       ctx.fillStyle = t.c
-      ctx.fillText(t.t, t.x, t.y)
+      ctx.fillText(t.t, t.x, ly)
     }
     ctx.font = '600 12px "IBM Plex Sans KR", sans-serif'
     ctx.lineJoin = 'round'
@@ -3130,9 +3135,9 @@ export class Renderer3D {
       ctx.globalAlpha = fade
       // 체력: 머리 위 가로 막대
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
-      ctx.fillRect(s.x - w / 2, s.y + 4, w, mine ? 6 : 5)
+      ctx.fillRect(s.x - w / 2, ny + 4, w, mine ? 6 : 5)
       ctx.fillStyle = hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
-      ctx.fillRect(s.x - w / 2 + 1, s.y + 5, (w - 2) * hpK, mine ? 4 : 3)
+      ctx.fillRect(s.x - w / 2 + 1, ny + 5, (w - 2) * hpK, mine ? 4 : 3)
       // 기력: 캐릭터 오른쪽 세로 막대 (나·아군만)
       if (mine || ally) {
         const bh = 34
@@ -3669,9 +3674,10 @@ export class Renderer3D {
     ctx.save()
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    const label = (x: number, y: number, text: string, color: string): number | null => {
+    // 이름표는 그 물체 머리 바로 위(높이 h)에 — 맵의 y 를 빼서 올리면 쿼터뷰에서는 오른쪽 위로 비껴 났다 (2026-10-17 사용자)
+    const label = (x: number, y: number, text: string, color: string, h = 1.6): number | null => {
       if (Math.hypot(x - me.x, y - me.y) > 12 * 32) return null
-      const s = this.worldToScreen(x * U, 1.6, y * U)
+      const s = this.worldToScreen(x * U, h, y * U)
       ctx.font = '700 13px "Nanum Myeongjo", serif'
       const w = ctx.measureText(text).width + 14
       const cy = this.placeLabel(s.x, s.y, w, 20)
@@ -3684,20 +3690,21 @@ export class Renderer3D {
     }
     // 이름표의 키는 설정을 따른다 (2026-09-23 키 재설정 — 기본 F)
     const F = keyLabel('use')
-    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · ${F}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · ${F}`, isTown(e.to) ? '#ffd88a' : '#ffb07a', e.gate ? 2.4 : 1.6)
     // 다음 막 문 (보스를 잡았을 때만 보인다)
     const gdef = areaDef(curr.curArea)
     if (gdef.gate !== undefined && l.special && gateOpen(gdef, me)) {
-      label(l.special.x, l.special.y - 40, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · ${F}`, '#e0a8ff')
+      label(l.special.x, l.special.y, `→ ${ACTS[gdef.act + 1].name} · ${AREAS[gdef.gate].name} · ${F}`, '#e0a8ff', 2.85)
     }
     const em = elderMarks(me.quests ?? [])
     const elderMark = em.report ? '?' : em.offer ? '!' : ''
     for (const n of townNpcs(curr.curArea)) {
-      const ly = label(n.x, n.y - 44, `${NPC_NAMES[n.id]} · ${F}`, n.id === 'elder' && elderMark ? '#ffd84a' : '#e8d6a8')
+      const h = NPC_LABEL_H[n.id] ?? 1.8
+      const ly = label(n.x, n.y, `${NPC_NAMES[n.id]} · ${F}`, n.id === 'elder' && elderMark ? '#ffd84a' : '#e8d6a8', h)
       // 촌장 머리 위 **큰** ! · ? (2026-09-27 사용자: "촌장 카인의 ! · ? 표시를 더 알아보기 쉽게 크게" — 전에는 이름표 앞 작은 글자였다):
       // 보고할 것이 있으면 ?, 맡을 것이 있으면 ! — 모든 막 공유 · 금빛으로 빛나며 위아래로 통통 · 멀리서도 보이게 거리 제한 없이
       if (n.id === 'elder' && elderMark) {
-        const s = this.worldToScreen(n.x * U, 1.6, (n.y - 44) * U)
+        const s = this.worldToScreen(n.x * U, h, n.y * U)
         // 이름표가 비켜 올라갔으면 ! · ? 도 따라 올라간다
         if (ly !== null) s.y = ly
         const bob = Math.sin(this.t * 3.2) * 5
@@ -3721,16 +3728,16 @@ export class Renderer3D {
       if (o.kind === OBJ_CURSED && o.v > 0) continue
       const name = o.kind === OBJ_SHRINE ? SHRINE_NAMES[o.v] : o.kind === OBJ_GOLDCHEST ? '금빛 상자' : o.kind === OBJ_CURSED ? bt('저주받은 상자') : o.kind === OBJ_SECRET ? '숨은 보물' : '상자'
       const col = o.kind === OBJ_GOLDCHEST || o.kind === OBJ_SECRET ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : o.kind === OBJ_CURSED ? '#c88aff' : '#d8cfbf'
-      label(o.x, o.y, `${name} · ${F}`, col)
+      label(o.x, o.y, `${name} · ${F}`, col, o.kind === OBJ_SHRINE ? 1.85 : o.kind === OBJ_CURSED ? 1.05 : o.kind === OBJ_SECRET ? 0.8 : 0.95)
     }
     if (l.wp) label(l.wp.x, l.wp.y, `웨이포인트 · ${F}`, '#9ac8ff')
     if (isTown(curr.curArea)) {
       for (const q of curr.portals) {
         const at = townPortalSpot(l, q.owner)
-        if (at) label(at.x, at.y - 40, `타운 포털 → ${areaDef(q.area).name}`, '#9ac8ff')
+        if (at) label(at.x, at.y, `타운 포털 → ${areaDef(q.area).name}`, '#9ac8ff', 2.35)
       }
     } else {
-      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y - 40, q.owner < 0 ? `마을로 · ${F}` : `타운 포털 · ${F}`, q.owner < 0 ? '#d8b8ff' : '#9ac8ff')
+      for (const q of curr.portals) if (q.area === curr.curArea) label(q.x, q.y, q.owner < 0 ? `마을로 · ${F}` : `타운 포털 · ${F}`, q.owner < 0 ? '#d8b8ff' : '#9ac8ff', 2.35)
     }
     ctx.restore()
   }
@@ -4540,7 +4547,9 @@ export class Renderer3D {
   private drawBossPlate(ctx: CanvasRenderingContext2D, curr: GameState, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
     const unique = !def.boss
     const p = this.bossPlateAt(m, at, def)
-    const name = (unique && curr.curArea >= 0 ? areaDef(curr.curArea).unique?.name : undefined) ?? def.name
+    // 후원으로 부른 우두머리(중간보스)는 그 지역 우두머리 이름이 아니라 제 이름 — 위쪽 막대("○○님의 구울 · 중간보스")와 같게
+    const summoned = m.sum !== undefined
+    const name = (unique && !summoned && curr.curArea >= 0 ? areaDef(curr.curArea).unique?.name : undefined) ?? def.name
     const col = unique ? '#ffb46a' : '#ff6a4a'
     ctx.save()
     ctx.textAlign = 'center'
@@ -4571,7 +4580,7 @@ export class Renderer3D {
     ctx.fillText(name, p.x, by - 6)
     ctx.shadowBlur = 0
     // 표: ── 보스 ── / ── 우두머리 ──
-    const tag = unique ? '우두머리' : '보스'
+    const tag = unique ? (summoned ? '중간보스' : '우두머리') : '보스'
     const ty = by - 32
     ctx.font = '800 11px "IBM Plex Sans KR", sans-serif'
     const tw = ctx.measureText(tag).width
@@ -4615,11 +4624,11 @@ export class Renderer3D {
 
   /**
    * 보스 이름표 자리: 모델 키 바로 위 (실사 모델은 키 = MONSTER_TOP × 크기 — 예전 1.4 배는 머리 위로 한참 떴다).
-   * 거대한 보스는 머리가 화면 위로 나가기도 한다 → 화면 안(위에서 90px)에 붙잡아 둔다
+   * 거대한 보스는 머리가 화면 위로 나가기도 한다 → 화면 안에 붙잡아 둔다 — 위쪽 가운데 보스 막대 판(y 14 ~ 56)과 겹치지 않게 118px (표 꼭대기가 p.y - 55)
    */
   private bossPlateAt(m: Monster, at: { x: number; z: number }, _def: MonsterDef): { x: number; y: number } {
     const p = this.worldToScreen(at.x, monsterTop(m) + 0.3, at.z)
-    if (isGiant(m)) p.y = Math.max(p.y, 90)
+    if (isGiant(m)) p.y = Math.max(p.y, 118)
     return p
   }
 
@@ -4662,12 +4671,14 @@ export class Renderer3D {
 
   /** 괴물 머리 위: 후원 소환 이름표("○○님의 도살자") · 말풍선(방송 채팅 · 후원 글). 말풍선 자리를 기억해 둔다 */
   private drawSay(ctx: CanvasRenderingContext2D, m: Monster, at: { x: number; z: number }, def: MonsterDef): void {
-    const top = isGiant(m) ? monsterTop(m) : MONSTER_TOP[m.kind] * (def.r / 13) * ((m.elite & EA_UNIQUE) || def.boss ? 1.4 : 1)
+    const top = monsterTop(m)
     let head = this.worldToScreen(at.x, top + 0.35, at.z)
-    // 보스 · 우두머리는 큰 이름표(drawBossPlate) 위로
+    let under: number | undefined
+    // 보스 · 우두머리는 큰 이름표(drawBossPlate) 위로 · 위에 자리가 없으면 표 아래로
     if (isBossLike(m)) {
       const p = this.bossPlateAt(m, at, def)
       head = { x: p.x, y: p.y - BOSS_PLATE_H }
+      under = p.y + 8
     } else if (m.elite) {
       // 정예: 이름 · 능력 글씨를 크게 한 만큼(2026-10-08) 말풍선을 위로 — 겹치지 않게
       head = { x: head.x, y: head.y - 26 }
@@ -4709,7 +4720,7 @@ export class Renderer3D {
     say.x = at.x
     say.z = at.z
     say.top = top
-    this.drawBubble(ctx, head, say)
+    this.drawBubble(ctx, head, say, under)
   }
 
   /**
@@ -4755,7 +4766,8 @@ export class Renderer3D {
     }
   }
 
-  private drawBubble(ctx: CanvasRenderingContext2D, head: { x: number; y: number }, say: { nick: string; text: string; until: number; gold: boolean; warn?: boolean }): void {
+  /** under: 머리 위에 자리가 없을 때(화면 위 보스 막대 판까지 62px 안) 풍선 윗변을 둘 y — 꼬리는 위를 가리킨다 */
+  private drawBubble(ctx: CanvasRenderingContext2D, head: { x: number; y: number }, say: { nick: string; text: string; until: number; gold: boolean; warn?: boolean }, under?: number): void {
     const left = say.until - performance.now()
     if (left <= 0) return
     ctx.save()
@@ -4769,7 +4781,8 @@ export class Renderer3D {
     const w = Math.max(tw, nw) + (warn ? 30 : 22)
     const h = warn ? 52 : 40
     const bx = head.x - w / 2
-    const by = head.y - 26 - h
+    const flip = under !== undefined && head.y - 26 - h < 62
+    const by = flip ? under + 8 : head.y - 26 - h
     ctx.fillStyle = warn ? '#2a0406' : say.gold ? '#fff4d0' : '#ffffff'
     roundRect(ctx, bx, by, w, h, 10)
     ctx.fill()
@@ -4779,9 +4792,15 @@ export class Renderer3D {
       ctx.stroke()
     }
     ctx.beginPath()
-    ctx.moveTo(head.x - 6, by + h - 1)
-    ctx.lineTo(head.x + 6, by + h - 1)
-    ctx.lineTo(head.x, by + h + 8)
+    if (flip) {
+      ctx.moveTo(head.x - 6, by + 1)
+      ctx.lineTo(head.x + 6, by + 1)
+      ctx.lineTo(head.x, by - 8)
+    } else {
+      ctx.moveTo(head.x - 6, by + h - 1)
+      ctx.lineTo(head.x + 6, by + h - 1)
+      ctx.lineTo(head.x, by + h + 8)
+    }
     ctx.closePath()
     ctx.fill()
     ctx.textAlign = 'center'
@@ -4920,9 +4939,9 @@ export class Renderer3D {
         ctx.font = '600 13px "IBM Plex Sans KR", sans-serif'
         ctx.lineWidth = 3
         ctx.strokeStyle = 'rgba(0,0,0,0.7)'
-        ctx.strokeText('F 누르고 있기: 일으키기', s0.x, s0.y - 32)
+        ctx.strokeText(`${keyLabel('use')} 누르고 있기: 일으키기`, s0.x, s0.y - 32)
         ctx.fillStyle = '#9fe0ff'
-        ctx.fillText('F 누르고 있기: 일으키기', s0.x, s0.y - 32)
+        ctx.fillText(`${keyLabel('use')} 누르고 있기: 일으키기`, s0.x, s0.y - 32)
       }
       ctx.restore()
     }

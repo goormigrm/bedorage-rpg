@@ -8,6 +8,7 @@
 // 눈을 떠 보니 야영지였고, 이곳을 벗어나기 위해 모험을 떠난다" — 계란이 된 것 · 종을 되찾는 흐름에 이어 붙였다
 // 밝은 분위기(2026-10-06 — 계획서 6장): 초대장 → 놀이 섬 대기실 → 도장 넷 → 하원 버스. 끝맺음 "…우리 꿈꾼 거 맞지?" 는 그대로.
 import { isBright } from '../game/skin'
+import { keyLabel } from '../game/keymap'
 import { NPC_NAMES, RIFT_TEXT } from '../core/world'
 import { LEVEL_CAP } from '../core/items'
 import { CHARACTERS, PLAYABLE } from '../core/characters'
@@ -149,7 +150,7 @@ export function showIntro(parent: HTMLElement, onClose: () => void): void {
   el.innerHTML = `<div class="ending-box">
     <h2>${b ? '추억의 놀이에 초대합니다' : '종이 멈춘 밤'}</h2>
     ${intro.map((t, i) => `<p style="animation-delay:${0.6 + i * 1.3}s">${t}</p>`).join('')}
-    <p class="ending-hint" style="animation-delay:${0.6 + intro.length * 1.3}s">${b ? '대기실에서 <b>안내원 모모(F)</b>' : '마을에서 <b>촌장 카인(F)</b>'} 에게 말을 걸면 할 일을 알려 줍니다 · <b>M</b> 으로 지도를 봅니다</p>
+    <p class="ending-hint" style="animation-delay:${0.6 + intro.length * 1.3}s">${b ? `대기실에서 <b>안내원 모모(${keyLabel('use')})</b>` : `마을에서 <b>촌장 카인(${keyLabel('use')})</b>`} 에게 말을 걸면 할 일을 알려 줍니다 · <b>${keyLabel('map')}</b> 으로 지도를 봅니다</p>
     <button class="btn ending-go" style="animation-delay:${0.9 + intro.length * 1.3}s">시작하기</button>
   </div>`
   parent.appendChild(el)

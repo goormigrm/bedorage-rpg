@@ -217,7 +217,7 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     (n, r) =>
       `<button type="button" data-r="${r}" class="${ap & (1 << r) ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}" title="${n} 아이템을 밟으면 ${ap & (1 << r) ? '줍습니다 (누르면 끔)' : '줍지 않습니다 (누르면 켬)'}">${n}</button>`,
   ).join('')
-  const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? '꺼짐 — F 로만' : '켠 등급만'
+  const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? `꺼짐 — ${keyLabel('use')} 로만` : '켠 등급만'
   // 키 설정을 펴면 게임 안(Esc 메뉴)에서는 오른쪽 칸으로 편다 — 아래로 늘어나 화면을 넘던 것(2026-09-23 사용자) 고침
   const kb = !isTouchDevice()
   return (
@@ -240,7 +240,7 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
     (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>` + `<p class="apn">${holdEsc() ? '전체 화면에서 나가기: 이 단추 · 또는 Esc 를 길게(약 2초) — Esc 를 짧게 누르면 게임 메뉴입니다.' : '이 브라우저는 Esc 를 누르면 바로 창으로 돌아갑니다(크롬 · 엣지는 Esc 를 길게 눌러야 나갑니다).'}</p>`) +
     `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
-    `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 F 로 줍습니다.</p></div>` +
+    `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 ${keyLabel('use')} 로 줍습니다.</p></div>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
     `</div>` +
     (kb ? keybindHtml() : '') +

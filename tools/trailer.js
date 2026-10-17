@@ -3,6 +3,7 @@
 // 개발 서버(?shot=1)의 **로비**(캐릭터 고르는 화면)에서 부른다 — 모닥불 장면을 담은 뒤 스스로 방을 만들어(봇 채우기) 판을 연다:
 //   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 두 편(2026-10-09 — 네 편을 둘로 합쳤다 · 편마다 40초 안): t.start({ part: 1 ~ 2, lowMax: 20_000_000 })
 //   ⚠ 2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다" → 출력은 docs/img/patch{1,2}_{dark,bright}.webm (+ _hq). 🌙 판: t.start({ part, skin: 'dark', lowMax })
+//   ⚠ 2026-10-17 사용자: "첫 장면이 썸네일이 돼서 적절치 않아 · 캐릭터 선택 및 마을 장면도 · 2개의 영상 길이를 적절히 분배" → 1편 = 고르는 화면(제목이 박힌 첫 장) → 마을 → 전투 → 1 · 2막 보스 · 2편 = 최종 보스 → 방송 연동 → 저주받은 상자 → 끝 카드
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -37,6 +38,8 @@ let running = false
 let ULT = false
 /** 밝은 분위기 영상인가 (start({ skin: 'bright' })) */
 let BRIGHT = false
+/** 1편이 캐릭터 고르는 화면 → 마을로 여는가 (2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도 추가" — 기본 켬 · start({ select: false }) 로 끔) */
+let SELECT = false
 /** 몇 편 (start({ part: 1 ~ 2 }) — 2026-10-08 사용자: "40초 분량으로 여러 개" · 2026-10-09 "최종 결과물을 2개로 해서 40초 이하 정도씩") */
 let PART = 1
 /** 자막 고르기: 어둡게 · 밝게 */
@@ -755,19 +758,45 @@ function warpAt(area, tx, ty) {
 
 /**
  * 두 편 (2026-10-09 사용자: "20초 미만으로 하나가 작아졌으면 4개가 아니라 최종 결과물을 2개로 해서 40초 이하 정도씩"):
- *   1편 = 세계와 전투 + 막 보스 (약 30초) · 2편 = 방송 연동 + 저주받은 상자 → 끝 카드 (약 28초 — 도전 놀이는 뺐다).
+ *   2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도 추가 — 2개의 영상 길이를 적절히 분배" →
+ *   1편 = 고르는 화면 + 마을 + 세계와 전투 + 1 · 2막 보스 (약 36초) · 2편 = 최종 보스 + 방송 연동 + 저주받은 상자 → 끝 카드 (약 34초).
  * 한 타임라인에 이어 붙인다 — 장면 사이는 녹이기(dissolve)라 한 편 안에서도 검은 장이 없다
  */
 function scenes(part) {
   const tl = timeline()
   if (part === 2) {
+    partBoss(tl, true)
     partStream(tl)
     partEndgame(tl)
   } else {
+    if (SELECT) partTown(tl)
     partWorld(tl)
     partBoss(tl)
     tl.at(0, null)
   }
+  return tl.done()
+}
+
+/** 1편 마을 (약 4초 — 2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도"): 고르는 화면이 녹아 사라지며 파티가 마을을 걷는다 */
+function partTown(tl = timeline()) {
+  const { at } = tl
+  at(0, () => {
+    dissolve(600)
+    holding = true
+    ov.cap = null
+    S().autopilot = false
+    ov.bright = 1.45
+    gatherBots()
+  })
+  at(1.0, () => {
+    holding = false
+    cue('calm', { town: true })
+    caption(L('마을', '대기실'), '상점 · 대장간 · 퀘스트 — 정비하고 출발')
+    zoomTo(1.1, 1.0, 4200)
+    key('KeyD', true)
+  })
+  at(2.4, () => key('KeyD', false))
+  at(1.6, () => {})
   return tl.done()
 }
 
@@ -780,6 +809,7 @@ function partWorld(tl = timeline()) {
   const { at, every } = tl
   // 들판으로 곧장 (준비하는 동안 영상 멈춤 — 마을 · 고르는 화면은 넣지 않는다)
   at(0, () => {
+    dissolve()
     holding = true
     ov.cap = null
     toExit()
@@ -814,13 +844,14 @@ function partWorld(tl = timeline()) {
   at(1.0, () => {
     holding = false
     cue('hot', { act: 0 })
-    flash(1)
+    flash(SELECT ? 0.5 : 1)
     zoomTo(1.22, 1.0, 1700)
-    ov.title = { text: '배도라지 알PG', sub: L('계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', '계란이 된 배도라지 크루의 놀이 섬 슈팅 RPG'), at: now() }
+    // 제목은 고르는 화면에서 이미 보였다 — 고르는 화면 없이 뜰 때만(start({ select: false }))
+    if (!SELECT) ov.title = { text: '배도라지 알PG', sub: L('계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', '계란이 된 배도라지 크루의 놀이 섬 슈팅 RPG'), at: now() }
   })
   const open = tl.t
   tl.push(open + 1.9, () => ov.title && (ov.title.out = now()))
-  tl.push(open + 2.3, () => caption('고기 바이올린', '철면란 격정 연주 — 휘두를 때마다 선율이 흐른다'))
+  tl.push(open + (SELECT ? 0.5 : 2.3), () => caption('고기 바이올린', '철면란 격정 연주 — 휘두를 때마다 선율이 흐른다'))
   tl.push(open + 2.7, () => (snap = 'shot_fight' + (BRIGHT ? '_bright' : '')))
   every(open + 0.6, open + 6.8, 0.7, () => alive() < 75 && spawn([0, 1, 0, 2], 26, 3, 9))
   // 궁극기 — 몰려 있을 때 쿨다운을 비워 둔다 (봇은 둘레에 다섯 넘게 몰리면 쓴다)
@@ -863,8 +894,8 @@ function partWorld(tl = timeline()) {
   return tl.done()
 }
 
-/** 2편 막 보스 (약 15초 — 보스 셋: 1막 · 2막 · 파티 드래곤. 3막은 뺐다 — 분량) */
-function partBoss(tl = timeline()) {
+/** 막 보스 (보스 셋: 1막 · 2막 · 파티 드래곤. 3막은 뺐다 — 분량). final = false 면 1 · 2막(1편 끝 · 약 10초) · true 면 최종 보스(2편 첫 장면 · 약 5초) */
+function partBoss(tl = timeline(), final = false) {
   const { at } = tl
   const boss = (area, kind, dist, capText, capSub, pats, stay, extra) => {
     at(0, () => {
@@ -893,6 +924,7 @@ function partBoss(tl = timeline()) {
     S().autopilot = true
     cue('boss')
   })
+  if (final) return partFinal(tl, boss)
   boss(9, 3, 180, L('1막 도살자', '1막 술래 버섯왕'), L('돌진 · 회전 베기 · 갈고리', '돌진 · 회전 베기 · 잠자리채'), [[0.3, 1], [1.8, 2]], 5.4, () => {
     ov.title = { text: L('막 보스 넷', '놀이 넷'), sub: L('저마다의 보스 방 · 저마다의 패턴', '저마다의 술래 · 저마다의 규칙'), at: now() }
   })
@@ -905,7 +937,21 @@ function partBoss(tl = timeline()) {
   })
   at(5.4, () => {})
   boss(18, 8, 190, L('2막 거미 여왕', '2막 여왕벌'), L('거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', '꿀 부채 · 도약 · 꿀벌 부르기 · 꽃가루 안개'), [[0.3, 0], [1.9, 1]], 4.2)
-  at(4.2, () => {})
+  // 1편 끝: 여왕을 쓰러뜨린다 — 막을 끝냈다는 배너 · 퀘스트 알림이 뜨지 않게 이 방을 이미 잡은 방으로 적어 둔다 (bossDown 이 나지 않는다)
+  at(3.4, () => {
+    const s0 = st()
+    if (!s0.killed.includes(s0.curArea)) s0.killed.push(s0.curArea)
+    const q = s0.monsters.find((m) => m.kind === 8 && m.hp > 0)
+    if (q) q.hp = 1
+  })
+  at(0.35, () => cue('win'))
+  endHere(tl, 0.9)
+  return tl.done()
+}
+
+/** 2편 첫 장면: 최종 보스 — 거대한 파티 드래곤 · 심연의 군주 (보스 장면이 썸네일이 된다) */
+function partFinal(tl, boss) {
+  const { at } = tl
   boss(34, 15, 210, L('최종 보스 — 심연의 군주', '최종 보스 — 파티 드래곤'), L('체력이 줄면 분노 — 광선 · 지옥불 · 그림자', '체력이 줄면 신이 난다 — 무지개 광선 · 축포 · 유령'), [[0.3, 4], [2.0, 3]], 4.6, () => {
     cue('rage')
     const lord = st().monsters.find((m) => m.kind === 15 && m.hp > 0)
@@ -1028,7 +1074,7 @@ function partEndgame(tl = timeline()) {
   at(0.3, () => {
     holding = false
     cue('hot', { act: 3 })
-    caption('저주받은 상자', '열면 괴물 물결 셋 — 다 막으면 희귀 이상이 꼭')
+    caption(L('저주받은 상자', '깜짝 상자'), '열면 괴물 물결 셋 — 다 막으면 희귀 이상이 꼭')
     zoomTo(1.0, 1.05, 5200)
   })
   const ch = tl.t
@@ -1355,6 +1401,8 @@ async function lobbyPhase(ve) {
   if (!bf || !cv) return false
   M.chars = await sameModule('/src/core/characters.ts')
   M.weapons = await sameModule('/src/core/weapons.ts')
+  // 로비는 지난 분위기를 기억한다 — 모닥불 장면도 뜨는 분위기로 (방 만들기 창의 분위기는 startGameFromLobby 가 고른다)
+  ;(await sameModule('/src/game/skin.ts')).setSkin(BRIGHT ? 'bright' : 'dark')
   const { CHARACTERS, PLAYABLE, ROLE_INFO } = M.chars
   const { WEAPONS } = M.weapons
   // 무대를 화면 가득 (오른쪽 패널 · 아래 카드 자리를 비우지 않는다 — 영상에는 캔버스만 담는다)
@@ -1366,7 +1414,9 @@ async function lobbyPhase(ve) {
   vt = realNow()
   performance.now = () => vt
   bf.last = vt
-  Object.assign(ov, { don: false, title: null, cap: null, end: null, fade: { a: 1, from: 1, to: 1, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  // 첫 장이 영상의 썸네일이 된다 (2026-10-17 사용자: "첫 장면이 썸네일이 돼서 적절치 않아") — 검은 데서 · 섬광에서 열지 않고
+  // 제목이 이미 다 박힌 모닥불 장으로 시작한다
+  Object.assign(ov, { don: false, title: null, cap: null, end: null, xfade: null, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
   // 넷만 눌러 본다 (2026-09-24 사용자: "12개를 모두 클릭할 필요는 없다 — 침착란 · 단군란 · 매직란 · 철면란만")
   const order = ['chim', 'dangun', 'magic', 'cheolmyeon'].filter((id) => PLAYABLE.includes(id))
   bf.select(null)
@@ -1374,23 +1424,22 @@ async function lobbyPhase(ve) {
   const at = (t, fn) => A.push({ t, fn })
   at(0, () => {
     cue('calm')
-    fadeTo(0, 1200)
     zoomTo(1.1, 1.0, 5000)
-    ov.title = { text: '배도라지 알PG', sub: '계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', at: now() }
+    ov.title = { text: '배도라지 알PG', sub: BRIGHT ? '계란이 된 배도라지 크루의 놀이 섬 슈팅 RPG' : '계란이 된 배도라지 크루의 쿼터뷰 슈팅 RPG', at: now() - 1300 }
   })
-  at(2.6, () => (ov.title.out = now()))
-  at(3.0, () => caption('배도라지 크루 12명', '탱커 3 · 딜러 6 · 힐러 3 — 누구로 떠날까'))
-  // 한 사람 1.4초 — 0.72초로는 불 앞에 다 나오기 전에 다음 사람으로 넘어갔다
-  const STEP = 1.25
+  at(1.6, () => (ov.title.out = now()))
+  at(1.9, () => caption('배도라지 크루 12명', '탱커 3 · 딜러 6 · 힐러 3 — 누구로 떠날까'))
+  // 한 사람 1.05초 — 0.72초로는 불 앞에 다 나오기 전에 다음 사람으로 넘어갔다
+  const STEP = 1.05
   order.forEach((id, i) => {
-    at(3.8 + i * STEP, () => {
+    at(2.5 + i * STEP, () => {
       const c = CHARACTERS[id]
       bf.select(id)
       caption(c.name, `${ROLE_INFO[c.role].name} · ${WEAPONS[c.weapon].name}`)
     })
   })
-  const end = 3.8 + order.length * STEP + 0.8
-  at(end - 0.6, () => fadeTo(1, 500))
+  // 끝은 검게 닫지 않는다 — 마을 장면(partTown)이 이 장을 녹이며 연다
+  const end = 2.5 + order.length * STEP + 0.3
   const t0 = vt
   let ai = 0
   for (let i = 0; i < FPS * 30; i++) {
@@ -1505,6 +1554,7 @@ export async function start(opts = {}) {
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
   PART = Math.max(1, Math.min(2, opts.part ?? 1))
+  SELECT = !ULT && PART === 1 && opts.select !== false
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
   const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `patch${PART}_${BRIGHT ? 'bright' : 'dark'}`
   const encs = [
@@ -1564,8 +1614,8 @@ export async function start(opts = {}) {
   localStorage.setItem('brpg.hud', 'tiny')
   // 고르는 화면은 1편에만 — 다른 편은 로비에서 부르면 판만 연다 (이미 판 안이면 그대로 이어서)
   if (!S()) {
-    // 2026-10-09: 1편도 고르는 화면 없이 곧장 판(첫 장면부터 싸움) — 예전 고르는 화면이 필요하면 start({ select: true })
-    if (ULT || PART !== 1 || !opts.select) await startGameFromLobby()
+    // 2026-10-17: 1편은 다시 고르는 화면 → 마을로 연다(사용자: "첫 장면이 썸네일이 돼서 적절치 않아 · 캐릭터 선택 및 마을 장면도") — 끄려면 start({ select: false })
+    if (!SELECT) await startGameFromLobby()
     else if (await lobbyPhase(ve)) await startGameFromLobby()
   }
   if (!S()) {

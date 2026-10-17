@@ -100,3 +100,19 @@ describe('밝은 판의 후원 이름', () => {
     expect(DONATE_EVENTS.map((e) => e.name)).toEqual(dark)
   })
 })
+
+// 2026-10-17 완성도 검토: ☀ 에서 업적 배너 · 기록 창 · 아이템 이름표 · 저주받은 상자에 어두운 글이 그대로 나왔다
+describe('밝은 판의 업적 · 아이템 · 상자 글', () => {
+  it('업적 · 전설 · 세트 이름과 설명에 막 보스 이름 · 피 · 시체가 없다 · 어둡게로 돌아오면 원래 글', async () => {
+    const { ACHIEVEMENTS } = await import('../src/core/stats')
+    const { LEGENDS, SETS } = await import('../src/core/items')
+    const dark = [...ACHIEVEMENTS.map((a) => a.name + a.desc), ...LEGENDS.map((l) => l.name + l.desc), ...SETS.map((s) => s.name + s.tag)]
+    setSkin('bright')
+    const words = [...ACHIEVEMENTS.map((a) => `${a.name} ${a.desc}`), ...LEGENDS.map((l) => `${l.name} ${l.desc}`), ...SETS.map((s) => `${s.name} ${s.tag}`)]
+    for (const w of words) expect(w).not.toMatch(/도살|거미|심연|관리인|고블린|시체|피의|종이 다시/)
+    expect(bt('저주받은 상자!')).toBe('깜짝 상자!')
+    expect(bt('저주가 풀렸다')).toBe('깜짝 상자 성공')
+    setSkin('dark')
+    expect([...ACHIEVEMENTS.map((a) => a.name + a.desc), ...LEGENDS.map((l) => l.name + l.desc), ...SETS.map((s) => s.name + s.tag)]).toEqual(dark)
+  })
+})
