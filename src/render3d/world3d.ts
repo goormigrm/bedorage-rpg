@@ -14,7 +14,7 @@
 
 import { isBright } from '../game/skin'
 import { BRIGHT_FLOOR, applyGrain, hash, paintBrightBand } from './brightFloor'
-import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture } from './brightWalls'
+import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture, vc } from './brightWalls'
 import { buildLandmarks, planLandmarks } from './brightLandmarks'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import * as THREE from 'three'
@@ -654,13 +654,13 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const fireLight = fire ? torchSpots[torchSpots.length - 1] : null
 
   // ---- 모래주머니 (투기장 — 허리 높이 엄폐물 · ☀ 은 분홍 쿠션 주머니 — 살구색은 빵 · 바나나 더미처럼 보였다) ----
-  const bagBase = new THREE.Color(bright ? 0xffc2d6 : 0xdcd3b4)
+  const bagBase = new THREE.Color(bright ? 0xffc2d6 : 0xd2ad74)
   const bagIndex = new Map<number, number>()
   let bags: THREE.InstancedMesh | null = null
   for (let i = 0; i < map.tiles.length; i++) if (map.tiles[i] === TILE_SANDBAG) bagIndex.set(i, bagIndex.size)
   if (bagIndex.size) {
-    bags = inst(sandbagStackGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), bagIndex.size)
-    for (const i of bagIndex.keys()) put(bags, (i % map.w) + 0.5, 0, Math.floor(i / map.w) + 0.5, 1, 1, 1, 0, bagBase)
+    bags = inst(sandbagStackGeometry(), sandbagMaterial(0xffffff), bagIndex.size)
+    for (const i of bagIndex.keys()) put(bags, (i % map.w) + 0.5, 0, Math.floor(i / map.w) + 0.5, 1, 1, 1, sandbagRot(map, i % map.w, Math.floor(i / map.w)), bagBase)
     bags.instanceMatrix.needsUpdate = true
   }
   const hiddenBag = new THREE.Matrix4().makeScale(0, 0, 0)
@@ -1252,7 +1252,8 @@ function buildClassic(map: GameMap): World3D {
   const cover = coverParts([crates], map.w)
 
   // ---- 모래주머니 (허리 높이 엄폐물) ----
-  const bagM = new THREE.MeshLambertMaterial({ color: 0xdcd3b4 })
+  // 덕코프처럼 따뜻한 삼베색 (예전 0xdcd3b4 는 겉감 결과 곱해져 잿빛이었다)
+  const bagM = sandbagMaterial(0xd2ad74)
   const bagGeo = sandbagStackGeometry()
   const bags = new THREE.InstancedMesh(bagGeo, bagM, Math.max(1, bagCount))
   bags.castShadow = true
@@ -1262,7 +1263,7 @@ function buildClassic(map: GameMap): World3D {
   for (let ty = 0; ty < map.h; ty++) {
     for (let tx = 0; tx < map.w; tx++) {
       if (map.tiles[ty * map.w + tx] !== TILE_SANDBAG) continue
-      m4.makeTranslation(tx + 0.5, 0, ty + 0.5)
+      m4.makeRotationY(sandbagRot(map, tx, ty)).setPosition(tx + 0.5, 0, ty + 0.5)
       bags.setMatrixAt(bi, m4)
       bagIndex.set(ty * map.w + tx, bi)
       bi++
@@ -1329,7 +1330,6 @@ function buildClassic(map: GameMap): World3D {
   }
 }
 
-/** 자루 6개(아래 4 + 위 2)를 쌓은 더미 하나. 타일 1칸 크기 */
 /**
  * 던전 구조물(상자 타일) 조각을 타일마다 묶는다 — 모래주머니처럼 깎이면 어둡게 · 부서지면 숨긴다 (2026-10-17).
  * 조각이 어느 타일 것인지는 인스턴스 자리(타일 안)로 안다. 인스턴스 색이 없던 메시는 흰색으로 채워 둔다(재질 색에 곱해진다)
@@ -1376,28 +1376,88 @@ function coverParts(meshes: THREE.Object3D[], w: number): { hide(i: number): voi
   }
 }
 
-function sandbagStackGeometry(): THREE.BufferGeometry {
+/**
+ * 모래주머니 한 칸 (2026-10-17 사용자: 덕코프 모래주머니처럼 — "이런 식으로 그래픽 퀄리티 올려줘"): 둥근 알 대신 **베개 모양 자루**
+ * (끝이 납작 · 윗면이 볼록 · 가운데 둘레에 박음질 이음매) 8개를 벽돌처럼 엇갈려 쌓는다 — 아래 2 × 2 · 가운데 가로로 둘 · 위 한 줄.
+ * 자루마다 크기 · 각 · 밝기를 조금씩 다르게(고정 난수 — 늘 같은 모양). 줄 방향은 sandbagRot 가 맞춘다(자루의 긴 쪽 = 줄 방향)
+ */
+export function sandbagStackGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
-  const bag = (x: number, y: number, z: number, sx: number, sy: number, sz: number, rot: number) => {
-    const g = new THREE.SphereGeometry(0.5, 9, 7)
-    g.scale(sx, sy, sz)
-    g.rotateY(rot)
-    g.translate(x, y, z)
-    parts.push(g)
+  let seed = 7
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  const bag = (x: number, y: number, z: number, L: number, W: number, H: number, rot: number) => {
+    const g = new THREE.SphereGeometry(0.5, 14, 8)
+    const pos = g.getAttribute('position') as THREE.BufferAttribute
+    const k = 0.94 + rnd() * 0.12
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i) * 2
+      const py = pos.getY(i) * 2
+      const pz = pos.getZ(i) * 2
+      // 상자 쪽으로 부풀린 알: 끝(x) · 옆(z)은 납작하게, 위는 볼록 · 바닥은 평평하게. 가운데 둘레는 이음매 턱
+      const lip = 1 + 0.06 * Math.pow(1 - Math.abs(py), 10)
+      const sx = Math.sign(px) * Math.pow(Math.abs(px), 0.55) * lip
+      const sz = Math.sign(pz) * Math.pow(Math.abs(pz), 0.62) * lip
+      const sy = py < 0 ? py * 0.7 : py
+      pos.setXYZ(i, sx * (L / 2) * k, sy * (H / 2), sz * (W / 2) * k)
+    }
+    g.computeVertexNormals()
+    g.rotateY(rot + (rnd() - 0.5) * 0.18)
+    g.translate(x + (rnd() - 0.5) * 0.03, y, z + (rnd() - 0.5) * 0.03)
+    const tone = 0.8 + rnd() * 0.2
+    parts.push(vc(g, new THREE.Color(tone, tone * 0.98, tone * 0.95).getHex()))
   }
-  // 실제 모래주머니 방벽처럼 3 - 2 - 3 세 단. 가운데 단은 이음매가 어긋나도록 반 자루씩 밀어 쌓는다.
-  const h = SANDBAG_H
-  const tier = h / 3
-  const sy = tier * 1.16
-  bag(0, tier * 0.5, -0.3, 0.9, sy, 0.31, 0.05)
-  bag(0, tier * 0.5, 0.0, 0.9, sy, 0.31, -0.04)
-  bag(0, tier * 0.5, 0.3, 0.9, sy, 0.31, 0.06)
-  bag(0.02, tier * 1.5, -0.16, 0.86, sy, 0.34, -0.07)
-  bag(-0.02, tier * 1.5, 0.16, 0.86, sy, 0.34, 0.08)
-  bag(0, tier * 2.5, -0.27, 0.78, sy, 0.29, -0.06)
-  bag(0, tier * 2.5, 0.0, 0.78, sy, 0.29, 0.07)
-  bag(0, tier * 2.5, 0.27, 0.78, sy, 0.29, -0.05)
+  const L = 0.52
+  const W = 0.36
+  // 아래 2 × 2 (긴 쪽 = x) · 가운데 가로 둘(긴 쪽 = z — 벽돌 쌓기) · 위 한 줄 둘 → 꼭대기 SANDBAG_H 안팎
+  for (const z of [-0.2, 0.2]) for (const x of [-0.25, 0.25]) bag(x, 0.085, z, L, W, 0.2, 0)
+  for (const x of [-0.23, 0.23]) bag(x, 0.255, 0, L, 0.42, 0.19, Math.PI / 2)
+  for (const x of [-0.25, 0.26]) bag(x, 0.41, 0.02, L * 0.98, W, 0.19, 0)
   return mergeGeometries(parts, false) ?? parts[0]
+}
+
+/** 자루 겉감 (삼베 결 + 가운데 둘레 박음질) — 흰 바탕의 밝기만(색은 재질 · 인스턴스 색). 한 번 만들어 모든 맵이 같이 쓴다 */
+let burlap: THREE.CanvasTexture | null = null
+function sandbagMaterial(color: number): THREE.MeshLambertMaterial {
+  if (!burlap) {
+    const c = document.createElement('canvas')
+    c.width = 128
+    c.height = 128
+    const g = c.getContext('2d')!
+    g.fillStyle = 'rgb(222,222,222)'
+    g.fillRect(0, 0, 128, 128)
+    // 바구니 짜임: 2px 칸마다 가로 · 세로 실이 번갈아 위로
+    for (let y = 0; y < 128; y += 2) {
+      for (let x = 0; x < 128; x += 2) {
+        const up = ((x >> 1) + (y >> 1)) % 2 === 0
+        const v = (up ? 236 : 198) + Math.floor(hash(x, y, 90) * 18) - 9
+        g.fillStyle = `rgb(${v},${v},${v})`
+        g.fillRect(x, y, up ? 2 : 1, up ? 1 : 2)
+      }
+    }
+    // 이음매 (구의 적도 = 자루 가운데 둘레): 접힌 그늘 + 실땀
+    g.fillStyle = 'rgba(70,60,50,0.55)'
+    g.fillRect(0, 62, 128, 4)
+    g.fillStyle = 'rgba(255,250,235,0.85)'
+    for (let x = 1; x < 128; x += 6) g.fillRect(x, 60, 2, 8)
+    burlap = new THREE.CanvasTexture(c)
+    burlap.colorSpace = THREE.SRGBColorSpace
+    burlap.wrapS = THREE.RepeatWrapping
+    burlap.repeat.set(3, 1)
+    burlap.anisotropy = 4
+  }
+  return new THREE.MeshLambertMaterial({ color, map: burlap, vertexColors: true })
+}
+
+/** 모래주머니 칸의 방향: 줄을 따라 자루가 눕는다 (가로 0 · 세로 90° · 대각선 줄은 ±45°) · 칸마다 반 바퀴를 섞어 같은 모양이 되풀이되지 않게 */
+export function sandbagRot(map: GameMap, tx: number, ty: number): number {
+  const bag = (x: number, y: number) => x >= 0 && y >= 0 && x < map.w && y < map.h && map.tiles[y * map.w + x] === TILE_SANDBAG
+  const flip = hash(tx, ty, 77) < 0.5 ? 0 : Math.PI
+  if (bag(tx - 1, ty) || bag(tx + 1, ty)) return flip
+  if (bag(tx, ty - 1) || bag(tx, ty + 1)) return Math.PI / 2 + flip
+  // 대각선 줄: (1, 1) 방향은 -45° · (1, -1) 방향은 +45° (y 축으로 돌리면 x 축이 (cos, -sin) 쪽으로 간다)
+  if (bag(tx + 1, ty + 1) || bag(tx - 1, ty - 1)) return -Math.PI / 4 + flip
+  if (bag(tx + 1, ty - 1) || bag(tx - 1, ty + 1)) return Math.PI / 4 + flip
+  return flip
 }
 
 function hex(c: number): string {

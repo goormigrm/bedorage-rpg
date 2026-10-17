@@ -4,7 +4,7 @@
 import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
-import { GameMap, SANDBAG_HP, TILE } from '../core/map'
+import { GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
 import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_SHIELD, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
@@ -92,6 +92,8 @@ const MINIMAP_SIZE = 190
  * 큰 싸움에서 그리기 호출이 수백 개로 튀었다. 이제 모두 모아 두었다가 다시 쓰고, 파편은 인스턴스 하나로 그린다. 넘치면 오래된 것부터 끝낸다.
  */
 const PART_MAX = 1200
+/** 색 섞기용 흰색 (바꾸지 말 것) */
+const WHITE = new THREE.Color(1, 1, 1)
 const RING_MAX = 80
 const IMPACT_MAX = 80
 /** 동시에 켜 둘 점광원 (넘치면 카메라에서 먼 것부터 잠깐 끈다 — 빛 수가 늘면 셰이더를 다시 컴파일해 화면이 멈춘다) */
@@ -296,6 +298,8 @@ export class Renderer3D {
   private dropMeshes = new Map<number, THREE.Group>()
   private localForDrops = -1
   private bulletPool: THREE.Group[] = []
+  /** 탄 꼬리 (덕코프식 트레이서 — 총구에서 탄까지 가늘고 긴 빛줄): 탄마다 바닥과 나란한 판 하나 */
+  private tracerPool: THREE.Mesh[] = []
   /** 명중·벽 섬광 (카메라를 보는 스프라이트, 커지며 사라진다) */
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
   private particles: Particle[] = []
@@ -476,6 +480,8 @@ export class Renderer3D {
   private comboAt = -99
   /** 내 총구 빛 · 근접 멈칫을 너무 자주 켜지 않게 (초) */
   private lastMuzzle = -99
+  /** 큰 먼지 구름을 마지막으로 피운 때 (탄이 막힌 자리 — 연사가 화면을 덮지 않게) */
+  private lastDust = -99
   private lastMeleeStop = -99
   /** 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위 — 2026-10-08 부터 모든 총, 무기마다 세기) */
   private kick = 0
@@ -510,6 +516,7 @@ export class Renderer3D {
     sniper: this.streakMat(0xffffff),
     shotgun: this.streakMat(0xffb060),
   }
+  private tracerMat = this.streakMat(0xffc070)
   private particleGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1)
   private raycaster = new THREE.Raycaster()
   private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -1194,21 +1201,50 @@ export class Renderer3D {
             this.spawnParticle(
               tip.x - Math.cos(rad) * 0.25, tip.y + 0.05, tip.z - Math.sin(rad) * 0.25,
               Math.cos(side) * sp - Math.cos(rad) * 0.01, 0.07 + Math.random() * 0.04, Math.sin(side) * sp - Math.sin(rad) * 0.01,
-              1.3, shell ? 0xc8402a : 0xe0b850, shell ? 0.11 : 0.085,
+              // 크기는 조각 상자(0.1 칸)의 배율 — 예전 0.085 는 1px 도 안 돼 안 보였다(2026-10-17). 바닥에 조금 더 오래 남는다
+              2.4, shell ? 0xc8402a : 0xe0b850, shell ? 0.75 : 0.55,
             )
           }
           break
         }
         case 'wall': {
+          // 탄이 막힘 (2026-10-17 사용자: 덕코프처럼 타격감 — 맞은 것마다 다르게): 모래주머니 = 크고 오래 남는 모래 먼지 구름 · 모래알,
+          // 벽 · 구조물 = 그 색 먼지 · 부스러기(바닥에 잠깐 남는다) · 🌙 불티. 먼지는 쏜 쪽으로 퍼진다. 큰 구름은 0.05초에 한 번(연사가 화면을 덮지 않게)
           const rad = angleToRad(e.aim)
-          for (let i = 0; i < 7; i++) {
-            const a = rad + Math.PI + (Math.random() - 0.5) * 1.8
-            const sp = 0.05 + Math.random() * 0.13
-            const spark = i % 2 === 0
-            if (spark) this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.09, Math.sin(a) * sp, 0.22, 0xffd890, 0.45)
-            else this.spawnPuff(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp * 0.4, 0.01, Math.sin(a) * sp * 0.4, 0.5, 0xc9c0ae, 0.16, 0.35)
+          const back = rad + Math.PI
+          const x = e.x * U
+          const z = e.y * U
+          const surf = this.surfaceAt(e.x, e.y, rad)
+          const bag = surf === TILE_SANDBAG
+          const crate = surf === TILE_CRATE
+          const th = this.map.theme
+          const dustCol = bag ? (bright ? 0xffe0ea : 0xc9a676) : crate ? this.tmpColor.setHex(th.crate).lerp(WHITE, 0.45).getHex() : bright ? 0xfffaf2 : 0xbab2a4
+          const chipCol = bag ? (bright ? 0xffc2d6 : 0xb89a62) : crate ? th.crate : bright ? th.wall : 0x8a8478
+          const big = this.t - this.lastDust > 0.05
+          if (big) this.lastDust = this.t
+          for (let i = 0, n = big ? (bag ? 5 : 2) : 1; i < n; i++) {
+            const a = back + (Math.random() - 0.5) * 1.7
+            const sp = (bag ? 0.022 : 0.016) + Math.random() * 0.02
+            this.puff.spawn(
+              x + (Math.random() - 0.5) * 0.2, GUN_H * (0.45 + Math.random() * 0.55), z + (Math.random() - 0.5) * 0.2,
+              Math.cos(a) * sp, 0.004 + Math.random() * 0.006, Math.sin(a) * sp,
+              bag ? 1.1 + Math.random() * 0.7 : 0.6 + Math.random() * 0.3, dustCol, bag ? 0.5 + Math.random() * 0.3 : 0.28 + Math.random() * 0.14,
+              { alpha: bag ? 0.75 : 0.5, grow: bag ? 2.8 : 2.2, drag: 0.93 },
+            )
           }
-          this.spawnImpact(e.x * U, GUN_H, e.y * U, 0xffe8b0, 0.8)
+          for (let i = 0, n = bag ? 5 : 3; i < n; i++) {
+            const a = back + (Math.random() - 0.5) * 1.9
+            const sp = 0.04 + Math.random() * 0.08
+            this.spawnParticle(x, GUN_H, z, Math.cos(a) * sp, 0.04 + Math.random() * 0.08, Math.sin(a) * sp, bag ? 0.9 : 1.6, chipCol, bag ? 0.45 + Math.random() * 0.3 : 0.8 + Math.random() * 0.6)
+          }
+          if (!bag && !bright) {
+            for (let i = 0; i < 3; i++) {
+              const a = back + (Math.random() - 0.5) * 1.8
+              const sp = 0.06 + Math.random() * 0.12
+              this.spawnGlow(x, GUN_H, z, Math.cos(a) * sp, 0.05 + Math.random() * 0.09, Math.sin(a) * sp, 0.22, 0xffd890, 0.45)
+            }
+          }
+          this.spawnImpact(x, GUN_H, z, bag ? 0xfff0c8 : 0xffe8b0, bag ? 0.6 : 0.8)
           break
         }
         case 'hit': {
@@ -1851,6 +1887,22 @@ export class Renderer3D {
     const up = new THREE.Mesh(this.streakGeo, this.streakMats.default)
     g.add(flat, up)
     return g
+  }
+
+  /** 탄이 막힌 자리의 겉: 그 칸(지금 바닥이면 탄이 가던 쪽으로 몇 px 더 · 방금 부서진 모래주머니 · 구조물 자리도) */
+  private surfaceAt(px: number, py: number, rad: number): number {
+    const m = this.map
+    for (let k = 0; k < 4; k++) {
+      const tx = Math.floor((px + Math.cos(rad) * k * 6) / TILE)
+      const ty = Math.floor((py + Math.sin(rad) * k * 6) / TILE)
+      if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h) return TILE_WALL
+      const i = ty * m.w + tx
+      const t = m.tiles[i]
+      if (t !== TILE_FLOOR) return t
+      if (m.sandbagIdx.includes(i)) return TILE_SANDBAG
+      if (m.crateIdx?.includes(i)) return TILE_CRATE
+    }
+    return TILE_WALL
   }
 
   /** 명중·벽·막음 섬광: 카메라를 보는 빛무리가 커지면서 사라진다 */
@@ -5064,9 +5116,28 @@ export class Renderer3D {
       streak.position.set(x - dx * len * 0.5, GUN_H, z - dz * len * 0.5)
       streak.rotation.y = -Math.atan2(dz, dx)
       streak.scale.set(len, wid, wid)
+      // 꼬리: 총구에서 날아온 만큼(저격 9칸 · 산탄 1.2칸 · 나머지 4.5칸까지) 가늘고 옅은 빛줄 — 머리 쪽이 진하다
+      let tr = this.tracerPool[n]
+      if (!tr) {
+        tr = new THREE.Mesh(this.streakGeo, this.tracerMat)
+        tr.rotation.order = 'YXZ'
+        this.tracerPool[n] = tr
+        this.scene.add(tr)
+      }
+      const tl = Math.min(Math.hypot(x - b.ox * U, z - b.oy * U), sn ? 9 : w.pellets > 1 ? 1.2 : 4.5)
+      tr.visible = tl > len
+      tr.position.set(x - dx * tl * 0.5, GUN_H - 0.01, z - dz * tl * 0.5)
+      tr.rotation.set(-Math.PI / 2, -Math.atan2(dz, dx), 0)
+      tr.scale.set(tl, sn ? 0.055 : 0.04, 1)
       n++
     }
     for (let i = n; i < this.bulletPool.length; i++) this.bulletPool[i].visible = false
+    for (let i = n; i < this.tracerPool.length; i++) this.tracerPool[i].visible = false
+    // ☀ 밝은 바닥에서는 더하기 빛이 하얗게 묻힌다 → 보통 섞기 + 진한 주황
+    const bright = isBright()
+    this.tracerMat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
+    this.tracerMat.color.setHex(bright ? 0xff7a2a : 0xffc070)
+    this.tracerMat.opacity = bright ? 0.85 : 0.55
   }
 
   private updateEffects(dt: number): void {

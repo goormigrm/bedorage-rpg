@@ -68,6 +68,7 @@
 - **B 바닥(v1.2.0 · v1.3.0)**: `src/render3d/brightFloor.ts` — 맵 24 곳마다 다른 바닥(`BRIGHT_FLOOR[map.id]` · 띠마다 `paintBrightBand`) + 반복 결 텍스처(`applyGrain`) · 풀은 바깥만 · 작은 꽃.
 - **C 벽 · 소품(v1.4.0)**: `src/render3d/brightWalls.ts` — `BRIGHT_WALL`(레고 · 수영장 타일 · 거울 · 생울타리 · 모래성 · 쿠키 · 벌집 기둥 · 쿠션 · 솜사탕 나무 · 젤리 버섯) · `BRIGHT_PROPS`(맵 주제 소품) · `ballTexture`(비치볼 · 농구공) · 대기실 울타리 가로대.
 - **D 랜드마크(v1.5.0)**: `src/render3d/brightLandmarks.ts` — 꽉 찬 3 × 2 · 2 × 2 벽 덩어리 자리 안에만(`planLandmarks`) · 종류마다 InstancedMesh 하나(`buildLandmarks`) · 9 맵 15 종.
+- **덕코프식(v1.7.9 — 사용자: "덕코프 모래주머니처럼 · 덕코프 영상처럼 타격감")**: 모래주머니 = 베개 모양 자루 8개 벽돌 쌓기 · 삼베 겉감 · 줄 방향으로 눕힘(`world3d.ts sandbagStackGeometry · sandbagRot`) · 탄이 막힌 자리 = 겉(모래주머니 · 벽 · 구조물 — `renderer3d surfaceAt`)마다 먼지 구름 · 부스러기 · 탄 꼬리(`tracerPool`) · 몽글몽글한 연기(`spritefx uCloud`) · 탄피가 보이게. ⚠ `spawnParticle` 의 크기는 조각 상자(0.1칸)의 **배율**이다(0.5 = 0.05칸).
 - **이어서(v1.6.6 — 사용자: "그래픽 4가지 이어서 모두 진행해줘")**: ☀ 보스 방 넷 고리 벽 = 칸마다 주제 조각(`brightLandmarks.ts RING`) · ☀ 투기장 셋 = 밝은 테마로 던전 그리기(`buildDark` — 모래주머니도 여기로 옮겼다) · 근접 초승달 궤적 띠(`renderer3d spawnTrail · shapeTrail`) · 괴물 탄 빛점 궤적(quarks `trail` · `updateShots`). 자세히는 계획서 7.4.
 - **E 이펙트(v1.6.0)**: `src/render3d/quarksfx.ts` — `QuarksFx.burst(name, x, y, z, n, {dir, color, speed})` · 프리셋 13 · 묶음 ☀ 2 / 🌙 4 · 입자 2,500 상한. 렌더러가 명중 · 처치 · 총구 · 근접 궤적 · 금화 · 스킬 시전 · 범위 · 보스 예고 · 등장 · 경직 · 폭발에서 부른다.
 - 같은 날 다른 세션(쿼터뷰 RPG 게임 개발 계획)이 한 것: v1.2.1 성능 · 네트워크(입력 전용 빠른 채널 · 고주사율 그리기 맞추기) · v1.5.1 바닥 아이템 이름표 · 패치 플레이 영상 네 편 · 합친 업데이트 공지(`docs/공지글-모음.md` 4차) — 그 세션의 인계는 위 블록. 이 세션은 그동안 **옆 작업 폴더(git worktree)** 에서 D · E 를 만들어 `main` 에 바로 올렸다(원래 폴더를 동시에 고치지 않게 — 아래 "작업 · 협업").
@@ -101,7 +102,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.7.8 배포)
+## 현재 상태 (2026-10-17 · v1.7.9 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

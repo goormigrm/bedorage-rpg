@@ -35,9 +35,11 @@ attribute float aSize;
 attribute float aRot;
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vSeed;
 void main() {
   vUv = uv;
   vColor = aColor;
+  vSeed = aRot;
   vec4 mv = modelViewMatrix * vec4(aCenter, 1.0);
   float c = cos(aRot);
   float s = sin(aRot);
@@ -49,10 +51,15 @@ void main() {
 const FRAG = /* glsl */ `
 uniform float uSoft;
 uniform float uCore;
+uniform float uCloud;
 varying vec2 vUv;
 varying vec4 vColor;
+varying float vSeed;
 void main() {
   float d = length(vUv - 0.5) * 2.0;
+  // 연기 · 먼지: 가장자리를 몽글몽글하게 (덕코프식 먼지 구름 — 2026-10-17). 씨앗 = 돌기 각이라 돌면서 꿈틀거린다
+  float n = sin(vUv.x * 11.0 + vSeed * 3.0) * sin(vUv.y * 9.0 - vSeed * 2.1) + 0.6 * sin((vUv.x + vUv.y) * 17.0 + vSeed * 4.3);
+  d += n * 0.11 * uCloud;
   float a = pow(clamp(1.0 - d, 0.0, 1.0), uSoft);
   if (a * vColor.a < 0.004) discard;
   // 더하기 빛은 가운데가 하얗게 탄다 (불꽃 · 마법의 뜨거운 심)
@@ -101,7 +108,7 @@ export class SpriteFx {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: { uSoft: { value: additive ? 1.6 : 1.2 }, uCore: { value: additive ? 0.55 : 0 } },
+      uniforms: { uSoft: { value: additive ? 1.6 : 1.2 }, uCore: { value: additive ? 0.55 : 0 }, uCloud: { value: additive ? 0 : 1 } },
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
