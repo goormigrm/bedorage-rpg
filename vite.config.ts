@@ -101,6 +101,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (/node_modules[\/]three[\/]build[\/]/.test(id)) return 'three'
+          // three.quarks(이펙트 — 그래픽 개편 E)도 따로: 판마다 바뀌는 main 에 넣으면 업데이트마다 150 KB 를 다시 받는다
+          if (/node_modules[\/](three\.quarks|quarks\.core)[\/]/.test(id)) return 'quarks'
         },
       },
     },

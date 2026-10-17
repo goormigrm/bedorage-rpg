@@ -1,7 +1,7 @@
 {
   "name": "bedorage-rpg",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   "dependencies": {
     "socket.io-client": "2.5.0",
     "three": "^0.185.1",
+    "three.quarks": "0.17.1",
     "trystero": "^0.21.0"
   },
   "devDependencies": {

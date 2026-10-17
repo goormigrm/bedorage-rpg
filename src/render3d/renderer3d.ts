@@ -39,6 +39,7 @@ import { dmgNumbersOn, shakeScale } from '../ui/settings'
 import { PostFx, gradeFor } from './post'
 import { AmbientFx, ambientFor } from './ambient'
 import { FxAt, SkillFx } from './skillfx'
+import { QuarksFx } from './quarksfx'
 import { keyLabel } from '../game/keymap'
 import { HEAD_AIM_FRAC, PART_HEAD, WEAPONS, WeaponDef } from '../core/weapons'
 import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText, UiRect, VIEW_H, VIEW_K, VIEW_W, canvasRatio, hex, lowAmmo, roundRect } from '../render/hud'
@@ -290,6 +291,8 @@ export class Renderer3D {
   private ambientArea = -2
   /** 스킬마다 고유 연출 (skillfx.ts — 2026-10-08 퀄리티 2차 2.5단계) */
   private skillFx!: SkillFx
+  /** three.quarks 이펙트 (그래픽 개편 E — 명중 · 처치 · 총구 · 베기 · 금화) */
+  private quarks!: QuarksFx
   /**
    * 시작 준비가 끝났나 (prepareStart). 그전에는 3D 를 그리지 않는다 — 첫 그림에서 마을의 모든 재질 셰이더를 한꺼번에 **동기로**
    * 컴파일하느라 내장 GPU(윈도우 크롬 = ANGLE · D3D)에서 몇 초 동안 화면이 멈춘 채 까맸다 (2026-10-08 사용자: "방을 만들고 들어가면 5초쯤 까맸다").
@@ -565,6 +568,8 @@ export class Renderer3D {
       // 2026-10-08 사용자: "맵 흔들림이 멀미 날 정도 — 너무 자주 · 너무 심하다" → 스킬 연출의 흔들림은 절반
       shake: (k) => (this.shake = Math.max(this.shake, k * 0.5)),
     })
+    this.quarks = new QuarksFx(isBright())
+    this.scene.add(this.quarks.group)
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xffcf9a, 0, 10, 1.4)
       l.visible = false
@@ -926,6 +931,9 @@ export class Renderer3D {
   async prepareStart(): Promise<void> {
     if (this.ready) return
     this.padLights()
+    // quarks 묶음 셰이더도 이때 컴파일되게 프리셋마다 입자 하나씩 (맵 아래에서 곧 사라진다)
+    this.quarks.primeForCompile()
+    this.quarks.update(1 / 60)
     const timeout = new Promise<void>((r) => setTimeout(r, 20000))
     try {
       await Promise.race([Promise.all([this.gl.compileAsync(this.scene, this.camera), this.post.warm(this.camera)]), timeout])
@@ -1088,7 +1096,18 @@ export class Renderer3D {
             // 근접: 휘두르는 몸짓 + 베기 궤적 (바이올린 = 넓고 붉은 호 · 장검 = 가늘고 긴 흰 쐐기 · 후라이팬 = 누런 호)
             v.swing = 1
             const pl = state.players[e.p]
-            if (pl && !this.hidden[e.p]) this.spawnSlash(pl.x * U, pl.y * U, (e.aim / 1024) * Math.PI * 2, w)
+            if (pl && !this.hidden[e.p]) {
+              const aim = (e.aim / 1024) * Math.PI * 2
+              this.spawnSlash(pl.x * U, pl.y * U, aim, w)
+              // 호를 따라 늘어난 불티 (quarks — 칼끝이 지나간 궤적)
+              const range = ((w.meleeRange ?? 60) + 12) * U * 0.8
+              const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
+              const col = w.family === 'violin' ? 0xff8a6a : w.family === 'rapier' ? 0xdfefff : 0xffe2a0
+              for (let k = 0; k < 6; k++) {
+                const a = aim - half + (k * 2 * half) / 5
+                this.quarks.burst('slash', pl.x * U + Math.cos(a) * range, 0.5, pl.y * U + Math.sin(a) * range, 1, { dir: a + Math.PI / 2, color: col })
+              }
+            }
             break
           }
           // 단군란 패시브(중계, 투기장): 시야 밖 적의 총성 위치를 1.2초 표시
@@ -1099,6 +1118,7 @@ export class Renderer3D {
           rig.gunTip.getWorldPosition(tip)
           const big = w.family === 'sniper' || w.boom !== undefined
           this.spawnFlash(tip, big ? 2.6 : w.pellets > 1 ? 1.6 : 1)
+          if (!this.hidden[e.p]) this.quarks.burst('muzzle', tip.x, tip.y, tip.z, big ? 8 : w.pellets > 1 ? 6 : 3, { dir: (e.aim / 1024) * Math.PI * 2 })
           // 총구 연기 한 줄기 (내 총만 — 2026-10-08 퀄리티 2차 1단계)
           if (e.p === localPlayer && !w.melee && w.id !== 'flamer') this.spawnPuff(tip.x, tip.y, tip.z, 0, 0.008, 0, 0.55, 0xb8b0a0, big ? 0.3 : 0.17, big ? 0.35 : 0.22)
           v.vsx -= big ? 0.3 : 0.12
@@ -1176,6 +1196,8 @@ export class Renderer3D {
             this.spawnGlow(e.x * U, GUN_H, e.y * U, Math.cos(a) * sp, 0.05 + Math.random() * 0.12, Math.sin(a) * sp, 0.24 + Math.random() * 0.12, col, head ? 0.5 : 0.44)
           }
           this.spawnImpact(e.x * U, GUN_H, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.8 : 1.7)
+          this.quarks.burst('hit', e.x * U, GUN_H, e.y * U, head ? 6 : 3)
+          if (head) this.quarks.burst('hitBig', e.x * U, GUN_H, e.y * U, 3)
           if (e.by === localPlayer) this.hud.hitMark(head)
           if (e.p === localPlayer) {
             this.shake = Math.max(this.shake, 0.1)
@@ -1197,6 +1219,7 @@ export class Renderer3D {
           const col = new THREE.Color(RARITY_COLORS[e.rarity]).getHex()
           this.spawnRing(e.x * U, e.y * U, 0.2, 0.6 + e.rarity * 0.4, 0.5, col)
           if (e.rarity >= 2) this.spawnImpact(e.x * U, 0.6, e.y * U, col, 1.5 + e.rarity)
+          if (e.rarity >= 1) this.quarks.burst('coin', e.x * U, 0.5, e.y * U, 3 + e.rarity * 3, { color: col })
           break
         }
         case 'bagFull': {
@@ -1298,6 +1321,7 @@ export class Renderer3D {
           break
         }
         case 'gold':
+          if (e.p === localPlayer) this.quarks.burst('coin', e.x * U, 0.4, e.y * U, 6)
           if (e.p === localPlayer) this.texts.push({ x: e.x * U, z: e.y * U, y: 0.9, text: `+${Math.round(e.n)} 골드`, life: 0.9, max: 0.9, color: '#ffd86a', big: false, pop: 0.4 })
           break
         case 'potGet':
@@ -1474,6 +1498,9 @@ export class Renderer3D {
             if (mine && (head || Math.random() < 0.25)) this.addBlood(e.x * U + dir.x * 0.5, e.y * U + dir.z * 0.5, head ? 0.36 : 0.22, head ? SPLAT_SPRAY : SPLAT_DROPS, dir)
             this.spawnImpact(e.x * U, 0.8, e.y * U, head ? 0xffd84a : 0xff5a4a, head ? 2.2 : 1.1)
             if (head) this.spawnRing(e.x * U, e.y * U, 0.3, 1.4, 0.35, 0xffd84a)
+            // quarks: 맞은 자리 조각 (내 명중은 더) · 치명타 반짝 별
+            this.quarks.burst('hit', e.x * U, 0.8, e.y * U, head ? 6 : mine ? 3 : 1)
+            if (head || mine) this.quarks.burst('hitBig', e.x * U, 0.85, e.y * U, head ? 3 : 1)
           }
           if (e.by === localPlayer) this.hud.hitMark(head)
           break
@@ -1520,19 +1547,20 @@ export class Renderer3D {
             this.addBlood(e.x * U + dir.x * 0.25, e.y * U + dir.z * 0.25, rank >= 1 ? 0.8 : 0.48, SPLAT_POOL)
             this.addBlood(e.x * U + dir.x * 0.85, e.y * U + dir.z * 0.85, rank >= 1 ? 0.7 : 0.42, SPLAT_SPRAY, dir)
           }
+          // quarks 처치 "퐁!": 별 · 사탕(☀) / 핏덩이(🌙)가 위로 터져 떨어지고 + 색종이 · 핏방울 비 + 연기 · 정예 이상은 반짝임
+          this.quarks.burst('pop', e.x * U, 0.7, e.y * U, rank >= 1 ? 14 : 8)
+          this.quarks.burst('chunks', e.x * U, 0.7, e.y * U, rank >= 1 ? 18 : 10)
+          this.quarks.burst('smoke', e.x * U, 0.5, e.y * U, rank >= 1 ? 4 : 2)
+          if (rank >= 1) this.quarks.burst('popBig', e.x * U, 1.0, e.y * U, rank >= 2 ? 30 : 14)
           if (bright) {
-            // 밝은 분위기: "퐁!" — 색종이가 위로 터지고 노란 별 고리 (피 · 뼈 대신)
-            for (let k = 0; k < 16; k++) {
-              const a = Math.random() * Math.PI * 2
-              const sp = 0.03 + Math.random() * 0.08
-              this.spawnParticle(e.x * U, 0.7, e.y * U, Math.cos(a) * sp, 0.12 + Math.random() * 0.12, Math.sin(a) * sp, 1.0, CONFETTI[k % CONFETTI.length], 0.75)
-            }
+            // 밝은 분위기: 노란 별 고리 (색종이는 quarks)
             this.spawnRing(e.x * U, e.y * U, 0.2, 1.3, 0.35, 0xffe066)
             break
           }
           // 검붉은 피 · 뼛조각이 튀고 바닥에 얼룩 링
           const bone = e.kind === 1
-          for (let k = 0; k < 10; k++) {
+          // 핏덩이는 quarks 가 맡아 피 파편은 넷만 (뼈 괴물은 뼛조각 그대로)
+          for (let k = 0; k < (bone ? 10 : 4); k++) {
             const a = Math.random() * Math.PI * 2
             const sp = 0.03 + Math.random() * 0.07
             const col = bone ? (k % 2 === 0 ? 0xd9d1bb : 0x8a8270) : k % 3 === 0 ? 0x2a0808 : k % 3 === 1 ? 0x6a1212 : 0x8a9478
@@ -1550,6 +1578,8 @@ export class Renderer3D {
           this.skillFx.wave(e.x * U, e.y * U, 0xffd86a, 5, 0.6, 0.5, 2)
           this.spawnImpact(e.x * U, 1.6, e.y * U, 0xfff0b0, 6)
           this.skillFx.sparks(e.x * U, 1.4, e.y * U, 0xffe080, 30, 0.2, 0.6, 0.9)
+          this.quarks.burst('blast', e.x * U, 1.4, e.y * U, 36, { color: 0xffd86a, speed: 1.6 })
+          this.quarks.burst('popBig', e.x * U, 1.6, e.y * U, 24)
           this.shake = Math.max(this.shake, 0.25)
           this.hitStop = Math.max(this.hitStop, 0.12)
           this.hud.notice('경직! 3초 — 받는 피해 +25%', '#ffd86a', 2.4)
@@ -1570,6 +1600,10 @@ export class Renderer3D {
           }
           this.spawnImpact(e.x * U, 0.8, e.y * U, 0xff7a4a, e.r * U * 2.4)
           this.spawnRing(e.x * U, e.y * U, 0.4, e.r * U, 0.45, ENEMY_AOE)
+          // quarks: 사방 불티 · 파편 · 연기 (적의 폭발 — 주황 · 빨강)
+          this.quarks.burst('blast', e.x * U, 0.6, e.y * U, 24, { color: 0xff6a3a, speed: Math.max(0.7, (e.r * U) / 2.5) })
+          this.quarks.burst('chunks', e.x * U, 0.6, e.y * U, 12)
+          this.quarks.burst('smoke', e.x * U, 0.4, e.y * U, 4)
           const me = localPlayer >= 0 ? state.players[localPlayer] : null
           if (me && Math.hypot(me.x - e.x, me.y - e.y) < 500) this.shake = Math.max(this.shake, 0.15)
           break
@@ -2150,6 +2184,10 @@ export class Renderer3D {
       this.punch = Math.max(this.punch, 0.5)
       // 등장 장면: 화면 위아래 검은 띠 + 카메라가 보스 쪽으로 다가갔다 돌아온다 (2.2초 — 보스 방 보스는 먼저 치기 전엔 가만히라 안전)
       this.bossCut = { x: m.x * U, z: m.y * U, t: 0 }
+      // quarks: 등장 — 발밑에서 솟는 반짝임 · 사방 불티 · 연기
+      this.quarks.burst('cast', m.x * U, 0.2, m.y * U, 30, { speed: 1.4 })
+      this.quarks.burst('blast', m.x * U, 1.2, m.y * U, 40, { speed: 1.8 })
+      this.quarks.burst('smoke', m.x * U, 0.4, m.y * U, 6)
       this.hud.cinema(2.2)
     }
   }
@@ -3837,6 +3875,9 @@ export class Renderer3D {
     const at: FxAt = { x, z, aim: angleToRad(e.aim), tx: e.tx * U, tz: e.ty * U, r: 0, ult }
     const own = this.skillFx.cast(e.id, at)
     if (!own || ult) this.spawnRing(x, z, ult ? 2.2 : 1.4, 0.3, ult ? 0.5 : 0.35, color)
+    // quarks: 시전자 둘레에서 솟는 반짝임 (스킬 색) · 궁극기는 사방 불티까지
+    this.quarks.burst('cast', x, 0.2, z, ult ? 24 : 8, { color })
+    if (ult) this.quarks.burst('blast', x, 0.9, z, 28, { color, speed: 1.2 })
     if (ult) {
       this.spawnImpact(x, 1.2, z, color, 4)
       const light = this.takeLight(color, 14, 9, 1.5)
@@ -3867,6 +3908,12 @@ export class Renderer3D {
     const z = e.y * U
     const r = e.r * U
     const color = SKILL_COLOR[e.id] ?? 0xffffff
+    // quarks: 범위만큼 퍼지는 불티 (스킬 색) · 큰 터짐은 파편 · 연기까지
+    this.quarks.burst('blast', x, 0.6, z, Math.round(Math.min(44, 10 + r * 6)), { color, speed: Math.max(0.6, r / 2.5) })
+    if (e.id === 'grenade' || e.id === 'roar' || e.id === 'supernova' || e.id === 'trap') {
+      this.quarks.burst('chunks', x, 0.6, z, Math.round(Math.min(24, 6 + r * 3)))
+      this.quarks.burst('smoke', x, 0.4, z, Math.round(Math.min(6, 2 + r)))
+    }
     if (this.skillFx.aoe(e.id, { x, z, aim: 0, tx: x, tz: z, r, ult: false })) return
     this.spawnRing(x, z, 0.3, r, 0.45, color)
     const n = Math.min(40, Math.round(r * 6))
@@ -4048,6 +4095,27 @@ export class Renderer3D {
     g.visible = !zn.wait
     if (zn.wait) return
     g.position.set(zn.x * U, 0.05, zn.y * U)
+    // quarks: 범위 안에서 솟는 불티 — 즉사기는 더 촘촘히 (예고가 더 잘 보이게 · 계획서 E3)
+    if (Math.random() < (kill ? 0.9 : 0.4)) {
+      const za = -((zn.a ?? 0) / 1024) * Math.PI * 2
+      let lx = 0
+      let lz = 0
+      if (shape === ZS_LINE) {
+        lx = Math.random() * (zn.len ?? 0) * U
+        lz = (Math.random() - 0.5) * zn.r * 2 * U
+      } else {
+        const r0 = shape === ZS_RING ? (zn.r2 ?? 0) * U : 0
+        const rr = r0 + Math.sqrt(Math.random()) * (zn.r * U - r0)
+        const half = shape === ZS_CONE ? ((zn.arc ?? 0) / 1024) * Math.PI * 2 : Math.PI
+        const aa = (Math.random() * 2 - 1) * half
+        lx = Math.cos(aa) * rr
+        lz = -Math.sin(aa) * rr
+      }
+      // 무리의 회전(g.rotation.y = za)과 같게 돌린다
+      const wx = zn.x * U + lx * Math.cos(za) + lz * Math.sin(za)
+      const wz = zn.y * U - lx * Math.sin(za) + lz * Math.cos(za)
+      this.quarks.burst('ember', wx, 0.1, wz, 1)
+    }
     g.rotation.y = -((zn.a ?? 0) / 1024) * Math.PI * 2
     if (shape === ZS_LINE) g.scale.set((zn.len ?? 0) * U, 1, zn.r * 2 * U)
     else g.scale.set(zn.r * U, 1, zn.r * U)
@@ -4896,6 +4964,9 @@ export class Renderer3D {
 
   private updateEffects(dt: number): void {
     this.skillFx.update(dt)
+    // 자동 화질이 후처리를 끈 단계(2 ~)부터는 터짐마다 입자 절반
+    this.quarks.quality = this.post.enabled ? 1 : 0.5
+    this.quarks.update(dt)
     this.glow.update(dt)
     this.puff.update(dt)
     // 파편: 산 것만 앞으로 모으며(순서 유지 — 넘칠 때 앞의 오래된 것을 버린다) 인스턴스 하나에 적는다
@@ -5167,6 +5238,7 @@ export class Renderer3D {
 
   dispose(): void {
     this.skillFx.dispose()
+    this.quarks.dispose()
     this.ambient.dispose()
     this.post.dispose()
     this.glow.dispose()

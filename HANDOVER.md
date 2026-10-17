@@ -17,7 +17,8 @@
 - **B2 끝(v1.3.0)**: 2 ~ 4막 15 맵 바닥(`brightFloor.ts` — 구슬치기 골목은 헤링본 대신 바구니 엮음 벽돌). 물감 웅덩이 3D 소품 25% → 3%. 사진 `.frames/shots/b2-*.jpg` · `b3-*.jpg`.
 - **C 끝(v1.4.0)**: 벽 `src/render3d/brightWalls.ts`(`BRIGHT_WALL[map.id]` — 레고 · 수영장 타일 · 거울 · 생울타리 · 모래성 · 쿠키 · 벌집 기둥 · 쿠션 · 솜사탕 나무 · 젤리 버섯) · 주제 소품 `BRIGHT_PROPS` · 비치볼 / 농구공 `ballTexture` · 대기실 울타리 가로대(world3d 마을 가지). 사진 `.frames/shots/c1-*` · `c2-*`.
 - **D 끝(v1.5.0)**: `src/render3d/brightLandmarks.ts`(`planLandmarks` — 꽉 찬 3 × 2 · 2 × 2 벽 덩어리만 · `buildLandmarks` — 종류마다 InstancedMesh 하나). 9 맵 15 종. 사진 `bedorage-rpg-gfx/.frames/shots/lm-*`(D 는 옆 작업 폴더 worktree `bedorage-rpg-gfx` · 가지 `gfx-landmarks` 에서 했다 — 그때 원래 폴더는 옆 세션이 영상 작업 중이었다).
-- 다음: **E three.quarks**(☀ 🌙 둘 다 — 계획서 7장). 측정 도우미: GPU 시간은 `EXT_disjoint_timer_query_webgl2` 로 `__session.frame()` 한 번을 감싸 잰다(이동 직후 첫 측정은 셰이더 · 텍스처 올리기가 섞여 크게 나온다 · 높은 화질 고정은 `__session.applyGfx('high')` 뒤 `'auto'` 로 되돌린다).
+- **E 끝(v1.6.0)**: `src/render3d/quarksfx.ts`(`QuarksFx.burst(name, x, y, z, n, {dir, color, speed})` — 프리셋 13 · 묶음 ☀ 2 / 🌙 4 · 입자 2,500 상한) · 렌더러가 명중 · 처치 · 총구 · 베기 · 금화 · 스킬 시전 · 범위 · 보스 예고 · 등장 · 경직 · 폭발 자리에서 부른다. ⚠ quarks 내부 `spawn` 을 직접 부른다(`shortcut:` 주석) — three.quarks 판을 올리면 거기부터 본다. **그래픽 개편 A ~ E 모두 끝.**
+- 시험 요령(이 세션에서 배운 것): 내장 브라우저 창이 숨겨져 있으면 `requestAnimationFrame` 이 멈춰 판을 열어도 시작 준비(`prepareStart`)가 안 불린다 → `setInterval(() => __session.frame(performance.now()), 33)` 로 직접 돌린다. 측정 도우미: GPU 시간은 `EXT_disjoint_timer_query_webgl2` 로 `__session.frame()` 한 번을 감싸 잰다(이동 직후 첫 측정은 셰이더 · 텍스처 올리기가 섞여 크게 나온다 · 높은 화질 고정은 `__session.applyGfx('high')` 뒤 `'auto'` 로 되돌린다).
 - 공지 사진(`docs/img/shot_*_bright.jpg`)은 그래픽 개편 B ~ D 가 끝난 뒤 한 번에 다시 뜬다(단계마다 뜨지 않는다).
 
 ## 🔖 그 앞 세션 인계 (2026-10-17 · 메인 PC — ☀ 철면수심전용 그래픽 개편 계획)

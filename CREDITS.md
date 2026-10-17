@@ -65,6 +65,11 @@
   - 2차 졸개(2026-09-24): 고블린(대기 · 뛰기 · 맞음 · 죽음) · 방패병(대기 · 걷기 · 맞음 · 죽음 — 칼 휘두르기는 원본 Slash) · 강령술사(대기 · 걷기 · 주문 · 맞음 · 죽음) · 그림자(대기 · 할퀴기 · 맞음 · 죽음 — 달리기는 원본). 마녀(주술사)는 원본 동작 그대로 · 산성 토사꾼은 원본의 기어가기(Mixamo 동작 — 모델에 들어 있던 것을 게임 안에서만 쓴다).
   - 원본은 `art-src/`(저장소 밖)에 있다.
 
+## 코드 라이브러리 (MIT)
+
+- [three.js](https://github.com/mrdoob/three.js) — 3D 그리기 (MIT · © three.js authors)
+- [three.quarks](https://github.com/Alchemist0823/three.quarks) · quarks.core 0.17.1 — 입자 이펙트 (MIT · © Alchemist0823) · 2026-10-17 그래픽 개편 E
+
 ## 넣는 법 (개발자)
 
 1. 무료 모델을 받는다 — CC0 우선, CC BY 는 이 파일에 적는다. 유료 · NC · SA · ND 는 쓰지 않는다(docs/GUIDE.md 11장).
