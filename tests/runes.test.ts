@@ -1,8 +1,8 @@
 // 소켓 · 룬 (2026-10-17 RPG 기능 후보 — 사용자: "권고대로 결정하고 계속 진행")
 import { describe, expect, it } from 'vitest'
-import { CMD_RUNE, CMD_SOCKET, EMPTY_INPUT } from '../src/core/input'
+import { CMD_RUNE, CMD_SELL_ALL, CMD_SOCKET, EMPTY_INPUT } from '../src/core/input'
 import {
-  Item, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, SLOT_AMULET, SLOT_ARMOR, SLOT_HELM, SLOT_RING, SLOT_WEAPON, ST_DMG, ST_HP, computeStats, emptySheet, rollItem, runeFor, sanitizeSheet, socketMax, socketPrice,
+  Item, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, upgradeMaterials, SLOT_AMULET, SLOT_ARMOR, SLOT_HELM, SLOT_RING, SLOT_WEAPON, ST_DMG, ST_HP, computeStats, emptySheet, rollItem, runeFor, sanitizeSheet, socketMax, socketPrice,
 } from '../src/core/items'
 import { makeRng } from '../src/core/rng'
 import { createState, step } from '../src/core/sim'
@@ -135,5 +135,22 @@ describe('구멍 뚫기 · 룬 박기 (명령)', () => {
     expect(got).toBe(true)
     expect(p.runes[2]).toBe(1)
     expect(p.bag.length).toBe(bag0)
+  })
+})
+
+describe('룬이 박힌 것은 잃지 않게', () => {
+  it('한꺼번에 팔기 · 강화 재료에서 빠진다', () => {
+    const armor: Item = { uid: 9, slot: SLOT_ARMOR, wt: -1, rarity: 0, ilvl: 10, aff: [] }
+    const { s, map, p } = atSmith(armor, 0, [])
+    const merchant = townNpcs(ACTS[0].town).find((n) => n.id === 'merchant')!
+    p.x = merchant.x
+    p.y = merchant.y + 20
+    const plain: Item = { uid: 21, slot: SLOT_ARMOR, wt: -1, rarity: 0, ilvl: 10, aff: [] }
+    const runed: Item = { uid: 22, slot: SLOT_ARMOR, wt: -1, rarity: 0, ilvl: 10, aff: [], so: 1, rn: [0] }
+    expect(upgradeMaterials([plain, runed], [], { ...armor, uid: 99 }).length).toBe(1)
+    p.bag = [plain, runed]
+    step(s, map, [{ ...EMPTY_INPUT, cmd: CMD_SELL_ALL, arg: 1 }])
+    step(s, map, [{ ...EMPTY_INPUT }])
+    expect(p.bag.map((b) => b.uid)).toEqual([22])
   })
 })

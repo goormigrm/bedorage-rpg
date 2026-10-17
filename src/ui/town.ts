@@ -11,7 +11,7 @@ import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_PICK, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_PICK, hasRunes, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -274,14 +274,14 @@ export class TownPanel {
               const price = Math.round(buyPrice(it) * questDiscount(me.quests))
               return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price || me.bag.length >= me.bagMax)
             }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
-          : me.bag.map((it, i) => row(it, it.lk ? '🔒 잠금' : `+${itemValue(it)} 골드`, it.lk ? '' : `data-cmd="${CMD_SELL}" data-arg="${i}"`, !!it.lk)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
+          : me.bag.map((it, i) => row(it, it.lk ? '🔒 잠금' : `${hasRunes(it) ? '◆ 룬이 박혀 있다 (같이 없어진다)<br>' : ''}+${itemValue(it)} 골드`, it.lk ? '' : `data-cmd="${CMD_SELL}" data-arg="${i}"`, !!it.lk)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
       // 가방이 가득 차면 살 수 없다(sim 이 조용히 거른다) — 까닭을 적는다 (2026-10-08)
       const fullNote = this.tab === 'buy' && me.bag.length >= me.bagMax ? '<p class="tp-note warn">가방이 가득 찼다 — 팔거나 보관하면 살 수 있다</p>' : ''
       // 한꺼번에 팔기 (2026-09-20 요청). 잠근 것은 빠진다 — 가방 창에서 Shift+클릭으로 잠근다
       let bulk = ''
       if (this.tab === 'sell') {
-        const junk = me.bag.filter((it) => !it.lk && isJunk(it))
-        const all = me.bag.filter((it) => !it.lk)
+        const junk = me.bag.filter((it) => !it.lk && !hasRunes(it) && isJunk(it))
+        const all = me.bag.filter((it) => !it.lk && !hasRunes(it))
         const sum = (a: Item[]) => a.reduce((g, it) => g + itemValue(it), 0)
         const locked = me.bag.length - all.length
         bulk = `<div class="sell-all">

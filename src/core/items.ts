@@ -509,7 +509,7 @@ export const STASH_AT = 1000
 /** 재료가 될 칸 (가방 + 보관함에서 그 등급만, 싼 것부터 — 결정론) */
 export function forgeMaterials(bag: Item[], stash: Item[] = [], rarity = 2): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it.rarity === rarity && !it.lk && it.set === undefined)
+    .filter(({ it }) => it.rarity === rarity && !it.lk && !hasRunes(it) && it.set === undefined)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -532,6 +532,8 @@ export function sortItems(list: Item[]): Item[] {
 
 /** 잡템 = 일반 · 마법 (전부 팔기의 "쓸 것만 남기기") */
 export const isJunk = (it: Item) => it.rarity <= 1
+/** 룬이 박혔나 — 한꺼번에 팔기 · 강화 · 벼리기 재료에서 빠진다(팔거나 녹이면 룬도 없어진다 — 2026-10-17) */
+export const hasRunes = (it: Item): boolean => (it.rn?.length ?? 0) > 0
 
 /**
  * 재료가 될 칸 (가방 + **보관함**, 대상은 빼고, 싼 것부터 — 결정론).
@@ -539,7 +541,7 @@ export const isJunk = (it: Item) => it.rarity <= 1
  */
 export function upgradeMaterials(bag: Item[], stash: Item[], target: Item): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it !== target && !it.lk && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
+    .filter(({ it }) => it !== target && !it.lk && !hasRunes(it) && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }

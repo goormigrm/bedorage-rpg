@@ -10,7 +10,7 @@ import { CHARACTERS } from '../core/characters'
 import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_RUNE, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, Item, LEGENDS, RARITY_NAMES, RUNES, SETS, SLOT_ARMOR, SLOT_COUNT, SLOT_HELM, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, computeStats, hasImplicit, itemColor, itemName, myGoldText, runeStat, setCounts, socketMax, weaponBaseDmg, xpNeed,
+  affixText, affixValue, armorBase, computeStats, hasImplicit, hasRunes, itemColor, itemName, myGoldText, runeStat, setCounts, socketMax, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -328,9 +328,10 @@ export class Inventory {
         if (this.mode === 'stash') return this.send(CMD_STASH_PUT, i)
         if (this.mode === 'sell') {
           if (it.lk) return this.flash('잠근 것은 팔 수 없다 — Shift+클릭으로 풀기')
-          if (it.rarity >= 3 && this.sellArm !== it.uid) {
+          // 전설 이상 · 룬이 박힌 것은 두 번 (룬은 팔면 같이 없어진다)
+          if ((it.rarity >= 3 || hasRunes(it)) && this.sellArm !== it.uid) {
             this.sellArm = it.uid
-            return this.flash(`한 번 더 오른클릭하면 팝니다 — ${itemName(it)}`)
+            return this.flash(`한 번 더 오른클릭하면 팝니다 — ${itemName(it)}${hasRunes(it) ? ' (박은 룬도 같이 없어진다)' : ''}`)
           }
           this.sellArm = -1
           return this.send(CMD_SELL, i)

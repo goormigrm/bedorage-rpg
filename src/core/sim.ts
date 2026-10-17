@@ -13,7 +13,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, cleanRunes, hash01, runeFor, socketMax, socketPrice, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, hasRunes, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, cleanRunes, hash01, runeFor, socketMax, socketPrice, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -878,7 +878,7 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     let n = 0
     const keep: Item[] = []
     for (const it of p.bag) {
-      if (it.lk || (arg === 0 && !isJunk(it))) {
+      if (it.lk || hasRunes(it) || (arg === 0 && !isJunk(it))) {
         keep.push(it)
         continue
       }
