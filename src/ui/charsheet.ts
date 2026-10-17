@@ -6,7 +6,7 @@
 import { keyLabel } from '../game/keymap'
 import { ATTR_REC, CHARACTERS, ROLE_INFO } from '../core/characters'
 import { CMD_ATTR } from '../core/input'
-import { AFFIXES, ATTR_DESC, ATTR_NAMES, LEVEL_CAP, MASTERY_CAP, MASTERY_DESC, MASTERY_NAMES, MASTERY_XP, ST_COUNT, ST_DMG, ST_RATE, attrFree, attrPoints, masteryFree, xpNeed } from '../core/items'
+import { AFFIXES, ATTR_DESC, ATTR_NAMES, LEVEL_CAP, MASTERY_CAP, MASTERY_DESC, MASTERY_NAMES, MASTERY_XP, ST_COUNT, ST_DMG, ST_HP, ST_RATE, attrFree, attrPoints, masteryFree, xpNeed } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
 import { isTown } from '../core/world'
@@ -103,7 +103,9 @@ export class CharSheet {
       const a = AFFIXES[i]
       const v = Math.round(p.st[i] * 10) / 10
       const minus = a.name.includes('감소')
-      lines.push(`<div class="cs-st ${v === 0 ? 'zero' : ''}"><span>${a.name}</span><b>${v === 0 ? '—' : `${minus ? '-' : '+'}${v}${a.pct ? '%' : ''}`}</b></div>`)
+      // 맨 위 "최대 체력"(합계)과 겹치지 않게 — 이 줄은 레벨 · 장비 · 능력치가 더한 몫 (2026-10-17 완성도 검토)
+      const name = i === ST_HP ? '체력 보너스' : a.name
+      lines.push(`<div class="cs-st ${v === 0 ? 'zero' : ''}"><span>${name}</span><b>${v === 0 ? '—' : `${minus ? '-' : '+'}${v}${a.pct ? '%' : ''}`}</b></div>`)
     }
     const need = xpNeed(p.level)
     const mastery = this.masteryHtml(p, town)

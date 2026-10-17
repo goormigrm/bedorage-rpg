@@ -287,10 +287,9 @@ export class Inventory {
         <div class="inv-left">
           <div class="eqs">${Array.from({ length: SLOT_COUNT }, (_, i) => slot(i)).join('')}</div>
           <div class="inv-stats">${stats.join('')}</div>
-          ${this.runesHtml(me)}
         </div>
         <div class="inv-right">
-          <div class="bag-h">가방 ${me.bag.length} / ${me.bagMax}
+          <div class="bag-h"><span class="bag-n">가방 ${me.bag.length} / ${me.bagMax}</span>
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
             <small>${
                this.mode === 'stash'
@@ -301,6 +300,7 @@ export class Inventory {
              }</small></div>
           ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
           <div class="bag" data-drop="bag">${cells.join('')}</div>
+          ${this.runesHtml(me)}
         </div>
       </div>`
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
