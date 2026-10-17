@@ -87,12 +87,6 @@ export const DON_DARK = 1
 export const DON_INVERT = 2
 export const DON_SEAL = 3
 export const DON_SLOTS = 4
-/** 쉬는 시간(방송 개선 ⑥)에서 광폭화의 칸 (PlayerState.don 밖 — 괴물 쪽 효과) */
-export const RAGE_SLOT = DON_SLOTS
-/** 방해 효과의 칸: 사람에게 거는 넷은 PlayerState.don 칸(지옥문은 그 암흑) · 광폭화 RAGE_SLOT · 나머지 -1 */
-export function effectSlot(key: DonateEvent['key']): number {
-  return key === 'shake' ? DON_SHAKE : key === 'dark' || key === 'hell' ? DON_DARK : key === 'invert' ? DON_INVERT : key === 'seal' ? DON_SEAL : key === 'rage' ? RAGE_SLOT : -1
-}
 
 /** 효과 길이 (틱). 같은 것이 또 오면 이어 붙이되 DON_MAX 까지 (화면 흔들림은 SHAKE_MAX) */
 export const DON_TICKS: Record<number, number> = {
@@ -134,7 +128,7 @@ export function effectFits(id: number, don: readonly number[] | undefined, capSe
   const e = donateEvent(id)
   if (!e) return true
   if (e.key === 'rage') return rageLeft <= 0
-  const slot = effectSlot(e.key)
+  const slot = e.key === 'shake' ? DON_SHAKE : e.key === 'dark' || e.key === 'hell' ? DON_DARK : e.key === 'invert' ? DON_INVERT : e.key === 'seal' ? DON_SEAL : -1
   if (slot < 0) return true
   const ticks = e.key === 'hell' ? HELL_DARK_TICKS : DON_TICKS[slot]
   const cap = Math.min(DON_MAX, capSec * TICK_RATE)

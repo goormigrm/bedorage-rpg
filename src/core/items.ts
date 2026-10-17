@@ -75,10 +75,6 @@ export type Item = {
   up?: number
   /** 잠금 (2026-09-20): 팔기 · 버리기 · 강화 재료 · 벼리기 재료에서 빠진다. "전부 팔기" 의 안전장치 */
   lk?: 1
-  /** 소켓 수 (무기 · 투구 · 갑옷 — socketMax 까지. 떨어질 때 정해지고 대장장이가 더 뚫는다) */
-  so?: number
-  /** 박은 룬 (RUNES 번호 — 소켓 수까지, 뺄 수 없다) */
-  rn?: number[]
 }
 
 /** 능력치 번호 (PlayerState.st 배열) */
@@ -366,57 +362,8 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
       delete it.leg
     }
   }
-  rollSockets(it)
   return it
 }
-
-// ---------------------------------------------------------------- 소켓 · 룬 (2026-10-17 RPG 기능 후보 — 디아블로 2)
-/**
- * 룬: 괴물이 떨어뜨리는 돌. **룬 주머니**에 모인다(가방 칸을 차지하지 않는다 — PlayerState.runes). 무기 · 투구 · 갑옷의 **빈 소켓**에
- * 박으면(가방 창) 그 부위에 맞는 능력이 붙는다 — 무기 w · 방어구 a. 박은 룬은 뺄 수 없다(아이템을 바꾸면 같이 간다).
- * 이름 = 효과(2026-09-24 사용자 원칙 — "직관적이지 않은 이름은 별로"). lv = 이 지역 레벨부터 떨어진다. 순서가 세이브에 들어간다 — 새 룬은 끝에
- */
-export const RUNES: { name: string; color: string; w: [number, number]; a: [number, number]; lv: number }[] = [
-  { name: '힘의 룬', color: '#ff7a5a', w: [ST_DMG, 6], a: [ST_HP, 25], lv: 1 },
-  { name: '속도의 룬', color: '#ffd84a', w: [ST_RATE, 4], a: [ST_SPEED, 3], lv: 1 },
-  { name: '치명의 룬', color: '#ff5fa8', w: [ST_CRIT, 12], a: [ST_DR, 2], lv: 9 },
-  { name: '사냥의 룬', color: '#6ae07a', w: [ST_ELITEDMG, 8], a: [ST_LIFEKILL, 4], lv: 9 },
-  { name: '지혜의 룬', color: '#6ab4ff', w: [ST_SKILLPOW, 6], a: [ST_CDR, 3], lv: 17 },
-  { name: '배움의 룬', color: '#c88aff', w: [ST_XP, 5], a: [ST_XP, 5], lv: 17 },
-]
-/** 소켓을 낼 수 있는 부위 (반지 · 목걸이는 없다) */
-export const socketable = (slot: number): boolean => slot === SLOT_WEAPON || slot === SLOT_HELM || slot === SLOT_ARMOR
-/** 소켓 상한: 부위(투구 2) · 등급(일반 · 마법 3 · 희귀 2 · 전설 · 신화 1 — 좋은 옵션이 많을수록 적게) */
-export function socketMax(it: Item): number {
-  if (!socketable(it.slot)) return 0
-  return Math.min(it.slot === SLOT_HELM ? 2 : 3, [3, 3, 2, 1, 1][it.rarity] ?? 1)
-}
-/** 룬 합치기 (대장장이): 같은 룬 RUNE_UP_N 개 → 다음 룬 하나. CMD_RUNE arg = RUNE_UP + 룬 번호 (남는 룬을 쓸 곳) */
-export const RUNE_UP = 64
-export const RUNE_UP_N = 3
-export const runeUpPrice = (r: number): number => 100 + 100 * r
-/** 대장장이 구멍 뚫기 값 (골드) — 이미 뚫린 수만큼 비싸진다 */
-export const socketPrice = (it: Item): number => Math.round((200 + it.ilvl * 25) * ((it.so ?? 0) + 1))
-/** 0 이상 1 미만 — 판의 rng 를 쓰지 않는 추첨 (전리품 · 룬의 추첨 순서를 바꾸지 않게 · 모두의 화면에서 같다) */
-export function hash01(a: number, b = 0): number {
-  let x = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77) ^ 0x27d4eb2f) >>> 0
-  x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0
-  x = Math.imul(x ^ (x >>> 15), 0x846ca68b) >>> 0
-  return ((x ^ (x >>> 16)) >>> 0) / 4294967296
-}
-/** 떨어질 때 소켓 (아이템 번호로 정한다): 일반 35% · 마법 25% · 희귀 15% · 전설 · 신화 10% — 1 ~ 상한 */
-function rollSockets(it: Item): void {
-  const max = socketMax(it)
-  if (max <= 0 || hash01(it.uid, 1) >= ([0.35, 0.25, 0.15, 0.1, 0.1][it.rarity] ?? 0)) return
-  it.so = 1 + Math.floor(hash01(it.uid, 2) * max)
-}
-/** 그 지역 레벨에서 떨어지는 룬 하나 (r = 0 이상 1 미만 — 떨어질 수 있는 것 중 고르게) */
-export function runeFor(lvl: number, r: number): number {
-  const ok = RUNES.map((d, i) => (d.lv <= lvl ? i : -1)).filter((i) => i >= 0)
-  return ok[Math.min(ok.length - 1, Math.floor(r * ok.length))] ?? 0
-}
-/** 룬 한 개가 그 부위에서 주는 것 [능력치 번호, 값] */
-export const runeStat = (r: number, slot: number): [number, number] => (slot === SLOT_WEAPON ? RUNES[r].w : RUNES[r].a)
 
 /** 상인에게 파는 값 (골드): 아이템 레벨 × 등급 × 강화 */
 export function itemValue(it: Item): number {
@@ -509,7 +456,7 @@ export const STASH_AT = 1000
 /** 재료가 될 칸 (가방 + 보관함에서 그 등급만, 싼 것부터 — 결정론) */
 export function forgeMaterials(bag: Item[], stash: Item[] = [], rarity = 2): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it.rarity === rarity && !it.lk && !hasRunes(it) && it.set === undefined)
+    .filter(({ it }) => it.rarity === rarity && !it.lk && it.set === undefined)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -532,8 +479,6 @@ export function sortItems(list: Item[]): Item[] {
 
 /** 잡템 = 일반 · 마법 (전부 팔기의 "쓸 것만 남기기") */
 export const isJunk = (it: Item) => it.rarity <= 1
-/** 룬이 박혔나 — 한꺼번에 팔기 · 강화 · 벼리기 재료에서 빠진다(팔거나 녹이면 룬도 없어진다 — 2026-10-17) */
-export const hasRunes = (it: Item): boolean => (it.rn?.length ?? 0) > 0
 
 /**
  * 재료가 될 칸 (가방 + **보관함**, 대상은 빼고, 싼 것부터 — 결정론).
@@ -541,7 +486,7 @@ export const hasRunes = (it: Item): boolean => (it.rn?.length ?? 0) > 0
  */
 export function upgradeMaterials(bag: Item[], stash: Item[], target: Item): number[] {
   return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
-    .filter(({ it }) => it !== target && !it.lk && !hasRunes(it) && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
+    .filter(({ it }) => it !== target && !it.lk && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
     .map((o) => o.k)
 }
@@ -644,10 +589,6 @@ export function computeStats(level: number, equip: (Item | null)[], attr: number
   for (const it of equip) {
     if (!it) continue
     for (let k = 0; k < it.aff.length; k += 2) st[it.aff[k]] += affixValue(it, k)
-    for (const r of it.rn ?? []) {
-      const [k, v] = runeStat(r, it.slot)
-      st[k] += v
-    }
     st[ST_DMG] += weaponBaseDmg(it)
     st[ST_DR] += armorBase(it)
   }
@@ -686,8 +627,6 @@ export type Sheet = {
   potMax?: number
   /** 보관함 (캐릭터끼리 공유 — 세이브는 따로 두고, 판에 들어올 때 내 기록에 실어 온다) */
   stash?: Item[]
-  /** 룬 주머니: RUNES 번호마다 개수 */
-  runes?: number[]
   /** 스킬 트리 빌드 (skills.ts Build) */
   build?: { r: number[]; m3: number[]; m5: number[]; s: number[] }
   /** 퀘스트 상태 (world.ts QUESTS 순서: 0 모름 · 1 받음 · 2 이룸 · 3 끝) — 보통 난이도 */
@@ -712,11 +651,6 @@ export function emptySheet(): Sheet {
   return { level: 1, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [], wps: 0, bagMax: BAG_SIZE, stashMax: STASH_SIZE }
 }
 
-/** 룬 주머니 다듬기 (RUNES 수만큼 · 0 ~ 999) */
-export function cleanRunes(v: unknown): number[] {
-  return RUNES.map((_, i) => Math.max(0, Math.min(999, Math.floor(Number((Array.isArray(v) ? v : [])[i]) || 0))))
-}
-
 /** 늘린 칸 수를 단계에 맞춰 자른다 (세이브를 손댔거나 예전 세이브라도 말이 되게) */
 function clampSteps(v: unknown, base: number, step: number, max: number): number {
   const n = Math.floor((Math.max(base, Math.min(max, Math.floor(Number(v) || base))) - base) / step)
@@ -734,8 +668,6 @@ export function sanitizeSheet(s: unknown): Sheet {
     if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
     if (x && x.lk !== undefined && x.lk !== 1) return false
     if (x && x.set !== undefined && !(Number.isInteger(x.set) && x.set >= 0 && x.set < SETS.length)) return false
-    if (x && x.so !== undefined && !(Number.isInteger(x.so) && x.so >= 0 && x.so <= 3)) return false
-    if (x && x.rn !== undefined && !(Array.isArray(x.rn) && x.rn.length <= (x.so ?? 0) && x.rn.every((r) => Number.isInteger(r) && r >= 0 && r < RUNES.length))) return false
     return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && x.aff.every((v) => Number.isFinite(v))
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))
@@ -755,7 +687,6 @@ export function sanitizeSheet(s: unknown): Sheet {
   e.gpity = Math.max(0, Math.min(GAMBLE_PITY, Math.floor(Number(o.gpity) || 0)))
   e.stats = sanitizeStats(o.stats)
   e.stash = Array.isArray(o.stash) ? o.stash.filter(okItem).slice(0, e.stashMax) : []
-  e.runes = cleanRunes(o.runes)
   // 빌드는 sim 이 sanitizeBuild 로 한 번 더 본다 (여기서는 모양만)
   if (o.build && typeof o.build === 'object') e.build = o.build
   e.quests = Array.from({ length: 32 }, (_, i) => Math.max(0, Math.min(3, Math.floor(Number(o.quests?.[i]) || 0))))
@@ -768,5 +699,7 @@ export function sanitizeSheet(s: unknown): Sheet {
   const ms = Array.from({ length: 4 }, (_, i) => Math.max(0, Math.min(MASTERY_CAP, Math.floor(Number(o.mst?.[i]) || 0))))
   e.mst = masteryFree(e.mlv, ms) >= 0 ? ms : [0, 0, 0, 0]
   e.rift = Math.max(0, Math.min(60, Math.floor(Number(o.rift) || 0)))
+  // 소켓 · 룬(v1.7.0 — 2026-10-17 사용자가 뺐다)의 흔적: 아이템의 소켓(so) · 박은 룬(rn)을 지운다 (룬 주머니는 위에서 옮기지 않아 저절로 빠진다)
+  for (const it of [...e.equip, ...e.bag, ...(e.stash ?? [])]) if (it) for (const k of ['so', 'rn']) delete (it as Record<string, unknown>)[k]
   return e
 }

@@ -51,20 +51,7 @@ export interface StreamCfg {
   bubbleBossLess: boolean
   /** 방송 화면 글자 크기 배율 (2026-10-17 방송 개선 ⑤): 말풍선 · 후원 표 · 방송 알림 — TEXT_SCALES */
   textScale: number
-  /** 차단한 시청자 닉네임 (2026-10-17 방송 개선 ②): 채팅 말풍선 · !참여를 받지 않는다. 후원 이벤트는 일어나되(돈을 냈다) 이름 · 글은 숨긴다 */
-  blocked: string[]
-  /** 같은 방해 효과 사이 쉬는 시간(초 — EFFECT_GAPS, 0 = 이어 붙이기 그대로) (방송 개선 ⑥): 켜면 이어 붙이지 않고 끝난 뒤 이만큼 쉬고 다음 */
-  effectGap: number
-  /** 후원 효과음 (방송 개선 ④ — 방송 프로그램의 후원 알림 소리와 겹치면 끈다) */
-  donSfx: boolean
-  /** 후원 때 게임 소리를 잠깐 줄이는 시간(초 — DUCK_SECS, 0 = 안 줄임) (방송 개선 ④ — 치지직이 후원 글을 읽어 주는 동안) */
-  duckSec: number
-  /** 빈 자리 안내 (방송 개선 ⑦): 내 방에 빈 자리가 있으면 후원 표 아래에 "빈 자리 N — 게임 목록에서 ○○ 방" (주소는 쓰지 않는다) */
-  seatNote: boolean
 }
-
-export const EFFECT_GAPS = [0, 5, 10, 20]
-export const DUCK_SECS = [0, 5, 10]
 
 export type BubbleAmount = 'few' | 'normal' | 'many'
 /** 말풍선 양마다: 다음 말풍선까지 ms · 기다리는 줄 상한 · 못 띄우고 기다리는 한도 ms ('보통' = 예전 그대로) */
@@ -107,11 +94,6 @@ export function defaultStreamCfg(): StreamCfg {
     bubbleAmount: 'normal',
     bubbleBossLess: false,
     textScale: 1,
-    blocked: [],
-    effectGap: 0,
-    donSfx: true,
-    duckSec: 0,
-    seatNote: false,
   }
 }
 
@@ -147,11 +129,6 @@ export function loadStreamCfg(): StreamCfg {
       bubbleAmount: typeof v.bubbleAmount === 'string' && Object.hasOwn(BUBBLE_FLOW, v.bubbleAmount) ? v.bubbleAmount : d.bubbleAmount,
       bubbleBossLess: v.bubbleBossLess ?? d.bubbleBossLess,
       textScale: TEXT_SCALES.includes(Number(v.textScale)) ? Number(v.textScale) : d.textScale,
-      blocked: Array.isArray(v.blocked) ? cleanBanned(v.blocked) : d.blocked,
-      effectGap: EFFECT_GAPS.includes(Number(v.effectGap)) ? Number(v.effectGap) : d.effectGap,
-      donSfx: v.donSfx ?? d.donSfx,
-      duckSec: DUCK_SECS.includes(Number(v.duckSec)) ? Number(v.duckSec) : d.duckSec,
-      seatNote: v.seatNote ?? d.seatNote,
     }
   } catch {
     return d
@@ -215,39 +192,6 @@ export function eventForAmount(amount: number, cfg = loadStreamCfg(), rnd: () =>
 /** "!응원" 후원이면 어떤 응원인가 (pickByAmount — 같은 금액이면 무작위로 하나). 없으면 undefined */
 export function cheerForAmount(amount: number, cfg = loadStreamCfg(), rnd: () => number = Math.random): CheerDef | undefined {
   return pickByAmount(CHEER_EVENTS, cfg.cheers, amount, rnd)
-}
-
-/** 띄어쓰기 · 대소문자를 빼고 견준다 ("! 좀비 떼" = "!좀비떼") */
-const squash = (s: string): string => s.replace(/\s+/g, '').toLowerCase()
-
-/**
- * 후원 글에 "!이름" (2026-10-17 방송 개선 ①): 금액이 그 이벤트 값 이상이면 **그 이벤트** (금액표의 가장 비싼 것 대신).
- * 이름은 지금 분위기의 표 이름(☀ 이면 밝은 이름). 이름이 둘 이상이면 그중 비싼 것. 없거나 금액이 모자라면 undefined → 금액표대로
- */
-export function eventByName(text: string, amount: number, cfg = loadStreamCfg()): DonateEvent | undefined {
-  const t = squash(text)
-  if (!t.includes('!')) return undefined
-  let best: DonateEvent | undefined
-  let bestAmt = -1
-  DONATE_EVENTS.forEach((e, i) => {
-    const a = cfg.amounts[i]
-    if (!(a > 0 && amount >= a) || a <= bestAmt || !t.includes('!' + squash(e.name))) return
-    best = e
-    bestAmt = a
-  })
-  return best
-}
-
-/** 차단한 시청자인가 (방송 개선 ② — 닉네임 그대로, 대소문자 · 띄어쓰기는 가리지 않는다) */
-export function isBlocked(nick: string, cfg = loadStreamCfg()): boolean {
-  if (cfg.blocked.length === 0) return false
-  const n = squash(nick)
-  return !!n && cfg.blocked.some((b) => squash(b) === n)
-}
-
-/** 금액표 한꺼번에 배율 (방송 개선 ⑧ — ×0.5 · ×2): 500원 단위로 · 켠 칸은 500원 아래로 내려가지 않는다 · 끈 칸(0)은 그대로 */
-export function scaleAmounts(list: readonly number[], k: number): number[] {
-  return list.map((a) => (a > 0 ? Math.max(500, Math.round((a * k) / 500) * 500) : 0))
 }
 
 /** 켠 칸 중 금액이 겹치는 금액들 (표에 🎲 — 그중 하나가 무작위로 일어난다) */

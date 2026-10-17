@@ -10,8 +10,8 @@ import { NPC_NAMES } from '../core/world'
 import type { GameState } from '../core/state'
 
 const KEY = 'brpg.tut'
-type Step = 'move' | 'talk' | 'shoot' | 'skill' | 'dash' | 'loot' | 'bag' | 'portal' | 'rune'
-const ORDER: Step[] = ['move', 'talk', 'shoot', 'skill', 'dash', 'loot', 'bag', 'portal', 'rune']
+type Step = 'move' | 'talk' | 'shoot' | 'skill' | 'dash' | 'loot' | 'bag' | 'portal'
+const ORDER: Step[] = ['move', 'talk', 'shoot', 'skill', 'dash', 'loot', 'bag', 'portal']
 
 export interface TutorView {
   state: GameState
@@ -118,8 +118,6 @@ export class Tutor {
     if (p.bag.length > this.bag0) this.finish('loot')
     if (v.bagOpen) this.finish('bag')
     if (p.portalCast > 0) this.finish('portal')
-    // 룬 (소켓 · 룬 — 2026-10-17): 룬을 하나 박으면 끝
-    if (p.equip.some((it) => (it?.rn?.length ?? 0) > 0)) this.finish('rune')
     // ---- 지금 보일 것 (차례대로, 그 자리에서 할 수 있는 첫 단계)
     const next = ORDER.find((s) => {
       if (this.done.has(s)) return false
@@ -131,7 +129,6 @@ export class Tutor {
       if (s === 'loot') return v.nearLoot
       if (s === 'bag') return p.bag.length > 0 && this.done.has('loot')
       if (s === 'portal') return !town && p.level >= 3
-      if (s === 'rune') return (p.runes ?? []).some((n) => n > 0)
       return false
     })
     if (!next) {
@@ -148,7 +145,6 @@ export class Tutor {
       loot: `떨어진 것 곁에서 ${k('use')} — 줍기 · 빛기둥이 높을수록 좋은 것`,
       bag: `${k('bag')} 가방 — 왼클릭 끼기 · 마우스를 올리면 지금 것과 견준다`,
       portal: `${k('portal')} 타운 포털 — 마을에 갔다가 그 자리로 돌아온다 (팔기 · 고치기)`,
-      rune: `룬을 주웠다 — ${k('bag')} 가방 칸 아래 <b>룬 주머니</b>에서 무기 · 투구 · 갑옷의 빈 소켓에 박는다 (소켓은 대장장이가 뚫는다)`,
     }
     this.show(next, html[next])
   }

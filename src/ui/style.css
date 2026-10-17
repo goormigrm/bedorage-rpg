@@ -522,24 +522,6 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .inv-stats { margin-top: 10px; font-size: 11px; display: grid; gap: 2px; }
 .inv-stats div { display: flex; justify-content: space-between; }
 .inv-stats b { color: #efe4cf; }
-/* 룬 주머니 (소켓 · 룬 — 2026-10-17) */
-.inv-runes { margin-top: 10px; font-size: 11px; display: grid; gap: 3px; }
-.inv-runes .ir-h { display: flex; flex-direction: column; gap: 1px; border-top: 1px solid rgba(201,162,74,0.25); padding-top: 6px; grid-column: 1 / -1; }
-/* 가방 아래 두 줄씩 — 작은 창(720p)에서도 스크롤 없이 보이게 */
-.inv-right .inv-runes { grid-template-columns: 1fr 1fr; column-gap: 12px; }
-.inv-runes .ir-h b { color: #efe4cf; }
-.inv-runes .ir-h small { color: #a89878; font-size: 10px; }
-.rune-row { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
-.rune-row span { flex: 1 1 auto; color: var(--ru); white-space: nowrap; }
-.rune-row span i { font-style: normal; margin-right: 3px; }
-.rune-row button { font: inherit; font-size: 10px; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--ru); background: rgba(0,0,0,0.35); color: #efe4cf; cursor: pointer; }
-.rune-row button:hover, .rune-row button.arm { background: var(--ru); color: #1a1208; }
-.sock { margin-top: 4px; }
-.sock > b { display: block; color: #cfc6b4; font-size: 11px; }
-.sock.dim { color: #8a8070; font-size: 11px; }
-.sock .rune { color: var(--ru); }
-.sock .rune.empty { color: #8a8070; }
-.cell s.so { position: absolute; left: 3px; bottom: 1px; font-size: 8px; letter-spacing: -1px; color: #ffe08a; text-decoration: none; }
 .inv-right { flex: 1; }
 .bag-h { font: 700 13px "IBM Plex Sans KR", sans-serif; color: #efe4cf; margin-bottom: 6px; }
 .bag-h small { font-weight: 500; color: #8d8170; margin-left: 6px; }

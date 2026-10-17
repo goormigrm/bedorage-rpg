@@ -9,11 +9,11 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_TRIAL, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SOCKET, CMD_RUNE, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, hasRunes, RUNES, RUNE_UP, RUNE_UP_N, runeUpPrice, cleanRunes, hash01, runeFor, socketMax, socketPrice, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -878,7 +878,7 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     let n = 0
     const keep: Item[] = []
     for (const it of p.bag) {
-      if (it.lk || hasRunes(it) || (arg === 0 && !isJunk(it))) {
+      if (it.lk || (arg === 0 && !isJunk(it))) {
         keep.push(it)
         continue
       }
@@ -992,15 +992,6 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     p.gold -= price
     p.stashMax = Math.min(STASH_MAX, p.stashMax + STASH_STEP)
     trade('stashUp', -price, p.stashMax)
-  } else if (cmd === CMD_SOCKET && npc === 'smith') {
-    // 구멍 뚫기 (소켓 · 룬): 낀 장비에 소켓 하나 — 상한(socketMax)까지
-    const it = p.equip[arg]
-    if (!it || (it.so ?? 0) >= socketMax(it)) return
-    const price = socketPrice(it)
-    if (p.gold < price) return
-    p.gold -= price
-    it.so = (it.so ?? 0) + 1
-    trade('socket', -price, it.uid)
   } else if (cmd === CMD_SHOPNEW && npc === 'merchant') {
     // 진열 새로 받기 — 판의 rng 로 굴리므로 모두의 화면에서 같은 물건이 깔린다(진열은 파티 공용)
     const price = shopNewPrice(p.level)
@@ -1391,7 +1382,6 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     bag,
     bagMax: sh.bagMax ?? BAG_SIZE,
     gpity: sh.gpity ?? 0,
-    runes: cleanRunes(sh.runes),
     stats: sanitizeStats(sh.stats),
     st,
     magSize,
@@ -3769,13 +3759,6 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
     // 첫 아이템 희귀 이상 확정은 막 보스만 (우두머리 · 보물 고블린은 뺐다 — 2026-09-24 "저렙에서도 희귀 · 전설이 너무 쉽다")
     spill(state, p, m.x, m.y, lvl, golds, (fountain ? 3 : m.elite ? 2 : 1) * tier.gold * (rs?.gold ?? 1), items, src, tier.loot + (rs?.loot ?? 0), boss ? 2 : 0)
-    // 룬 (소켓 · 룬 — 2026-10-17): 막 보스는 늘 · 우두머리 · 고블린 40% · 정예 10% · 졸개 0.6%(마릿수만큼 나눈다).
-    // 판의 rng 를 쓰지 않는다(괴물 · 사람 · 틱으로 — 전리품 추첨 순서가 그대로)
-    const rc = boss ? 1 : fountain ? 0.4 : m.elite ? 0.1 : 0.006 / MOB_COUNT
-    if (hash01(m.id * 977 + p.id, state.tick) < rc) {
-      const r = runeFor(lvl, hash01(m.id * 131 + p.id, state.tick + 7))
-      state.drops.push({ id: state.nextDropId++, owner: p.id, x: m.x + 18, y: m.y - 12, item: null, gold: 0, pot: 0, rn: r, ttl: 60 * 240, lock: 12 })
-    }
   }
 }
 
@@ -3871,9 +3854,6 @@ function pickUp(state: GameState, p: PlayerState): void {
       if (p.potions >= p.potMax) continue
       p.potions++
       state.events.push({ type: 'potGet', p: p.id, x: d.x, y: d.y })
-    } else if (d.rn !== undefined) {
-      p.runes[d.rn] = (p.runes[d.rn] ?? 0) + 1
-      state.events.push({ type: 'runeGet', p: p.id, r: d.rn, x: d.x, y: d.y })
     }
     state.drops.splice(i, 1)
   }
@@ -3944,32 +3924,8 @@ function pickItem(state: GameState, p: PlayerState): boolean {
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
-  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE || cmd === CMD_SELL_ALL || cmd === CMD_BAGUP || cmd === CMD_STASHUP || cmd === CMD_SHOPNEW || cmd === CMD_SOCKET) {
+  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE || cmd === CMD_SELL_ALL || cmd === CMD_BAGUP || cmd === CMD_STASHUP || cmd === CMD_SHOPNEW) {
     townCommand(state, p, cmd, arg)
-    return
-  }
-  if (cmd === CMD_RUNE && arg >= RUNE_UP) {
-    // 룬 합치기 (대장장이): 같은 룬 셋 → 다음 룬 하나 · 골드
-    const r = arg - RUNE_UP
-    const price = runeUpPrice(r)
-    if (state.mode !== 'dungeon' || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'smith' || !RUNES[r + 1] || (p.runes[r] ?? 0) < RUNE_UP_N || p.gold < price) return
-    p.gold -= price
-    p.runes[r] -= RUNE_UP_N
-    p.runes[r + 1] = (p.runes[r + 1] ?? 0) + 1
-    state.events.push({ type: 'trade', p: p.id, what: 'runeUp', gold: -price, uid: 0 })
-    state.events.push({ type: 'runeGet', p: p.id, r: r + 1, x: p.x, y: p.y })
-    return
-  }
-  if (cmd === CMD_RUNE) {
-    // 룬 박기 (어디서나 — 던전 판): 주머니의 룬 하나를 그 장비의 빈 소켓에
-    const slot = arg >> 3
-    const r = arg & 7
-    const it = p.equip[slot]
-    if (state.mode !== 'dungeon' || !it || !RUNES[r] || (p.runes[r] ?? 0) <= 0 || (it.rn?.length ?? 0) >= (it.so ?? 0)) return
-    p.runes[r]--
-    it.rn = [...(it.rn ?? []), r]
-    recalc(p)
-    state.events.push({ type: 'runeSet', p: p.id, slot, r })
     return
   }
   if (cmd === CMD_SORT) {

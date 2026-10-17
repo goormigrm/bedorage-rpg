@@ -38,8 +38,6 @@ const CANON_MELODY = [
 
 const STORAGE_KEY = 'brpg.muted'
 const MASTER = 0.8
-/** 후원 때 줄인 게임 소리 크기 (duck) */
-const DUCK_LEVEL = 0.3
 const BGM_LEVEL = 0.15
 
 interface Spatial {
@@ -100,8 +98,6 @@ function spatial(wdx: number, wdy: number): Spatial {
 export class Sfx {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
-  /** 후원 때 잠깐 줄이는 마디 (master → 이것 → 압축기 — duck) */
-  private duckGain: GainNode | null = null
   private bgmGain: GainNode | null = null
   private noise: AudioBuffer | null = null
   private mutedFlag: boolean
@@ -255,10 +251,7 @@ export class Sfx {
     comp.ratio.value = 6
     comp.attack.value = 0.003
     comp.release.value = 0.16
-    const duck = ctx.createGain()
-    master.connect(duck)
-    duck.connect(comp)
-    this.duckGain = duck
+    master.connect(comp)
     // 리미터 (2026-10-08 퀄리티 2차 4단계 S5): 큰 소리가 몰려도 깨지지 않게 마지막에 한 번 더 누른다
     const lim = ctx.createDynamicsCompressor()
     lim.threshold.value = -1.5
@@ -485,16 +478,6 @@ export class Sfx {
           if (e.rarity >= 3) this.tone(b.node, b.t0 + 0.16, 0.4, 'sine', f * 2, f * 2, 0.3, 0.004)
           // 가죽 주머니에 넣는 소리 (2026-10-08 S4)
           this.sample('pouch', b.node, b.t0, 2)
-          break
-        }
-        case 'runeGet':
-        case 'runeSet': {
-          // 룬 (소켓 · 룬 — 2026-10-17): 돌이 맑게 울린다 · 박을 때는 낮은 쇳소리를 더한다
-          if (e.p !== localPlayer) break
-          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.55)
-          this.tone(b.node, b.t0, 0.3, 'sine', 1320, 1320, 0.3, 0.004)
-          this.tone(b.node, b.t0 + 0.06, 0.45, 'sine', 1980, 1980, 0.22, 0.004)
-          if (e.type === 'runeSet') this.tone(b.node, b.t0, 0.25, 'triangle', 330, 300, 0.4, 0.002)
           break
         }
         case 'loot': {
@@ -1976,19 +1959,6 @@ export class Sfx {
   }
 
   /** 후원 알림 (2026-09-23 — 치지직): 동전 세 번 · 큰 후원(보스급)이면 낮은 징과 울림을 더한다 */
-  /**
-   * 게임 소리를 sec 초 동안 줄였다가 되돌린다 (2026-10-17 방송 개선 ④ — 치지직이 후원 글을 읽어 주는 동안 잘 들리게).
-   * 그동안 또 부르면 그때부터 다시 sec 초
-   */
-  duck(sec: number): void {
-    if (!this.ctx || !this.duckGain || sec <= 0) return
-    const t = this.ctx.currentTime
-    const g = this.duckGain.gain
-    g.cancelScheduledValues(t)
-    g.setTargetAtTime(DUCK_LEVEL, t, 0.08)
-    g.setTargetAtTime(1, t + sec, 0.5)
-  }
-
   donate(big: boolean): void {
     if (!this.ready()) return
     const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.6)
