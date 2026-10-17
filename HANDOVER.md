@@ -36,6 +36,7 @@
 - **B 바닥(v1.2.0 · v1.3.0)**: `src/render3d/brightFloor.ts` — 맵 24 곳마다 다른 바닥(`BRIGHT_FLOOR[map.id]` · 띠마다 `paintBrightBand`) + 반복 결 텍스처(`applyGrain`) · 풀은 바깥만 · 작은 꽃.
 - **C 벽 · 소품(v1.4.0)**: `src/render3d/brightWalls.ts` — `BRIGHT_WALL`(레고 · 수영장 타일 · 거울 · 생울타리 · 모래성 · 쿠키 · 벌집 기둥 · 쿠션 · 솜사탕 나무 · 젤리 버섯) · `BRIGHT_PROPS`(맵 주제 소품) · `ballTexture`(비치볼 · 농구공) · 대기실 울타리 가로대.
 - **D 랜드마크(v1.5.0)**: `src/render3d/brightLandmarks.ts` — 꽉 찬 3 × 2 · 2 × 2 벽 덩어리 자리 안에만(`planLandmarks`) · 종류마다 InstancedMesh 하나(`buildLandmarks`) · 9 맵 15 종.
+- **이어서(v1.6.6 — 사용자: "그래픽 4가지 이어서 모두 진행해줘")**: ☀ 보스 방 넷 고리 벽 = 칸마다 주제 조각(`brightLandmarks.ts RING`) · ☀ 투기장 셋 = 밝은 테마로 던전 그리기(`buildDark` — 모래주머니도 여기로 옮겼다) · 근접 초승달 궤적 띠(`renderer3d spawnTrail · shapeTrail`) · 괴물 탄 빛점 궤적(quarks `trail` · `updateShots`). 자세히는 계획서 7.4.
 - **E 이펙트(v1.6.0)**: `src/render3d/quarksfx.ts` — `QuarksFx.burst(name, x, y, z, n, {dir, color, speed})` · 프리셋 13 · 묶음 ☀ 2 / 🌙 4 · 입자 2,500 상한. 렌더러가 명중 · 처치 · 총구 · 근접 궤적 · 금화 · 스킬 시전 · 범위 · 보스 예고 · 등장 · 경직 · 폭발에서 부른다.
 - 같은 날 다른 세션(쿼터뷰 RPG 게임 개발 계획)이 한 것: v1.2.1 성능 · 네트워크(입력 전용 빠른 채널 · 고주사율 그리기 맞추기) · v1.5.1 바닥 아이템 이름표 · 패치 플레이 영상 네 편 · 합친 업데이트 공지(`docs/공지글-모음.md` 4차) — 그 세션의 인계는 위 블록. 이 세션은 그동안 **옆 작업 폴더(git worktree)** 에서 D · E 를 만들어 `main` 에 바로 올렸다(원래 폴더를 동시에 고치지 않게 — 아래 "작업 · 협업").
 - 이 세션에서 배운 것: ① 내장 브라우저 창이 숨겨져 있으면 `requestAnimationFrame` 이 멈춰 **판을 열어도 시작 준비(`prepareStart`)가 안 불린다** → `setInterval(() => __session.frame(performance.now()), 33)` 로 직접 돌린다. ② GPU 시간은 `EXT_disjoint_timer_query_webgl2` 로 `__session.frame()` 한 번을 감싸 잰다(이동 직후 첫 측정은 셰이더 · 텍스처 올리기가 섞여 크게 나온다 · 높은 화질 고정 `__session.applyGfx('high')` → 끝나면 `'auto'`). ③ `TaskStop` 은 셸만 끄고 그 안의 node(vite)는 남긴다 — 포트를 `netstat -ano` 로 보고 명령줄을 확인한 뒤 `Stop-Process`. ④ ☀ 밝은 바닥 위에서는 빛 더하기(Additive)가 하얗게 묻힌다 — ☀ 이펙트 · 범위는 보통 섞기 + 진한 색.
@@ -68,7 +69,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-17 · v1.6.4 배포)
+## 현재 상태 (2026-10-17 · v1.6.6 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 
@@ -307,7 +308,7 @@ tests/skin.test.ts            분위기 · ☀ 맵별 바닥이 모든 지역 �
    - 투기장 밸런스: 스킬이 들어가 덕의 수치와 다르다. 사람 대전을 해 보고 조정(덕과 같은 원칙 — 봇 표는 참고).
    - **투기장**: 통천란 67% · 풍월란 38%. 캐릭터 패시브 차이라 무기 배율로는 둘을 함께 못 맞춘다. 의견이 오면 캐릭터 수치(체력·패시브)로 맞춘다.
    - 접두 능력 수치(`AFFIX_TUNE`)는 봇 계측·플레이 의견으로.
-9. (선택) 그래픽 이어서 — 보스 방 넷 랜드마크(덩어리가 커서 뺐다) · 진짜 궤적(Trail) · 괴물 원거리 탄 궤적 · 투기장 맵(☀ 테마 없음) — 계획서 각 단계 "다르게 한 것".
+9. ~~그래픽 이어서~~ ✅ v1.6.6 — 보스 방 넷 · 진짜 궤적 · 괴물 탄 궤적 · 투기장 셋(계획서 7.4). 남은 것: 사람 둘이 있는 ☀ 투기장 판에서 직접 보기.
 
 - 분량 계측(한 바퀴 약 2 ~ 3시간 · 후원 분당 2 ~ 3건 표) · 4인 파티 계측 · 첫 던전 버벅임 해결 기록 · D1 ~ D7 자가 점검 · P2P 여러 탭 시험 요령은 [지난 기록](docs/HANDOVER-지난기록.md).
 

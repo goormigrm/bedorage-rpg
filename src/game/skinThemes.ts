@@ -1,7 +1,7 @@
 // 밝은 분위기 맵 테마 (2026-10-06 — docs/밝은-분위기-개편-계획.md 4 · 5장). 맵 모양 · 길은 그대로, 색 · 빛만.
 // 1막 무궁화 운동장 · 2막 달고나 숲 · 3막 구슬 골목 · 물놀이장 · 4막 불꽃 축제 · 파스텔 계단. 마을은 파스텔 대기실.
 // 모두 낮: 해 · 하늘빛을 올리고, 시야 밖은 검정 대신 흐린 파스텔 안개(시야 제한 규칙은 그대로 — visionFog).
-// 투기장 맵(studio · yard · garage)은 없다 → 원래 모습.
+// 투기장 맵 셋(2026-10-17 그래픽 개편 — 키즈카페 · 소풍 마당 · 장난감 주차장)도 같은 밝은 지역 그리기(world3d buildDark)로 — 모래주머니도 거기서 그린다.
 
 import type { MapTheme, WorldStyle } from '../core/maps'
 import { registerBrightTheme } from './skin'
@@ -45,6 +45,10 @@ const T: Record<string, MapTheme> = {
   rite: theme('cathedral', [0xcfeefa, 0xc2e6f6, 0xa6d2e8, 0xcab4ff, 0xe2d6ff, 0xffe58f, 0xe0f4ff]), // 유리 징검다리
   archive: theme('crypt', [0xf2dfc6, 0xe8d3b8, 0xd0b896, 0xa8c9f0, 0xcfe0fb, 0xffc2d4, 0xeaf2ff]),
   wardroom: theme('butchery', [0xffdbe6, 0xf8cfdc, 0xe4b3c3, 0xff8fb0, 0xffbfd1, 0x9fe0cf, 0xffe8ef]), // 반장실
+  // ---- 투기장 (벽이 키 높이로 보이게 — 낮은 덤불이면 모래주머니처럼 넘겨 쏠 수 있어 보인다: crypt · cave 의 벽 높이)
+  studio: theme('crypt', [0xd8e6f8, 0xcfdef4, 0xb6c8e2, 0xffb3c8, 0xffd3e0, 0xffd56e, 0xeaf2ff]), // 키즈카페
+  yard: theme('cave', [0xbfe3a0, 0xb3da94, 0x9cc684, 0xa8dcc9, 0xcff0e3, 0xffb3c6, 0xd8f0ff]), // 소풍 마당
+  garage: theme('crypt', [0xdcd7ef, 0xd2cde9, 0xb8b1d6, 0xffd36e, 0xffe6a8, 0x8fd0ff, 0xebe6ff]), // 장난감 주차장
   // ---- 4막 불꽃 축제 · 파스텔 계단
   town4: theme('town', [0xfde0c8, 0xf6d4b8, 0xe2b996, 0xffa98a, 0xffcbb3, 0xc8b2ff, 0xffe9da], true), // 마지막 대기실
   rift: theme('fields', [0xffd9bd, 0xf7ccad, 0xe3b08c, 0xff9f84, 0xffc4b0, 0xffe58f, 0xffe4d6]), // 불꽃놀이 언덕

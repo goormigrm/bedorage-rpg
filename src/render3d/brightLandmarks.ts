@@ -1,13 +1,13 @@
 // ☀ 철면수심전용 놀이터 랜드마크 (2026-10-17 그래픽 개편 D — docs/철면수심-그래픽-개편-계획.md 6장 · 사용자 결정: 코드로 조립).
 // 맵 안쪽의 꽉 찬 사각형 벽 덩어리(바깥 맵 3 × 2 · 기둥 맵 2 × 2) 자리 안에만 세운다 → 충돌(그 칸은 여전히 벽)과 겉모습이 맞다.
-// 덩어리가 1칸 폭인 맵(굴 · 공 창고 · 수로 …)과 보스 방은 C 단계 벽 그대로.
+// 덩어리가 1칸 폭인 맵(굴 · 공 창고 · 수로 …)은 C 단계 벽 그대로. 보스 방 넷은 둥근 고리 벽의 **칸마다** 주제 조각(RING).
 // 부품은 정점 색으로 칠해 한 지오메트리로 합치고, 같은 종류는 InstancedMesh 하나 — 맵마다 그리기 호출 = 종류 수(2 ~ 4).
 // 높이는 2.6 안(55° 내려다보는 카메라에서 뒤의 캐릭터를 가리지 않게 — 계획서 2장).
 
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { GameMap, TILE_WALL } from '../core/map'
+import { GameMap, TILE, TILE_WALL } from '../core/map'
 import { hash } from './brightFloor'
 import { vc } from './brightWalls'
 
@@ -24,6 +24,10 @@ const CREAM = 0xfff3e2
 const BROWN = 0xb07a58
 const ORANGE = 0xff9a4a
 const GREY = 0xb8bcd0
+const GREY_D = 0x8a8fa8
+const GREEN = 0x7cc96a
+const GREEN_D = 0x5aa85a
+const GOLD = 0xffcf3a
 const TOYS = [PINK, SKY, YELLOW, MINT, LILAC, PEACH]
 
 /** 부품 쌓기 도우미 — 모두 정점 색 하나로 칠해 parts 에 넣는다 (회전은 X → Z → Y 차례 뒤 옮김) */
@@ -42,6 +46,9 @@ function kit(parts: THREE.BufferGeometry[]) {
     dome: (r: number, x: number, y: number, z: number, c: number, sx = 1, sy = 1, sz = 1) => add(new THREE.SphereGeometry(r, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(sx, sy, sz), c, x, y, z),
     /** 고리 (기본은 바닥에 눕힘) */
     tor: (R: number, r: number, x: number, y: number, z: number, c: number, rx = Math.PI / 2) => add(new THREE.TorusGeometry(R, r, 6, 20), c, x, y, z, rx),
+    /** 납작한 알 (꽃잎 · 잎 — 늘인 뒤 X → Z → Y 차례로 돌린다) */
+    oval: (r: number, sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number, rx = 0, rz = 0, ry = 0) =>
+      add(new THREE.SphereGeometry(r, 8, 5).scale(sx, sy, sz), c, x, y, z, rx, rz, ry),
     /** 삼각 깃발 (오른쪽으로 펄럭) */
     flag: (x: number, y: number, z: number, c: number) => add(new THREE.ConeGeometry(0.15, 0.36, 3).scale(1, 1, 0.2), c, x + 0.18, y, z, 0, -Math.PI / 2),
   }
@@ -304,6 +311,157 @@ const stepTower: Landmark = {
     }),
 }
 
+
+// ---------------------------------------------------------------- 보스 방 고리 (한 칸 = 한 조각 · 가운데가 원점 · 늘 카메라 쪽)
+
+/** 꽃 한 송이: 꽃잎 n 장 + 가운데 (up = 위를 본다 · 아니면 앞(+z)을 본다) */
+function bloom(p: Kit, x: number, y: number, z: number, r: number, petal: number, mid: number, up: boolean, n = 5) {
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2 + 0.3
+    if (up) p.oval(r, 1.6, 0.3, 0.75, x + Math.cos(a) * r, y, z + Math.sin(a) * r, petal, 0, 0, -a)
+    else p.oval(r, 1.6, 0.75, 0.3, x + Math.cos(a) * r, y + Math.sin(a) * r, z, petal, 0, a)
+  }
+  p.sph(r * 0.55, x, y + (up ? r * 0.15 : 0), z + (up ? 0 : r * 0.15), mid, 1, 1, 1, 6)
+}
+
+/** 무궁화 생울타리 (술래의 마당 — "무궁화 꽃이 피었습니다"): 둥근 초록 덤불 + 분홍 무궁화 */
+const hibiscusHedge = (petal: number): Landmark => ({
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.rbox(0.96, 1.0, 0.96, 0, 0.5, 0, GREEN)
+      p.rbox(0.7, 0.2, 0.7, 0.05, 1.05, -0.05, GREEN_D)
+      for (const [x, y, z] of [[-0.24, 1.0, 0.2], [0.26, 1.16, -0.12]]) bloom(p, x, y + 0.02, z, 0.1, petal, 0xd8304a, true)
+      for (const [x, y] of [[0.18, 0.66], [-0.28, 0.4]]) bloom(p, x, y, 0.49, 0.1, petal, 0xd8304a, false)
+    }),
+})
+
+/** 만국기 기둥: 낮은 덤불 + 흰 기둥 + 색 깃발 셋 */
+const flagPole: Landmark = {
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.rbox(0.96, 0.7, 0.96, 0, 0.35, 0, GREEN)
+      bloom(p, -0.25, 0.72, 0.2, 0.1, 0xff7eb6, 0xd8304a, true)
+      p.cyl(0.035, 0.035, 1.45, 0, 1.42, 0, WHITE, 6)
+      p.sph(0.07, 0, 2.16, 0, YELLOW, 1, 1, 1, 8)
+      ;[PINK, SKY_D, YELLOW].forEach((c, i) => p.flag(0, 1.98 - i * 0.3, 0, c))
+    }),
+}
+
+/** 꽃 화단 (벌집 궁전): 꿀색 화분 + 초록 덤불 + 데이지 */
+const flowerBed = (petal: number): Landmark => ({
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.box(0.96, 0.45, 0.96, 0, 0.225, 0, 0xf2a93b)
+      p.box(1.0, 0.08, 1.0, 0, 0.46, 0, 0xffd27a)
+      p.dome(0.46, 0, 0.5, 0, GREEN, 1, 0.9, 1)
+      for (const [x, z, y] of [[-0.2, 0.18, 0.86], [0.22, -0.1, 0.9], [0.02, 0.32, 0.72]]) bloom(p, x, y, z, 0.09, petal, YELLOW, true, 6)
+    }),
+})
+
+/** 큰 꽃 (벌집 궁전): 화분 + 줄기 + 잎 둘 + 앞을 보는 해바라기 */
+const bigFlower: Landmark = {
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.box(0.8, 0.4, 0.8, 0, 0.2, 0, 0xf2a93b)
+      p.box(0.84, 0.07, 0.84, 0, 0.41, 0, 0xffd27a)
+      p.cyl(0.05, 0.06, 1.35, 0, 1.1, 0, GREEN_D, 6)
+      p.oval(0.16, 1.7, 0.45, 0.8, 0.22, 1.0, 0, GREEN, 0, 0.5)
+      p.oval(0.16, 1.7, 0.45, 0.8, -0.22, 1.3, 0, GREEN, 0, -0.5)
+      bloom(p, 0, 1.86, 0.06, 0.17, GOLD, 0x9a5a2a, false, 10)
+    }),
+}
+
+/** 사물함 둘 (반장실): 파스텔 문 · 환기 구멍 · 손잡이 · 이름표 */
+const lockers = (a: number, b: number): Landmark => ({
+  face: true,
+  geo: () =>
+    build((p) => {
+      for (const [x, c] of [[-0.24, a], [0.24, b]] as const) {
+        p.box(0.46, 1.9, 0.86, x, 0.95, 0, c)
+        for (let k = 0; k < 3; k++) p.box(0.26, 0.025, 0.02, x, 1.62 - k * 0.07, 0.43, GREY_D)
+        p.box(0.16, 0.08, 0.02, x, 1.78, 0.43, WHITE)
+        p.box(0.03, 0.14, 0.04, x + 0.15, 1.0, 0.44, GREY)
+      }
+      p.box(0.98, 0.06, 0.9, 0, 1.93, 0, WHITE)
+      p.box(0.98, 0.1, 0.9, 0, 0.05, 0, GREY)
+    }),
+})
+
+/** 장난감 상자 (반장실): 뚜껑 덮인 나무 상자 + 글자 블록 · 공 */
+const toyChest: Landmark = {
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.box(0.9, 0.6, 0.75, 0, 0.3, 0, PEACH)
+      p.box(0.92, 0.08, 0.77, 0, 0.42, 0, CREAM)
+      p.rbox(0.94, 0.14, 0.8, 0, 0.67, 0, BROWN)
+      p.rbox(0.3, 0.3, 0.3, -0.2, 0.89, 0.05, PINK)
+      p.rbox(0.28, 0.28, 0.28, 0.17, 0.88, -0.05, SKY)
+      p.rbox(0.26, 0.26, 0.26, -0.03, 1.17, 0, YELLOW)
+      p.sph(0.15, 0.3, 0.89, 0.22, MINT, 1, 1, 1, 10)
+    }),
+}
+
+/** 시상대 단 (결승 마당): 높이가 다른 단 + 흰 테 · 앞 띠 */
+const podium = (h: number, c: number): Landmark => ({
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.box(0.98, h, 0.98, 0, h / 2, 0, c)
+      p.box(1.0, 0.06, 1.0, 0, h + 0.03, 0, WHITE)
+      p.box(0.56, 0.1, 0.02, 0, h * 0.55, 0.495, WHITE)
+      p.cone(0.09, 0.09, 0, h * 0.55 + 0.11, 0.5, WHITE, 5)
+    }),
+})
+
+/** 풍선 기둥 (결승 마당): 흰 받침 + 나선으로 감은 풍선 + 꼭대기 금빛 풍선 */
+const balloonColumn: Landmark = {
+  face: true,
+  geo: () =>
+    build((p) => {
+      p.cyl(0.3, 0.34, 0.25, 0, 0.125, 0, WHITE, 12)
+      for (let k = 0; k < 14; k++) {
+        const a = k * 1.75
+        p.sph(0.17, Math.cos(a) * 0.15, 0.42 + k * 0.1, Math.sin(a) * 0.15, TOYS[k % TOYS.length], 1, 1.1, 1, 8)
+      }
+      p.cyl(0.008, 0.008, 0.25, 0, 1.85, 0, WHITE, 3)
+      p.sph(0.24, 0, 1.96, 0, GOLD, 1, 1.15, 1, 12)
+    }),
+}
+
+/** 보스 방 고리: 칸마다 기본 조각(여럿이면 무작위) · 고리를 따라 세 칸마다 장식 조각 하나 */
+const RING: Record<string, { base: Landmark[]; accent: Landmark }> = {
+  butchery: { base: [hibiscusHedge(0xff7eb6), hibiscusHedge(0xffc2dc)], accent: flagPole },
+  nest: { base: [flowerBed(WHITE), flowerBed(PINK_L)], accent: bigFlower },
+  wardroom: { base: [lockers(PINK, SKY), lockers(MINT, LILAC)], accent: toyChest },
+  throne: { base: [podium(1.25, GOLD), podium(0.95, SKY), podium(0.75, PEACH)], accent: balloonColumn },
+}
+
+/** 장난감 자동차 (주차 탑 한 층) */
+function toyCar(p: Kit, y: number, c: number) {
+  p.rbox(1.4, 0.36, 0.8, 0, y + 0.3, 0, c)
+  p.rbox(0.74, 0.32, 0.72, -0.1, y + 0.62, 0, c)
+  p.box(0.6, 0.2, 0.74, -0.1, y + 0.63, 0, 0xcdeffc)
+  for (const x of [-0.45, 0.45]) for (const z of [-0.4, 0.4]) p.cyl(0.16, 0.16, 0.1, x, y + 0.16, z, GREY_D, 10, Math.PI / 2)
+  for (const z of [-0.25, 0.25]) p.sph(0.06, 0.7, y + 0.34, z, YELLOW, 1, 1, 1, 6)
+}
+
+/** 주차 탑 (장난감 주차장): 네 기둥 · 두 층 판 + 층마다 장난감 자동차 */
+const carTower = (lo: number, hi: number): Landmark => ({
+  geo: () =>
+    build((p) => {
+      for (const x of [-0.85, 0.85]) for (const z of [-0.6, 0.6]) p.box(0.1, 2.05, 0.1, x, 1.025, z, GREY)
+      for (const y of [0.05, 1.05]) p.box(1.85, 0.08, 1.3, 0, y, 0, y > 0.5 ? SKY_D : GREY)
+      p.box(1.85, 0.08, 1.3, 0, 2.06, 0, YELLOW)
+      toyCar(p, 0.09, lo)
+      toyCar(p, 1.09, hi)
+    }),
+})
+
 /** 맵 id → 랜드마크 (big = 3 × 2 덩어리마다 차례로 · small = 2 × 2 기둥의 40% 에 무작위로) */
 const PLAN: Record<string, { big?: Landmark[]; small?: Landmark[] }> = {
   fields: { big: [slide, jungleGym, seesaw, swing] },
@@ -315,6 +473,7 @@ const PLAN: Record<string, { big?: Landmark[]; small?: Landmark[] }> = {
   ruins: { small: [marblePile, ddakjiTower] },
   rite: { small: [glassPillar] },
   stair: { small: [stepTower] },
+  garage: { small: [carTower(PINK, MINT), carTower(SKY, PEACH), stepTower] },
 }
 const SMALL_RATE = 0.4
 
@@ -330,7 +489,8 @@ export interface PlacedLandmark {
 /** 맵 안쪽의 꽉 찬 사각형 벽 덩어리(테두리에 붙지 않은) 중 3 × 2 · 2 × 3 · 2 × 2 를 골라 랜드마크를 정한다 (같은 맵이면 같은 결과) */
 export function planLandmarks(map: GameMap): PlacedLandmark[] {
   const plan = PLAN[map.id]
-  if (!plan) return []
+  const ring = map.arena ? RING[map.id] : undefined
+  if (!plan && !ring) return []
   const W = map.w
   const seen = new Uint8Array(map.w * map.h)
   const out: PlacedLandmark[] = []
@@ -367,7 +527,22 @@ export function planLandmarks(map: GameMap): PlacedLandmark[] {
     }
     const w = x1 - x0 + 1
     const h = y1 - y0 + 1
-    if (border || members.length !== w * h) continue
+    if (border) continue
+    if (ring) {
+      // 고리 조각: 투기장 가운데를 도는 각 순서로 칸을 세워 세 칸마다 장식
+      const ax = map.arena!.x / TILE
+      const ay = map.arena!.y / TILE
+      const ang = (j: number) => Math.atan2((Math.floor(j / W) + 0.5) - ay, (j % W) + 0.5 - ax)
+      members.sort((a, b) => ang(a) - ang(b))
+      members.forEach((j, k) => {
+        const tx = j % W
+        const ty = Math.floor(j / W)
+        const def = k % 3 === 1 ? ring.accent : ring.base[Math.floor(hash(tx, ty, 620) * ring.base.length)]
+        out.push({ def, x: tx + 0.5, z: ty + 0.5, rot: 0, tiles: [j] })
+      })
+      continue
+    }
+    if (!plan || members.length !== w * h) continue
     const cx = x0 + w / 2
     const cz = y0 + h / 2
     const r = hash(x0, y0, 610)

@@ -177,6 +177,23 @@ interface Ring {
 }
 
 /** 근접 베기 궤적 (2026-09-19 손맛 — 무기의 사거리 · 각도 그대로의 부채꼴이 번쩍 지나간다) */
+/** 근접 궤적 띠: 칼끝이 호를 따라 쓸고 꼬리가 따라온다(초승달) (spawnTrail — 위치를 매 프레임 다시 쓴다) */
+interface SwingTrail {
+  mesh: THREE.Mesh
+  t: number
+  /** 쓰는 데 걸리는 초 · 그 뒤 사라지는 초 */
+  sweep: number
+  fade: number
+  /** 시작 각(월드 — 바닥에서 x 축 기준) · 쓸어 가는 각(음수 = 시작 각에서 줄어드는 쪽) */
+  a0: number
+  span: number
+  rIn: number
+  rOut: number
+  peak: number
+}
+/** 띠 마디 수 */
+const TRAIL_N = 24
+
 interface Slash {
   mesh: THREE.Mesh
   life: number
@@ -306,6 +323,8 @@ export class Renderer3D {
   private thinRingGeo = new THREE.RingGeometry(0.975, 1, 72)
   private thinPool: THREE.Mesh[] = []
   private slashPool: THREE.Mesh[] = []
+  private trailPool: THREE.Mesh[] = []
+  private trails: SwingTrail[] = []
   /**
    * 떨어진 것 · 장판의 도형 · 재질은 같이 쓴다 (2026-09-23 최적화): 전에는 금화 한 더미에 원기둥 6 개 · 아이템 하나에 원기둥 + 상자를
    * 새로 만들고 주울 때 해제하지 않아 GPU 메모리가 샜다(몇 시간이면 수천 개).
@@ -475,6 +494,8 @@ export class Renderer3D {
   private debugZoom = 1
   private camInit = false
   private t = 0
+  /** 괴물 탄 궤적을 마지막으로 남긴 때 (this.t) */
+  private shotTrailT = 0
   private lastDt = 0.016
   private dpr = 1
   /**
@@ -1102,15 +1123,9 @@ export class Renderer3D {
             const pl = state.players[e.p]
             if (pl && !this.hidden[e.p]) {
               const aim = (e.aim / 1024) * Math.PI * 2
-              this.spawnSlash(pl.x * U, pl.y * U, aim, w)
-              // 호를 따라 늘어난 불티 (quarks — 칼끝이 지나간 궤적)
-              const range = ((w.meleeRange ?? 60) + 12) * U * 0.8
-              const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
-              const col = w.family === 'violin' ? 0xff8a6a : w.family === 'rapier' ? 0xdfefff : 0xffe2a0
-              for (let k = 0; k < 6; k++) {
-                const a = aim - half + (k * 2 * half) / 5
-                this.quarks.burst('slash', pl.x * U + Math.cos(a) * range, 0.5, pl.y * U + Math.sin(a) * range, 1, { dir: a + Math.PI / 2, color: col })
-              }
+              // 후라이팬 · 웍의 얇은 호는 궤적 띠가 대신한다 (바이올린 세 조각 = 실제 맞는 범위 · 장검 쐐기는 남긴다)
+              if (w.family !== 'pan') this.spawnSlash(pl.x * U, pl.y * U, aim, w)
+              this.spawnTrail(pl.x * U, pl.y * U, aim, w)
             }
             break
           }
@@ -1913,6 +1928,56 @@ export class Renderer3D {
     mesh.position.set(x, 0.02, z)
     this.scene.add(mesh)
     this.rings.push({ mesh, life, max: life, r0, r1, peak, thin })
+  }
+
+  /**
+   * 근접 궤적 띠 (2026-10-17 그래픽 개편 — 진짜 궤적): 칼끝이 호의 시작(조준 +half, 화면 오른쪽 아래)에서 끝(−half)으로 쓸고,
+   * 꼬리가 따라온다(초승달 모양). 재질은 베기 부채꼴과 같은 MeshBasicMaterial(정점 색 없음) → 새 셰이더가 생기지 않는다
+   */
+  private spawnTrail(x: number, z: number, aim: number, w: WeaponDef): void {
+    const range = ((w.meleeRange ?? 60) + 12) * U
+    const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
+    const thrust = w.family === 'rapier'
+    const bright = isBright()
+    let mesh = this.trailPool.pop()
+    if (!mesh) {
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((TRAIL_N + 1) * 2 * 3), 3))
+      const idx: number[] = []
+      for (let i = 0; i < TRAIL_N; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2)
+      g.setIndex(idx)
+      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+      mesh.frustumCulled = false
+    }
+    const mat = mesh.material as THREE.MeshBasicMaterial
+    // ☀ 밝은 바닥에서는 더하기 혼합이 하얗게 묻힌다 → 보통 섞기 + 진한 장난감 색 (quarks 와 같은 규칙)
+    mat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
+    mat.color.setHex(w.family === 'violin' ? (bright ? 0xff5f9e : 0xff7a5a) : thrust ? (bright ? 0x3fc8ff : 0xeaf4ff) : bright ? 0xffb21f : 0xffe2a0)
+    mat.opacity = 0
+    mesh.position.set(x, 0.5, z)
+    this.scene.add(mesh)
+    this.trails.push({ mesh, t: 0, sweep: thrust ? 0.07 : 0.1, fade: 0.16, a0: aim + half, span: -2 * half, rIn: range * (thrust ? 0.8 : 0.6), rOut: range * 0.98, peak: bright ? 0.85 : 0.7 })
+  }
+
+  /** 궤적 띠 한 장을 지금 모양으로 (머리 = 지금 칼끝 · 꼬리는 호의 0.55 뒤 — 다 쓴 뒤엔 꼬리가 머리로 따라붙으며 사라진다 · 폭은 초승달) */
+  private shapeTrail(tr: SwingTrail): void {
+    const x = Math.min(1, tr.t / tr.sweep)
+    const head = 1 - (1 - x) * (1 - x)
+    const k = tr.t <= tr.sweep ? 0 : Math.min(1, (tr.t - tr.sweep) / tr.fade)
+    const tail = Math.max(0, head - 0.55 * (1 - k))
+    const pos = tr.mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+    for (let i = 0; i <= TRAIL_N; i++) {
+      const f = i / TRAIL_N
+      const a = tr.a0 + tr.span * (tail + (head - tail) * f)
+      // 초승달: 꼬리 · 머리는 뾰족하고 가운데가 두툼하다 (머리까지 두꺼우면 깃발처럼 보였다)
+      const r0 = tr.rOut - (tr.rOut - tr.rIn) * Math.pow(Math.sin(Math.PI * f), 0.85)
+      const c = Math.cos(a)
+      const sn = Math.sin(a)
+      pos.setXYZ(i * 2, c * r0, 0, sn * r0)
+      pos.setXYZ(i * 2 + 1, c * tr.rOut, 0, sn * tr.rOut)
+    }
+    pos.needsUpdate = true
+    ;(tr.mesh.material as THREE.MeshBasicMaterial).opacity = tr.peak * (1 - 0.5 * k)
   }
 
   private spawnSlash(x: number, z: number, aim: number, w: WeaponDef): void {
@@ -4295,6 +4360,8 @@ export class Renderer3D {
   private updateShots(prev: GameState, curr: GameState, alpha: number): void {
     const prevById = new Map<number, { x: number; y: number }>()
     for (const s0 of prev.mshots) prevById.set(s0.id, s0)
+    const trail = this.t - this.shotTrailT >= 1 / 60
+    if (trail) this.shotTrailT = this.t
     let n = 0
     for (const s0 of curr.mshots) {
       let sp = this.shotPool[n]
@@ -4304,10 +4371,13 @@ export class Renderer3D {
         this.scene.add(sp)
       }
       const p = prevById.get(s0.id) ?? s0
-      sp.material.color.setHex(MONSTER_LIST[s0.kind]?.shotColor ?? 0xff5a2a)
+      const color = MONSTER_LIST[s0.kind]?.shotColor ?? 0xff5a2a
+      sp.material.color.setHex(color)
       sp.visible = true
       sp.position.set((p.x + (s0.x - p.x) * alpha) * U, 0.9, (p.y + (s0.y - p.y) * alpha) * U)
       sp.scale.setScalar(0.55 + Math.sin(this.t * 20 + s0.id) * 0.06)
+      // 궤적: 탄이 지나간 자리에 빛점 하나 (60분의 1초마다 — 화면 주사율이 높아도 같은 길이 · 탄 종류는 가리지 않는다)
+      if (trail) this.quarks.burst('trail', sp.position.x, 0.9, sp.position.z, 1, { color })
       n++
     }
     for (let i = n; i < this.shotPool.length; i++) this.shotPool[i].visible = false
@@ -5022,6 +5092,17 @@ export class Renderer3D {
       const f = this.flashes[i]
       f.life -= dt
       if (f.life <= 0) this.endFlash(i)
+    }
+    for (let i = this.trails.length - 1; i >= 0; i--) {
+      const tr = this.trails[i]
+      tr.t += dt
+      if (tr.t >= tr.sweep + tr.fade) {
+        this.scene.remove(tr.mesh)
+        this.trailPool.push(tr.mesh)
+        this.trails.splice(i, 1)
+        continue
+      }
+      this.shapeTrail(tr)
     }
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       const sl = this.slashes[i]

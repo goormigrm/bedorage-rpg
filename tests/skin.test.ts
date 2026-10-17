@@ -7,14 +7,16 @@ import '../src/game/skinText'
 import { MapTheme } from '../src/core/maps'
 import { BRIGHT_FLOOR } from '../src/render3d/brightFloor'
 import { planLandmarks } from '../src/render3d/brightLandmarks'
-import { TILE_WALL } from '../src/core/map'
+import { TILE_WALL, buildMap } from '../src/core/map'
+import { BRIGHT_WALL } from '../src/render3d/brightWalls'
+import '../src/game/skinThemes'
 
 afterEach(() => setSkin('dark'))
 
 describe('분위기', () => {
   it('☀ 랜드마크는 꽉 찬 벽 덩어리(2 × 2 · 3 × 2) 자리 안에만 — 충돌과 겉모습이 맞다 (그래픽 개편 D)', () => {
     for (const area of [1, 6, 11, 14, 22, 25, 29, 30, 33]) {
-      const map = buildAreaMap(area, 1)
+      const map = buildAreaMap(1, area)
       const marks = planLandmarks(map)
       expect(marks.length, map.id).toBeGreaterThan(0)
       for (const m of marks) {
@@ -22,6 +24,32 @@ describe('분위기', () => {
         for (const t of m.tiles) expect(map.tiles[t]).toBe(TILE_WALL)
       }
     }
+  })
+
+  it('☀ 보스 방 넷: 둥근 고리 벽의 칸마다 주제 조각 하나 (세 칸마다 장식) · 바깥 테두리는 벽 그대로', () => {
+    for (const area of [9, 18, 27, 34]) {
+      const map = buildAreaMap(1, area)
+      const marks = planLandmarks(map)
+      expect(marks.length, map.id).toBe(82)
+      for (const m of marks) {
+        expect(m.tiles.length).toBe(1)
+        expect(map.tiles[m.tiles[0]]).toBe(TILE_WALL)
+      }
+      expect(new Set(marks.map((m) => m.def)).size, map.id).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('☀ 투기장 맵 셋도 밝은 테마 · 바닥 · 벽 (주차장 기둥 일부는 주차 탑)', () => {
+    setSkin('bright')
+    for (const id of ['studio', 'yard', 'garage'] as const) {
+      const map = skinMap(buildMap(id, 1, 5))
+      expect(map.theme.style, id).toBeTruthy()
+      expect(BRIGHT_FLOOR[id], id).toBeTruthy()
+      expect(BRIGHT_WALL[id], id).toBeTruthy()
+    }
+    const marks = planLandmarks(buildMap('garage', 1, 5))
+    expect(marks.length).toBeGreaterThan(5)
+    for (const m of marks) expect(m.tiles.length).toBe(4)
   })
 
   it('☀ 쓰이는 지역 맵마다 맵별 바닥이 있다 (그래픽 개편 B — brightFloor)', () => {

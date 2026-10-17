@@ -313,6 +313,29 @@ const mat: FloorDef = {
   },
 }
 
+/** 장난감 주차장 (투기장): 옅은 보라 바닥 + 흰 주차 칸 줄(8 줄마다 세 줄 깊이 · 2 칸 폭) + 노란 가운데 점선 */
+const parking: FloorDef = {
+  grain: 'rubber', grainK: 0.25, chalk: false, outdoor: false,
+  paint(b) {
+    const { g, px, pal, map } = b
+    fill(b, pal.floor)
+    blotches(b, pal.alt, 0.5, 4, 250)
+    for (let ty = b.ty0; ty < b.ty1; ty++) {
+      const r = ty % 8
+      for (let tx = 0; tx < map.w; tx++) {
+        if (r <= 2 && tx % 2 === 0) {
+          g.fillStyle = 'rgba(255,255,255,0.85)'
+          g.fillRect(tx * px - 1.5, ty * px, 3, px)
+          if (r === 0) g.fillRect(tx * px, ty * px, 2 * px, 3)
+        } else if (r === 5 && tx % 2 === 0) {
+          g.fillStyle = 'rgba(255,205,60,0.9)'
+          g.fillRect(tx * px + px * 0.2, ty * px + px / 2 - 2, px * 1.2, 4)
+        }
+      }
+    }
+  },
+}
+
 /** 술래의 마당: 다진 흙 + 가운데 큰 분필 원 · 바깥 점선 원 + 분필 무궁화 */
 const yard: FloorDef = {
   grain: 'sand', grainK: 0.38, chalk: true, outdoor: false,
@@ -918,6 +941,10 @@ export const BRIGHT_FLOOR: Record<string, FloorDef> = {
   maze: mirror,
   stair: steps,
   throne: finish,
+  // 투기장
+  studio: mat,
+  yard: meadow,
+  garage: parking,
 }
 
 /** 띠 하나를 그린다 (그 띠 밖으로 번지지 않게 잘라서) */

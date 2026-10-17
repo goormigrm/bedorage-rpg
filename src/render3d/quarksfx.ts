@@ -117,7 +117,7 @@ const curve = (a: number, b: number, c: number, d: number) => new PiecewiseBezie
 /** 끝으로 갈수록 옅어진다 (색은 그대로) */
 const fadeOut = (hold = 0.6) => new ColorOverLife(new Gradient([[new QV3(1, 1, 1), 0], [new QV3(1, 1, 1), 1]], [[1, 0], [1, hold], [0, 1]]))
 
-export type QuarksName = 'hit' | 'hitBig' | 'pop' | 'popBig' | 'chunks' | 'smoke' | 'muzzle' | 'slash' | 'coin' | 'notes' | 'blast' | 'cast' | 'ember'
+export type QuarksName = 'hit' | 'hitBig' | 'pop' | 'popBig' | 'chunks' | 'smoke' | 'muzzle' | 'trail' | 'coin' | 'notes' | 'blast' | 'cast' | 'ember'
 
 interface PresetDef {
   tile: number
@@ -167,8 +167,8 @@ function presets(bright: boolean): Record<QuarksName, PresetDef> {
     smoke: { tile: TILE.smoke, blend: 'norm', mode: RenderMode.BillBoard, shape: sphere(0.3), life: [0.6, 1.0], speed: [0.3, 0.9], size: [1.3, 1.9], colors: bright ? [0xffffff, 0xfff4fa] : [0x2a2224, 0x3a3034], sizeCurve: curve(0.5, 0.9, 1.1, 1.3), spin: 1.2, fade: 0.25 },
     // 총구 불티: 조준 방향으로 늘어나며 튄다
     muzzle: { tile: TILE.glow, blend: glowBlend, mode: RenderMode.StretchedBillBoard, shape: cone(0.35), life: [0.08, 0.16], speed: [8, 14], size: [0.13, 0.2], colors: bright ? [0xffb21f, 0xff6f9e] : [0xffd080, 0xff8030], stretch: 0.07 },
-    // 근접 베기 자국: 호를 따라 늘어난 불티 (궤적)
-    slash: { tile: TILE.glow, blend: glowBlend, mode: RenderMode.StretchedBillBoard, shape: cone(0.08), life: [0.14, 0.22], speed: [6, 9], size: [0.24, 0.32], colors: bright ? [0xff7aa8, 0xffc21f] : [0xffe2b0, 0xff9a60], stretch: 0.08 },
+    // 괴물 탄 궤적: 탄이 지나간 자리에 빛점이 남아 작아지며 사라진다 (렌더러가 탄마다 프레임마다 하나 — 색 = 탄 색)
+    trail: { tile: TILE.glow, blend: glowBlend, mode: RenderMode.BillBoard, shape: sphere(0.02), life: [0.18, 0.26], speed: [0, 0.15], size: [0.34, 0.42], colors: bright ? [0xff5f9e, 0xff5f9e] : [0xff7a3a, 0xff7a3a], sizeCurve: curve(1, 0.75, 0.45, 0), fade: 0.6 },
     // 금화 · 줍기 반짝
     coin: { tile: TILE.sparkle, blend: glowBlend, mode: RenderMode.BillBoard, shape: new ConeEmitter({ radius: 0.2, angle: 0.5, thickness: 1 }), up: true, life: [0.45, 0.75], speed: [1.4, 2.6], size: [0.4, 0.55], colors: bright ? [0xffc21f, 0xffd84a] : [0xffe680, 0xfff8d0], sizeCurve: curve(0.5, 1.2, 0.8, 0), gravity: 2 },
     // 스킬 범위 터짐: 사방으로 늘어나며 튀는 불티 (색 = 스킬 색 · 퍼짐 = 범위만큼 — burst 의 speed)

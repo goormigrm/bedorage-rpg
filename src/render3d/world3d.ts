@@ -650,6 +650,18 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   })
   const fireLight = fire ? torchSpots[torchSpots.length - 1] : null
 
+  // ---- 모래주머니 (투기장 — 허리 높이 엄폐물 · ☀ 은 분홍 쿠션 주머니 — 살구색은 빵 · 바나나 더미처럼 보였다) ----
+  const bagBase = new THREE.Color(bright ? 0xffc2d6 : 0xdcd3b4)
+  const bagIndex = new Map<number, number>()
+  let bags: THREE.InstancedMesh | null = null
+  for (let i = 0; i < map.tiles.length; i++) if (map.tiles[i] === TILE_SANDBAG) bagIndex.set(i, bagIndex.size)
+  if (bagIndex.size) {
+    bags = inst(sandbagStackGeometry(), new THREE.MeshLambertMaterial({ color: 0xffffff }), bagIndex.size)
+    for (const i of bagIndex.keys()) put(bags, (i % map.w) + 0.5, 0, Math.floor(i / map.w) + 0.5, 1, 1, 1, 0, bagBase)
+    bags.instanceMatrix.needsUpdate = true
+  }
+  const hiddenBag = new THREE.Matrix4().makeScale(0, 0, 0)
+
   // ---- 조명 ----
   // ☀ 아래쪽 빛(땅에서 튄 빛)을 밝게 — 벽 옆면 · 그늘이 탁하지 않게
   const hemi = new THREE.HemisphereLight(t.ambientColor, darken(t.floor, bright ? 0.7 : 0.5), t.dark ? t.dark.hemi : 0.9)
@@ -661,8 +673,19 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   return {
     group,
     sun,
-    breakSandbag() {},
-    setSandbagHealth() {},
+    breakSandbag(tx: number, ty: number) {
+      const id = bagIndex.get(ty * map.w + tx)
+      if (id === undefined || !bags) return
+      bags.setMatrixAt(id, hiddenBag)
+      bags.instanceMatrix.needsUpdate = true
+      bagIndex.delete(ty * map.w + tx)
+    },
+    setSandbagHealth(tx: number, ty: number, k: number) {
+      const id = bagIndex.get(ty * map.w + tx)
+      if (id === undefined || !bags) return
+      bags.setColorAt(id, col.copy(bagBase).multiplyScalar(0.6 + 0.4 * Math.max(0, Math.min(1, k))))
+      if (bags.instanceColor) bags.instanceColor.needsUpdate = true
+    },
     update(time: number, x: number, z: number) {
       swayT.value = time
       for (let i = 0; i < sprites.length; i++) {

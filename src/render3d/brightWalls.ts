@@ -523,9 +523,11 @@ export const BRIGHT_PROPS: Record<string, PropKind> = {
   nest: honeypot,
   pit: ballpit,
   maze: stickers,
+  studio: ballpit,
+  yard: playground,
 }
 
-/** 맵 id → 벽 (대기실은 world3d 의 울타리 · 숙소, 투기장 맵은 예전 벽) */
+/** 맵 id → 벽 (대기실은 world3d 의 울타리 · 숙소) */
 export const BRIGHT_WALL: Record<string, WallKind> = {
   cathedral: lego,
   crypt: lego,
@@ -548,4 +550,7 @@ export const BRIGHT_WALL: Record<string, WallKind> = {
   pit: cushion,
   forest: candyTree,
   swamp: jellyTree,
+  studio: cushion,
+  yard: hedge,
+  garage: lego,
 }
