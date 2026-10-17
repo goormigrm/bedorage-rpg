@@ -35,7 +35,7 @@ import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, sanitizeSheet } from '../core/items'
 import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
 
-import { commitSheet } from './save'
+import { activeSlot, commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
@@ -159,6 +159,8 @@ export class Session {
    */
   private readonly autopilot = typeof location !== 'undefined' && location.search.includes('autopilot=1')
   private lastEmoteAt = -1e9
+  /** 이 판을 적을 세이브 칸 (판을 연 때의 칸 — 2026-10-17 세이브 칸 셋. 판 중에 다른 탭이 칸을 바꿔도 이 판은 제 칸에) */
+  private readonly saveSlot = activeSlot()
   // ---- 방송 연동 (2026-09-23 — 치지직 채팅 · 후원, game/stream.ts) ----
   private unlistenStream: (() => void) | null = null
   /** 후원 번호 (명령 arg 위 네 비트 — 이름표 열쇠) */
@@ -911,7 +913,7 @@ export class Session {
     void final
     if (this.state.mode === 'dungeon' && this.state.deathRule === 2 && (me.out || !isTown(me.area))) return
     this.notePlayed()
-    commitSheet(me, this.state.tier ?? 0, this.played.map((sec, act) => ({ act, sec })).filter((x) => x.sec > 0))
+    commitSheet(me, this.state.tier ?? 0, this.played.map((sec, act) => ({ act, sec })).filter((x) => x.sec > 0), this.saveSlot)
     this.played = [0, 0, 0, 0]
     this.lastSave = performance.now()
   }

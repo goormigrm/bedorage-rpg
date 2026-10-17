@@ -22,7 +22,7 @@ const TIER_DESC = [
 ]
 import { CHAR_SKILLS, SKILLS, TREE_ACTIVE } from '../core/skills'
 import { sanitizeSheet } from '../core/items'
-import { backupNag, exportSave, importSave, levelOf, playTimeOf, sheetOf } from '../game/save'
+import { SAVE_SLOTS, activeSlot, backupNag, clearSlot, exportSave, importSave, levelOf, playTimeOf, setActiveSlot, sheetOf, slotSummary } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode,
@@ -147,6 +147,57 @@ export class Lobby {
   }
 
   // ---------- 화면 ----------
+  /** 세이브 칸 "비우기" 를 한 번 눌렀다 (두 번째에 비운다) */
+  private slotClearArm = false
+
+  /**
+   * 세이브 칸 셋 (2026-10-17 사용자: "30레벨 다 찍고 나면 다시 1레벨부터 친구랑 하고 싶을 수도 — 3개의 슬롯을"):
+   * 칸마다 캐릭터 열둘 · 보관함이 따로. 단추에 그 칸의 가장 높은 캐릭터 · 키운 수. 방 안에서는 바꾸지 않는다
+   */
+  private slotsHtml(): string {
+    const cur = activeSlot()
+    const btns = Array.from({ length: SAVE_SLOTS }, (_, i) => {
+      const n = i + 1
+      const sm = slotSummary(n)
+      const sub = sm ? `${sm.top} ${sm.level}${sm.count > 1 ? ` 외 ${sm.count - 1}` : ''}` : '빈 칸 — 1레벨부터'
+      return `<button type="button" class="slot${n === cur ? ' on' : ''}" data-slot="${n}" title="세이브 칸 ${n} — 캐릭터 열둘 · 보관함이 칸마다 따로입니다"><b>칸 ${n}</b><small>${sub}</small></button>`
+    }).join('')
+    return `<div class="save-slots" id="save-slots"><div class="sl-row">${btns}</div>
+      <div class="sl-foot"><span>세이브 칸 — 칸마다 캐릭터 · 보관함이 따로 (내보내기 · 가져오기도 이 칸)</span><button type="button" class="lnk sl-clear" id="slot-clear">${this.slotClearArm ? `한 번 더 누르면 칸 ${cur}을 비웁니다` : `칸 ${cur} 비우기`}</button></div></div>`
+  }
+
+  private bindSlots(h: HTMLElement): void {
+    h.querySelectorAll<HTMLButtonElement>('#save-slots [data-slot]').forEach((b) => {
+      b.onclick = () => {
+        const n = Number(b.dataset.slot)
+        if (this.link) return this.status('방 안에서는 세이브 칸을 바꿀 수 없습니다 — 방에서 나와서 바꾸세요', 'bad')
+        if (n === activeSlot()) return
+        setActiveSlot(n)
+        this.slotClearArm = false
+        const sm = slotSummary(n)
+        this.render()
+        this.mountLobbyChat()
+        this.status(sm ? `세이브 칸 ${n} — ${sm.top} ${sm.level}레벨${sm.count > 1 ? ` 외 ${sm.count - 1}명` : ''}` : `세이브 칸 ${n} — 빈 칸, 모든 캐릭터가 1레벨부터`, 'ok')
+      }
+    })
+    const clr = h.querySelector<HTMLButtonElement>('#slot-clear')
+    if (clr)
+      clr.onclick = () => {
+        if (this.link) return this.status('방 안에서는 세이브 칸을 비울 수 없습니다', 'bad')
+        const cur = activeSlot()
+        if (!this.slotClearArm) {
+          this.slotClearArm = true
+          clr.textContent = `한 번 더 누르면 칸 ${cur}을 비웁니다`
+          return
+        }
+        this.slotClearArm = false
+        clearSlot(cur)
+        this.render()
+        this.mountLobbyChat()
+        this.status(`세이브 칸 ${cur}을 비웠습니다 — 모든 캐릭터가 1레벨부터 (바로 앞 세이브는 한 벌 남아 있습니다)`, 'ok')
+      }
+  }
+
   private render(): void {
     const h = this.host
     h.innerHTML = `
@@ -174,8 +225,9 @@ export class Lobby {
             <div class="tools">
               <button class="tool t-set" id="btn-settings" title="소리 · 화질 · 실사 괴물 · 조작 안내 · 키 설정 · 자동 줍기">⚙️ 설정</button>
               <button class="tool t-exp" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">💾 세이브 내보내기</button>
-              <label class="tool t-imp" title="받아 둔 세이브 파일을 불러옵니다 (지금 세이브를 덮어씁니다)">📂 세이브 가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label>
+              <label class="tool t-imp" title="받아 둔 세이브 파일을 불러옵니다 (지금 고른 세이브 칸을 덮어씁니다)">📂 세이브 가져오기<input type="file" id="file-import" accept=".json,application/json" hidden></label>
             </div>
+            ${this.slotsHtml()}
             ${(() => {
               const nag = backupNag()
               return nag ? `<p class="bk-nag" id="bk-nag">💾 ${nag}</p>` : ''
@@ -376,6 +428,7 @@ export class Lobby {
       h.querySelector('#bk-nag')?.remove()
     }
     ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.openSettings()
+    this.bindSlots(h)
     const fileEl = h.querySelector('#file-import') as HTMLInputElement
     fileEl.onchange = async () => {
       const f = fileEl.files?.[0]
