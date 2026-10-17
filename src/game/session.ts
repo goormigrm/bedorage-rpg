@@ -6,8 +6,8 @@ import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../c
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
-import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_SLOT, SUMMON_KEYS, cheerEvent, donateEvent, effectFits, effectSlot } from '../core/donate'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, eventByName, isBigDonation, isBlocked, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -2182,6 +2182,8 @@ export class Session {
     const cfg = loadStreamCfg()
     const now = performance.now()
     // 가릴 말 · 주소 · 도배 (2026-09-25 방송 개선 3 — 방송 화면에 그대로 뜨므로)
+    // 차단한 시청자 (방송 개선 ②): 말풍선 · !참여 모두 받지 않는다
+    if (isBlocked(cleanChat(c.nick), cfg)) return
     const nick = maskText(cleanChat(c.nick).slice(0, 20), cfg) || '시청자'
     const raw = squeezeRepeats(cleanChat(c.text))
     if (!raw) return
@@ -2220,18 +2222,22 @@ export class Session {
   private onStreamDonation(d: StreamDonation): void {
     // 후원은 거르지 않는다(돈을 냈다) — 닉네임 · 글의 가릴 말 · 주소만 가린다 (2026-09-25 방송 개선 3)
     const fc = loadStreamCfg()
-    const nick = maskText(cleanChat(d.nick).slice(0, 20), fc) || '익명의 후원자'
+    // 차단한 시청자(방송 개선 ②)의 후원도 이벤트는 일어난다(돈을 냈다) — 이름 · 글만 숨긴다
+    const blocked = isBlocked(cleanChat(d.nick), fc)
+    const nick = (blocked ? '' : maskText(cleanChat(d.nick).slice(0, 20), fc)) || '익명의 후원자'
     const raw = squeezeRepeats(cleanChat(d.text))
-    const text = maskText(raw, fc)
-    // 후원 글에 "!응원" — 괴롭히는 대신 돕는다. 금액마다 단계가 다르다 (응원 금액표 — 넘는 것 중 가장 비싼 단계)
-    const e = (CHEER_RE.test(raw) ? cheerForAmount(d.amount) : undefined) ?? eventForAmount(d.amount)
-    // 후원이 한꺼번에 몰려도 소리는 0.25초에 하나 (큰 것은 늘)
+    const text = blocked ? '' : maskText(raw, fc)
+    // 후원 글에 "!응원" — 괴롭히는 대신 돕는다. 금액마다 단계가 다르다 (응원 금액표 — 넘는 것 중 가장 비싼 단계).
+    // "!이름"(방송 개선 ①) — 금액이 넘으면 그 이벤트. 아니면 금액표에서 넘는 것 중 가장 비싼 것
+    const e = (CHEER_RE.test(raw) ? cheerForAmount(d.amount) : undefined) ?? eventByName(raw, d.amount, fc) ?? eventForAmount(d.amount)
+    // 후원이 한꺼번에 몰려도 소리는 0.25초에 하나 (큰 것은 늘) · 후원 효과음 끔 · 게임 소리 잠깐 줄이기 (방송 개선 ④)
     const big = !!e && e.id >= 6 && !cheerEvent(e.id)
     const now = performance.now()
-    if (big || now - this.lastDonSfx > 250) {
+    if (fc.donSfx && (big || now - this.lastDonSfx > 250)) {
       this.lastDonSfx = now
       this.sfx.donate(big)
     }
+    if (fc.duckSec > 0) this.sfx.duck(fc.duckSec)
     // 금액은 어디에도 적지 않는다 (2026-09-23 — 채팅 칸에 쌓이면 그대로 후원 내역이 된다)
     if (!e || this.donPending.length >= Session.DON_QUEUE_MAX) {
       const line = text ? `후원 · ${text}` : '후원 감사!'
@@ -2361,6 +2367,13 @@ export class Session {
     }
     const me = this.state.players[this.cfg.localPlayer]
     if (!effectFits(ev, me?.don, me?.donCap ?? DON_CAP_DEFAULT, rage)) return false
+    // 같은 방해 효과 사이 쉬는 시간 (방송 개선 ⑥): 켜면 이어 붙이지 않고, 앞 효과가 끝난 뒤 그만큼 쉬고 다음
+    const gap = loadStreamCfg().effectGap
+    const slot = effectSlot(e.key)
+    if (gap > 0 && slot >= 0) {
+      const left = slot === RAGE_SLOT ? rage : (me?.don?.[slot] ?? 0)
+      if (left > 0 || performance.now() - this.effectFreeAt[slot] < gap * 1000) return false
+    }
     if (!SUMMON_KEYS.has(e.key)) return true
     if (summoned >= SUMMON_CAP - 4) return false
     if ((e.key === 'boss' || e.key === 'hell') && boss) return false
@@ -2468,7 +2481,21 @@ export class Session {
   }
 
   /** 프레임마다: 기다리는 후원을 1.5초에 하나씩 판에 넣고, 채팅을 0.3초에 하나씩 괴물에게 말하게 하고, 표를 고친다 */
+  /** 방해 효과 칸마다 마지막으로 끝난 때 (쉬는 시간 — 방송 개선 ⑥). 칸 = DON_SHAKE … DON_SEAL · RAGE_SLOT */
+  private effectFreeAt = [-1e9, -1e9, -1e9, -1e9, -1e9]
+  private effectOn = [false, false, false, false, false]
+
   private pumpStream(now: number): void {
+    {
+      const don = this.state.players[this.cfg.localPlayer]?.don
+      let rage = 0
+      for (const m of this.view().monsters) if (m.hp > 0 && (m.rage ?? 0) > rage) rage = m.rage ?? 0
+      for (let k = 0; k < this.effectOn.length; k++) {
+        const on = (k === RAGE_SLOT ? rage : (don?.[k] ?? 0)) > 0
+        if (this.effectOn[k] && !on) this.effectFreeAt[k] = now
+        this.effectOn[k] = on
+      }
+    }
     // 후원: 이름표를 먼저 보내고(번호는 이때 매긴다) 0.3초 뒤에 명령 · 1.5초에 하나
     if (this.donSending && now >= this.donSending.at) {
       const d = this.donSending
@@ -2705,7 +2732,12 @@ export class Session {
     const tie = tieE.size > 0 || (cr.length > 0 && tieC.size > 0) ? `<div class="dw tie">🎲 같은 금액은 그중 하나가 무작위로</div>` : ''
     // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7)
     const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름</div>` : ''
-    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${tie}${join}${wait}`
+    // 후원 글에 "!이름" — 금액이 넘으면 그 이벤트를 고를 수 있다 (방송 개선 ①)
+    const pick = rows ? `<div class="dw tie">🎯 후원 글에 !이름 — 금액이 넘으면 그 이벤트</div>` : ''
+    // 빈 자리 안내 (방송 개선 ⑦ — 주소 없이): 내 방(방장 · 목록에 올라간 방)에 빈 자리가 있으면
+    const seats = this.freeSeats()
+    const seat = cfg.seatNote && seats > 0 ? `<div class="dh join">🪑 빈 자리 ${seats} — 게임 목록에서 '${this.names[0] ?? '방장'}' 방으로</div>` : ''
+    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${pick}${cheer}${tie}${join}${seat}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
     if (el.dataset.h !== html) {
       el.dataset.h = html
@@ -2716,6 +2748,13 @@ export class Session {
     if (cfg.textScale > 1 && el.offsetWidth > room) el.style.setProperty('--dk', String(Math.max(1, (cfg.textScale * room) / el.offsetWidth)))
     // 채팅 칸은 후원 표 위로 (둘 다 왼쪽 아래 — 표가 커지면 겹쳤다, 2026-09-23). 표를 고친 뒤에 잰다
     this.chat?.setBottom(Math.max(222, 12 + el.offsetHeight + 14))
+  }
+
+  /** 내 방의 빈 자리 수 (방장이고 방이 목록에 올라가 있을 때만 — 아니면 0). 로비 방송(startLobbyBeacon)과 같은 셈 */
+  private freeSeats(): number {
+    const info = this.cfg.roomInfo
+    if (!this.cfg.lobby || !info || !this.isHost || this.state.phase === 'over') return 0
+    return Math.max(0, info.size - this.state.players.filter((p) => !p.left).length)
   }
 
   /** 채팅 보내기. 내 화면에는 바로 쓰고 모두에게 보낸다 (투기장에서도 모두에게 — 덕처럼 말로 도발하는 재미) */

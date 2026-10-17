@@ -4,7 +4,7 @@
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
 import { CHEER_EVENTS, DONATE_EVENTS, DON_CAP_CHOICES, DonateEvent } from '../core/donate'
-import { BUBBLE_FLOW, BubbleAmount, DEFAULT_BANNED, StreamStatus, TEXT_SCALES, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { BUBBLE_FLOW, BubbleAmount, DEFAULT_BANNED, DUCK_SECS, EFFECT_GAPS, StreamStatus, TEXT_SCALES, cleanBanned, loadStreamCfg, saveStreamCfg, scaleAmounts, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
 import { isDev, onDevChange } from '../game/devmode'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
@@ -163,6 +163,9 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     toggle('maskLinks', '주소(링크)는 [링크] 로', c.maskLinks) +
     toggle('antiSpam', '도배 거르기 (같은 말 · 몰아 쓰기)', c.antiSpam) +
     toggle('hideLobbyChat', '대기실 전체 채팅 숨기기', c.hideLobbyChat, '숨기기', '보이기') +
+    `<div class="czh"><b>🚫 차단한 시청자 ${c.blocked.length}명</b></div>` +
+    `<textarea class="czban" data-blocked rows="2" spellcheck="false" placeholder="닉네임 — 쉼표나 줄바꿈으로 나눕니다">${esc(c.blocked.join(', '))}</textarea>` +
+    `<p class="czn">차단한 시청자의 채팅은 말풍선 · !참여 모두 받지 않습니다. 후원 이벤트는 일어나되(돈을 냈다) 이름 · 글은 숨깁니다.</p>` +
     `<p class="czn">괴물 말풍선 · 후원 글 · 닉네임, 그리고 <b>대기실 · 방 · 게임 채팅</b>(머리 위 말풍선 · 방 목록 이름까지)에서 가릴 말은 <b>○○</b> 로 — 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸립니다. 후원은 거르지 않고 글만 가립니다. 대기실 전체 채팅은 방 밖의 누구나 쓸 수 있어 방송 중에는 숨길 수 있습니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
@@ -172,9 +175,13 @@ function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
     `<p class="czn">멈춘 동안 받은 방해 후원은 버리지 않고 기다렸다가 풀면 차례로 일어납니다. 응원(!응원)은 그대로 들어갑니다. 멈춤은 페이지를 새로 열면 풀립니다.</p>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
     `<p class="czn">${evName('shake')} · ${evName('dark')} · ${evName('invert')} · ${evName('seal')} — 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (${evName('shake')}은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — ${evName('rage')}는 끝난 뒤에.</p>` +
+    seg('gap', '같은 방해 효과 사이 쉬기', EFFECT_GAPS.map((g) => [String(g), g ? `${g}초` : '안 쉼']), String(c.effectGap)) +
+    `<p class="czn">켜면 같은 방해 효과를 이어 붙이지 않고, 앞 효과가 끝난 뒤 이만큼 쉬었다가 다음 것이 일어납니다(기다리는 후원은 버리지 않습니다).</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
     (isDev() ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` : '') +
     `<p class="czn">채팅에 <b>!참여</b> → 최근 15분 안에 참여한 사람 중 <b>추첨</b>으로 한 명씩, 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +
+    toggle('seatNote', '빈 자리 안내 (후원 표 아래)', c.seatNote) +
+    `<p class="czn">내 방에 빈 자리가 있으면 "빈 자리 N — 게임 목록에서 ○○ 방으로" 를 보여 줍니다(주소는 쓰지 않습니다).</p>` +
     `</div></div>`
   )
 }
@@ -222,7 +229,10 @@ function panelHtml(): string {
     seg('bub', '말풍선 양', [['few', '적게'], ['normal', '보통'], ['many', '많이']], c.bubbleAmount) +
     toggle('bubbleBossLess', '보스전 중에는 말풍선 적게', c.bubbleBossLess) +
     toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
+    toggle('donSfx', '후원 효과음', c.donSfx) +
+    seg('duck', '후원 때 게임 소리 줄이기', DUCK_SECS.map((d) => [String(d), d ? `${d}초` : '안 줄임']), String(c.duckSec)) +
     seg('tsc', '방송 글자 크기', TEXT_SCALES.map((k, i) => [String(k), ['보통', '크게', '아주 크게'][i] ?? `${k}배`]), String(c.textScale)) +
+    `<p class="czn">후원 효과음은 방송 프로그램의 후원 알림 소리와 겹치면 끄세요. 게임 소리 줄이기는 치지직이 후원 글을 읽어 주는 동안(TTS) 게임 소리를 잠깐 낮춥니다.</p>` +
     `<p class="czn">말풍선 양 — 적게 0.9초 · 보통 0.3초 · 많이 0.15초에 하나, 밀린 채팅은 적게 4 · 보통 12 · 많이 20 줄까지 기다립니다. 글자 크기는 말풍선 · 후원 표 · 방송 알림(시청자 이름 괴물 · 후원 결과)에 같이 걸립니다.</p>` +
     (dev
       ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
@@ -233,9 +243,10 @@ function panelHtml(): string {
     `<p class="czn">후원 글에 <b>!응원</b> 입력 → 괴롭히는 대신 <b>돕습니다</b> — 금액이 넘는 단계 중 가장 비싼 것(같은 금액이면 무작위로 하나) · 0 원이면 끔 · 던전에서 일어납니다.</p>` +
     `</div>` +
     `<div class="czcol">` +
-    `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
+    `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="half" title="응원 금액까지 모두 절반으로">×0.5</button><button type="button" class="lnk" data-cz="double" title="응원 금액까지 모두 두 배로">×2</button><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
     `<div class="czt">${rows}</div>` +
     `<p class="czn">금액이 넘는 것 중 가장 비싼 이벤트가 일어납니다 · <b>같은 금액이면 그중 하나가 무작위로</b>(게임 속 표에 🎲) · 0 원이면 끔 · 마을에서 받은 후원은 던전에 나가면 일어납니다. 바꾼 금액은 게임 왼쪽 아래 표에 바로 보입니다.</p>` +
+    `<p class="czn">후원 글에 <b>!이름</b>(예: !${DONATE_EVENTS[0].name.replace(/\s+/g, '')})을 쓰면 금액이 그 이벤트 값 이상일 때 <b>그 이벤트</b>가 일어납니다. ×0.5 · ×2 는 응원 금액까지 한꺼번에 바꿉니다(500원 단위).</p>` +
     `<p class="czn">후원으로 부른 <b>막 보스</b>(${evName('boss')} · ${evName('hell')})는 <b>체력 절반 · 즉사기 없음</b> — 다른 패턴은 그대로이고, 잡아도 막 보스 처치 · 퀘스트로 치지 않습니다. 한 번에 하나만 나오고 나머지는 기다립니다.</p>` +
     `</div></div>` +
     safetyHtml(c) +
@@ -323,6 +334,12 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
         c.cheers = CHEER_EVENTS.map((e) => e.amount)
         saveStreamCfg(c)
+      } else if (a === 'half' || a === 'double') {
+        const c = loadStreamCfg()
+        const k = a === 'half' ? 0.5 : 2
+        c.amounts = scaleAmounts(c.amounts, k)
+        c.cheers = scaleAmounts(c.cheers, k)
+        saveStreamCfg(c)
       }
       redraw()
     }
@@ -344,6 +361,8 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       else if (tg === 'antiSpam') c.antiSpam = on
       else if (tg === 'named') c.named = on
       else if (tg === 'bubbleBossLess') c.bubbleBossLess = on
+      else if (tg === 'donSfx') c.donSfx = on
+      else if (tg === 'seatNote') c.seatNote = on
       else c.table = on
       saveStreamCfg(c)
       redraw()
@@ -356,6 +375,8 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       const v = b.dataset.v ?? ''
       if (key === 'bub' && Object.hasOwn(BUBBLE_FLOW, v)) c.bubbleAmount = v as BubbleAmount
       else if (key === 'tsc' && TEXT_SCALES.includes(Number(v))) c.textScale = Number(v)
+      else if (key === 'gap' && EFFECT_GAPS.includes(Number(v))) c.effectGap = Number(v)
+      else if (key === 'duck' && DUCK_SECS.includes(Number(v))) c.duckSec = Number(v)
       saveStreamCfg(c)
       redraw()
     }
@@ -368,6 +389,15 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       redraw()
     }
   })
+  const blk = box.querySelector<HTMLTextAreaElement>('textarea[data-blocked]')
+  if (blk) {
+    blk.onchange = () => {
+      const c = loadStreamCfg()
+      c.blocked = cleanBanned(blk.value.split(/[,\n]/))
+      saveStreamCfg(c)
+      redraw()
+    }
+  }
   const ban = box.querySelector<HTMLTextAreaElement>('textarea[data-banned]')
   if (ban) {
     ban.onchange = () => {
