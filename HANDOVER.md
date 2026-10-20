@@ -119,8 +119,8 @@ npm run build      # tsc --noEmit + vite build → dist/
 
 ### 작업 · 협업
 
-- 사용자는 단계마다 **커밋 · 푸시 자동**(메모 `feedback-always-commit-push`) · 공지는 짧게(메모 `feedback-announcement-style`) · 공지 게시는 사람이 한다.
-- **영상 · 사진을 뜨면 공지글도 같이 고친다**(0장 첨부 표 크기 · 길이 · 어느 PC 판 · 그 차수 공지의 "첨부 —" 줄 · 본문) → HANDOVER → 커밋 · 푸시까지 끝내고 보고(2026-10-08 사용자: "공지글도 당연히 업데이트하고 커밋 푸쉬해야지 — 당연한 걸 매번 알려줘야 하니").
+- 사용자는 단계마다 **커밋 · 푸시 자동**(메모 `feedback-always-commit-push`) · 공지는 짧게(메모 `feedback-announcement-style`) · 공지 게시는 사람이 한다. **공지 문서는 최신 공지가 맨 위 · 본문에 날짜를 적지 않고 · 본문 아래 감사 · 주소 줄(🙏 · 🔗)은 넣지 않는다**(2026-10-20 사용자 — 정본은 `docs/공지글-모음.md` "쓰는 법").
+- **영상 · 사진을 뜨면 공지글도 같이 고친다**("첨부 파일" 표 크기 · 길이 · 어느 PC 판 · 그 차수 공지의 "첨부 —" 줄 · 본문) → HANDOVER → 커밋 · 푸시까지 끝내고 보고(2026-10-08 사용자: "공지글도 당연히 업데이트하고 커밋 푸쉬해야지 — 당연한 걸 매번 알려줘야 하니").
 - **⚠ 개발 · 시험 중 브라우저 소리는 늘 끈다**(2026-10-08 사용자: "개발 중에 계속 소리 켜는 거 하지 말라고 — 소리가 꼭 필요한 게 아니면 꺼"): 탭을 열자마자 `localStorage.setItem('brpg.muted','1')` + `__session.sfx.setMuted(true)` — 로컬 · 배포 사이트는 저장소가 따로라 출처마다. 소리 상태는 출력 신호(AnalyserNode)로 재고, 켰으면 끝나자마자 끄고 그 탭을 닫는다(`tabs_context` 로 남은 탭 확인 — 배포 사이트 탭을 소리 켠 채 남겨 둔 적이 있다).
 - **다른 세션이 이 폴더에서 작업 중이면 옆 작업 폴더(git worktree)에서** 한다(2026-10-17): `git worktree add ../bedorage-rpg-<이름> -b <가지> origin/main` → `npm ci` → 끝나면 `git pull --rebase origin main` 뒤 `git push origin HEAD:main`(원래 폴더 파일은 안 바뀐다 — 그쪽 세션에 pull 하라고 알린다) → 다 쓰면 `git worktree remove` · 가지 삭제. ⚠ 미리보기 도구(`preview_start` name)는 **세션 첫 폴더의 `.claude/launch.json` 만** 읽는다 → 작업 폴더의 개발 서버는 셸 백그라운드로 `npx vite --port 5177 --strictPort` 를 띄우고 `preview_start({ url })` 로 연다(끝나면 "최근 세션 인계" ③ 처럼 node 까지 끈다).
 - 같은 폴더를 고치기 전에는 그쪽 세션에 어느 파일을 고칠지 알리고(SendMessage), 커밋할 때는 그 파일만 add 한다.
