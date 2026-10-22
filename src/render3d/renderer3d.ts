@@ -454,6 +454,11 @@ export class Renderer3D {
   private prebuilding = new Map<GameMap, Generator<void, void>>()
   /** 빛 수 맞추기용 빈 점광원 (세기 0 · 멀리) — 본 장면에는 LIGHT_STEP-1 개면 된다 */
   private lightPads: THREE.PointLight[] = []
+  /** 맞춰 둔 점광원 수(LIGHT_STEP 의 배수)와 그보다 적어도 되는 프레임 수 — padLights 의 내려가기 늦추기 */
+  private lightSlots = 0
+  private slotsLow = 0
+  /** InstancedMesh 몫 그림자 깊이 재질 (instanceColor 없음 · 있음) — splitDepth */
+  private readonly instDepth = [new THREE.MeshDepthMaterial(), new THREE.MeshDepthMaterial()]
   /** 컴파일 전용 장면: 반구광 · 해(그림자) · 빈 점광원 LIGHT_MAX 개. 본 장면과 빛 종류 · 수만 같게 맞춘다 */
   private warmScene = new THREE.Scene()
   private warmPads: THREE.PointLight[] = []
@@ -618,7 +623,8 @@ export class Renderer3D {
       l.userData.pad = true
       return l
     }
-    for (let i = 0; i < LIGHT_STEP - 1; i++) {
+    // 빈 빛: 한 단계 늦게 내려가므로(padLights) 두 단계 몫
+    for (let i = 0; i < 2 * LIGHT_STEP - 1; i++) {
       const l = pad()
       this.lightPads.push(l)
       this.scene.add(l)
@@ -632,7 +638,23 @@ export class Renderer3D {
       this.warmPads.push(l)
       this.warmScene.add(l)
     }
+    this.splitDepth(this.scene)
     this.resize()
+  }
+
+  /**
+   * 그림자 깊이 재질을 InstancedMesh 몫으로 따로 둔다 (2026-10-22 최적화): three 는 그림자를 드리우는 것 모두에 깊이 재질 하나를 쓰는데,
+   * InstancedMesh(소품 · 괴물)와 보통 Mesh(캐릭터)가 섞여 그 재질의 셰이더가 프레임마다 몇 번씩 바뀌었다(getProgram).
+   * 잘라 내는 그림(alphaTest · alphaMap)은 three 가 재질마다 따로 만들므로 건드리지 않는다
+   */
+  private splitDepth(root: THREE.Object3D): void {
+    root.traverse((o) => {
+      const m = o as THREE.InstancedMesh
+      if (!m.isInstancedMesh || !m.castShadow || m.customDepthMaterial || Array.isArray(m.material)) return
+      const mat = m.material as THREE.MeshStandardMaterial
+      if (mat.alphaTest > 0 || mat.alphaMap || mat.displacementMap || mat.alphaToCoverage) return
+      m.customDepthMaterial = this.instDepth[m.instanceColor ? 1 : 0]
+    })
   }
 
   /** 팀 신호를 찍는다 (sim 밖이라 결정론과 무관하다) */
@@ -770,6 +792,7 @@ export class Renderer3D {
     const done = () => {
       if (this.areaJob === job) this.areaCompiling = false
     }
+    this.splitDepth(this.scene)
     this.padLights()
     void Promise.race([this.compileAsync(this.scene, this.scene), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
   }
@@ -988,7 +1011,14 @@ export class Renderer3D {
       }
     }
     const real = Math.min(lights.length, LIGHT_BUDGET)
-    const need = real >= LIGHT_MAX ? 0 : Math.ceil(real / LIGHT_STEP) * LIGHT_STEP - real
+    const want = real >= LIGHT_MAX ? real : Math.ceil(real / LIGHT_STEP) * LIGHT_STEP
+    // 빛 수가 경계(4 · 8 …)에서 오르내리면(총구 섬광 · 맞은 빛) 그때마다 빛 받는 재질 모두가 셰이더를 다시 골랐다(2026-10-22 계측 —
+    // 싸움 중 세 프레임에 한 번). 오를 때는 바로, 내려갈 때는 한 단계까지 1초 늦게
+    if (want >= this.lightSlots || want + LIGHT_STEP < this.lightSlots || ++this.slotsLow > 60) {
+      this.lightSlots = want
+      this.slotsLow = 0
+    }
+    const need = this.lightSlots - real
     for (let i = 0; i < this.lightPads.length; i++) {
       const on = i < need
       if (this.lightPads[i].visible !== on) this.lightPads[i].visible = on
@@ -2828,7 +2858,9 @@ export class Renderer3D {
     if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return
     const me = curr.players[lp]
     if (!me || !me.alive || me.downed) return
-    const t = this.questTarget(curr, lp) ?? this.forwardExit(curr)
+    // 다음 맵으로 가는 길 (2026-10-22 사용자): 퀘스트가 다른 지역 · NPC · 특별한 곳을 가리키면 그리로, '남은 괴물'이면 앞으로 가는 출구로
+    const q = this.questTarget(curr, lp)
+    const t = (q && !q.mob ? q : this.forwardExit(curr)) ?? q
     if (!t || Math.hypot(t.x - me.x, t.y - me.y) < 2 * TILE) return
     const map = this.map
     const tx = Math.floor(t.x / TILE)
@@ -2857,17 +2889,18 @@ export class Renderer3D {
       const ang = Math.atan2(b.y - a.y, b.x - a.x)
       const k = (i + flow * 2) / pts.length
       ctx.save()
-      ctx.globalAlpha = Math.max(0.15, 0.85 * (1 - k))
+      ctx.globalAlpha = Math.max(0.2, 0.95 * (1 - k))
       ctx.translate(b.x, b.y)
       ctx.rotate(ang)
+      // 크고 굵게 — ☀ 모래 바닥에서도 보이게 진한 테두리
       ctx.beginPath()
-      ctx.moveTo(-9, -8)
-      ctx.lineTo(4, 0)
-      ctx.lineTo(-9, 8)
-      ctx.lineWidth = 7
-      ctx.strokeStyle = 'rgba(20,14,0,0.55)'
+      ctx.moveTo(-14, -12)
+      ctx.lineTo(6, 0)
+      ctx.lineTo(-14, 12)
+      ctx.lineWidth = 10
+      ctx.strokeStyle = 'rgba(30,18,0,0.75)'
       ctx.stroke()
-      ctx.lineWidth = 4
+      ctx.lineWidth = 5.5
       ctx.strokeStyle = '#ffd84a'
       ctx.stroke()
       ctx.restore()
@@ -2883,7 +2916,7 @@ export class Renderer3D {
     return best
   }
 
-  private questTarget(curr: GameState, lp: number): { x: number; y: number; label: string } | null {
+  private questTarget(curr: GameState, lp: number): { x: number; y: number; label: string; mob?: true } | null {
     if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return null
     const me = curr.players[lp]
     if (!me) return null
@@ -2926,7 +2959,7 @@ export class Renderer3D {
         best = m
       }
     }
-    return best ? { x: best.x, y: best.y, label: qd ? `${qd.name} · 남은 괴물` : '남은 괴물' } : null
+    return best ? { x: best.x, y: best.y, label: qd ? `${qd.name} · 남은 괴물` : '남은 괴물', mob: true } : null
   }
 
   private drawMiniGoal(curr: GameState, opts: RenderOptions, x: number, y: number, S: number, mx: number, my: number, rot: number): void {

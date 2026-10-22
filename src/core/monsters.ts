@@ -553,8 +553,9 @@ export const HP_BASE = 1.35
 // 2026-09-19 사용자 "보통인데 꽤 어렵다" → 보통만 쉽게 (악몽·지옥은 그대로):
 //   pow = 몬스터 피해 배율(레벨 보정 위에) — 보통 0.75
 //   guard = 방패 정면으로 들어가는 피해 비율(GUARD.mult) — 보통 0.6. 3막 무너진 시장(방패병 무리)에서 봇이 12~23번씩 죽었다
+// 2026-10-22 사용자 "기본 난이도가 낮다는 평가 — 20~30% 올려" → 보통 체력 1 → 1.2 · 피해 0.75 → 0.94
 export const TIERS = [
-  { lvl: 0, hp: 1, affix: 0, loot: 0, gold: 1, pow: 0.75, guard: 0.6 },
+  { lvl: 0, hp: 1.2, affix: 0, loot: 0, gold: 1, pow: 0.94, guard: 0.6 },
   { lvl: 10, hp: 1.3, affix: 1, loot: 0.08, gold: 1.6, pow: 1, guard: GUARD.mult },
   { lvl: 20, hp: 1.7, affix: 2, loot: 0.16, gold: 2.2, pow: 1, guard: GUARD.mult },
 ]

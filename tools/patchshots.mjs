@@ -16,7 +16,8 @@ const dir = qa ? '.frames/shots' : `docs/img/${process.env.SHOT_DIR ?? `patch-${
 mkdirSync(dir, { recursive: true })
 const skin = process.env.SHOT_SKIN ?? 'bright'
 
-const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--autoplay-policy=no-user-gesture-required'] })
+// 깔린 Chrome 을 쓴다 (playwright 가 받은 크로미움은 이 PC 에서 실행이 막힌다 — spawn UNKNOWN)
+const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--autoplay-policy=no-user-gesture-required'] })
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {
@@ -61,7 +62,36 @@ async function startGame(fillBots = true) {
   }, { skin, fillBots })
   await page.waitForFunction(() => window.__bd?.phase?.() === 'playing' && window.__session?.renderer?.ready, null, { timeout: 120000 })
   await sleep(4000)
-  await page.evaluate(() => window.__session?.sfx?.setMuted?.(true))
+  await page.evaluate(() => {
+    window.__session?.sfx?.setMuted?.(true)
+    // 첫 판 소개 글(시작하기) 닫기
+    document.querySelector('.ending.intro .ending-go')?.click()
+  })
+  await sleep(500)
+}
+
+/** 게임이 쓰는 그 모듈 사본 (개발 서버는 고친 파일을 ?t= 꼬리표 주소로 준다 — 가장 긴 주소) */
+const SAME = `async (path) => {
+  const url = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes(path)).sort((a, b) => b.length - a.length)[0]
+  return import(url ?? '/bedorage-rpg' + path)
+}`
+
+/** 가방에 아이템 열두 개 (가방 · 상점 장면이 비어 보이지 않게) */
+async function fillBag() {
+  await page.evaluate(async (SAME) => {
+    const same = eval(SAME)
+    const items = await same('/src/core/items.ts')
+    const rngM = await same('/src/core/rng.ts')
+    const p = window.__bd.state().players[0]
+    const rng = rngM.makeRng(99)
+    const rar = [4, 3, 3, 2, 2, 1, 1, 0, 0, 2, 1, 0]
+    rar.forEach((r, i) => {
+      const it = items.rollItem(rng, 900000 + i, 8, p.weapon, 'boss', 0, r)
+      it.rarity = r
+      p.bag.push(it)
+    })
+  }, SAME)
+  await sleep(300)
 }
 
 /** NPC 곁으로 (창을 열 수 있게) */
@@ -83,7 +113,9 @@ const SCENES = {
     await shot('01_lobby')
   },
   town: async () => {
+    await openLobby()
     await startGame()
+    await fillBag()
     await page.mouse.move(1180, 520)
     await sleep(800)
     await shot('02_town_hud')
@@ -106,6 +138,9 @@ const SCENES = {
     await page.evaluate(() => window.__session.town.show('elder'))
     await sleep(900)
     await shot('05_elder_all')
+    // 퀘스트를 모두 받아 둔다 — 들판 길 안내가 '마을로 돌아가 촌장에게'가 아니라 다음 지역을 가리키게
+    await page.evaluate(() => document.querySelector('.quest-all')?.click())
+    await sleep(600)
     await page.evaluate(() => window.__session.town.show(null))
   },
   captain: async () => {
@@ -147,12 +182,24 @@ const SCENES = {
     await shot('07_field_nav')
   },
   bubbles: async () => {
-    await page.evaluate(async () => {
-      const url = performance.getEntriesByType('resource').map((e) => e.name).find((n) => n.includes('/src/game/stream.ts'))
-      const { stream } = await import(url ?? '/bedorage-rpg/src/game/stream.ts')
-      for (let i = 0; i < 5; i++) stream.fakeChat(false)
-    })
-    await sleep(1500)
+    // 말풍선은 화면 안 괴물 머리 위에 뜬다 — 가장 가까운 무리 곁으로 옮긴 뒤 시청자 채팅 여섯
+    await page.evaluate(async (SAME) => {
+      const same = eval(SAME)
+      const s = window.__bd.state()
+      const me = s.players[0]
+      const m = window.__bd.view().monsters.filter((q) => q.hp > 0).sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0]
+      if (m) {
+        me.x = m.x - 150
+        me.y = m.y + 120
+      }
+      await new Promise((r) => setTimeout(r, 900))
+      const { stream } = await same('/src/game/stream.ts')
+      for (let i = 0; i < 6; i++) {
+        stream.fakeChat(false)
+        await new Promise((r) => setTimeout(r, 250))
+      }
+    }, SAME)
+    await sleep(1200)
     await shot('08_chat_bubbles')
   },
   stream: async () => {
@@ -170,9 +217,11 @@ for (const name of order) {
   if (needGame.has(name) && !opened) {
     await openLobby()
     await startGame()
+    await fillBag()
     opened = true
   }
-  if (name === 'town') opened = true
+  // 마을 · 용병 장면은 판을 새로 연다 · 로비 장면은 판을 닫는다
+  if (name === 'town' || name === 'captain') opened = true
   if (name === 'lobby') opened = false
   console.log('장면', name)
   try {

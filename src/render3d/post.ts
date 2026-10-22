@@ -1,7 +1,7 @@
 // 화면 후처리: 빛 번짐(bloom) + 막마다 색감 (2026-10-08 퀄리티 2차 2단계 — 상용 게임과 견준 검토 G1 · G2).
-// 전에는 장면을 화면에 바로 그렸다(후처리 없음). 이제 장면을 HDR 그림(반정밀 · MSAA 4)에 그리고 —
+// 전에는 장면을 화면에 바로 그렸다(후처리 없음). 이제 장면을 HDR 그림(반정밀)에 그리고 —
 //  ① 밝은 곳만 1/4 크기로 걸러(문턱 · 부드러운 무릎) ② 1/4 · 1/8 에서 가로세로로 번지게 하고
-//  ③ 마지막 한 번에: 장면 + 번짐 → 색감(채도 · 대비 · 그늘/밝은 곳 빛깔) → 톤 매핑(렌더러 것 — 🌙 ACES · ☀ Neutral) → sRGB 로 화면에.
+//  ③ 마지막 한 번에: 장면(FXAA 로 가장자리를 다듬어) + 번짐 → 색감(채도 · 대비 · 그늘/밝은 곳 빛깔) → 톤 매핑(렌더러 것 — 🌙 ACES · ☀ Neutral) → sRGB 로 화면에.
 // 가벼운 방식만 쓴다(번짐은 작은 그림에서만). 자동 화질이 낮아지면 끄고 예전처럼 바로 그린다(enabled = false).
 
 import * as THREE from 'three'
@@ -109,12 +109,33 @@ uniform float uContrast;
 uniform vec3 uShadow;
 uniform vec3 uHigh;
 uniform float uExposure;
+uniform vec2 uPx;
 varying vec2 vUv;
+// FXAA (빠른 판 — 9 탭): 장면 그림의 MSAA 4 를 대신한다. 2026-10-22 계측: 반정밀 MSAA 4 가 1080p 에서 GPU 4.5ms(전체의 40%) — 이것은 0.5ms 안
+float fxLuma(vec3 c) { return sqrt(dot(min(c, vec3(1.0)), vec3(0.299, 0.587, 0.114))); }
+vec3 fxaa(vec2 uv) {
+  vec3 nw = texture2D(tScene, uv + vec2(-1.0, -1.0) * uPx).rgb;
+  vec3 ne = texture2D(tScene, uv + vec2(1.0, -1.0) * uPx).rgb;
+  vec3 sw = texture2D(tScene, uv + vec2(-1.0, 1.0) * uPx).rgb;
+  vec3 se = texture2D(tScene, uv + vec2(1.0, 1.0) * uPx).rgb;
+  vec3 m = texture2D(tScene, uv).rgb;
+  float lnw = fxLuma(nw), lne = fxLuma(ne), lsw = fxLuma(sw), lse = fxLuma(se), lm = fxLuma(m);
+  float lo = min(lm, min(min(lnw, lne), min(lsw, lse)));
+  float hi = max(lm, max(max(lnw, lne), max(lsw, lse)));
+  if (hi - lo < max(0.0312, hi * 0.125)) return m;
+  vec2 dir = vec2(-((lnw + lne) - (lsw + lse)), (lnw + lsw) - (lne + lse));
+  float red = max((lnw + lne + lsw + lse) * 0.03125, 1.0 / 128.0);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), vec2(-8.0), vec2(8.0)) * uPx;
+  vec3 a = 0.5 * (texture2D(tScene, uv - dir * (1.0 / 6.0)).rgb + texture2D(tScene, uv + dir * (1.0 / 6.0)).rgb);
+  vec3 b = a * 0.5 + 0.25 * (texture2D(tScene, uv - dir * 0.5).rgb + texture2D(tScene, uv + dir * 0.5).rgb);
+  float lb = fxLuma(b);
+  return lb < lo || lb > hi ? a : b;
+}
 // toneMappingExposure 는 아래 tonemapping_pars_fragment 가 선언한다 — 여기서 또 선언하면 컴파일이 깨져 화면이 까맸다 (v0.87.0 ~ 0.91.0)
 #include <tonemapping_pars_fragment>
 #include <colorspace_pars_fragment>
 void main() {
-  vec3 c = texture2D(tScene, vUv).rgb;
+  vec3 c = fxaa(vUv);
   c += (texture2D(tBloomA, vUv).rgb * 0.6 + texture2D(tBloomB, vUv).rgb * 0.8) * uBloom;
   c *= uExposure;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -159,7 +180,8 @@ export class PostFx {
     this.enabled = this.supported
     const rt = (samples = 0, depth = false) =>
       new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples, depthBuffer: depth, stencilBuffer: depth, magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter })
-    this.scene = rt(4, true)
+    // MSAA 없이 (FXAA 가 맡는다 — COMP). 반정밀 MSAA 4 는 1080p 에서 GPU 4.5ms 였다 (2026-10-22)
+    this.scene = rt(0, true)
     this.qa = rt()
     this.qb = rt()
     this.ea = rt()
@@ -171,7 +193,7 @@ export class PostFx {
       {
         tScene: { value: this.scene.texture }, tBloomA: { value: this.qa.texture }, tBloomB: { value: this.ea.texture },
         uBloom: { value: 0.5 }, uSat: { value: 1 }, uContrast: { value: 1 }, uShadow: { value: new THREE.Vector3(1, 1, 1) }, uHigh: { value: new THREE.Vector3(1, 1, 1) },
-        uExposure: { value: 1 }, toneMappingExposure: { value: 1 },
+        uExposure: { value: 1 }, toneMappingExposure: { value: 1 }, uPx: { value: new THREE.Vector2(1, 1) },
       },
       // 분위기는 렌더러를 만들기 전에 정해진다(session) → 판 도중 바뀌지 않아 define 으로 충분하다
       { [gl.toneMapping === THREE.NeutralToneMapping ? 'NEUTRAL_TONE_MAPPING' : 'ACES_FILMIC_TONE_MAPPING']: '', SRGB_TRANSFER: '' },
@@ -186,6 +208,7 @@ export class PostFx {
     this.w = w
     this.h = h
     this.scene.setSize(w, h)
+    ;(this.compMat.uniforms.uPx.value as THREE.Vector2).set(1 / w, 1 / h)
     const qw = Math.max(1, Math.round(w / 4))
     const qh = Math.max(1, Math.round(h / 4))
     this.qa.setSize(qw, qh)

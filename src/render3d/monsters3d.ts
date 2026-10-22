@@ -1380,11 +1380,15 @@ export class MonsterView {
       this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)), c.y)
     }
     this.corpses = still
+    // 빈 것(0 마리)은 숨긴다 (2026-10-22 최적화): three 는 count 0 인 InstancedMesh 도 화면 · 그림자 패스마다 셰이더 고르기 ·
+    // 유니폼 올리기를 한다 — 종류 × 부품이라 150개 넘게 헛돌았다. compile() 은 숨긴 것도 컴파일하니 처음 나올 때 멈칫하지 않는다
     this.blob.count = this.blobN
+    this.blob.visible = this.blobN > 0
     if (this.blobN > 0) upload(this.blob, this.blobN, false)
     this.kinds.forEach((parts, k) => {
       for (const p of parts) {
         p.mesh.count = counts[k]
+        p.mesh.visible = counts[k] > 0
         if (counts[k] > 0) upload(p.mesh, counts[k], p.flashes)
       }
     })
@@ -1393,6 +1397,8 @@ export class MonsterView {
       const n = this.real ? this.mcounts[k] : 0
       for (const mesh of mk.meshes) {
         mesh.count = n
+        // 데우기가 끝나기 전(shown 아님)에는 그대로 숨겨 둔다
+        mesh.visible = mk.shown && n > 0
         if (n === 0) continue
         upload(mesh, n, true)
       }
@@ -1403,6 +1409,7 @@ export class MonsterView {
       }
       for (const ex of mk.extras) {
         ex.mesh.count = n
+        ex.mesh.visible = n > 0
         if (n > 0) upload(ex.mesh, n, false)
       }
     })

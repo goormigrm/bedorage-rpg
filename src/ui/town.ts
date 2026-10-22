@@ -23,6 +23,7 @@ import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_MAX, RIFT_TICKS, actReached
 import { CMD_QUEST } from '../core/input'
 
 /** 퀘스트 목록 (촌장 창 — 버튼 있음 · 퀘스트 기록 — 버튼 없음) */
+/** 퀘스트 목록. buttons = 촌장 창(맡기 · 보상 단추) — 거기서는 할 일 · 보상 한 줄만 (2026-10-22 사용자: "글이 너무 많다" — 대사는 J 기록에) */
 export function questList(q: number[], buttons: boolean): string {
   return QUESTS.map((d, i) => {
     const st = q[i] ?? 0
@@ -36,7 +37,7 @@ export function questList(q: number[], buttons: boolean): string {
     const btn = !buttons ? '' : st === 0 ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${i}">맡는다</button>` : st === 2 ? claim : ''
     const say = st === 3 ? d.thanks : d.ask
     return `<div class="q-row q${st}"><div class="q-h"><b>${d.name}</b><span>${tag}</span></div>
-      ${st === 0 && !buttons ? '' : `<p class="q-say">"${say}"</p>`}
+      ${buttons || st === 0 ? '' : `<p class="q-say">"${say}"</p>`}
       ${st < 3 ? `<p class="q-task">◆ ${d.task} · 보상: ${d.reward}</p>` : ''}${btn}</div>`
   }).join('')
 }

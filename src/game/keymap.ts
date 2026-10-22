@@ -138,37 +138,24 @@ export function moveLabel(): string {
 }
 
 /**
- * 조작 안내 띠 (게임 화면 아래). **항목 단위로만 줄이 바뀐다** — 전에는 한 덩어리 글이라 "M" 과 "지도" 사이에서 끊겼다
- * (2026-09-23 사용자: "조작 안내 줄바꿈 제대로"). 첫 줄 전투 · 둘째 줄 창 · 기타. 좁으면 항목째 다음 줄로 간다.
+ * 조작 안내 띠 (게임 화면 아래 — 처음 두 판). **항목 단위로만 줄이 바뀐다** (2026-09-23 "조작 안내 줄바꿈 제대로").
+ * 2026-10-22 사용자: "글이 너무 많고 작고 눈에 안 들어온다" → 꼭 필요한 싸움 키 한 줄만 크게. 창 키(가방 · 스킬 · 능력치 · 퀘스트 · 지도)는
+ * 오른쪽 창 단추에 적혀 있고, 나머지(정조준 · 배운 스킬 · 달리기 · 타운 포털 · 신호 · 채팅)는 Esc → 설정의 키 표에 있다
  */
 export function keysHintHtml(): string {
   const k = keyLabel
   const it = (key: string, what: string) => `<span class="kh"><b>${key}</b> ${what}</span>`
-  const fight = [
+  const keys = [
     it(moveLabel(), '이동'),
-    it('마우스', '조준'),
     it('좌클릭', '사격'),
-    it('우클릭', '정조준'),
     it(`${k('skill1')} · ${k('skill2')}`, '스킬'),
     it(k('ult'), '궁극기'),
-    it(`${k('skill3')} · ${k('skill4')}`, '배운 스킬'),
     it(k('dash'), '구르기'),
-    it(k('sprint'), '달리기'),
-    it(k('use'), '이동 · 열기 · 일으키기'),
-    it(k('portal'), '타운 포털'),
-    it(k('items'), '누르고 있으면 아이템 이름 · 눌러서 줍기'),
-  ]
-  const wins = [
-    it(k('bag'), '가방'),
-    it(k('skills'), '스킬 창'),
-    it(k('attr'), '능력치'),
-    it(k('quest'), '퀘스트'),
-    it(k('map'), '지도'),
-    it(k('mark'), '신호'),
-    it('Enter', '채팅'),
+    it(k('use'), '열기 · 살리기'),
+    it(k('items'), '줍기'),
     it('Esc', '메뉴'),
   ]
-  return `<div class="kr">${fight.join(' ')}</div><div class="kr">${wins.join(' ')}</div>`
+  return `<div class="kr">${keys.join(' ')}</div>`
 }
 
 /** 시험용: 저장 없이 처음 상태로 */

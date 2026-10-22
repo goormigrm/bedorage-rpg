@@ -495,7 +495,9 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .keys b { color: #f1d58a; }
 /* 항목 단위로만 줄이 바뀐다 (2026-09-23 — "M" 과 "지도" 사이에서 끊기던 것) */
 .keys { max-width: min(1180px, calc(100% - 40px)); line-height: 1.65; padding: 4px 16px; }
-.keys .kr { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 14px; }
+/* 한 줄 · 크게 (2026-10-22 — 40대 눈에 들어오게) */
+.keys { font: 700 17px "IBM Plex Sans KR", sans-serif; color: #e8dcc0; padding: 6px 20px; background: rgba(8,7,6,.72); }
+.keys .kr { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 22px; }
 .keys .kh { white-space: nowrap; }
 .game-ui .top-right { right: auto !important; left: 16px; top: 16px; align-items: flex-start; }
 
@@ -505,7 +507,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .section-t .savebtns .lnk { cursor: pointer; }
 
 /* 가방 창 (디아블로풍: 어두운 쇠 · 바랜 금테) */
-.inv { position: absolute; right: 18px; top: 60px; width: 560px; max-height: calc(100% - 216px); overflow-y: auto; pointer-events: auto; cursor: default; z-index: 20;
+.inv { position: absolute; right: 18px; top: 60px; width: 560px; max-height: calc(100% - 60px - 200px / var(--z, 1)); overflow-y: auto; pointer-events: auto; cursor: default; z-index: 20;
   background: linear-gradient(180deg, rgba(28,24,21,0.97), rgba(10,9,8,0.97)); border: 1.5px solid rgba(201,162,74,0.6); border-radius: 6px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.6), inset 0 0 0 4px rgba(0,0,0,0.3); padding: 12px 14px; color: #d8cfbf; font: 500 13px "IBM Plex Sans KR", sans-serif; }
 .inv[hidden] { display: none; }
@@ -529,6 +531,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .inv-right { flex: 1; }
 .bag-h { font: 700 13px "IBM Plex Sans KR", sans-serif; color: #efe4cf; margin-bottom: 6px; }
 .bag-h small { font-weight: 500; color: #8d8170; margin-left: 6px; }
+/* 조작 설명은 칸 아래 한 줄 (좁은 머리 줄에 끼어 한 단어씩 꺾이던 것 — 2026-10-22) · 창 높이는 스킬 바(캔버스 · 확대 밖) 몫만 비운다 */
+.bag-hint { margin: 8px 0 0; font-size: 13px; color: #8d8170; }
 .bag { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
 .cell { position: relative; height: 50px; border: 1px solid var(--rc, rgba(201,162,74,0.15)); border-radius: 4px; background: rgba(0,0,0,0.4); cursor: pointer; padding: 3px 4px; overflow: hidden; }
 .cell.empty { cursor: default; border-color: rgba(201,162,74,0.12); }

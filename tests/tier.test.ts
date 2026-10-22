@@ -22,7 +22,8 @@ describe('난이도', () => {
     expect(hp[2]).toBeGreaterThan(hp[1] * 1.3)
   })
 
-  it('보통은 몬스터 피해가 레벨 보정의 0.75배 — 악몽·지옥은 그대로 (2026-09-19 "보통인데 꽤 어렵다")', () => {
+  // 2026-09-19 "보통인데 꽤 어렵다" 0.75 → 2026-10-22 "기본 난이도가 낮다 — 20~30% 올려" 0.94
+  it('보통은 몬스터 피해가 레벨 보정의 TIERS[0].pow 배 — 악몽·지옥은 그대로', () => {
     const seed = 93
     const map = buildAreaMap(seed, 4)
     const avgPow = (tier: number) => {
@@ -30,7 +31,9 @@ describe('난이도', () => {
       return ms.reduce((a, m) => a + m.pow, 0) / ms.length
     }
     const lv = areaLevel(4, 0)
-    expect(avgPow(0)).toBeCloseTo(Math.round(levelPow(lv) * 0.75), 0)
+    expect(avgPow(0)).toBeCloseTo(Math.round(levelPow(lv) * TIERS[0].pow), 0)
+    expect(TIERS[0].pow).toBeCloseTo(0.94)
+    expect(TIERS[0].hp).toBeCloseTo(1.2)
     expect(avgPow(1)).toBeCloseTo(levelPow(areaLevel(4, 1)), 0)
     expect(TIERS[0].pow).toBeLessThan(TIERS[1].pow)
   })

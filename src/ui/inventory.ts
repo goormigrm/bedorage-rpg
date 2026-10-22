@@ -245,10 +245,11 @@ export class Inventory {
       const col = it ? itemColor(it) : 'rgba(201,162,74,0.3)'
       return `<div class="eq${it ? ` r${it.rarity}` : ''}" data-eq="${i}" data-drop="eq" style="--rc:${col}">${it ? `<i class="ic" style="background-image:url(${itemIconUrl(it)})"></i>` : ''}<small>${SLOT_NAMES[i]}</small>${it ? `<b style="color:${col}">${esc(itemName(it))}</b>` : '<i>비어 있음</i>'}</div>`
     }
-    const stats = [0, 1, 2, 3, 4, 5, 6, 7, 9].map((i) => {
-      const v = Math.round(me.st[i] * 10) / 10
-      return `<div><span>${AFFIXES[i].name}</span><b>${v > 0 ? (i === 6 || i === 9 ? '-' : '+') : ''}${v}${AFFIXES[i].pct ? '%' : ''}</b></div>`
-    })
+    // 0 인 능력치는 감춘다 (2026-10-22 사용자: "글이 너무 많다" — 새 캐릭터는 아홉 줄이 모두 0% 였다)
+    const stats = [0, 1, 2, 3, 4, 5, 6, 7, 9]
+      .map((i) => [i, Math.round(me.st[i] * 10) / 10])
+      .filter(([, v]) => v !== 0)
+      .map(([i, v]) => `<div><span>${AFFIXES[i].name}</span><b>${v > 0 ? (i === 6 || i === 9 ? '-' : '+') : ''}${v}${AFFIXES[i].pct ? '%' : ''}</b></div>`)
     const cells: string[] = []
     for (let i = 0; i < me.bagMax; i++) cells.push(cellHtml(me.bag[i], `data-bag="${i}"`, me))
     this.el.innerHTML = `
@@ -262,12 +263,12 @@ export class Inventory {
         <div class="inv-right">
           <div class="bag-h"><span class="bag-n">가방 ${me.bag.length} / ${me.bagMax}</span>
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
-            ${bagUpBtn(me.bagMax, me.gold)}
-            <small>${
-               this.mode === 'stash' ? '클릭 → 보관함 · Shift+클릭 잠금' : this.mode === 'sell' ? '오른클릭 팔기 · Shift+클릭 잠금' : '왼클릭 끼기 · 오른클릭 버리기 · Shift+클릭 잠금'
-             }</small></div>
+            ${bagUpBtn(me.bagMax, me.gold)}</div>
           ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
           <div class="bag" data-drop="bag">${cells.join('')}</div>
+          <p class="bag-hint">${
+            this.mode === 'stash' ? '클릭 → 보관함 · Shift+클릭 잠금' : this.mode === 'sell' ? '오른클릭 팔기 · Shift+클릭 잠금' : '왼클릭 끼기 · 오른클릭 버리기 · Shift+클릭 잠금'
+          }</p>
         </div>
       </div>`
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
