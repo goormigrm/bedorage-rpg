@@ -1954,6 +1954,8 @@ export async function start(opts = {}) {
     return log
   }
   const au = await encodeAudio(abuf)
+  // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
+  const saveDir = NOTES ? NOTES_DIR : opts.dir
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
@@ -1964,7 +1966,7 @@ export async function start(opts = {}) {
     const blob = file instanceof Blob ? file : new Blob([file])
     let res = null
     for (let o = 0, k = 0; o < blob.size; o += 16e6, k++)
-      res = await fetch(`/__save?name=${e.name}&ext=webm${NOTES ? `&dir=${NOTES_DIR}` : ''}${k ? '&append=1' : ''}`, { method: 'POST', body: blob.slice(o, o + 16e6) })
+      res = await fetch(`/__save?name=${e.name}&ext=webm${saveDir ? `&dir=${saveDir}` : ''}${k ? '&append=1' : ''}`, { method: 'POST', body: blob.slice(o, o + 16e6) })
     log.push(`저장 ${await res.text()} · 모두 ${(blob.size / 1e6).toFixed(1)} MB (${e.h}p ${(e.bitrate / 1e6).toFixed(1)} Mbps ${e.mode === 'constant' ? '고정' : '가변'})`)
   }
   log.push('사진 ' + (await Promise.all(saves)).join(' · '))

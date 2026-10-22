@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL('.', import.meta.url))
  * {dir: 'img'} 를 붙이면 docs/img/<name> — **공지에 올릴 것만** (2026-09-23 사용자: "img 에는 공지글에 올라갈 것만").
  * {dir: 'frames'} 를 붙이면 .frames/<name>.png 로 떨어진다 — GIF 재료(tools/gif.py 가 모아 붙인다, git 에는 안 올린다).
  * POST /__save?name=<이름>&ext=webm 에 날것(바이너리)을 보내면 docs/img/<이름>.<ext> — 소개 영상(tools/trailer.js).
- * &dir=patch-<날짜> 를 붙이면 docs/img/patch-<날짜>/ 에 (패치 영상 — 그날 스크린샷과 같은 폴더 · 2026-10-22) · &append=1 이면 이어 붙인다(큰 영상을 조각으로)
+ * &dir=patch-<날짜> · release-<날짜> 를 붙이면 docs/img/<그 폴더>/ 에 (패치 영상 — 그날 스크린샷과 같은 폴더 · 2026-10-22) · &append=1 이면 이어 붙인다(큰 영상을 조각으로)
  * 빌드 결과물에는 포함되지 않는다(apply: 'serve').
  */
 function shotEndpoint(): Plugin {
@@ -56,7 +56,7 @@ function shotEndpoint(): Plugin {
         const q = new URL(req.url ?? '', 'http://x').searchParams
         const name = (q.get('name') ?? 'video').replace(/[^a-z0-9_-]/gi, '')
         const ext = (q.get('ext') ?? 'webm').replace(/[^a-z0-9]/gi, '')
-        const sub = /^patch-[0-9-]+$/.test(q.get('dir') ?? '') ? `${q.get('dir')}/` : ''
+        const sub = /^(patch|release)-[0-9-]+$/.test(q.get('dir') ?? '') ? `${q.get('dir')}/` : ''
         const chunks: Buffer[] = []
         req.on('data', (c) => chunks.push(c as Buffer))
         req.on('end', () => {
