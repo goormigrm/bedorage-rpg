@@ -4,7 +4,8 @@
 // 금액은 방송인이 설정에서 바꾼다(game/stream.ts). 여기 amount 는 처음 값이다.
 // 2026-09-23 사용자: "만오천 원은 없애고 2만 3만 5만 10만" → 스킬 봉인부터 한 칸씩 올렸다.
 // 2026-10-22 사용자: "500원 단위 후원 이벤트는 없애고 1만 원 이하는 천 원마다 더 다양한 이벤트로 · 거꾸로 걷기 5초" →
-//   1천 좀비 떼 · 2천 정예 무리 · 3천 총잡이 무리 · 4천 중간보스 · 5천 막 보스(1 ~ 5천 = 괴물) · 6천 화면 흔들림 · 7천 거꾸로 걷기 · 8천 시야 축소 ·
+//   같은 날 "거꾸로 걷기 · 화면 흔들림은 5천 원 아래로(더 자주) · 시야 축소 20초 · 그 자리로 올라간 괴물 소환은 값에 맞게 더 많고 세게" →
+//   1천 좀비 떼 · 2천 화면 흔들림 · 3천 정예 무리 · 4천 거꾸로 걷기 · 5천 막 보스 · 6천 총잡이 무리(여섯) · 7천 중간보스(호위 다섯) · 8천 시야 축소 ·
 //   9천 괴물 대행진 · 1만 스킬 봉인 · 2만 광폭화 · 3만 지옥문. 번호 15 넘는 것은 CMD_DONATE_HI 로 (명령 arg 한 바이트 — 아래 네 비트가 번호)
 
 import { TICK_RATE } from './state'
@@ -22,17 +23,17 @@ export interface DonateEvent {
 
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
-  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 6000 },
+  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 2000 },
   // 이름 암흑 → 시야 축소 (2026-10-07 사용자) — 효과 · 금액 · 번호는 그대로
-  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 8000 },
-  { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 2000 },
-  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '5초 동안 이동이 반대로', amount: 7000 },
-  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 4000 },
+  { id: 3, key: 'dark', name: '시야 축소', desc: '20초 동안 코앞만 보인다', amount: 8000 },
+  { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 3000 },
+  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '5초 동안 이동이 반대로', amount: 4000 },
+  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 다섯', amount: 7000 },
   { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 10000 },
   { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 20000 },
   { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 5000 },
   { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 30000 },
-  { id: 15, key: 'gun', name: '총잡이 무리', desc: '총 쏘는 괴물 넷이 몰려온다', amount: 3000 },
+  { id: 15, key: 'gun', name: '총잡이 무리', desc: '총 쏘는 괴물 여섯이 몰려온다', amount: 6000 },
   { id: 16, key: 'march', name: '괴물 대행진', desc: '졸개 열여섯 + 정예 무리', amount: 9000 },
 ]
 
@@ -100,7 +101,8 @@ export const DON_TICKS: Record<number, number> = {
   // 손 떨림 30 → 10초 (2026-09-24 사용자: "2000원으로 저렴한 거에 비해 너무 길고 방해 효과가 너무 크다")
   // 10 → 5초 (2026-09-26 사용자: 화면 흔들림이 "너무 멀미 난다 — 작게 · 시간도 줄여")
   [DON_SHAKE]: 5 * TICK_RATE,
-  [DON_DARK]: 30 * TICK_RATE,
+  // 30 → 20초 (2026-10-22 사용자: "시야 축소는 20초만")
+  [DON_DARK]: 20 * TICK_RATE,
   // 20 → 5초 (2026-10-22 사용자: "거꾸로 걷기도 5초로 줄여줘")
   [DON_INVERT]: 5 * TICK_RATE,
   [DON_SEAL]: 30 * TICK_RATE,

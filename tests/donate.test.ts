@@ -85,7 +85,7 @@ describe('후원 이벤트 — 소환', () => {
   it('금액표: 1만 원까지 천 원마다 다른 이벤트 (1 ~ 5천은 괴물) · 지옥문 3만 · 넘는 것 중 가장 비싼 이벤트', () => {
     const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
-    expect([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'elite', 'gun', 'unique', 'boss', 'shake', 'invert', 'dark', 'march', 'seal'])
+    expect([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'shake', 'elite', 'invert', 'boss', 'gun', 'unique', 'dark', 'march', 'seal'])
     expect(eventForAmount(1500, cfg)?.key).toBe('horde')
     expect(eventForAmount(20000, cfg)?.key).toBe('rage')
     expect(eventForAmount(30000, cfg)?.key).toBe('hell')
@@ -382,7 +382,7 @@ describe('같은 방해 효과가 이어 붙는 한도', () => {
     return g.s.players.map((q) => Math.round((q.don?.[DON_DARK] ?? 0) / 60))
   }
 
-  it('처음은 60초 — 시야 축소(30초)가 여섯 번 와도 60초 · 동료도 같다', () => {
+  it('처음은 60초 — 시야 축소(20초)가 여섯 번 와도 60초 · 동료도 같다', () => {
     expect(DON_CAP_DEFAULT).toBe(60)
     expect(darkFor()).toEqual([60, 60])
   })
@@ -513,12 +513,12 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
     d[slot] = sec * T
     return d
   }
-  it('남은 길이 + 이번 길이가 한도 안일 때만 들어간다 (시야 축소 30초 · 한도 60초)', () => {
+  it('남은 길이 + 이번 길이가 한도 안일 때만 들어간다 (시야 축소 20초 · 한도 60초)', () => {
     expect(effectFits(ev('dark'), undefined, 60, 0)).toBe(true)
-    expect(effectFits(ev('dark'), don(DON_DARK, 30), 60, 0)).toBe(true)
-    expect(effectFits(ev('dark'), don(DON_DARK, 31), 60, 0)).toBe(false)
+    expect(effectFits(ev('dark'), don(DON_DARK, 40), 60, 0)).toBe(true)
+    expect(effectFits(ev('dark'), don(DON_DARK, 41), 60, 0)).toBe(false)
     // 줄어들면 다시 들어간다 — 버려지지 않고 이어진다
-    expect(effectFits(ev('dark'), don(DON_DARK, 29), 60, 0)).toBe(true)
+    expect(effectFits(ev('dark'), don(DON_DARK, 39), 60, 0)).toBe(true)
     // 다른 칸이 차 있어도 상관없다
     expect(effectFits(ev('dark'), don(DON_SEAL, 60), 60, 0)).toBe(true)
     expect(effectFits(ev('seal'), don(DON_SEAL, 1), 30, 0)).toBe(false)
@@ -626,18 +626,20 @@ describe('예전 처음 금액표 이어받기', () => {
 
 // 2026-10-22: 1만 원 이하를 채운 새 이벤트 둘 · 거꾸로 걷기 5초 · 번호 16 이상은 CMD_DONATE_HI
 describe('총잡이 무리 · 괴물 대행진 · 거꾸로 걷기 5초', () => {
-  it('총잡이 무리는 총 쏘는 괴물 넷 · 괴물 대행진은 스물(번호 16 — CMD_DONATE_HI) · 거꾸로 걷기는 5초', () => {
+  it('총잡이 무리는 총 쏘는 괴물 여섯 · 괴물 대행진은 스물(번호 16 — CMD_DONATE_HI) · 거꾸로 걷기는 5초 · 시야 축소는 20초', () => {
     const g = game(131)
     toField(g)
     g.donate(ev('gun'))
     const guns = summoned(g.s)
-    expect(guns.length).toBe(4)
+    expect(guns.length).toBe(6)
     expect(guns.every((m) => MONSTER_LIST[m.kind].gun)).toBe(true)
     const march = DONATE_EVENTS.find((e) => e.key === 'march')!
     expect(march.id).toBeGreaterThanOrEqual(16)
     g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONATE_HI, arg: (march.id - 16) | (3 << 4) } : idle()))
-    expect(summoned(g.s).length).toBe(4 + MARCH_SIZE)
+    expect(summoned(g.s).length).toBe(6 + MARCH_SIZE)
     g.donate(ev('invert'))
     expect(g.s.players[0].don![DON_INVERT]).toBe(5 * 60 - 1)
+    g.donate(ev('dark'))
+    expect(g.s.players[0].don![DON_DARK]).toBe(20 * 60 - 1)
   })
 })

@@ -3,7 +3,7 @@
 //   node tools/patchshots.mjs                       → docs/img/patch-<오늘>/<장면>.png (공지 첨부용 · git 밖)
 //   node tools/patchshots.mjs qa town bag           → .frames/shots/qa-<장면>.png (확인용) · 장면을 고르면 그것만
 //   SHOT_DIR=patch-2026-10-22 node tools/patchshots.mjs   → 폴더 이름을 정해서
-// 장면: lobby · town · bag · shop · elder · captain · field · bubbles · stream (아래 SCENES). 1920 × 1080 · 소리 끔 · 헤드리스 크로미움.
+// 장면: lobby · town · bag · shop · elder · captain · field · bubbles · stream · boss(따로 — SHOT_SKIN=dark node tools/patchshots.mjs boss) (아래 SCENES). 1920 × 1080 · 소리 끔 · 헤드리스 크로미움.
 import { chromium } from 'playwright'
 import { mkdirSync } from 'node:fs'
 
@@ -202,6 +202,30 @@ const SCENES = {
     await sleep(1200)
     await shot('08_chat_bubbles')
   },
+  boss: async () => {
+    // 보스 방 — 보스가 깨는 순간 (졸개 멈춤 · 안개 걷힘 · 등장 대사). SHOT_SKIN=dark 로 찍는다
+    await page.evaluate(async (SAME) => {
+      const same = eval(SAME)
+      const sim = await same('/src/core/sim.ts')
+      const s = window.__bd.state()
+      for (let i = 0; i < s.players.length; i++) sim.warpPlayer(s, window.__session.mapOf, i, 27)
+    }, SAME)
+    await page.waitForFunction(() => window.__bd.state().players[0].area === 27 && !window.__session.renderer.areaCompiling && !window.__session.renderer.areaHold, null, { timeout: 60000 })
+    await sleep(1500)
+    await page.evaluate(async (SAME) => {
+      const same = eval(SAME)
+      const w = await same('/src/core/world.ts')
+      const s = window.__bd.state()
+      const l = w.areaLayout(27, window.__bd.map())
+      const p = s.players[0]
+      p.invuln = 9999
+      p.x = l.special.x
+      p.y = l.special.y + 5 * 32
+      for (let i = 0; i < 80 && !window.__bd.view().monsters.some((m) => m.hold > 0); i++) await new Promise((r) => setTimeout(r, 25))
+    }, SAME)
+    await sleep(800)
+    await shot('10_boss_intro')
+  },
   stream: async () => {
     await page.evaluate(() => document.querySelector('.czbadge, #czbadge, [data-cz]')?.click())
     await sleep(1200)
@@ -211,7 +235,7 @@ const SCENES = {
 
 const order = pick.length ? pick : ['lobby', 'town', 'bag', 'shop', 'elder', 'field', 'bubbles', 'stream', 'captain']
 // 판이 필요한 장면을 고르면 먼저 판을 연다
-const needGame = new Set(['bag', 'shop', 'elder', 'field', 'bubbles', 'stream'])
+const needGame = new Set(['bag', 'shop', 'elder', 'field', 'bubbles', 'stream', 'boss'])
 let opened = false
 for (const name of order) {
   if (needGame.has(name) && !opened) {

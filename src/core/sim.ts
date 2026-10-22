@@ -3515,7 +3515,7 @@ const SUM_HORDE = 0
 const SUM_ELITE = 1
 const SUM_UNIQUE = 2
 const SUM_BOSS = 3
-/** 총잡이 무리: 총 쏘는 괴물 넷 (종류를 돌려 가며) */
+/** 총잡이 무리: 총 쏘는 괴물 여섯 (종류를 돌려 가며) */
 const SUM_GUN = 4
 
 /**
@@ -3748,14 +3748,15 @@ function summonPool(act: number): number[] {
 /**
  * 후원 소환. 부른 사람 둘레 5~8 칸에 깨어 있는 채로 나와 그 사람을 노린다. 돌려주는 것은 우두머리(없으면 null — 한도에 걸림).
  * - 좀비 떼: 이 막 졸개 여덟 · 정예: 정예 하나(접두 능력 지역 레벨만큼 + 1) + 같은 종류 셋
- * - 우두머리(중간보스): 지역 우두머리와 같은 세기(체력 ×9 · 접두 셋) + 호위 셋 · 막 보스: 이 막의 보스
+ * - 우두머리(중간보스): 지역 우두머리와 같은 세기(체력 ×9 · 접두 셋) + 호위 다섯 · 총잡이 무리: 총 쏘는 괴물 여섯 · 막 보스: 이 막의 보스
  * 레벨은 지역 레벨 + 1(보스는 + 2). 전리품 · 경험치는 보통 괴물과 같다.
  */
 function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, seq: number): Monster | null {
   const alive = state.monsters.filter((m) => m.hp > 0 && m.sum !== undefined).length
   if (alive >= SUMMON_CAP) return null
   const act = areaDef(p.area).act
-  const lvl = areaLevel(p.area, state.tier) + (tier === SUM_BOSS ? 2 : 1)
+  // 막 보스 · 총잡이 무리 · 중간보스는 + 2 (6천 · 7천 원으로 오른 만큼 세게 — 2026-10-22)
+  const lvl = areaLevel(p.area, state.tier) + (tier === SUM_BOSS || tier === SUM_GUN || tier === SUM_UNIQUE ? 2 : 1)
   const tr = tierOf(state.tier)
   const seats = state.players.length
   // 시련이면 그 단계의 세기를 같이 받는다 (riftHere — 시련 괴물과 같게)
@@ -3810,8 +3811,8 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   } else {
     lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul, pow, lvl), 0)
   }
-  // 호위 · 무리: 우두머리 · 정예는 같은 종류 셋, 좀비 떼는 일곱을 더 데려온다
-  const more = tier === SUM_BOSS ? 0 : tier === SUM_HORDE ? 7 : 3
+  // 호위 · 무리: 정예는 같은 종류 셋 · 우두머리는 다섯 · 총잡이는 다섯(모두 여섯) · 좀비 떼는 일곱을 더 데려온다
+  const more = tier === SUM_BOSS ? 0 : tier === SUM_HORDE ? 7 : tier === SUM_UNIQUE || tier === SUM_GUN ? 5 : 3
   for (let i = 0; i < more; i++) {
     const a = (a0 + 200 + i * 341) & 1023
     const g = moveCircle(map, at.x, at.y, r, cosA(a) * (40 + (i >> 2) * 30), sinA(a) * (40 + (i >> 2) * 30))

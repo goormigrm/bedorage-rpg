@@ -197,8 +197,11 @@ function panelHtml(): string {
         : `<button type="button" class="btn main czgo" data-cz="login">치지직 로그인</button>`
   // 시험 단추는 개발자 모드에서만 (2026-09-26 — devmode.ts)
   const dev = isDev()
-  const rows = DONATE_EVENTS.map(
-    (e, i) =>
+  // 처음 금액 순서로 (이벤트 번호 순서면 1천 · 6천 · 8천 · 2천 … 으로 뒤섞여 보였다 — 2026-10-22). data-amt 는 이벤트 칸 번호 그대로
+  const rows = DONATE_EVENTS.map((e, i) => [e, i] as const)
+    .sort((a, b) => a[0].amount - b[0].amount)
+    .map(
+      ([e, i]) =>
       `<div class="czr"><input type="number" min="0" step="1000" data-amt="${i}" value="${c.amounts[i]}" title="0 이면 끕니다"><b>${e.name}</b><span title="${e.desc}">${e.desc}</span>` +
       (dev ? `<button type="button" class="lnk" data-try="${i}" title="이 금액으로 시험 후원 — 던전에서 일어납니다">시험</button>` : '<span></span>') +
       `</div>`,
@@ -206,7 +209,7 @@ function panelHtml(): string {
   // 응원 금액표 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") — 후원 글에 !응원 이면 이 표로
   const cheers = CHEER_EVENTS.map(
     (e, i) =>
-      `<div class="czr cheer"><input type="number" min="0" step="500" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><span title="${e.desc}">${e.desc}</span>` +
+      `<div class="czr cheer"><input type="number" min="0" step="1000" data-cheer="${i}" value="${c.cheers[i]}" title="0 이면 끕니다"><span title="${e.desc}">${e.desc}</span>` +
       (dev ? `<button type="button" class="lnk" data-cheertry="${i}" title="이 금액 + !응원 으로 시험 후원 — 던전에서 일어납니다">시험</button>` : '<span></span>') +
       `</div>`,
   ).join('')
