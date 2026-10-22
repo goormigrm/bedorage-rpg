@@ -29,6 +29,7 @@ export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
 import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
+import { botSheet, botSkillNext, gearLevelOf } from './botsheet'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
@@ -790,31 +791,35 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
 export const mercPrice = (level: number) => 150 + level * 40
 
 /**
- * 용병 대장 (GUIDE 8장 — 디아블로 2): 빈 자리에 용병 하나를 앉힌다. 용병은 **sim 안의 봇**(결정론 — 봇 기억이 상태에 있다)이라
- * 네트워크로 입력을 보내지 않는다. 고용한 사람을 따라다닌다. 한 사람에 하나. arg = 캐릭터 번호, 255 = 내보내기.
+ * 용병 대장 (GUIDE 8장 — 디아블로 2): 빈 자리에 용병을 앉힌다. 용병은 **sim 안의 봇**(결정론 — 봇 기억이 상태에 있다)이라
+ * 네트워크로 입력을 보내지 않는다. 고용한 사람을 따라다닌다. 빈 자리 수만큼(2026-10-22 사용자: "4명 방이면 나 빼고 3자리에 용병") ·
+ * 방 봇처럼 내 레벨 · 내 장비 수준 · 능력치 · 스킬 · 숙련을 다 찍고 온다(botSheet — 사용자: "용병도 방 만들기 봇처럼").
+ * arg = 캐릭터 번호 · 100 + 자리 = 그 용병 내보내기 · 255 = 모두 내보내기.
  */
 function hireCommand(state: GameState, p: PlayerState, arg: number): void {
   if (state.mode !== 'dungeon' || p.merc >= 0 || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'captain') return
-  const mine = state.players.find((q) => q.merc === p.id && !q.left)
-  if (arg === 255) {
-    if (!mine) return
-    mine.left = true
-    mine.vacant = true
-    mine.alive = false
-    mine.merc = -1
-    mine.follow = -1
-    mine.bot = undefined
-    state.events.push({ type: 'hire', p: mine.id, by: p.id, on: false })
+  if (arg === 255 || (arg >= 100 && arg < 100 + state.players.length)) {
+    for (const q of state.players) {
+      if (q.merc !== p.id || q.left || q.cameo || (arg !== 255 && q.id !== arg - 100)) continue
+      q.left = true
+      q.vacant = true
+      q.alive = false
+      q.merc = -1
+      q.follow = -1
+      q.bot = undefined
+      state.events.push({ type: 'hire', p: q.id, by: p.id, on: false })
+    }
     return
   }
   const char = PLAYABLE[arg]
   const g = mercPrice(p.level)
-  if (mine || !char || p.gold < g) return
+  if (!char || p.gold < g) return
   const seat = state.players.find((q) => q.vacant && q.left)
   if (!seat) return
   p.gold -= g
   const idx = seat.id
-  Object.assign(seat, makePlayer(idx, char, 0, { level: p.level, xp: 0, gold: 0, equip: new Array(SLOT_COUNT).fill(null), bag: [] }))
+  const sheet = botSheet(char, p.level, gearLevelOf(p), (state.seed ^ Math.imul(state.tick + 1, 0x9e3779b1) ^ idx) >>> 0, p.quests, questPoints(p.quests), p.mlv)
+  Object.assign(seat, makePlayer(idx, char, 0, sheet))
   seat.merc = p.id
   seat.follow = p.id
   seat.area = p.area
@@ -3822,8 +3827,11 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
     up = true
   }
   if (!up) return
-  // 용병은 UI 가 없으니 능력치 포인트를 추천대로 스스로 쓴다
-  if (p.merc >= 0) autoAttr(p)
+  // 용병은 UI 가 없으니 능력치 포인트를 추천대로 · 스킬 포인트를 방 봇과 같은 차례로 스스로 쓴다
+  if (p.merc >= 0) {
+    autoAttr(p)
+    for (let n = botSkillNext(p.build); n >= 0 && freePoints(p.level, p.build, p.spBonus) > 0; n = botSkillNext(p.build)) p.build.r[n]++
+  }
   recalc(p)
   // 레벨이 오르면 체력이 가득 찬다 (디아블로)
   if (p.alive && !p.downed) p.hp = p.maxHp

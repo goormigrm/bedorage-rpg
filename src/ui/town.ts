@@ -254,7 +254,8 @@ export class TownPanel {
    */
   private sigOf(me: PlayerState, s: GameState): string {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
-    return `${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
+    // 용병 자리(들이고 내보내기 — 골드가 안 바뀌는 내보내기도 다시 그리게)
+    return `${s.players.map((q) => `${q.merc}${q.left ? 'L' : ''}${q.level}`).join(',')}|${this.tab}|${this.smithTab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
       .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
       .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}|${this.riftStage}|${me.riftBest}|${
       s.rift ? `${s.rift.area}:${s.rift.boss}:${Math.floor((s.rift.kills / Math.max(1, s.rift.need)) * 20)}:${s.players.some((q) => !q.left && q.area === s.rift!.area)}` : ''
@@ -462,23 +463,26 @@ export class TownPanel {
         (other ? `<div class="tp-sub">다른 막의 일 — 여기서도 맡고 보고할 수 있다</div>${other}` : '') +
         (travel ? `<div class="tp-slots">${travel}</div>` : '')
     } else if (npc === 'captain') {
-      const mine = s.players.find((q) => q.merc === me.id && !q.left)
+      // 용병은 빈 자리마다 (2026-10-22 사용자: "4명 방이면 나 빼고 3자리에 용병") — 지금 따라다니는 용병 · 고용 단추
+      const mine = s.players.filter((q) => q.merc === me.id && !q.left && !q.cameo)
       const price = mercPrice(me.level)
-      const free = s.players.some((q) => q.vacant && q.left)
-      body = mine
-        ? `<p class="tp-note">지금 <b>${CHARACTERS[mine.char].name}</b>(레벨 ${mine.level})이 따라다닌다. 쓰러지면 마을에서 다시 일어나 곁으로 온다.</p><button class="btn" data-cmd="${CMD_HIRE}" data-arg="255">내보내기</button>`
-        : !free
-          ? '<p class="tp-empty">게임 자리가 다 찼다 — 용병을 앉힐 자리가 없다 (최대 4명).</p>'
-          : `<p class="tp-note">빈 자리에 용병 하나 (내 레벨 · 나를 따라다닌다) — ${price} 골드. 내게 모자란 역할을 붙이면 좋다.</p>${(['tank', 'heal', 'dps'] as const)
-              .map((r) => {
-                // 역할별로 묶는다 (2026-09-19 탱 · 딜 · 힐)
-                const ids = PLAYABLE.filter((id) => id !== me.char && CHARACTERS[id].role === r)
-                const info = ROLE_INFO[r]
-                return `<div class="tp-role"><span class="role-chip" style="--rc:${info.color}" title="${info.desc}">${info.name}</span>${ids
-                  .map((id) => `<button class="btn" data-cmd="${CMD_HIRE}" data-arg="${PLAYABLE.indexOf(id)}" ${me.gold < price ? 'disabled' : ''}>${CHARACTERS[id].name}</button>`)
-                  .join('')}</div>`
-              })
-              .join('')}`
+      const freeN = s.players.filter((q) => q.vacant && q.left).length
+      const hired = mine
+        .map((q) => `<div class="tp-merc"><b>${CHARACTERS[q.char].name}</b><span>레벨 ${q.level}</span><button class="btn secondary" data-cmd="${CMD_HIRE}" data-arg="${100 + q.id}">내보내기</button></div>`)
+        .join('')
+      const pick = !freeN
+        ? '<p class="tp-empty">빈 자리가 없다 — 게임은 최대 4명</p>'
+        : `<p class="tp-note">빈 자리 ${freeN}개 · 한 명 ${price} 골드 · 내 레벨 · 내 장비 수준으로 온다</p>${(['tank', 'heal', 'dps'] as const)
+            .map((r) => {
+              // 역할별로 묶는다 (2026-09-19 탱 · 딜 · 힐) · 나와 이미 데려온 캐릭터는 빼고
+              const ids = PLAYABLE.filter((id) => id !== me.char && CHARACTERS[id].role === r && !mine.some((q) => q.char === id))
+              const info = ROLE_INFO[r]
+              return `<div class="tp-role"><span class="role-chip" style="--rc:${info.color}" title="${info.desc}">${info.name}</span>${ids
+                .map((id) => `<button class="btn" data-cmd="${CMD_HIRE}" data-arg="${PLAYABLE.indexOf(id)}" ${me.gold < price ? 'disabled' : ''}>${CHARACTERS[id].name}</button>`)
+                .join('')}</div>`
+            })
+            .join('')}`
+      body = hired + pick
     } else if (npc === 'trial') {
       body = this.trialBody(me, s)
     } else {

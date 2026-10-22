@@ -601,7 +601,10 @@ export class Session {
   private computeNames(): string[] {
     const base = displayNames(this.state.players.map((p) => p.char))
     return base.map((n, i) => {
-      if (this.state.players[i].vacant) return '빈 자리'
+      const p = this.state.players[i]
+      if (p.vacant) return '빈 자리'
+      // 용병 · 영상 동료는 캐릭터 이름 (그 자리에 앉았던 사람의 닉네임이 아니라)
+      if (p.merc >= 0) return n
       const nick = this.cfg.names?.[i]?.trim()
       // 이름표 · 파티 칸 · 알림에 뜨는 닉네임도 가릴 말을 가린다 (방송 화면 — 2026-09-26)
       return nick ? maskShown(nick.slice(0, 8)) : n
@@ -1749,6 +1752,8 @@ export class Session {
       this.applyDrops()
       // 지역을 건너갔으면 3D 세계를 바꾼 뒤에 이벤트를 그 지역 것만 보여 준다
       this.syncView()
+      // 용병을 들이거나 내보내면 이름을 다시 (2026-10-22 사용자: "용병을 고용했더니 이름이 '빈 자리'로 나온다")
+      if (this.state.events.some((e) => e.type === 'hire')) this.names = this.computeNames()
       const view = this.view()
       this.renderer.onEvents(view.events, view, lp, this.names)
       this.sfx.onEvents(view.events, view, lp)

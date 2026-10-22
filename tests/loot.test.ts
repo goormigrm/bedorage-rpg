@@ -343,4 +343,32 @@ describe('성장 · 전투 (D4)', () => {
     }
     expect(play()).toBe(play())
   })
+
+  // 2026-10-22 사용자: "4명 방이면 나 빼고 3자리에 용병" · "용병도 방 만들기 봇처럼 레벨 · 아이템 · 능력치 · 스킬 분배"
+  it('용병은 빈 자리마다 (넷 방이면 셋) · 봇처럼 레벨 · 장비 · 능력치 · 스킬을 다 찍고 온다 · 하나씩 내보낸다', () => {
+    const seed = 70
+    const maps = new Map<number, GameMap>()
+    const mapOf = (id: number) => maps.get(id) ?? maps.set(id, buildAreaMap(seed, id)).get(id)!
+    const s = createState({ seed, chars: ['chim', 'magic', 'magic', 'magic'], absent: [false, true, true, true], sheets: [{ ...emptySheet(), level: 12, gold: 99999 }] }, mapOf)
+    const p = s.players[0]
+    const cap = townNpcs(0).find((q) => q.id === 'captain')!
+    p.x = cap.x + 30
+    p.y = cap.y
+    const hire = (arg: number) => step(s, mapOf, [{ ...idle(), cmd: CMD_HIRE, arg }, idle(), idle(), idle()])
+    hire(1)
+    hire(2)
+    hire(3)
+    hire(4) // 자리가 없다
+    const mercs = s.players.filter((q) => q.merc === 0 && !q.left)
+    expect(mercs.length).toBe(3)
+    for (const m of mercs) {
+      expect(m.level).toBe(12)
+      expect(m.equip.filter(Boolean).length).toBeGreaterThan(3)
+      expect(m.attr.reduce((a, b) => a + b, 0)).toBeGreaterThan(0)
+      expect(m.build.r.reduce((a, b) => a + b, 0)).toBeGreaterThan(0)
+    }
+    // 하나만 내보낸다 (100 + 자리)
+    hire(100 + mercs[1].id)
+    expect(s.players.filter((q) => q.merc === 0 && !q.left).length).toBe(2)
+  })
 })
