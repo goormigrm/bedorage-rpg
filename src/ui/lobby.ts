@@ -38,6 +38,7 @@ import { SKIN_DESC, SKIN_ICON, SKIN_LABEL, Skin, asSkin, bt, loadSkinPref, saveS
 import '../game/skinText'
 import '../game/skinThemes'
 import { StreamBadge, openStreamPanel } from './streamPanel'
+import { hasToken } from '../net/chzzk'
 import { loadStreamCfg, maskShown } from '../game/stream'
 import { SessionConfig } from '../game/session'
 import { APP_VERSION, rejectGuestText, sameVersion, versionMismatchText } from './update'
@@ -308,6 +309,20 @@ export class Lobby {
           </div>
         </div>
 
+        <div class="dlg" id="dlg-cz" hidden>
+          <div class="dbox">
+            <h3>치지직 방송 연동</h3>
+            <p class="cardp">방송하면서 하나요? 연동하면 <b>시청자가 게임에 들어옵니다</b>.</p>
+            <ul class="czask">
+              <li>시청자 채팅 → 괴물 머리 위 말풍선</li>
+              <li><b>!참여</b> → 괴물에 시청자 이름</li>
+              <li>후원 금액마다 이벤트 · <b>!응원</b> 으로 돕기</li>
+            </ul>
+            <p class="cardp">나중에는 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>
+            <div class="dacts"><button class="btn secondary" data-close>방송 안 함</button><button class="btn main" id="btn-cz-go">연동하기</button></div>
+          </div>
+        </div>
+
         <div class="joining" id="joining" hidden>
           <div class="jbox">
             <div class="jspin"></div>
@@ -327,6 +342,11 @@ export class Lobby {
     this.czBadge?.dispose()
     const dock = h.querySelector('#czdock') as HTMLElement | null
     this.czBadge = dock ? new StreamBadge(dock, () => this.openCz()) : null
+    ;(h.querySelector('#btn-cz-go') as HTMLButtonElement).onclick = () => {
+      this.closeDlg()
+      this.openCz()
+    }
+    this.askCzOnce()
 
     const chars = h.querySelector('#chars') as HTMLElement
     for (const id of PLAYABLE) {
@@ -1649,6 +1669,21 @@ export class Lobby {
     this.myTeam = 0
     this.role = null
     this.starting = false
+  }
+
+  /**
+   * 처음 온 사람에게 한 번 — 치지직 연동을 하겠냐고 묻는다 (2026-10-22 사용자: "아예 모르고 플레이하더라 · 말해 줘야 알아차리더라").
+   * 이미 로그인했거나 영상 · 스크린샷(?shot=1)이면 묻지 않는다. 저장소가 막혀 있으면(기억 못 하면) 매번 묻지 않게 그냥 넘어간다
+   */
+  private askCzOnce(): void {
+    try {
+      if (localStorage.getItem('brpg.czAsked') || hasToken() || location.search.includes('shot=1')) return
+      localStorage.setItem('brpg.czAsked', '1')
+    } catch {
+      return
+    }
+    const d = this.host.querySelector('#dlg-cz') as HTMLElement | null
+    if (d) d.hidden = false
   }
 
   /** 치지직 방송 연동 창 */

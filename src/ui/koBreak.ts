@@ -20,12 +20,16 @@ function fixText(n: Text): void {
 function splitSentences(n: Text): void {
   const parent = n.parentElement
   if (!parent || parent.classList.contains('ks')) return
-  const parts = n.data.split(SENT)
+  // 앞뒤 빈칸은 덩어리 밖에 둔다 — inline-block 끝의 빈칸은 사라져 옆 <b> 와 붙었다 ("연동하면 <b>시청자가</b>" → "연동하면시청자가")
+  const lead = n.data.match(/^\s*/)![0]
+  const tail = n.data.slice(lead.length).match(/\s*$/)![0]
+  const parts = n.data.slice(lead.length, n.data.length - tail.length).split(SENT)
   if (parts.length < 2) return
   if (parent.closest('button, input, textarea, select, .cell, .kh, [data-nosplit]')) return
   const cs = getComputedStyle(parent)
   if (cs.display.includes('flex') || cs.display.includes('grid') || cs.whiteSpace.startsWith('nowrap') || cs.whiteSpace === 'pre') return
   const frag = document.createDocumentFragment()
+  if (lead) frag.appendChild(document.createTextNode(lead))
   parts.forEach((s, i) => {
     const span = document.createElement('span')
     span.className = 'ks'
@@ -33,6 +37,7 @@ function splitSentences(n: Text): void {
     frag.appendChild(span)
     if (i < parts.length - 1) frag.appendChild(document.createTextNode(' '))
   })
+  if (tail) frag.appendChild(document.createTextNode(tail))
   parent.replaceChild(frag, n)
 }
 

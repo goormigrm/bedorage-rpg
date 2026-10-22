@@ -1527,3 +1527,8 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .skp .sk-d { font-size: 14.5px; color: #e2d6bc; margin: 4px 0 6px; }
 .skp .sk-f { font-size: 13px; gap: 10px; }
 .skp .sk-f button { padding: 5px 12px; font: 800 14px "IBM Plex Sans KR", sans-serif; margin-left: 4px; border-radius: 5px; }
+
+/* 처음 온 사람에게 묻는 치지직 연동 창 (ui/lobby.ts askCzOnce) */
+.dlg .czask { margin: 10px 0 12px; padding-left: 22px; font-size: 16px; line-height: 1.8; color: var(--ink); }
+.dlg .czask b { color: #00ffa3; }
+#dlg-cz .cardp { font-size: 15px; }

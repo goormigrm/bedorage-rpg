@@ -4,6 +4,7 @@
 //   ⚠ 2026-10-08 부터 기본이 ☀ 철면수심전용(밝은 분위기) — 사용자: "트레일러는 이제 철면수심전용 버전에서만". 두 편(2026-10-09 — 네 편을 둘로 합쳤다 · 편마다 40초 안): t.start({ part: 1 ~ 2, lowMax: 20_000_000 })
 //   ⚠ 2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다" → 출력은 docs/img/patch{1,2}_{dark,bright}.webm (+ _hq). 🌙 판: t.start({ part, skin: 'dark', lowMax })
 //   ⚠ 2026-10-17 사용자: "첫 장면이 썸네일이 돼서 적절치 않아 · 캐릭터 선택 및 마을 장면도 · 2개의 영상 길이를 적절히 분배" → 1편 = 고르는 화면(제목이 박힌 첫 장) → 마을 → 전투 → 1 · 2막 보스 · 2편 = 3막 보스 → 최종 보스 → 방송 연동 → 저주받은 상자 → 끝 카드
+//   ⚠ 2026-10-22 사용자: "새로 배포할 사이트는 webm 한 개당 20MB 이하 — 밝은 거 · 어두운 거 2개" → t.start({ part: 3, skin, dir }) = 한 편(고르는 화면 → 마을 → 전투 → 1 · 2막 보스 → 방송 연동 → 저주받은 상자 → 끝 카드) · intro_{bright,dark}.webm 19.5 MB 안
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -783,7 +784,13 @@ function warpAt(area, tx, ty) {
  */
 function scenes(part) {
   const tl = timeline()
-  if (part === 2) {
+  if (part === 3) {
+    if (SELECT) partTown(tl)
+    partWorld(tl)
+    partBoss(tl)
+    partStream(tl)
+    partEndgame(tl)
+  } else if (part === 2) {
     partBoss(tl, true)
     partStream(tl)
     partEndgame(tl)
@@ -1039,12 +1046,7 @@ function partBoss(tl = timeline(), final = false) {
     ov.title = { text: L('막 보스 넷', '놀이 넷'), sub: L('저마다의 보스 방 · 저마다의 패턴', '저마다의 술래 · 저마다의 규칙'), at: now() }
   })
   tl.push(tl.t + 1.8, () => ov.title && (ov.title.out = now()))
-  // 경직: 막대가 가득 차면 3초 무력 + 받는 피해 증가 — 영상에서는 거의 찬 막대를 채워 보인다
-  tl.push(tl.t + 2.6, () => {
-    caption('경직 막대', '큰 피해가 쌓여 막대가 차면 — 3초 무력, 받는 피해 증가')
-    const b = st().monsters.find((m) => m.kind === 3 && m.hp > 0)
-    if (b) b.stag = 990
-  })
+  // 경직 장면은 넣지 않는다 (2026-10-22 사용자: "보스 경직 · 즉사기는 영상으로 먼저 봐 버리면 게임의 흥미가 떨어진다")
   at(5.4, () => {})
   boss(18, 8, 190, L('2막 거미 여왕', '2막 여왕벌'), L('거미줄 부채 · 도약 · 새끼 부르기 · 독 안개', '꿀 부채 · 도약 · 꿀벌 부르기 · 꽃가루 안개'), [[0.3, 0], [1.9, 1]], 4.2)
   // 1편 끝: 여왕을 쓰러뜨린다 — 막을 끝냈다는 배너 · 퀘스트 알림이 뜨지 않게 이 방을 이미 잡은 방으로 적어 둔다 (bossDown 이 나지 않는다)
@@ -1661,7 +1663,7 @@ export async function start(opts = {}) {
   //  trailer_hq.webm — 고화질: 1080 · 가변 16 Mbps · 키 2초 (크기는 상관없다)
   // 같은 장을 인코더 넷에 넣는다 — 게임을 한 번만 돌린다. 소리는 한 번 만들어 모두에 붙인다
   // 두 편을 한 글에 올리려면(게시판 글 하나 50 MB) 편마다 20 MB 안으로 — start({ lowMax: 20_000_000 }) (예전 네 편은 12 MB)
-  const LOW_MAX = opts.lowMax ?? 38_000_000
+  let LOW_MAX = opts.lowMax ?? 38_000_000
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
   NOTES = opts.mode === 'notes'
@@ -1674,16 +1676,17 @@ export async function start(opts = {}) {
     } catch {}
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
-  PART = Math.max(1, Math.min(2, opts.part ?? 1))
-  SELECT = !ULT && !NOTES && PART === 1 && opts.select !== false
+  PART = Math.max(1, Math.min(3, opts.part ?? 1))
+  SELECT = !ULT && !NOTES && PART !== 2 && opts.select !== false
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
-  const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `patch${PART}_${BRIGHT ? 'bright' : 'dark'}`
+  const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `${PART === 3 ? 'intro' : 'patch' + PART}_${BRIGHT ? 'bright' : 'dark'}`
+  // 한 편 소개(part 3 · 49초)는 새 사이트 한도(파일당 20 MB) 안에서 — 2026-10-22 계측: 3.6 → 21.7 MB · 3.1 → 18.9 MB · 2.6 → 16.1 MB
+  const RATES = PART === 3 ? [3_600_000, 3_100_000, 2_600_000] : [opts.bitrate ?? 3_000_000, 2_200_000, 1_500_000]
+  if (PART === 3 && !opts.lowMax) LOW_MAX = 19_500_000
   // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
   const encs = NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
-    { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
-    { name: BASE, w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
-    { name: BASE, w: 1280, h: 720, bitrate: 1_500_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
+    ...RATES.map((bitrate) => ({ name: BASE, w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
     { name: BASE + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 16_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
   ]
   // 720 후보에 넣을 작은 장
@@ -1913,7 +1916,8 @@ export async function start(opts = {}) {
         if (snap) {
           const name = snap
           snap = null
-          if (!opts.noSave) saves.push(fetch('/__shot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, dir: 'img', data: out.toDataURL('image/jpeg', 0.92) }) }).then((r) => r.text()))
+          // 폴더를 정해 뜰 때(start({ dir }))는 사진을 남기지 않는다 — docs/img/ 의 예전 공지 사진(shot_*.jpg)을 덮었다 (2026-10-22)
+          if (!opts.noSave && !opts.dir) saves.push(fetch('/__shot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, dir: 'img', data: out.toDataURL('image/jpeg', 0.92) }) }).then((r) => r.text()))
         }
         drawOverlay()
         const vf = new VideoFrame(out, { timestamp: Math.round((vid * 1e6) / FPS), duration: Math.round(1e6 / FPS) })
