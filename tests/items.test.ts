@@ -200,7 +200,22 @@ describe('전리품 · 성장 (sim)', () => {
     expect(a.pickGoal).toBeUndefined()
   })
 
-  it('자동 줍기: 기본은 모든 등급 · 켠 등급의 내 아이템만 밟으면 줍는다 — 버려진 것(주인 -1)은 F · 가방이 차면 알린다', () => {
+  it('자동 줍기 설정: 처음은 희귀 이상만 (일반 · 마법 끔) · 고른 값은 그대로 (2026-10-22)', async () => {
+    const { loadAutoPick } = await import('../src/ui/settings')
+    const store = new Map<string, string>()
+    const g = globalThis as unknown as { localStorage?: unknown }
+    const was = g.localStorage
+    g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) }
+    try {
+      expect(loadAutoPick()).toBe(0b11100)
+      store.set('brpg.autopick', String(AUTOPICK_ALL))
+      expect(loadAutoPick()).toBe(AUTOPICK_ALL)
+    } finally {
+      g.localStorage = was
+    }
+  })
+
+  it('자동 줍기: 봇 · 용병은 모든 등급 · 켠 등급의 내 아이템만 밟으면 줍는다 — 버려진 것(주인 -1)은 F · 가방이 차면 알린다', () => {
     const { s, map } = ready(['chim'])
     const a = s.players[0]
     expect(a.autoPick).toBe(AUTOPICK_ALL)

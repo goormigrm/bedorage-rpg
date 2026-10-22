@@ -79,5 +79,5 @@ describe('지역 이벤트', () => {
     expect(cursed).toBeGreaterThan(2)
     expect(secret).toBeGreaterThan(2)
     expect(bossEv).toBe(0)
-  })
+  }, 15000) // 모든 지역의 맵 · 판을 만든다 — 시험을 한꺼번에 돌리면 5초를 넘길 때가 있다
 })

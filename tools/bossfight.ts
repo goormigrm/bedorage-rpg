@@ -10,7 +10,7 @@ import { botInput, makeBot } from '../src/core/bot'
 import { CHARACTERS, CharacterId } from '../src/core/characters'
 import { Input } from '../src/core/input'
 import { Item, SLOT_COUNT, Sheet, emptySheet, rollItem } from '../src/core/items'
-import { BOSS_PATS, MONSTER_LIST } from '../src/core/monsters'
+import { BOSS_PATS, BOSS_ULT, MONSTER_LIST } from '../src/core/monsters'
 import { makeRng } from '../src/core/rng'
 import { autoAttr, createState, step } from '../src/core/sim'
 import { MS_WINDUP } from '../src/core/state'
@@ -55,7 +55,7 @@ function build(level: number, bonus: number) {
 }
 
 type Area = (typeof AREAS)[number]
-type Result = { secs: number; won: number; n: number; downs: number; deaths: number; taken: number; casts: Record<string, number> }
+type Result = { secs: number; won: number; n: number; downs: number; deaths: number; taken: number; casts: Record<string, number>; staggers: number }
 
 /** 봇에게 보이는 예고: 1 = 다 · 0 = 없음 · 2 = 사람 수준(늦게 · 가끔 놓침) */
 function visibleZones<T extends { id: number; t: number; max?: number }>(zones: T[], dodge: number): T[] {
@@ -71,6 +71,7 @@ function runArea(a: Area, dodge: number): Result {
   let taken = 0
   let won = 0
   let maxHpSum = 0
+  let staggers = 0
   const casts: Record<string, number> = {}
   for (const seed of SEEDS) {
     const quests = QUESTS.map((q) => (q.act < a.act ? 3 : 0))
@@ -110,7 +111,8 @@ function runArea(a: Area, dodge: number): Result {
       s.zones = all
       step(s, map, inputs)
       for (const e of s.events) {
-        if (e.type === 'down') downs++
+        if (e.type === 'stagger') staggers++
+        else if (e.type === 'down') downs++
         else if (e.type === 'death') deaths++
         else if (e.type === 'hurt' && e.by >= 0) {
           const m = s.monsters.find((q) => q.id === e.by)
@@ -129,7 +131,7 @@ function runArea(a: Area, dodge: number): Result {
     secs += t / 60
     maxHpSum += maxSum
   }
-  return { secs, won, n: SEEDS.length, downs, deaths, taken: taken / maxHpSum, casts }
+  return { secs, won, n: SEEDS.length, downs, deaths, taken: taken / maxHpSum, casts, staggers }
 }
 
 const bosses = AREAS.filter((x) => x.kind === 'boss' && (ONLY < 0 || x.id === ONLY))
@@ -157,7 +159,7 @@ if (TABLE) {
       .map(([k, v]) => `${k} ${(v / r.n).toFixed(1)}`)
       .join(' · ')
     console.log(
-      `${a.act + 1}막 ${a.name.padEnd(8)} Lv${a.level}  ${Math.round(r.secs / r.n)}초  잡음 ${r.won}/${r.n}  쓰러짐 ${(r.downs / r.n).toFixed(1)}  죽음 ${(r.deaths / r.n).toFixed(1)}  보스 피해 = 파티 체력 × ${r.taken.toFixed(2)}`,
+      `${a.act + 1}막 ${a.name.padEnd(8)} Lv${a.level}  ${Math.round(r.secs / r.n)}초  잡음 ${r.won}/${r.n}  쓰러짐 ${(r.downs / r.n).toFixed(1)}  죽음 ${(r.deaths / r.n).toFixed(1)}  보스 피해 = 파티 체력 × ${r.taken.toFixed(2)}  경직 ${(r.staggers / r.n).toFixed(1)}  즉사기 ${((r.casts[BOSS_ULT[MONSTER_LIST[a.boss!].id] ?? ''] ?? 0) / r.n).toFixed(1)}`,
     )
     console.log(`   패턴: ${cs}`)
   }

@@ -4,7 +4,8 @@ import { BTN_FIRE, Input } from '../src/core/input'
 import { GameMap, TILE, TILE_FLOOR, buildMap } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
 import { makeMonster } from '../src/core/dungeon'
-import { createState, step } from '../src/core/sim'
+import { BOSS_CUT_TICKS, RUSH_LEFT, createState, step } from '../src/core/sim'
+import { AREAS, areaLayout, buildAreaMap } from '../src/core/world'
 import { MS_CHASE, MS_SLEEP } from '../src/core/state'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -58,5 +59,58 @@ describe('괴물 어그로', () => {
     s.monstersTotal = 1
     for (let t = 0; t < 30; t++) step(s, map, [{ ...idle(), buttons: BTN_FIRE, aim: 0 }])
     expect(m.st).not.toBe(MS_SLEEP)
+  })
+
+  // 2026-10-22 사용자: "남은 괴물 찾으러 다니는 거 귀찮아 — 25% 이하가 남으면 플레이어에게 몰려들어 공격"
+  it('남은 괴물이 25% 이하면 잠든 무리까지 모두 깨어 몰려온다 (그 위에서는 그대로 잔다)', () => {
+    const map = buildAreaMap(93, 1)
+    const s = createState({ area: 1, seed: 93, chars: ['chim'] }, map)
+    const total = s.monstersTotal
+    expect(total).toBeGreaterThan(20)
+    const asleep = () => s.monsters.filter((m) => m.hp > 0 && m.st === MS_SLEEP).length
+    // 30% 남김 — 아직 몰려오지 않는다 (멀리 있는 무리는 잔다)
+    s.monsters = s.monsters.slice(0, Math.ceil(total * 0.3))
+    for (let t = 0; t < 61; t++) step(s, map, [idle()])
+    expect(asleep()).toBeGreaterThan(0)
+    expect(s.events.some((e) => e.type === 'rush')).toBe(false)
+    // 25% 아래로 — 30틱 안에 모두 깨어 쫓는다
+    s.monsters = s.monsters.slice(0, Math.floor(total * RUSH_LEFT) - 1)
+    let rushed = false
+    for (let t = 0; t < 31; t++) {
+      step(s, map, [idle()])
+      if (s.events.some((e) => e.type === 'rush')) rushed = true
+    }
+    expect(rushed).toBe(true)
+    expect(asleep()).toBe(0)
+  })
+
+  // 2026-10-22 사용자: "보스방에서 보스로 강제 시야 전환될 때 다른 졸개 몬스터들은 정지"
+  it('막 보스가 깨는 틱에 등장 장면(bossCut) — 그동안 다른 괴물은 제자리', () => {
+    const area = AREAS.find((a) => a.boss !== undefined)!.id
+    const map = buildAreaMap(94, area)
+    const s = createState({ area, seed: 94, chars: ['chim'] }, map)
+    const boss = s.monsters.find((m) => MONSTER_LIST[m.kind].boss)!
+    expect(boss.st).toBe(MS_SLEEP)
+    const p = s.players[0]
+    const spot = areaLayout(area, map).special
+    // 보스에게서 8칸 — 총소리(16칸)로 깨운다 · 곁에 깨어 쫓는 졸개 하나
+    p.x = spot.x
+    p.y = spot.y + 8 * TILE
+    const g = makeMonster(s, ghoul, p.x + 6 * TILE, p.y, 555, 1, 100, 20)
+    g.st = MS_CHASE
+    g.maxHp = g.hp = 100000
+    s.monsters.push(g)
+    let cut = false
+    for (let t = 0; t < 20 && !cut; t++) {
+      step(s, map, [{ ...idle(), buttons: BTN_FIRE, aim: 256 }])
+      cut = s.events.some((e) => e.type === 'bossCut' && e.m === boss.id)
+    }
+    expect(cut).toBe(true)
+    expect(g.hold).toBeGreaterThan(BOSS_CUT_TICKS - 5)
+    const at = { x: g.x, y: g.y }
+    for (let t = 0; t < 60; t++) step(s, map, [idle()])
+    expect(Math.hypot(g.x - at.x, g.y - at.y)).toBeLessThan(1)
+    for (let t = 0; t < BOSS_CUT_TICKS; t++) step(s, map, [idle()])
+    expect(Math.hypot(g.x - at.x, g.y - at.y)).toBeGreaterThan(8)
   })
 })

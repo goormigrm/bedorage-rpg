@@ -3,13 +3,16 @@
 // 게임에 영향을 주는 것은 모두 입력 명령(CMD_DONATE)으로 sim 에 들어간다 — 모두의 판에서 같은 틱에 같게 일어난다(락스텝).
 // 금액은 방송인이 설정에서 바꾼다(game/stream.ts). 여기 amount 는 처음 값이다.
 // 2026-09-23 사용자: "만오천 원은 없애고 2만 3만 5만 10만" → 스킬 봉인부터 한 칸씩 올렸다.
+// 2026-10-22 사용자: "500원 단위 후원 이벤트는 없애고 1만 원 이하는 천 원마다 더 다양한 이벤트로 · 거꾸로 걷기 5초" →
+//   1천 좀비 떼 · 2천 정예 무리 · 3천 총잡이 무리 · 4천 중간보스 · 5천 막 보스(1 ~ 5천 = 괴물) · 6천 화면 흔들림 · 7천 거꾸로 걷기 · 8천 시야 축소 ·
+//   9천 괴물 대행진 · 1만 스킬 봉인 · 2만 광폭화 · 3만 지옥문. 번호 15 넘는 것은 CMD_DONATE_HI 로 (명령 arg 한 바이트 — 아래 네 비트가 번호)
 
 import { TICK_RATE } from './state'
 
 export interface DonateEvent {
-  /** 명령 arg 아래 네 비트 (1..15) */
+  /** 1..15 = CMD_DONATE · 16..31 = CMD_DONATE_HI (arg 아래 네 비트 = 번호 - 16) */
   id: number
-  key: 'horde' | 'shake' | 'dark' | 'elite' | 'invert' | 'unique' | 'seal' | 'rage' | 'boss' | 'hell' | 'cheer'
+  key: 'horde' | 'shake' | 'dark' | 'elite' | 'invert' | 'unique' | 'seal' | 'rage' | 'boss' | 'hell' | 'gun' | 'march' | 'cheer'
   name: string
   /** 표 · 배너에 쓰는 한 줄 */
   desc: string
@@ -19,16 +22,18 @@ export interface DonateEvent {
 
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
-  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 1500 },
+  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 6000 },
   // 이름 암흑 → 시야 축소 (2026-10-07 사용자) — 효과 · 금액 · 번호는 그대로
-  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 2500 },
+  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 8000 },
   { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 2000 },
-  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 4000 },
-  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 3000 },
+  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '5초 동안 이동이 반대로', amount: 7000 },
+  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 4000 },
   { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 10000 },
   { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 20000 },
   { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 5000 },
   { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 30000 },
+  { id: 15, key: 'gun', name: '총잡이 무리', desc: '총 쏘는 괴물 넷이 몰려온다', amount: 3000 },
+  { id: 16, key: 'march', name: '괴물 대행진', desc: '졸개 열여섯 + 정예 무리', amount: 9000 },
 ]
 
 /**
@@ -77,7 +82,9 @@ export const CHEER_RE = /!\s*(응원|힐|cheer)/i
  */
 export const SUMMON_BOSS_HP = 0.5
 /** 소환하는 이벤트 (소환 상한에 걸리면 자리가 날 때까지 기다린다) */
-export const SUMMON_KEYS = new Set<DonateEvent['key']>(['horde', 'elite', 'unique', 'boss', 'hell'])
+export const SUMMON_KEYS = new Set<DonateEvent['key']>(['horde', 'elite', 'unique', 'boss', 'hell', 'gun', 'march'])
+/** 괴물 대행진이 한 번에 부르는 수 (소환 상한 안에 들어갈 때만 — session.canRunDonation) */
+export const MARCH_SIZE = 20
 
 export const donateEvent = (id: number): DonateEvent | undefined => cheerEvent(id) ?? DONATE_EVENTS.find((e) => e.id === id)
 
@@ -94,7 +101,8 @@ export const DON_TICKS: Record<number, number> = {
   // 10 → 5초 (2026-09-26 사용자: 화면 흔들림이 "너무 멀미 난다 — 작게 · 시간도 줄여")
   [DON_SHAKE]: 5 * TICK_RATE,
   [DON_DARK]: 30 * TICK_RATE,
-  [DON_INVERT]: 20 * TICK_RATE,
+  // 20 → 5초 (2026-10-22 사용자: "거꾸로 걷기도 5초로 줄여줘")
+  [DON_INVERT]: 5 * TICK_RATE,
   [DON_SEAL]: 30 * TICK_RATE,
 }
 export const DON_MAX = 120 * TICK_RATE

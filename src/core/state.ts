@@ -168,6 +168,8 @@ export interface PlayerState {
   deaths: number
   legInjury: number
   invuln: number
+  /** invuln 중 구르기가 준 몫이 끝나는 남은 틱 — 막 보스 즉사기는 구르기 무적으로 피하지 못한다 (sim killOutright · 2026-10-22) */
+  rollInv?: number
   /** 보스 공격에 맞은 뒤 다시 맞지 않는 틱 (부채 여러 갈래 · 겹친 광선이 한꺼번에 들어오지 않게 — 2026-09-23) */
   bossCd?: number
   /** 이번 틱 이동 여부 (렌더 걷기 애니메이션용) */
@@ -429,6 +431,8 @@ export interface Monster {
   ky: number
   /** 기절·경직 남은 틱 */
   stun: number
+  /** 막 보스 등장 장면 동안 멈춤 남은 틱 (sim bossCut — 그림 없이 그냥 선다) */
+  hold?: number
   /** 마지막으로 맞은 틱 (렌더 체력 바) */
   hitTick: number
   /** 마지막으로 때린 플레이어 (처치 기록) */
@@ -703,6 +707,10 @@ export type SimEvent =
   | { type: 'questReward'; p: number; q: number }
   /** 상인 진열이 저절로 새로 들어왔다 (시간 — 마을에 들어선 사람 p) */
   | { type: 'shopRestock'; p: number }
+  /** 막 보스가 처음 깼다 — 등장 장면 · 목소리 (sim bossCut — 그동안 다른 괴물은 멈춘다) */
+  | { type: 'bossCut'; m: number; kind: number; x: number; y: number }
+  /** 남은 괴물(n)이 처음의 25% 이하 — 잠든 무리까지 몰려온다 (sim rushLeft) */
+  | { type: 'rush'; n: number }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }
   /** 전리품이 떨어짐 (owner 에게만 보인다) */
   | { type: 'loot'; owner: number; x: number; y: number; rarity: number }

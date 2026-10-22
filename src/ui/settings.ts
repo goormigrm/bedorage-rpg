@@ -3,7 +3,7 @@
 // 값은 모두 브라우저에 남는다(localStorage). 게임 안에서 바꾸면 그 판에 바로 반영되고,
 // 대기실에서 바꾼 것은 판에 들어갈 때 반영된다.
 
-import { AUTOPICK_ALL, RARITY_COLORS, RARITY_NAMES } from '../core/items'
+import { AUTOPICK_ALL, AUTOPICK_DEFAULT, RARITY_COLORS, RARITY_NAMES } from '../core/items'
 import { isTouchDevice } from '../game/touch'
 import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } from '../game/keymap'
 import { VOL_KEYS, VOL_NAMES, VolKey, setVolume, volumes } from '../audio/volume'
@@ -64,9 +64,9 @@ const set = (k: string, v: string): void => {
   }
 }
 
-/** 자동 줍기 등급 (기본은 모두) */
+/** 자동 줍기 등급 (처음은 희귀 이상 — AUTOPICK_DEFAULT · 고른 적이 있으면 그 값) */
 export function loadAutoPick(): number {
-  const v = Number(get(AUTOPICK_KEY) ?? AUTOPICK_ALL)
+  const v = Number(get(AUTOPICK_KEY) ?? AUTOPICK_DEFAULT)
   // 신화 등급(비트 16)이 생기기 전의 "모두"(15)는 모두로 (2026-09-19)
   if (v === 15) return AUTOPICK_ALL
   return Number.isInteger(v) && v >= 0 && v <= AUTOPICK_ALL ? v : AUTOPICK_ALL
@@ -159,11 +159,12 @@ export const setKeysShown = (on: boolean): void => set(KEYS_KEY, on ? '1' : '0')
  * HUD 크기 (2026-09-23 사용자: "HUD 를 전체적으로 작게"). 논리 1px 을 화면 몇 px 로 보일지의 목표 — hud.ts setViewSize.
  * 전에는 논리 높이 720 고정이라 1080p 창에서 약 1.3 배 · 1440p 에서 1.8 배로 커 보였다. 보통 = 1 배.
  */
-// 2026-10-22 사용자: "40세 아저씨가 하는 게임 — 글씨를 최대한 알아보기 쉽고 크게 · 이게 제일 중요" → 보통을 1.3 배로 (예전 보통 1 = 지금 작게)
+// 2026-10-22 보통을 1.3 배로 올렸다가 같은 날 사용자: "기본 해상도 자체를 줄인 느낌이라 플레이 화면을 너무 가려 — GUI 크기 자체는 원래대로" → 예전 값.
+// 글씨는 작은 글씨 하한(12px) · 짧은 글로 알아보기 쉽게 하고, 더 크게는 '크게'에서
 export const HUD_SIZES = [
-  { id: 'small', name: '작게', k: 1 },
-  { id: 'normal', name: '보통', k: 1.3 },
-  { id: 'large', name: '크게', k: 1.5 },
+  { id: 'small', name: '작게', k: 0.85 },
+  { id: 'normal', name: '보통', k: 1 },
+  { id: 'large', name: '크게', k: 1.2 },
 ] as const
 export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
   const v = get(HUD_KEY)
@@ -175,10 +176,9 @@ export const setHudSize = (id: string): void => {
   set(HUD_KEY, id)
   applyUiZoom()
 }
-/** 창(HTML — 로비 · 가방 · 상점 · 설정 …) 배율: 창 높이 800px 에 1 배(1080p 에서 1.35) × 글자 크기 설정(보통 = 1). 1 ~ 1.7 */
+/** 창(HTML — 로비 · 가방 · 상점 · 설정 …) 배율: 작게 · 보통은 원래 크기(1) · 크게만 1.15 (1080p 아래 창은 화면을 덮지 않게 1) */
 export function uiZoom(winH: number): number {
-  const k = (HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1.3) / 1.3
-  return Math.max(1, Math.min(1.7, (winH / 800) * k))
+  return hudSize() === 'large' && winH >= 1000 ? 1.15 : 1
 }
 /** CSS 변수 --uiz 를 맞춘다 (style.css 의 zoom). 폰은 따로 짠 화면이라 1 */
 export function applyUiZoom(): void {

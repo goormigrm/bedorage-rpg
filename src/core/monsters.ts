@@ -278,7 +278,7 @@ export const GIANT_BODY = 2.5
  * 2026-10-09 치명타가 등 뒤에서만(fromBehind)이 되며 봇 파티 싸움이 27 · 42 · 32 · 40초 → 52 · 67 · 51 · 73초로 늘어 1.0 으로 되돌렸다
  * (38 · 52 · 41 · 62초 — 봇은 등 뒤로 돌지 않는다. 사람이 돌아 들어가면 더 빨리 잡는다)
  */
-export const GIANT_HP = 1.0
+export const GIANT_HP = 1.2
 export function isGiant(m: { kind: number; sum?: number }): boolean {
   return !!MONSTER_LIST[m.kind]?.boss && m.sum === undefined && (m as { ally?: number }).ally !== 1
 }
@@ -338,6 +338,16 @@ export const BOSS_SWIPE_PM = 60
 export const BOSS_TIER_PM = [1, 1.25, 1.5]
 /** 후원 광폭화 중 보스 ‰ 배율 */
 export const BOSS_RAGE_PM = 1.3
+/**
+ * 막 보스 등장 대사 [🌙, ☀] (2026-10-22 사용자: "보스마다 각자의 적절한 등장 음성") — 소리 파일 public/voice/boss_<번호>_in(_b).wav 는
+ * tools/bossvoice.ps1 이 같은 글로 만든다(글을 바꾸면 거기도). 파일이 없으면 브라우저 음성 합성으로 (audio/sfx.ts bossLine)
+ */
+export const BOSS_HELLO: Record<string, [string, string]> = {
+  butcher: ['누가… 내 푸줏간에 들어왔지?', '술래 등장! 모두 얼음!'],
+  queen: ['내 둥지에 발을 들였구나…', '누가 내 꿀단지를 건드렸어?'],
+  warden: ['탈옥수다! 다시 가둬라!', '자, 규칙을 설명하겠습니다!'],
+  lord: ['드디어 왔구나… 심연의 끝에.', '파티에 온 걸 환영해!'],
+}
 
 export type BossPatId =
   | 'charge' | 'spin' | 'hook' | 'meat'
@@ -428,7 +438,8 @@ export const BP = {
 /** 막 보스마다 즉사기 */
 export const BOSS_ULT: Partial<Record<MonsterKindId, BossPatId>> = { butcher: 'slaughter', queen: 'webdoom', warden: 'execute', lord: 'abyss' }
 /** 즉사기 간격 (틱): 깬 뒤 처음 · 그다음 (단계마다 — 분노하면 더 자주). 다른 패턴 차례와 따로 센다 */
-export const BOSS_ULT_CD = { first: 20 * 60, every: [40 * 60, 30 * 60, 25 * 60] }
+// 20초 · 40 / 30 / 25초 → 12초 · 28 / 22 / 18초 (2026-10-22 사용자: "즉사기를 최소한 2번은 쓸 수 있게")
+export const BOSS_ULT_CD = { first: 12 * 60, every: [32 * 60, 26 * 60, 22 * 60] }
 
 export interface BossPlan {
   /** 단계마다 패턴 차례 (stage 0 · 1 · 2) */

@@ -6,7 +6,7 @@ import { isBright } from '../game/skin'
 import { GameState, OBJ_GOLDCHEST, OBJ_URN, PlayerState, SPRINT_MUL, SimEvent } from '../core/state'
 import { CHARACTERS } from '../core/characters'
 import { WEAPONS, WeaponId } from '../core/weapons'
-import { MONSTER_LIST, BOSS_PATS } from '../core/monsters'
+import { MONSTER_LIST, BOSS_HELLO, BOSS_PATS } from '../core/monsters'
 import { FX_FREEAMMO } from '../core/skills'
 import { worldDirToScreen } from '../render3d/camera'
 import { onVolume, volumes } from './volume'
@@ -374,6 +374,8 @@ export class Sfx {
     if (state.mode === 'dungeon') {
       let b = 0
       for (const m of state.monsters) {
+        // 잠든 막 보스(보스 방): 등장 대사를 미리 받는다 — 깨는 순간 바로 (bossCut)
+        if (m.hp > 0 && m.st === 0 && MONSTER_LIST[m.kind].boss && m.sum === undefined) this.loadLine(m.kind, true)
         if (m.hp > 0 && m.st !== 0 && MONSTER_LIST[m.kind].boss) {
           b = m.hp < m.maxHp * 0.3 ? 2 : 1
           // 깬 보스의 대사 소리를 미리 받는다 (즉사기는 깬 뒤 20초 — 넉넉하다)
@@ -732,6 +734,11 @@ export class Sfx {
           this.lastShotEnd = tnow
           const b = this.bus(sp(e.x, e.y), 0.4)
           this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 1400, 600, 0.3)
+          break
+        }
+        case 'bossCut': {
+          // 막 보스 등장 (2026-10-22 사용자: "보스마다 각자의 적절한 등장 음성") — 등장 대사(가공한 소리 · 없으면 음성 합성). 포효는 같은 틱의 wake 가 낸다
+          if (!this.bossLine(e.kind, true)) this.speak(BOSS_HELLO[MONSTER_LIST[e.kind]?.id ?? '']?.[isBright() ? 1 : 0], e.kind)
           break
         }
         case 'bossUlt': {
@@ -1634,8 +1641,9 @@ export class Sfx {
   }
 
   /** 대사 소리 칸 번호: 밝은 분위기는 다른 파일(boss_<번호>_b.wav — 밝은 대사)이라 1000 을 더한다 */
-  private lineKey(kind: number): number {
-    return kind + (isBright() ? 1000 : 0)
+  /** 대사 소리 열쇠: 종류 + 밝은 분위기 1000 + 등장 대사 2000 */
+  private lineKey(kind: number, intro = false): number {
+    return kind + (isBright() ? 1000 : 0) + (intro ? 2000 : 0)
   }
 
   // ---------- 녹음 효과음 (2026-10-08 퀄리티 2차 S4 — 사용자 허락 · Kenney CC0 · public/sfx 45개 435 KB) ----------
@@ -1720,12 +1728,12 @@ export class Sfx {
   }
 
   /** 보스 대사 소리를 받아 둔다 (한 번만 · 실패하면 다시 받지 않는다 — 그때는 음성 합성으로) */
-  private loadLine(kind: number): void {
-    const key = this.lineKey(kind)
+  private loadLine(kind: number, intro = false): void {
+    const key = this.lineKey(kind, intro)
     if (!this.ctx || this.lineBufs.has(key) || this.lineLoading.has(key)) return
     this.lineLoading.add(key)
     const ctx = this.ctx
-    void fetch(`${import.meta.env.BASE_URL}voice/boss_${kind}${key >= 1000 ? '_b' : ''}.wav`)
+    void fetch(`${import.meta.env.BASE_URL}voice/boss_${kind}${intro ? '_in' : ''}${isBright() ? '_b' : ''}.wav`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
       .then((a) => ctx.decodeAudioData(a))
       .then((b) => this.lineBufs.set(key, b))
@@ -1741,9 +1749,9 @@ export class Sfx {
    *   한 옥타브 아래 목소리를 더 깐다. 영상(tools/trailer.js)도 이 함수를 그대로 쓴다.
    * 소리 파일이 아직 없으면 false (부른 쪽이 음성 합성으로 대신한다)
    */
-  bossLine(kind: number): boolean {
+  bossLine(kind: number, intro = false): boolean {
     if (this.mutedFlag || !this.bossVoiceOn() || !this.ctx) return false
-    const buf = this.lineBufs.get(this.lineKey(kind))
+    const buf = this.lineBufs.get(this.lineKey(kind, intro))
     if (!buf) return false
     const ctx = this.ctx
     const id = MONSTER_LIST[kind]?.id

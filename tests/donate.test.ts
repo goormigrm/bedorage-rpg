@@ -1,14 +1,14 @@
 // 후원 이벤트 (2026-09-23 — 치지직 후원 · core/donate.ts): 입력 명령으로 모두의 판에 같게 · 마을에서는 없음 ·
 // 소환한 보스는 막 보스 처치로 치지 않는다 · 손 떨림 · 거꾸로 · 봉인 · 광폭화 · 암흑
 import { describe, expect, it } from 'vitest'
-import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONCAP, Input } from '../src/core/input'
+import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../src/core/input'
 import { GameMap, isWallAt } from '../src/core/map'
 import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
 import { EA_UNIQUE, MONSTER_LIST, levelHp, tierOf } from '../src/core/monsters'
 import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
+import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
 import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation, tiedAmounts } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -74,20 +74,19 @@ describe('후원 이벤트 — 소환', () => {
     expect(seen).toBeGreaterThan(40)
   })
 
-  it('이벤트는 열 가지 · 금액이 모두 다르다', () => {
-    expect(DONATE_EVENTS.length).toBe(10)
-    expect(new Set(DONATE_EVENTS.map((e) => e.amount)).size).toBe(10)
+  it('이벤트는 열두 가지 · 금액이 모두 다르다 · 500원 단위는 없다', () => {
+    expect(DONATE_EVENTS.length).toBe(12)
+    expect(new Set(DONATE_EVENTS.map((e) => e.amount)).size).toBe(12)
+    expect(DONATE_EVENTS.every((e) => e.amount % 1000 === 0)).toBe(true)
   })
 
   // 2026-10-22 사용자: "방송 중 최대 금액이 2만 원이었다 — 천 원 ~ 5천 원 사이에 몬스터가 다양하게 · 지옥문이 3만 원 · 응원도 낮게"
-  it('금액표: 천 원 ~ 5천 원은 괴물(좀비 떼 · 정예 무리 · 중간보스 · 막 보스) · 지옥문 3만 · 넘는 것 중 가장 비싼 이벤트', () => {
+  // 2026-10-22 같은 날 사용자: "500원 단위 후원 이벤트는 없애고 10000원 이하에 천 원 단위를 더 다양한 이벤트로"
+  it('금액표: 1만 원까지 천 원마다 다른 이벤트 (1 ~ 5천은 괴물) · 지옥문 3만 · 넘는 것 중 가장 비싼 이벤트', () => {
     const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
-    expect([1000, 2000, 3000, 5000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'elite', 'unique', 'boss'])
-    expect(eventForAmount(1500, cfg)?.key).toBe('shake')
-    expect(eventForAmount(2500, cfg)?.key).toBe('dark')
-    expect(eventForAmount(4000, cfg)?.key).toBe('invert')
-    expect(eventForAmount(10000, cfg)?.key).toBe('seal')
+    expect([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'elite', 'gun', 'unique', 'boss', 'shake', 'invert', 'dark', 'march', 'seal'])
+    expect(eventForAmount(1500, cfg)?.key).toBe('horde')
     expect(eventForAmount(20000, cfg)?.key).toBe('rage')
     expect(eventForAmount(30000, cfg)?.key).toBe('hell')
     expect(eventForAmount(100000, cfg)?.key).toBe('hell')
@@ -474,7 +473,7 @@ describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
 
   it('3초 예고는 중간보스 이상의 방해 이벤트만 (응원 · 싼 것은 바로)', () => {
     const big = DONATE_EVENTS.filter((e) => isBigDonation(e.id)).map((e) => e.key)
-    expect(big).toEqual(['unique', 'seal', 'rage', 'boss', 'hell'])
+    expect(big).toEqual(['unique', 'seal', 'rage', 'boss', 'hell', 'march'])
     for (const c of CHEER_EVENTS) expect(isBigDonation(c.id)).toBe(false)
   })
 
@@ -570,25 +569,25 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
 // 2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋을 것 같다"
 describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', () => {
   const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) })
-  it('시야 축소 · 거꾸로 걷기를 둘 다 2천 5백 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
+  it('시야 축소 · 거꾸로 걷기를 둘 다 8천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
     const cfg = base()
     const dark = DONATE_EVENTS.findIndex((e) => e.key === 'dark')
     const inv = DONATE_EVENTS.findIndex((e) => e.key === 'invert')
     cfg.amounts[inv] = cfg.amounts[dark]
     expect(tiedAmounts(cfg.amounts)).toEqual(new Set([cfg.amounts[dark]]))
-    expect(eventForAmount(2500, cfg, () => 0)?.key).toBe('dark')
-    expect(eventForAmount(2500, cfg, () => 0.999)?.key).toBe('invert')
-    expect(eventForAmount(2999, cfg, () => 0.5)?.key).toBe('invert')
+    expect(eventForAmount(8000, cfg, () => 0)?.key).toBe('dark')
+    expect(eventForAmount(8000, cfg, () => 0.999)?.key).toBe('invert')
+    expect(eventForAmount(8999, cfg, () => 0.5)?.key).toBe('invert')
     const got = new Set<string>()
-    for (let i = 0; i < 40; i++) got.add(eventForAmount(2700, cfg)!.key)
+    for (let i = 0; i < 40; i++) got.add(eventForAmount(8700, cfg)!.key)
     expect(got).toEqual(new Set(['dark', 'invert']))
-    // 더 비싼 칸(중간보스 3천)이 넘으면 무작위 없이 그것
-    expect(eventForAmount(3000, cfg, () => 0)?.key).toBe('unique')
+    // 더 비싼 칸(괴물 대행진 9천)이 넘으면 무작위 없이 그것
+    expect(eventForAmount(9000, cfg, () => 0)?.key).toBe('march')
   })
   it('겹치지 않으면 예전과 같다 · 끈 칸(0 원)은 겹쳐도 세지 않는다 · 응원도 같다', () => {
     const cfg = base()
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
-    expect(eventForAmount(2500, cfg, () => 0.999)?.key).toBe('dark')
+    expect(eventForAmount(8500, cfg, () => 0.999)?.key).toBe('dark')
     cfg.amounts[0] = 0
     cfg.amounts[1] = 0
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
@@ -612,11 +611,33 @@ describe('예전 처음 금액표 이어받기', () => {
       let c = loadStreamCfg()
       expect(c.amounts).toEqual(DONATE_EVENTS.map((e) => e.amount))
       expect(c.cheers).toEqual(CHEER_EVENTS.map((e) => e.amount))
+      // v1.9.0 처음 값(500원 단위 · 열 가지)도 새 표로 — 뒤에 붙은 두 이벤트까지
+      ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 1500, 2500, 2000, 4000, 3000, 10000, 20000, 5000, 30000] }))
+      c = loadStreamCfg()
+      expect(c.amounts).toEqual(DONATE_EVENTS.map((e) => e.amount))
       ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 90000] }))
       c = loadStreamCfg()
       expect(c.amounts[9]).toBe(90000)
     } finally {
       g.localStorage = was
     }
+  })
+})
+
+// 2026-10-22: 1만 원 이하를 채운 새 이벤트 둘 · 거꾸로 걷기 5초 · 번호 16 이상은 CMD_DONATE_HI
+describe('총잡이 무리 · 괴물 대행진 · 거꾸로 걷기 5초', () => {
+  it('총잡이 무리는 총 쏘는 괴물 넷 · 괴물 대행진은 스물(번호 16 — CMD_DONATE_HI) · 거꾸로 걷기는 5초', () => {
+    const g = game(131)
+    toField(g)
+    g.donate(ev('gun'))
+    const guns = summoned(g.s)
+    expect(guns.length).toBe(4)
+    expect(guns.every((m) => MONSTER_LIST[m.kind].gun)).toBe(true)
+    const march = DONATE_EVENTS.find((e) => e.key === 'march')!
+    expect(march.id).toBeGreaterThanOrEqual(16)
+    g.run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONATE_HI, arg: (march.id - 16) | (3 << 4) } : idle()))
+    expect(summoned(g.s).length).toBe(4 + MARCH_SIZE)
+    g.donate(ev('invert'))
+    expect(g.s.players[0].don![DON_INVERT]).toBe(5 * 60 - 1)
   })
 })

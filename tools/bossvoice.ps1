@@ -6,6 +6,7 @@
 # 거친 맛 · 저음 · 메아리 · 긴 잔향)을 건다. 가공에서 재생 빠르기를 늦춰(음이 내려간다) 여기서는 조금 빠르게 읽힌다.
 #
 #   powershell -ExecutionPolicy Bypass -File tools/bossvoice.ps1      → public/voice/boss_<보스 번호>.wav · 밝은 분위기 boss_<번호>_b.wav (24 kHz 모노)
+#   · 등장 대사 boss_<번호>_in.wav · boss_<번호>_in_b.wav (2026-10-22)
 Add-Type -AssemblyName System.Speech
 $out = Join-Path $PSScriptRoot '..\public\voice'
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -18,7 +19,16 @@ $lines = @(
   @{ kind = 3;  text = '무궁화 꽃이… 피었습니다!';        pitch = '+15%'; rate = '+0%';  tag = '_b' },
   @{ kind = 8;  text = '이리 오렴, 아가들아… 꿀 줄게!';   pitch = '+25%'; rate = '+5%';  tag = '_b' },
   @{ kind = 12; text = '규칙 위반! 탈락!';                pitch = '+5%';  rate = '+10%'; tag = '_b' },
-  @{ kind = 15; text = '마지막 게임을 시작하지!';         pitch = '+0%';  rate = '+5%';  tag = '_b' }
+  @{ kind = 15; text = '마지막 게임을 시작하지!';         pitch = '+0%';  rate = '+5%';  tag = '_b' },
+  # 등장 대사 (2026-10-22 사용자: "보스마다 각자의 적절한 등장 음성") → boss_<번호>_in.wav · _in_b.wav — 글은 src/core/monsters.ts BOSS_HELLO 와 같게
+  @{ kind = 3;  text = '누가… 내 푸줏간에 들어왔지?';      pitch = '-20%'; rate = '+10%'; tag = '_in' },
+  @{ kind = 8;  text = '내 둥지에 발을 들였구나…';         pitch = '+10%'; rate = '+0%';  tag = '_in' },
+  @{ kind = 12; text = '탈옥수다! 다시 가둬라!';           pitch = '-25%'; rate = '+15%'; tag = '_in' },
+  @{ kind = 15; text = '드디어 왔구나… 심연의 끝에.';      pitch = '-30%'; rate = '+5%';  tag = '_in' },
+  @{ kind = 3;  text = '술래 등장! 모두 얼음!';            pitch = '+15%'; rate = '+5%';  tag = '_in_b' },
+  @{ kind = 8;  text = '누가 내 꿀단지를 건드렸어?';       pitch = '+25%'; rate = '+5%';  tag = '_in_b' },
+  @{ kind = 12; text = '자, 규칙을 설명하겠습니다!';       pitch = '+5%';  rate = '+10%'; tag = '_in_b' },
+  @{ kind = 15; text = '파티에 온 걸 환영해!';             pitch = '+0%';  rate = '+5%';  tag = '_in_b' }
 )
 foreach ($l in $lines) {
   $s = New-Object System.Speech.Synthesis.SpeechSynthesizer

@@ -472,14 +472,14 @@ export class TownPanel {
     } else if (npc === 'captain') {
       // 용병은 빈 자리마다 (2026-10-22 사용자: "4명 방이면 나 빼고 3자리에 용병") — 지금 따라다니는 용병 · 고용 단추
       const mine = s.players.filter((q) => q.merc === me.id && !q.left && !q.cameo)
-      const price = mercPrice(me.level)
+      const price = mercPrice(me.level, mine.length)
       const freeN = s.players.filter((q) => q.vacant && q.left).length
       const hired = mine
         .map((q) => `<div class="tp-merc"><b>${CHARACTERS[q.char].name}</b><span>레벨 ${q.level}</span><button class="btn secondary" data-cmd="${CMD_HIRE}" data-arg="${100 + q.id}">내보내기</button></div>`)
         .join('')
       const pick = !freeN
         ? '<p class="tp-empty">빈 자리가 없다 — 게임은 최대 4명</p>'
-        : `<p class="tp-note">빈 자리 ${freeN}개 · 한 명 ${price} 골드 · 내 레벨 · 내 장비 수준으로 온다</p>${(['tank', 'heal', 'dps'] as const)
+        : `<p class="tp-note">빈 자리 ${freeN}개 · ${mine.length ? '한 명 더' : '한 명'} ${goldText(price)} · 내 레벨 · 내 장비 수준으로 온다</p>${(['tank', 'heal', 'dps'] as const)
             .map((r) => {
               // 역할별로 묶는다 (2026-09-19 탱 · 딜 · 힐) · 나와 이미 데려온 캐릭터는 빼고
               const ids = PLAYABLE.filter((id) => id !== me.char && CHARACTERS[id].role === r && !mine.some((q) => q.char === id))

@@ -199,7 +199,7 @@ function panelHtml(): string {
   const dev = isDev()
   const rows = DONATE_EVENTS.map(
     (e, i) =>
-      `<div class="czr"><input type="number" min="0" step="500" data-amt="${i}" value="${c.amounts[i]}" title="0 이면 끕니다"><b>${e.name}</b><span title="${e.desc}">${e.desc}</span>` +
+      `<div class="czr"><input type="number" min="0" step="1000" data-amt="${i}" value="${c.amounts[i]}" title="0 이면 끕니다"><b>${e.name}</b><span title="${e.desc}">${e.desc}</span>` +
       (dev ? `<button type="button" class="lnk" data-try="${i}" title="이 금액으로 시험 후원 — 던전에서 일어납니다">시험</button>` : '<span></span>') +
       `</div>`,
   ).join('')

@@ -13,7 +13,7 @@ import { EA_FAST, EA_UNIQUE, GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
 import { MS_CHASE, MS_RECOVER, Monster } from '../src/core/state'
 import { BTN_DASH, BTN_SKILL1, CMD_HIRE, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP } from '../src/core/input'
 import { freePoints, nodeCd, nodePow, slotNode } from '../src/core/skills'
-import { hashState, mercPrice } from '../src/core/sim'
+import { hashState, joinPlayer, joinSeat, mercPrice } from '../src/core/sim'
 import { areaLayout } from '../src/core/world'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -361,6 +361,10 @@ describe('성장 · 전투 (D4)', () => {
     hire(4) // 자리가 없다
     const mercs = s.players.filter((q) => q.merc === 0 && !q.left)
     expect(mercs.length).toBe(3)
+    // 한 명 늘 때마다 비싸진다 (첫째 · 둘째 두 배 · 셋째 세 배) · 레벨이 오를수록 비싸진다
+    expect(99999 - p.gold).toBe(mercPrice(12, 0) + mercPrice(12, 1) + mercPrice(12, 2))
+    expect(Math.abs(mercPrice(12, 2) - mercPrice(12, 0) * 3)).toBeLessThanOrEqual(10) // 10 골드 단위로 끊는다
+    expect(mercPrice(30)).toBeGreaterThan(mercPrice(10) * 4)
     for (const m of mercs) {
       expect(m.level).toBe(12)
       expect(m.equip.filter(Boolean).length).toBeGreaterThan(3)
@@ -370,5 +374,15 @@ describe('성장 · 전투 (D4)', () => {
     // 하나만 내보낸다 (100 + 자리)
     hire(100 + mercs[1].id)
     expect(s.players.filter((q) => q.merc === 0 && !q.left).length).toBe(2)
+    // 빈 자리가 하나면 난입은 그 자리 · 다 차면 용병 자리를 받는다 — 들어온 사람은 용병이 아니다(sim 이 대신 움직이지 않는다)
+    expect(joinSeat(s)).toBe(mercs[1].id)
+    hire(1)
+    const seat = joinSeat(s)
+    expect(s.players[seat].merc).toBe(0)
+    joinPlayer(s, mapOf, seat, 'dangun')
+    expect(s.players[seat].merc).toBe(-1)
+    expect(s.players[seat].bot).toBeUndefined()
+    expect(s.players[seat].left).toBe(false)
+    for (let t = 0; t < 30; t++) step(s, mapOf, [idle(), idle(), idle(), idle()])
   })
 })

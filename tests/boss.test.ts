@@ -150,7 +150,8 @@ describe('보스 패턴 — 정해진 차례 · 셋 이상', () => {
         for (const m of s.monsters) if (m !== boss) m.hp = 0
         run()
         const pat = boss.st === MS_WINDUP ? (boss.pat ?? -1) : -1
-        if (pat >= 0 && pat !== last) seen.push(BOSS_PATS[pat].id)
+        // 즉사기는 차례와 따로 센다 (12초 뒤 — 첫 바퀴 사이에 끼어들 수 있다)
+        if (pat >= 0 && pat !== last && BOSS_PATS[pat].id !== BOSS_ULT[id]) seen.push(BOSS_PATS[pat].id)
         last = pat
       }
       // 첫 바퀴는 정해진 차례 그대로
@@ -278,9 +279,10 @@ describe('막 보스 즉사기', () => {
   })
 
   for (const [area, id] of BOSSES) {
-    it(`${MONSTER_LIST.find((m) => m.id === id)!.name}: 범위 안의 탱커는 체력이 가득이어도 쓰러지고 · 무적은 버티고 · 안전한 곳은 멀쩡하다`, () => {
-      const { map, s, boss, run } = bossGame(area, 50 + area, ['cheolmyeon', 'chim', 'magic'])
-      const [tank, inv, safe] = s.players
+    // 2026-10-22 사용자: "용병 매직란이 즉사기에 안 죽는다" — 터지기 직전 제자리 구르기(구르기 무적)로 살았다 → 구르기로는 못 피한다
+    it(`${MONSTER_LIST.find((m) => m.id === id)!.name}: 범위 안의 탱커는 체력이 가득이어도 쓰러지고 · 구르기로도 못 피하고 · 다른 무적은 버티고 · 안전한 곳은 멀쩡하다`, () => {
+      const { map, s, boss, run } = bossGame(area, 50 + area, ['cheolmyeon', 'chim', 'magic', 'dangun'])
+      const [tank, inv, safe, roller] = s.players
       boss.st = MS_CHASE
       boss.target = 0
       boss.kcd = 0
@@ -329,12 +331,22 @@ describe('막 보스 즉사기', () => {
         safe.y = safeAt.y
         safe.invuln = 0
         safe.hp = safe.maxHp
-        if (tank.downed) break
+        // 범위 안에서 계속 구른다 (구르기 무적 = 구르기 몫과 같다)
+        if (!roller.downed) {
+          roller.x = danger.x
+          roller.y = danger.y - 20
+          roller.hp = roller.maxHp
+          roller.bossCd = 999
+          roller.dashTimer = 8
+          roller.invuln = roller.rollInv = 13
+        }
+        if (tank.downed && roller.downed) break
         run()
         hit ||= s.events.some((e) => e.type === 'ultHit' && e.p === tank.id)
       }
       expect(tank.downed).toBe(true)
       expect(hit).toBe(true)
+      expect(roller.downed).toBe(true)
       expect(inv.downed).toBe(false)
       expect(safe.downed).toBe(false)
     })

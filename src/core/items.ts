@@ -45,6 +45,8 @@ export const RARITY_NAMES = ['일반', '마법', '희귀', '전설', '신화']
 export const RARITY_MYTHIC = 4
 /** 자동 줍기 등급 비트(1 << 등급) — 기본은 모두 (2026-09-19 요청 "아이템은 기본적으로 자동 수집, 등급별로 조절") */
 export const AUTOPICK_ALL = 0b11111
+/** 자동 줍기 처음 값: 희귀 · 전설 · 신화만 (2026-10-22 사용자: "기본은 희귀 이상만 · 일반 · 마법은 끄게") — 봇 · 용병은 그대로 모두 */
+export const AUTOPICK_DEFAULT = 0b11100
 export const RARITY_COLORS = ['#d8d8d8', '#6c9cff', '#ffd84a', '#ff8a2a', '#e060ff']
 /** 등급별 옵션 수: 무기는 이만큼, 방어구·장신구는 기본 옵션(바탕 종류) 하나 + 이만큼 */
 const AFFIX_COUNT_WEAPON = [0, 2, 3, 4, 5]

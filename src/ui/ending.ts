@@ -39,6 +39,7 @@ function creditsHtml(): string {
   const models = MODEL_CREDITS.map(([who, model, by]) => `<div class="cr-row"><span>${who}</span><em>"${model}" — ${by}</em></div>`).join('')
   return `<div class="cr-title">배도라지 <span class="egg">알</span>PG</div>
     <p class="cr-note">비공식 · 비상업 팬 게임</p>
+    <div class="cr-maker"><h4>제작 · 기획 · 개발 · 유지보수</h4><div class="cr-who">구르미소미</div><p>혼자 만든 1인 개발 게임</p></div>
     ${sec('출연 — 계란이 된 크루', cast)}
     ${sec('괴물 모델 (Sketchfab · CC BY 4.0)', models)}
     ${sec('무료 자료 (CC0)', '<div class="cr-row"><span>귀여운 괴물</span><em>Quaternius "Ultimate Monsters"</em></div><div class="cr-row"><span>옮겨 붙인 동작</span><em>Quaternius "Universal Animation Library"</em></div>')}

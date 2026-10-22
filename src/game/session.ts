@@ -5,14 +5,14 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONCAP, Input } from '../core/input'
-import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
+import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../core/input'
+import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
-import { SUMMON_CAP, areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, snapshot, step, syncSandbags } from '../core/sim'
+import { SUMMON_CAP, areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, joinSeat, snapshot, step, syncSandbags } from '../core/sim'
 import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, questPoints, townNpcs, tierQuests, WAYPOINTS, wpBit } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
@@ -312,10 +312,12 @@ export class Session {
       // 락스텝 특성상 방 전체가 함께 멈췄다(2026-09-06 제보).
       // 내 자리도 마찬가지다 — 난입자는 호스트가 joinLive 로 활성화할 때까지 **관전만** 한다.
       // 그래서 기존 사람들은 내가 준비되는 동안 내 입력을 전혀 기다리지 않는다.
+      // 용병 자리도 — 용병은 sim 안에서 움직여 입력을 보내지 않는다(빼먹으면 용병이 있는 판에 난입한 사람이 그 자리 입력을 기다려 방이 멈췄다)
       this.state.players.forEach((p, i) => {
-        if (p.left) this.dropped.add(i)
+        if (p.left || p.merc >= 0) this.dropped.add(i)
       })
-      if (this.state.players[cfg.localPlayer].left) {
+      const mine = this.state.players[cfg.localPlayer]
+      if (mine.left || mine.merc >= 0) {
         this.joiningIn = true
         this.message = '자리에 앉는 중… 모두와 연결되면 들어갑니다'
         this.spectate = this.nextAlive(-1) // 들어가기 전에는 남의 시점으로 본다
@@ -576,7 +578,8 @@ export class Session {
     if (!lobby || !info || !this.isHost) return
     const beat = () => {
       if (this.disposed) return
-      const count = this.state.players.filter((p) => !p.left).length
+      // 용병은 세지 않는다 — 용병이 자리를 채워도 방 목록에 '정원 참'으로 뜨지 않게 (난입하면 용병 자리를 받는다)
+      const count = this.state.players.filter((p) => !p.left && p.merc < 0).length
       lobby.announce({
         code: this.cfg.link?.code ?? '',
         hostChar: this.state.players[0].char,
@@ -2266,7 +2269,7 @@ export class Session {
     const me = this.state.players[this.cfg.localPlayer]
     if (!effectFits(ev, me?.don, me?.donCap ?? DON_CAP_DEFAULT, rage)) return false
     if (!SUMMON_KEYS.has(e.key)) return true
-    if (summoned >= SUMMON_CAP - 4) return false
+    if (summoned >= SUMMON_CAP - (e.key === 'march' ? MARCH_SIZE : 4)) return false
     if ((e.key === 'boss' || e.key === 'hell') && boss) return false
     return true
   }
@@ -2378,7 +2381,7 @@ export class Session {
     if (this.donSending && now >= this.donSending.at) {
       const d = this.donSending
       this.donSending = null
-      this.input.queueCmd(CMD_DONATE, (d.ev & 15) | ((d.seq & 15) << 4))
+      this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))
     }
     if (!this.donSending && this.donPending.length > 0 && now >= this.donNextAt && this.canDonateNow()) {
       // 잠깐 멈춤 · 보스전 대기 중에는 방해 이벤트만 기다린다 (응원은 간다 — 2026-09-26 방송 개선 3)
@@ -2689,14 +2692,8 @@ export class Session {
       this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '다른 사람이 먼저 들어오는 중입니다' }, peerId)
       return
     }
-    // 아무도 없는 자리 찾기
-    let slot = -1
-    for (let i = 0; i < this.state.players.length; i++) {
-      if (this.state.players[i].left) {
-        slot = i
-        break
-      }
-    }
+    // 아무도 없는 자리 → 없으면 용병 자리 (용병은 그 사람이 들어오는 틱에 물러난다)
+    const slot = joinSeat(this.state)
     if (slot < 0) {
       this.cfg.link?.sendCtl({ t: 'rejoinNo', why: '자리가 없습니다' }, peerId)
       return
@@ -2803,7 +2800,7 @@ export class Session {
     const link = this.cfg.link
     if (!link) return
     const ids = this.cfg.peerIds ?? []
-    const need = this.state.players.map((p, i) => (p.left ? '' : ids[i] ?? '')).filter((id) => id && id !== link.selfId)
+    const need = this.state.players.map((p, i) => (p.left || p.merc >= 0 ? '' : ids[i] ?? '')).filter((id) => id && id !== link.selfId)
     if (need.some((id) => !link.peers.has(id))) return
     this.joinReadySent = true
     link.sendCtl({ t: 'joinReady' }, ids[0])

@@ -9,7 +9,7 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_TRIAL, CMD_UPGRADE,
-  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
@@ -121,7 +121,9 @@ export const PORTAL_CAST = 90
  * 보스 경직 (2026-10-08 퀄리티 2차 3단계 F2 — 디아블로 4): 최대 체력의 12% 를 깎으면(또는 기절 시도로) 막대가 가득 → 3초 경직 ·
  * 그동안 받는 피해 +25%. 보스전이 "피하기만" 에서 "기회를 노리기" 로
  */
-const STAGGER_HP = 0.12
+// 0.12 → 0.6 (2026-10-22 사용자: "4인이서 3막 보스 — 경직 막대가 너무 빨리 차서 즉사기가 한 번도 안 나왔어 · 즉사기 최소 2번 · 경직은 1번 정도로").
+// tools/bossfight.ts (4인 · 사람 수준): 보스마다 경직 5.7 ~ 6.7 · 즉사기 0.7 ~ 1.3 번이었다
+export const STAGGER_HP = 0.6
 const STAGGER_TICKS = 180
 const STAGGER_DMG = 1.25
 /** 사람이 없는 지역을 얼려 두는 수 (넘으면 가장 오래된 것부터 버린다 — 다시 가면 새로 채워진다) */
@@ -814,8 +816,11 @@ function questReward(state: GameState, p: PlayerState, i: number, slot: number):
   state.events.push({ type: 'questReward', p: p.id, q: i })
 }
 
-/** 용병 값: 150 + 레벨 × 40 */
-export const mercPrice = (level: number) => 150 + level * 40
+/**
+ * 용병 값 (2026-10-22 사용자: "고용 가격이 너무 저렴해 — 1명 늘어날 때마다, 레벨마다 더 높아지게"):
+ * (300 + 레벨 × 120 + 레벨² × 6) × (지금 데리고 있는 용병 수 + 1) · 10 골드 단위. 1레벨 430 · 10레벨 2,100 · 30레벨 9,300 — 둘째는 두 배 · 셋째는 세 배
+ */
+export const mercPrice = (level: number, have = 0) => Math.round(((300 + level * 120 + level * level * 6) * (have + 1)) / 10) * 10
 
 /**
  * 용병 대장 (GUIDE 8장 — 디아블로 2): 빈 자리에 용병을 앉힌다. 용병은 **sim 안의 봇**(결정론 — 봇 기억이 상태에 있다)이라
@@ -823,6 +828,16 @@ export const mercPrice = (level: number) => 150 + level * 40
  * 방 봇처럼 내 레벨 · 내 장비 수준 · 능력치 · 스킬 · 숙련을 다 찍고 온다(botSheet — 사용자: "용병도 방 만들기 봇처럼").
  * arg = 캐릭터 번호 · 100 + 자리 = 그 용병 내보내기 · 255 = 모두 내보내기.
  */
+/**
+ * 난입할 자리 (호스트가 고른다): 아무도 없는 자리가 먼저, 없으면 용병 자리 — 4인 방을 용병 셋으로 채워도 시청자가 들어올 수 있게
+ * (2026-10-22). 사람 · 방 봇 · 영상 동료 자리는 주지 않는다. 없으면 -1
+ */
+export function joinSeat(state: GameState): number {
+  const free = state.players.findIndex((q) => q.left)
+  if (free >= 0) return free
+  return state.players.findIndex((q) => q.merc >= 0 && !q.cameo)
+}
+
 function hireCommand(state: GameState, p: PlayerState, arg: number): void {
   if (state.mode !== 'dungeon' || p.merc >= 0 || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'captain') return
   if (arg === 255 || (arg >= 100 && arg < 100 + state.players.length)) {
@@ -839,7 +854,7 @@ function hireCommand(state: GameState, p: PlayerState, arg: number): void {
     return
   }
   const char = PLAYABLE[arg]
-  const g = mercPrice(p.level)
+  const g = mercPrice(p.level, state.players.filter((q) => q.merc === p.id && !q.left && !q.cameo).length)
   if (!char || p.gold < g) return
   const seat = state.players.find((q) => q.vacant && q.left)
   if (!seat) return
@@ -1683,7 +1698,10 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
     stepDowned(state, inputs)
     stepInteract(state, map, inputs)
   }
-  if (state.phase === 'playing' && state.monsters.length > 0) stepMonsters(state, map)
+  if (state.phase === 'playing' && state.monsters.length > 0) {
+    rushLeft(state)
+    stepMonsters(state, map)
+  }
   if (state.rift) stepRift(state, map)
   if (state.mode === 'dungeon' && state.phase === 'playing') stepCurses(state, map)
   if (state.allies?.length) stepAllies(state, map)
@@ -1721,14 +1739,18 @@ function checkOver(state: GameState): void {
 
 /**
  * 빈 자리에 사람을 넣는다 (난입). 호스트가 정한 틱에 **모두가 같이** 호출해야 결정론이 유지된다.
- * 던전은 동료 곁에, 투기장은 적에게서 먼 곳에.
+ * 던전은 동료 곁에, 투기장은 적에게서 먼 곳에. 빈 자리가 없으면 호스트가 용병 자리를 준다(joinSeat) — 용병은 물러난다.
  */
 export function joinPlayer(state: GameState, maps: MapSource, idx: number, char: CharacterId, team = 0, sheet?: Sheet): void {
   const mapOf = mapFn(maps)
   const p = state.players[idx]
   if (!p) return
   roleOn = state.mode === 'dungeon'
+  if (p.merc >= 0 && !p.left) state.events.push({ type: 'hire', p: idx, by: p.merc, on: false })
   Object.assign(p, makePlayer(idx, char, state.mode === 'arena' ? team : 0, sheet))
+  // makePlayer 에 없는 칸 — 용병 자리였으면 봇 기억이 남아 sim 이 계속 대신 움직였다
+  p.bot = undefined
+  p.cameo = undefined
   if (state.mode === 'arena') {
     p.area = 0
     const a = ensureArea(state, 0, mapOf(0), false)
@@ -1851,6 +1873,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     p.stamina = Math.min(p.staminaMax, p.stamina + STAMINA_REGEN * (w.melee ? 2.4 : 1) * (1 + p.st[ST_STAMINA] / 100))
   }
   if (p.invuln > 0) p.invuln--
+  if (p.rollInv) p.rollInv--
   if (p.bossCd) p.bossCd--
   if (p.legInjury > 0) p.legInjury--
   const recover = c.id === 'chim' ? w.recoilRecover * CHIM.recoverMul : w.recoilRecover
@@ -1957,6 +1980,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     if (c.id === 'uwon') p.invuln = Math.max(p.invuln, p.dashTimer + UWON.invulnAfterDash)
     // 던전: 구르기 끝에 무적 유예 (DASH_GRACE — 합쳐 0.25초 · 승빠란 빼고)
     else if (dungeon && c.id !== 'seungwoo') p.invuln = Math.max(p.invuln, p.dashTimer + DASH_GRACE)
+    // 구르기가 준 무적이 어디까지인가 (즉사기는 이것으로 못 피한다 — killOutright). 이미 있던 다른 무적은 넣지 않는다
+    const rollTicks = p.dashTimer + (c.id === 'uwon' ? UWON.invulnAfterDash : dungeon && c.id !== 'seungwoo' ? DASH_GRACE : 0)
+    p.rollInv = Math.max(p.rollInv ?? 0, rollTicks)
     // 레드카펫: 구르기가 줄지 않고, 구를 때마다 주변을 친다
     if (p.fx[FX_CARPET] > 0) {
       if (dungeon) p.dashCharges = Math.min(DASH_MAX, p.dashCharges + 1)
@@ -2212,7 +2238,9 @@ function downPlayer(state: GameState, p: PlayerState, by = -1): void {
  */
 function killOutright(state: GameState, p: PlayerState, by: number): void {
   if (!isActive(p) || state.phase !== 'playing') return
-  if (p.invuln > 0 || p.dashTimer > 0) return
+  // 구르기 무적으로는 못 피한다 — 범위 밖으로 나가야 한다 (2026-10-22 사용자: "용병 매직란이 즉사기에 안 죽는다" — 봇이 터지기 직전에
+  // 제자리에서 굴러 살았다 · 사람도 같았다). 되살아남 · 부활 · 매직란 궁극기 같은 다른 무적이 구르기 몫보다 길면 산다
+  if (p.invuln > (p.rollInv ?? 0)) return
   p.dmgTaken += p.hp
   state.events.push({ type: 'hurt', p: p.id, by, x: p.x, y: p.y, dmg: p.hp })
   state.events.push({ type: 'ultHit', p: p.id, x: p.x, y: p.y })
@@ -3324,15 +3352,28 @@ export function syncSandbags(state: GameState, map: GameMap): void {
 
 function wakePack(state: GameState, pack: number, x: number, y: number): void {
   let kind = -1
+  let boss: Monster | null = null
   for (const m of state.monsters) {
     if (m.pack !== pack || m.st !== MS_SLEEP || m.hp <= 0) continue
     m.st = MS_CHASE
     // 한꺼번에 똑같이 움직이지 않게 첫 공격을 조금씩 늦춘다 (id 로 정하므로 결정론)
     m.cd = 10 + (m.id % 5) * 8
     if (kind < 0) kind = m.kind
+    if (MONSTER_LIST[m.kind].boss && m.sum === undefined) boss = m
   }
   // kind = 무리의 첫 괴물 (깨어날 때 그 괴물의 소리 — audio/sfx.ts voice)
   if (kind >= 0) state.events.push({ type: 'wake', pack, x, y, kind })
+  if (boss) bossCut(state, boss)
+}
+
+/**
+ * 막 보스 등장 장면 (2026-10-22 사용자: "보스로 강제 시야 전환될 때 다른 졸개 몬스터들은 정지 · 암막을 모두 걷어 보스가 제대로 보이게 ·
+ * 보스마다 등장 음성"): 그 지역의 다른 괴물은 BOSS_CUT_TICKS 동안 멈춘다(hold). 화면 · 목소리는 이 이벤트로 (renderer3d · sfx)
+ */
+export const BOSS_CUT_TICKS = Math.round(2.2 * TICK_RATE)
+function bossCut(state: GameState, boss: Monster): void {
+  for (const o of state.monsters) if (o !== boss && o.hp > 0 && !MONSTER_LIST[o.kind].boss) o.hold = BOSS_CUT_TICKS
+  state.events.push({ type: 'bossCut', m: boss.id, kind: boss.kind, x: boss.x, y: boss.y })
 }
 
 /** 총소리가 닿는 잠든 무리를 깨운다 (무리 번호 순서로) */
@@ -3474,14 +3515,15 @@ const SUM_HORDE = 0
 const SUM_ELITE = 1
 const SUM_UNIQUE = 2
 const SUM_BOSS = 3
+/** 총잡이 무리: 총 쏘는 괴물 넷 (종류를 돌려 가며) */
+const SUM_GUN = 4
 
 /**
  * 후원 이벤트 (2026-09-23 — core/donate.ts). 입력 명령이라 모두의 판에서 같은 틱에 같게 일어난다.
  * 마을 · 투기장 · 죽어 있을 때는 없다(세션이 던전에 나갈 때까지 들고 있다).
  */
-function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: number): void {
-  const ev = donateEvent(arg & 15)
-  const seq = arg >> 4
+function donateCommand(state: GameState, map: GameMap, p: PlayerState, id: number, seq: number): void {
+  const ev = donateEvent(id)
   if (!ev || state.mode !== 'dungeon' || isTown(p.area) || !p.alive || p.out) return
   // 사람에게 거는 효과(화면 흔들림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
   // 같이 하는 사람들은 후원받지 못하니 효과는 모두에게"). 다른 지역에 있는 파티원도 받는다
@@ -3508,6 +3550,15 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, arg: numb
       break
     case 'boss':
       lead = summon(state, map, p, SUM_BOSS, seq)
+      break
+    case 'gun':
+      lead = summon(state, map, p, SUM_GUN, seq)
+      break
+    case 'march':
+      // 괴물 대행진: 좀비 떼 둘 + 정예 무리 하나 (MARCH_SIZE 스물)
+      lead = summon(state, map, p, SUM_ELITE, seq)
+      summon(state, map, p, SUM_HORDE, seq)
+      summon(state, map, p, SUM_HORDE, seq)
       break
     case 'hell':
       lead = summon(state, map, p, SUM_BOSS, seq)
@@ -3713,7 +3764,8 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   const pow = Math.round(levelPow(lvl) * tr.pow * (rs?.pow ?? 1))
   const pool = summonPool(act)
   const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
-  const kind = tier === SUM_BOSS && boss !== undefined ? boss : pool[randInt(state.rng, 0, pool.length)] ?? GHOUL_KIND
+  const guns = tier === SUM_GUN ? GUN_KINDS : null
+  const kind = tier === SUM_BOSS && boss !== undefined ? boss : guns ? guns[randInt(state.rng, 0, guns.length)] : pool[randInt(state.rng, 0, pool.length)] ?? GHOUL_KIND
   const r = MONSTER_LIST[kind].r
   // 자리: 여러 방향을 재어 벽에 막히지 않고 가장 멀리 간 곳 (moveCircle — 벽을 넘지 않는다)
   let at = { x: p.x, y: p.y }
@@ -3763,10 +3815,14 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
   for (let i = 0; i < more; i++) {
     const a = (a0 + 200 + i * 341) & 1023
     const g = moveCircle(map, at.x, at.y, r, cosA(a) * (40 + (i >> 2) * 30), sinA(a) * (40 + (i >> 2) * 30))
-    wake(makeMonster(state, kind, g.x, g.y, pack, hpMul, pow, lvl), i + 1)
+    // 총잡이 무리는 종류를 돌려 가며 (소총 · 산탄총 · 기관단총 · 저격총)
+    const k = guns ? guns[(guns.indexOf(kind) + i + 1) % guns.length] : kind
+    wake(makeMonster(state, k, g.x, g.y, pack, hpMul, pow, lvl), i + 1)
   }
   return lead
 }
+/** 총 쏘는 괴물 (monsters.ts 의 gun 이 있는 것 — 보스 빼고) */
+const GUN_KINDS = MONSTER_LIST.map((d, i) => (d.gun && !d.boss ? i : -1)).filter((i) => i >= 0)
 
 /** 분열로 나온 구울을 넣는다: 깨어 있고, 죽은 자리 둘레에 조금씩 벌려 놓는다 */
 function flushSpawns(state: GameState, map: GameMap): void {
@@ -4018,8 +4074,8 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     else if (npcNear(p.area, p.x, p.y) === 'stash') p.stash = sortItems(p.stash)
     return
   }
-  if (cmd === CMD_DONATE) {
-    donateCommand(state, map, p, arg)
+  if (cmd === CMD_DONATE || cmd === CMD_DONATE_HI) {
+    donateCommand(state, map, p, (arg & 15) + (cmd === CMD_DONATE_HI ? 16 : 0), arg >> 4)
     return
   }
   if (cmd === CMD_LOCK) {
@@ -4181,6 +4237,30 @@ function eliteAffixTick(state: GameState, m: Monster, tick: number): void {
     state.zones.push({ id: state.nextFxId++, kind: ZONE_ACID, owner: -1, x: m.x, y: m.y, r: Math.round(0.85 * TILE), t: 200, max: 200, dmg: Math.max(2, Math.round((4 * m.pow) / 100)) })
 }
 
+/**
+ * 남은 괴물 몰려오기 (2026-10-22 사용자: "남은 괴물 찾으러 다니는 거 귀찮아 — 맵에 25% 이하가 남으면 플레이어에게 몰려들어 공격"):
+ * 들판 · 던전(마을 · 보스 방 · 시련 빼고)의 남은 괴물이 처음의 RUSH_LEFT 이하면 잠든 무리까지 모두 깨워 가장 가까운 사람을 쫓게 한다 —
+ * 깨어 있는 괴물은 원래 거리와 상관없이 가장 가까운 사람을 쫓는다. 보물 고블린 · 후원 소환은 세지 않는다. 30틱마다 본다
+ */
+export const RUSH_LEFT = 0.25
+function rushLeft(state: GameState): void {
+  if (state.mode !== 'dungeon' || state.tick % 30 !== 0 || state.monstersTotal < 8) return
+  const def = areaDef(state.curArea)
+  if (def.kind === 'town' || def.kind === 'boss' || isRift(state.curArea)) return
+  let left = 0
+  for (const m of state.monsters) if (m.hp > 0 && m.sum === undefined && MONSTER_LIST[m.kind].attack !== 'flee') left++
+  if (left === 0 || left > state.monstersTotal * RUSH_LEFT) return
+  let woke = 0
+  for (const m of state.monsters) {
+    if (m.hp <= 0 || m.st !== MS_SLEEP || MONSTER_LIST[m.kind].boss || MONSTER_LIST[m.kind].attack === 'flee') continue
+    m.st = MS_CHASE
+    m.target = nearestActive(state, m.x, m.y, false)
+    m.cd = 30 + (woke % 8) * 8
+    woke++
+  }
+  if (woke > 0) state.events.push({ type: 'rush', n: left })
+}
+
 function stepMonsters(state: GameState, map: GameMap): void {
   const tick = state.tick
   for (const m of state.monsters) {
@@ -4190,6 +4270,11 @@ function stepMonsters(state: GameState, map: GameMap): void {
     if (m.rage && --m.rage === 0) m.pow = Math.round(m.pow / RAGE_POW)
     if (m.mark > 0) m.mark--
     if (m.vuln > 0 && --m.vuln === 0) m.vulnPct = 0
+    // 보스 등장 장면 동안 멈춤 (bossCut) — 잠든 것은 그대로 잔다
+    if (m.hold) {
+      m.hold--
+      if (m.st !== MS_SLEEP) continue
+    }
     if (m.st === MS_SLEEP) {
       // 8틱에 한 번만 본다 (잠든 무리가 수십이라 매 틱 레이캐스트는 아깝다)
       if (((tick + m.id) & 7) !== 0) continue
@@ -4470,7 +4555,7 @@ function bossImmune(state: GameState): void {
   for (const m of state.monsters) {
     if (m.hp <= 0 || !MONSTER_LIST[m.kind].boss) continue
     // 보스는 기절하지 않는다 — 걸린 기절은 경직 막대로 (1초 기절 ≈ 막대 12%)
-    if (m.stun > 0 && state.mode === 'dungeon' && (m.stagT ?? 0) <= 0) addStagger(state, m, m.stun * 2)
+    if (m.stun > 0 && state.mode === 'dungeon' && (m.stagT ?? 0) <= 0) addStagger(state, m, m.stun / 2)
     clearCc(m)
   }
 }

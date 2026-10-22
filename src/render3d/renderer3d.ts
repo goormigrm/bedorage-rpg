@@ -1424,6 +1424,15 @@ export class Renderer3D {
         case 'questReward':
           if (e.p === localPlayer) this.hud.notice(`보상: ${QUESTS[e.q].reward}`, '#ffd86a')
           break
+        case 'bossCut': {
+          // 보스 등장 (sim 이 보스가 깬 틱에 — 그동안 다른 괴물은 멈춘다)
+          const m = state.monsters.find((q) => q.id === e.m)
+          if (m) this.announce(m)
+          break
+        }
+        case 'rush':
+          this.hud.notice(`남은 괴물 ${e.n} — 모두 몰려온다!`, '#ff9a5a')
+          break
         case 'shopRestock':
           // 진열이 저절로 새로 들어왔다 (시간 — 마을에 들어선 사람과 같은 마을이면)
           if (localPlayer >= 0 && state.players[e.p]?.area === state.players[localPlayer]?.area) this.hud.notice('상인 진열에 새 물건이 들어왔다', '#ffd86a')
@@ -2429,25 +2438,32 @@ export class Renderer3D {
    * 보스 등장 (2026-09-19): 막 보스가 깨어나 처음 눈에 들어오면 이름 배너 · 한 줄 소개 · 화면 흔들림 · 카메라 펀치.
    * 깨어남 이벤트(wake)에는 종류가 없어서, 그리는 쪽이 "깨어 있고 보이는 보스" 를 처음 볼 때 한 번만 알린다.
    */
+  /** 등장 장면은 sim 의 bossCut 이벤트로 (announce). 이것은 이미 깨어 있는 보스를 처음 본 때(난입 · 리싱크) */
   private announceBoss(curr: GameState): void {
     if (curr.mode !== 'dungeon') return
     for (const m of curr.monsters) {
       const def = MONSTER_LIST[m.kind]
       if (!def.boss || m.sum !== undefined || m.st === 0 || m.hp <= 0 || this.bossSeen.has(m.id) || this.hiddenM.has(m.id)) continue
-      this.bossSeen.add(m.id)
-      this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
-      // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다(v0.61.0) — 처음 온 사람은 모른다 (2026-09-25 사용자 고른 개선 2)
-      if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
-      this.shake = Math.max(this.shake, 0.3)
-      this.punch = Math.max(this.punch, 0.5)
-      // 등장 장면: 화면 위아래 검은 띠 + 카메라가 보스 쪽으로 다가갔다 돌아온다 (2.2초 — 보스 방 보스는 먼저 치기 전엔 가만히라 안전)
-      this.bossCut = { x: m.x * U, z: m.y * U, t: 0 }
-      // quarks: 등장 — 발밑에서 솟는 반짝임 · 사방 불티 · 연기
-      this.quarks.burst('cast', m.x * U, 0.2, m.y * U, 30, { speed: 1.4 })
-      this.quarks.burst('blast', m.x * U, 1.2, m.y * U, 40, { speed: 1.8 })
-      this.quarks.burst('smoke', m.x * U, 0.4, m.y * U, 6)
-      this.hud.cinema(2.2)
+      this.announce(m)
     }
+  }
+
+  private announce(m: Monster): void {
+    const def = MONSTER_LIST[m.kind]
+    if (this.bossSeen.has(m.id)) return
+    this.bossSeen.add(m.id)
+    this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
+    // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다(v0.61.0) — 처음 온 사람은 모른다 (2026-09-25 사용자 고른 개선 2)
+    if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
+    this.shake = Math.max(this.shake, 0.3)
+    this.punch = Math.max(this.punch, 0.5)
+    // 등장 장면: 카메라가 보스 쪽으로 다가갔다 돌아온다 (2초). 위아래 검은 띠는 없고 그동안 시야 안개도 걷는다(updateVision) —
+    // 2026-10-22 사용자: "암막을 모두 걷어서 보스가 제대로 보이게"
+    this.bossCut = { x: m.x * U, z: m.y * U, t: 0 }
+    // quarks: 등장 — 발밑에서 솟는 반짝임 · 사방 불티 · 연기
+    this.quarks.burst('cast', m.x * U, 0.2, m.y * U, 30, { speed: 1.4 })
+    this.quarks.burst('blast', m.x * U, 1.2, m.y * U, 40, { speed: 1.8 })
+    this.quarks.burst('smoke', m.x * U, 0.4, m.y * U, 6)
   }
 
   private updateVision(curr: GameState, opts: RenderOptions): void {
@@ -2455,7 +2471,8 @@ export class Renderer3D {
     // ☀ 철면수심전용은 시야 안개가 없다 — 다 보인다 (2026-10-08 사용자: "밝은 맵인데 안개가 괜히 성능 낭비와 품질 저하를 부른다 — 아예 없애줘").
     // 후원 "시야 축소" 가 걸린 동안만 안개를 쓴다(돈을 낸 효과 — 그때는 구조물도 재질에서 부드럽게 흐려진다, vision.ts fogStructures)
     const darkNow = lp >= 0 && (curr.players[lp]?.don?.[DON_DARK] ?? 0) > 0
-    const fog = (opts.fog ?? true) && lp >= 0 && (!isBright() || darkNow)
+    // 보스 등장 장면 동안은 안개를 걷는다 (2026-10-22 — 카메라가 보스 쪽으로 가는데 보스가 어둠 속이었다)
+    const fog = (opts.fog ?? true) && lp >= 0 && (!isBright() || darkNow) && !this.bossCut
     this.vision.setVisible(fog)
     const n = curr.players.length
     if (this.hidden.length !== n) this.hidden = curr.players.map(() => false)
@@ -2880,30 +2897,20 @@ export class Renderer3D {
     if (pts.length < 2) return
     const ctx = this.hud.ctx
     ctx.save()
-    ctx.lineJoin = 'round'
-    // 화살표가 목표 쪽으로 흐르듯 (0.6초에 한 칸) · 가까운 것부터 진하게
+    // 점 (2026-10-22 사용자: "> 모양은 각도가 계속 바뀌어 정신없다 — 점만 따라가면 되니까 점으로") — 목표 쪽으로 흐르듯 (0.6초에 한 칸) · 가까운 것부터 진하게
     const flow = (this.t / 0.6) % 1
     for (let i = 1; i < pts.length; i += 2) {
-      const a = this.worldToScreen(pts[i - 1].x * U, 0.05, pts[i - 1].y * U)
       const b = this.worldToScreen(pts[i].x * U, 0.05, pts[i].y * U)
-      const ang = Math.atan2(b.y - a.y, b.x - a.x)
       const k = (i + flow * 2) / pts.length
-      ctx.save()
       ctx.globalAlpha = Math.max(0.2, 0.95 * (1 - k))
-      ctx.translate(b.x, b.y)
-      ctx.rotate(ang)
-      // 크고 굵게 — ☀ 모래 바닥에서도 보이게 진한 테두리
       ctx.beginPath()
-      ctx.moveTo(-14, -12)
-      ctx.lineTo(6, 0)
-      ctx.lineTo(-14, 12)
-      ctx.lineWidth = 10
+      ctx.arc(b.x, b.y, 7, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffd84a'
+      ctx.fill()
+      // 진한 테두리 — ☀ 모래 바닥에서도 보이게
+      ctx.lineWidth = 3
       ctx.strokeStyle = 'rgba(30,18,0,0.75)'
       ctx.stroke()
-      ctx.lineWidth = 5.5
-      ctx.strokeStyle = '#ffd84a'
-      ctx.stroke()
-      ctx.restore()
     }
     ctx.restore()
   }
@@ -4660,8 +4667,10 @@ export class Renderer3D {
       return
     }
     l.visible = true
-    l.intensity = dark.lantern * 9 * (1 + Math.sin(this.t * 2.1) * 0.05)
-    l.distance = 12 + best.top * 1.6
+    // 등장 장면 동안은 두 배 넘게 밝힌다 — 🌙 보스 방은 어두워 카메라가 가도 보스가 어둠에 묻혔다 (2026-10-22 "보스가 제대로 보이게")
+    const cut = this.bossCut ? 2.4 : 1
+    l.intensity = dark.lantern * 9 * cut * (1 + Math.sin(this.t * 2.1) * 0.05)
+    l.distance = (12 + best.top * 1.6) * (this.bossCut ? 1.4 : 1)
     l.position.set(best.x + Math.sin(YAW) * best.top * 0.45, best.top * 0.6, best.z + Math.cos(YAW) * best.top * 0.45)
   }
 

@@ -97,6 +97,8 @@ export const CMD_LOCK = 24
  * 후원 번호는 후원자 이름표를 찾는 열쇠다 — 이름(문자열)은 입력에 못 실어 방 통로(donate 메시지)로 따로 보낸다
  */
 export const CMD_DONATE = 25
+/** 후원 이벤트 번호 16 ~ 31 (번호 15 를 다 써서 — 2026-10-22): arg 아래 네 비트 = 번호 - 16, 위 네 비트 = 후원 번호 */
+export const CMD_DONATE_HI = 32
 /** 돈 쓸 곳 (2026-09-25 사용자: "돈 쓸 곳을 더 만들어 줘") — 상인: 가방 칸 늘리기 · 진열 새로 받기 · 보관함: 칸 늘리기 */
 export const CMD_BAGUP = 26
 export const CMD_STASHUP = 27

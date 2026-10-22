@@ -592,6 +592,8 @@ body { background: var(--bg); }
 .seg button { color: var(--ink-2); font-family: "IBM Plex Sans KR", sans-serif; }
 .seg button.on { background: linear-gradient(180deg, #5a4420, #3a2c14); color: #ffe6a8; box-shadow: inset 0 0 0 1px #c9a24a; }
 .overlay { background: rgba(0,0,0,.55); }
+/* 메뉴 · 결과 덮개는 HUD 위 (첫 판 안내 말풍선 z 15 · 창 20 이 Esc 메뉴의 설정 줄을 덮었다 — 2026-10-22 tools/uicheck.mjs) */
+.game-ui .overlay { z-index: 40; }
 .overlay .box { background: linear-gradient(180deg, rgba(28,24,21,.98), rgba(10,9,8,.98)); border: 1.5px solid rgba(201,162,74,.6); border-radius: 6px;
   box-shadow: 0 24px 80px rgba(0,0,0,.8), inset 0 0 0 4px rgba(0,0,0,.35); }
 .overlay h2 { font-family: "Nanum Myeongjo", serif; font-weight: 800; color: #f1d58a; }
@@ -704,7 +706,7 @@ body { background: var(--bg); }
 .d2-side .lobbychat h2 .k { font: 500 12.5px "IBM Plex Sans KR", sans-serif; color: #8a7a60; }
 .d2-side .lobbychat .lchat { flex: 1; min-height: 0; display: flex; }
 .d2-side .lobbychat .chat.docked { flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.d2-side .lobbychat .chat.docked .chat-log { flex: 1; height: auto; min-height: 140px; }
+.d2-side .lobbychat .chat.docked .chat-log { flex: 1; height: auto; min-height: 64px; } /* 작은 화면에서 입력칸이 칸 밖으로 나가지 않게 (140 → 64 — 남는 높이는 flex 로 늘어난다 · 2026-10-22 uicheck) */
 .d2-side .lobbychat .chat.docked .chat-log:empty::before { content: "로비에 접속한 모두와 이야기합니다 — 같이 할 사람을 모아 보세요"; }
 /* 저작 · 안내는 맨 아래에 따로 (필요한 칸과 구분) */
 .d2-foot { flex: none; padding: 8px 4px 2px; border-top: 1px solid rgba(201,162,74,.22); font-size: 12.5px; line-height: 1.55; color: #7e7260; }
@@ -1439,6 +1441,11 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .cr-title .egg { font-size: 40px; }
 .cr-note { color: #9a8c74; font-size: 13px; margin: 0 0 40px; }
 .cr-sec { margin: 0 0 44px; }
+/* 만든 사람 — 크레딧 맨 위 (2026-10-22 사용자: "제작 · 기획 · 개발 · 유지보수 담당으로 — 1인 개발 게임인 걸 강조") */
+.cr-maker { margin: 0 0 56px; }
+.cr-maker h4 { font: 800 17px "Nanum Myeongjo", serif; color: #f1d58a; letter-spacing: .12em; margin: 0 0 10px; }
+.cr-maker .cr-who { font: 800 38px "Nanum Myeongjo", serif; color: #ffe39a; text-shadow: 0 0 18px rgba(255,190,80,.45); }
+.cr-maker p { margin: 8px 0 0; font: 700 15px "IBM Plex Sans KR", sans-serif; color: #e2d4b4; letter-spacing: .06em; }
 .cr-sec h4 { font: 800 17px "Nanum Myeongjo", serif; color: #f1d58a; letter-spacing: .12em; margin: 0 0 12px; }
 .cr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .cr-row span { text-align: right; color: #e8dcc4; }
