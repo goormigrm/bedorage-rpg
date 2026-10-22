@@ -74,23 +74,27 @@ describe('후원 이벤트 — 소환', () => {
     expect(seen).toBeGreaterThan(40)
   })
 
-  it('이벤트는 열 가지이고 금액이 오를수록 세다(번호 · 금액 순서가 같다)', () => {
+  it('이벤트는 열 가지 · 금액이 모두 다르다', () => {
     expect(DONATE_EVENTS.length).toBe(10)
-    for (let i = 1; i < DONATE_EVENTS.length; i++) expect(DONATE_EVENTS[i].amount).toBeGreaterThan(DONATE_EVENTS[i - 1].amount)
+    expect(new Set(DONATE_EVENTS.map((e) => e.amount)).size).toBe(10)
   })
 
-  it('금액표: 1만 5천 칸이 없고 2만 · 3만 · 5만 · 10만 (2026-09-23 요청) · 넘는 것 중 가장 비싼 이벤트', () => {
-    expect(DONATE_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000])
+  // 2026-10-22 사용자: "방송 중 최대 금액이 2만 원이었다 — 천 원 ~ 5천 원 사이에 몬스터가 다양하게 · 지옥문이 3만 원 · 응원도 낮게"
+  it('금액표: 천 원 ~ 5천 원은 괴물(좀비 떼 · 정예 무리 · 중간보스 · 막 보스) · 지옥문 3만 · 넘는 것 중 가장 비싼 이벤트', () => {
     const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
-    expect(eventForAmount(1000, cfg)?.key).toBe('horde')
-    expect(eventForAmount(15000, cfg)?.key).toBe('unique')
-    expect(eventForAmount(20000, cfg)?.key).toBe('seal')
-    expect(eventForAmount(49999, cfg)?.key).toBe('rage')
+    expect([1000, 2000, 3000, 5000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'elite', 'unique', 'boss'])
+    expect(eventForAmount(1500, cfg)?.key).toBe('shake')
+    expect(eventForAmount(2500, cfg)?.key).toBe('dark')
+    expect(eventForAmount(4000, cfg)?.key).toBe('invert')
+    expect(eventForAmount(10000, cfg)?.key).toBe('seal')
+    expect(eventForAmount(20000, cfg)?.key).toBe('rage')
+    expect(eventForAmount(30000, cfg)?.key).toBe('hell')
     expect(eventForAmount(100000, cfg)?.key).toBe('hell')
+    expect(CHEER_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000])
     expect(eventForAmount(500000, cfg)?.key).toBe('hell')
     // 끈 칸(0 원)은 건너뛴다
-    expect(eventForAmount(100000, { ...cfg, amounts: cfg.amounts.map((a, i) => (i === 9 ? 0 : a)) })?.key).toBe('boss')
+    expect(eventForAmount(100000, { ...cfg, amounts: cfg.amounts.map((a, i) => (i === 9 ? 0 : a)) })?.key).toBe('rage')
   })
 
   it('마을에서는 아무 일도 없다', () => {
@@ -262,8 +266,8 @@ describe('후원 이벤트 — 응원', () => {
   it('금액이 넘는 단계 중 가장 비싼 것 · 끈 단계는 건너뛴다', () => {
     expect(cheerForAmount(999, cfg)).toBeUndefined()
     expect(cheerForAmount(1000, cfg)?.name).toBe('회복 구슬 3개')
-    expect(cheerForAmount(7000, cfg)?.name).toBe('회복 구슬 5개 + 공격 속도')
-    expect(cheerForAmount(10000, cfg)?.name).toBe('아군 괴물 넷 + 공격 강화')
+    expect(cheerForAmount(2500, cfg)?.name).toBe('회복 구슬 5개 + 공격 속도')
+    expect(cheerForAmount(3000, cfg)?.name).toBe('아군 괴물 넷 + 공격 강화')
     expect(cheerForAmount(500000, cfg)?.name).toBe('아군 보스 + 공격 강화')
     expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('아군 괴물 넷 + 공격 강화')
   })
@@ -566,30 +570,53 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
 // 2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋을 것 같다"
 describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', () => {
   const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) })
-  it('시야 축소 · 거꾸로 걷기를 둘 다 3천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
+  it('시야 축소 · 거꾸로 걷기를 둘 다 2천 5백 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
     const cfg = base()
     const dark = DONATE_EVENTS.findIndex((e) => e.key === 'dark')
     const inv = DONATE_EVENTS.findIndex((e) => e.key === 'invert')
     cfg.amounts[inv] = cfg.amounts[dark]
     expect(tiedAmounts(cfg.amounts)).toEqual(new Set([cfg.amounts[dark]]))
-    expect(eventForAmount(3000, cfg, () => 0)?.key).toBe('dark')
-    expect(eventForAmount(3000, cfg, () => 0.999)?.key).toBe('invert')
-    expect(eventForAmount(4999, cfg, () => 0.5)?.key).toBe('invert')
+    expect(eventForAmount(2500, cfg, () => 0)?.key).toBe('dark')
+    expect(eventForAmount(2500, cfg, () => 0.999)?.key).toBe('invert')
+    expect(eventForAmount(2999, cfg, () => 0.5)?.key).toBe('invert')
     const got = new Set<string>()
-    for (let i = 0; i < 40; i++) got.add(eventForAmount(3500, cfg)!.key)
+    for (let i = 0; i < 40; i++) got.add(eventForAmount(2700, cfg)!.key)
     expect(got).toEqual(new Set(['dark', 'invert']))
-    // 더 비싼 칸(정예 5천)이 넘으면 무작위 없이 그것
-    expect(eventForAmount(5000, cfg, () => 0)?.key).toBe('elite')
+    // 더 비싼 칸(중간보스 3천)이 넘으면 무작위 없이 그것
+    expect(eventForAmount(3000, cfg, () => 0)?.key).toBe('unique')
   })
   it('겹치지 않으면 예전과 같다 · 끈 칸(0 원)은 겹쳐도 세지 않는다 · 응원도 같다', () => {
     const cfg = base()
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
-    expect(eventForAmount(3000, cfg, () => 0.999)?.key).toBe('dark')
+    expect(eventForAmount(2500, cfg, () => 0.999)?.key).toBe('dark')
     cfg.amounts[0] = 0
     cfg.amounts[1] = 0
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
     cfg.cheers[1] = cfg.cheers[0]
     expect(cheerForAmount(1000, cfg, () => 0)?.id).toBe(CHEER_EVENTS[0].id)
     expect(cheerForAmount(1000, cfg, () => 0.999)?.id).toBe(CHEER_EVENTS[1].id)
+  })
+})
+
+// 2026-10-22: 손대지 않은 예전 처음 금액표는 새 처음 금액으로 (방송인이 고친 표는 그대로)
+describe('예전 처음 금액표 이어받기', () => {
+  it('v1.8.2 까지의 처음 금액 그대로면 새 표 · 하나라도 고쳤으면 그대로', async () => {
+    const { loadStreamCfg } = await import('../src/game/stream')
+    const store = new Map<string, string>()
+    const ls = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) }
+    const g = globalThis as unknown as { localStorage?: unknown }
+    const was = g.localStorage
+    g.localStorage = ls
+    try {
+      ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000], cheers: [1000, 5000, 10000, 30000] }))
+      let c = loadStreamCfg()
+      expect(c.amounts).toEqual(DONATE_EVENTS.map((e) => e.amount))
+      expect(c.cheers).toEqual(CHEER_EVENTS.map((e) => e.amount))
+      ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 90000] }))
+      c = loadStreamCfg()
+      expect(c.amounts[9]).toBe(90000)
+    } finally {
+      g.localStorage = was
+    }
   })
 })

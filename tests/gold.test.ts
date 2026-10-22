@@ -49,7 +49,7 @@ function fill(s: GameState, n: number, locked = 0): void {
   }
 }
 
-describe('가방 칸 늘리기 (상인)', () => {
+describe('가방 칸 늘리기 (어디서나)', () => {
   it('골드를 내면 여섯 칸 늘고, 값은 갈수록 비싸다', () => {
     const { s, cmd } = game()
     const p = s.players[0]
@@ -64,18 +64,17 @@ describe('가방 칸 늘리기 (상인)', () => {
     expect(bagUpPrice(p.bagMax)).toBeGreaterThan(price)
   })
 
-  it('돈이 모자라거나 상인 곁이 아니면 그대로', () => {
+  it('돈이 모자라면 그대로 · 상인 곁이 아니어도 된다 (2026-10-22 — 가방 창에서 바로)', () => {
     const { s, cmd } = game()
     const p = s.players[0]
     at(s, 'merchant')
     p.gold = bagUpPrice(p.bagMax) - 1
     cmd(CMD_BAGUP, 0)
     expect(p.bagMax).toBe(BAG_SIZE)
-    // 보관함 곁에서는 상인 일을 못 한다
     at(s, 'stash')
     p.gold = 999999
     cmd(CMD_BAGUP, 0)
-    expect(p.bagMax).toBe(BAG_SIZE)
+    expect(p.bagMax).toBe(BAG_SIZE + BAG_STEP)
   })
 
   it('끝까지 늘리면 멈춘다', () => {

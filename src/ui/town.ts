@@ -162,7 +162,8 @@ registerText(LINES, 'trial', '문 너머 놀이는 매번 달라요. 이기는 �
 export class TownPanel {
   readonly el: HTMLElement
   open: NpcId | null = null
-  private tab: 'buy' | 'sell' = 'buy'
+  // 처음은 팔기 (2026-10-22 사용자: "상점에서는 팔기 창이 먼저 — 사실상 살 일이 별로 없다")
+  private tab: 'buy' | 'sell' = 'sell'
   /** 대장장이 탭 (강화 · 전설 벼리기) */
   private smithTab: 'up' | 'forge' = 'up'
   /** "전부 팔기" 를 한 번 눌렀다 (한 번 더 눌러야 실제로 판다 — 실수 방지) */
@@ -224,6 +225,8 @@ export class TownPanel {
       this.talkFor = npc
       this.talkN = 0
       if (npc) this.talkTimer = window.setInterval(() => this.typeOn(), 24)
+      // 상인 창은 열 때마다 팔기부터
+      if (npc === 'merchant') this.tab = 'sell'
     }
     this.sellArmed = false
     this.lastForge = null
@@ -283,12 +286,13 @@ export class TownPanel {
         const all = me.bag.filter((it) => !it.lk)
         const sum = (a: Item[]) => a.reduce((g, it) => g + itemValue(it), 0)
         const locked = me.bag.length - all.length
+        // 전부 팔기를 맨 위에 크게 (2026-10-22 사용자: "전부 팔기 버튼을 크게") — 실수 방지로 두 번 눌러야 판다
         bulk = `<div class="sell-all">
-          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템 팔기 — ${junk.length}개 · ${sum(junk)} 골드<small>일반 · 마법</small></button>
-          <button class="btn ${this.sellArmed ? 'danger' : 'secondary'}" data-sellall ${all.length ? '' : 'disabled'}>${
-            this.sellArmed ? `정말 전부? — ${all.length}개 · ${sum(all)} 골드` : `전부 팔기 — ${all.length}개 · ${sum(all)} 골드`
-          }<small>${this.sellArmed ? '한 번 더 누르면 팝니다' : '낀 것은 빼고'}</small></button>
-          <p class="tp-hint">잠근 것 ${locked}개는 팔지 않습니다 — 가방(${keyLabel('bag')}) 에서 <b>Shift+클릭</b>으로 잠급니다.</p>
+          <button class="btn ${this.sellArmed ? 'danger' : 'main'} sell-big" data-sellall ${all.length ? '' : 'disabled'}>${
+            this.sellArmed ? `한 번 더 — ${all.length}개 · ${sum(all)} 골드` : `전부 팔기 — ${all.length}개 · ${sum(all)} 골드`
+          }</button>
+          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템만 팔기 — ${junk.length}개 · ${sum(junk)} 골드</button>
+          ${locked ? `<p class="tp-hint">🔒 잠근 ${locked}개는 안 판다 (가방에서 Shift+클릭)</p>` : ''}
         </div>`
       }
       // 돈 쓸 곳 (2026-09-25 요청): 가방 칸 늘리기 · 진열 새로 받기. 사는 탭에만 둔다

@@ -979,8 +979,8 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     p.stash.splice(arg, 1)
     p.bag.push(it)
     trade('stash', 0, it.uid)
-  } else if (cmd === CMD_BAGUP && npc === 'merchant') {
-    // 가방 칸 늘리기 (2026-09-25 요청 — 돈 쓸 곳). 캐릭터마다 남는다
+  } else if (cmd === CMD_BAGUP) {
+    // 가방 칸 늘리기 (2026-09-25 요청 — 돈 쓸 곳). 캐릭터마다 남는다 · 2026-10-22 부터 어디서나(가방 창에서 — 사용자: "상점 안 가도")
     const price = bagUpPrice(p.bagMax)
     if (!price || p.gold < price || p.bagMax >= BAG_MAX) return
     p.gold -= price

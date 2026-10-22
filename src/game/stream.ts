@@ -74,8 +74,16 @@ export function bubbleFlow(c: Pick<StreamCfg, 'bubbleAmount' | 'bubbleBossLess'>
 export const DEFAULT_BANNED = ['시발', '씨발', 'ㅅㅂ', 'ㅆㅂ', '병신', 'ㅄ', 'ㅂㅅ', '개새끼', '좆', '니애미', '느금마', '애미뒤진']
 
 const CFG_KEY = 'brpg.chzzk.cfg'
-/** 예전 처음 금액 (v0.44.0 — 1만 5천이 있던 것). 저장된 금액이 이것 그대로면 손대지 않은 것이라 새 처음 금액으로 바꾼다 */
-const OLD_DEFAULTS = [1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000]
+/**
+ * 예전 처음 금액들 — 저장된 금액이 이 중 하나 그대로면 손대지 않은 것이라 새 처음 금액으로 바꾼다.
+ * v0.44.0(1만 5천이 있던 것) · v1.8.2 까지(10만 원 지옥문 — 2026-10-22 사용자: "방송 중 최대 금액이 2만 원이었다 — 천 원 ~ 5천 원에 몬스터가 다양하게 · 지옥문 3만 원")
+ */
+const OLD_DEFAULTS = [
+  [1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000],
+  [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000],
+]
+const OLD_CHEERS = [[1000, 5000, 10000, 30000]]
+const sameList = (v: unknown, list: number[]): boolean => Array.isArray(v) && v.length === list.length && v.every((a, i) => Number(a) === list[i])
 
 export function defaultStreamCfg(): StreamCfg {
   return {
@@ -102,7 +110,8 @@ export function loadStreamCfg(): StreamCfg {
   try {
     const v = JSON.parse(localStorage.getItem(CFG_KEY) ?? 'null') as Partial<StreamCfg> | null
     if (!v) return d
-    if (Array.isArray(v.amounts) && v.amounts.length === OLD_DEFAULTS.length && v.amounts.every((a, i) => Number(a) === OLD_DEFAULTS[i])) v.amounts = d.amounts
+    if (OLD_DEFAULTS.some((o) => sameList(v.amounts, o))) v.amounts = d.amounts
+    if (OLD_CHEERS.some((o) => sameList(v.cheers, o))) v.cheers = d.cheers
     const amounts = DONATE_EVENTS.map((e, i) => {
       const a = Number(v.amounts?.[i])
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount

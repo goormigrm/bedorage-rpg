@@ -4979,7 +4979,8 @@ export class Renderer3D {
     ctx.globalAlpha = Math.min(1, left / 350)
     // 보스 즉사기 대사(warn): 크고 검붉게 — 무엇이 오는지 한눈에. 방송 글(시청자 · 후원)은 방송 글자 크기(sayScale)를 곱한다
     const warn = !!say.warn
-    const k = warn ? 1 : this.sayScale
+    // 방송 글은 1.4 배부터 (2026-10-22 사용자: "시청자 채팅도 말풍선이 더 크고 잘 보이게") — 글 20px · 이름 15px
+    const k = warn ? 1 : this.sayScale * 1.4
     const textFont = warn ? `800 19px ${SAY_FONT}` : `700 ${Math.round(14 * k)}px ${SAY_FONT}`
     const nickFont = `800 ${warn ? 13 : Math.round(11 * k)}px ${SAY_FONT}`
     ctx.font = textFont
@@ -4994,11 +4995,10 @@ export class Renderer3D {
     ctx.fillStyle = warn ? '#2a0406' : say.gold ? '#fff4d0' : '#ffffff'
     roundRect(ctx, bx, by, w, h, 10 * k)
     ctx.fill()
-    if (say.gold || warn) {
-      ctx.strokeStyle = warn ? `rgba(255,60,40,${0.6 + 0.4 * Math.sin(performance.now() / 70)})` : '#d8a83a'
-      ctx.lineWidth = warn ? 3 : 2
-      ctx.stroke()
-    }
+    // 테두리: 즉사기 빨강 · 후원 금빛 · 채팅은 어두운 테 — 밝은 바닥(☀)에서 흰 풍선이 묻히지 않게
+    ctx.strokeStyle = warn ? `rgba(255,60,40,${0.6 + 0.4 * Math.sin(performance.now() / 70)})` : say.gold ? '#d8a83a' : 'rgba(20,24,30,0.55)'
+    ctx.lineWidth = warn ? 3 : 2
+    ctx.stroke()
     ctx.beginPath()
     if (flip) {
       ctx.moveTo(head.x - 6, by + 1)

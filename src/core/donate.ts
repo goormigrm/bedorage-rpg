@@ -19,16 +19,16 @@ export interface DonateEvent {
 
 export const DONATE_EVENTS: DonateEvent[] = [
   { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
-  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 2000 },
+  { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 1500 },
   // 이름 암흑 → 시야 축소 (2026-10-07 사용자) — 효과 · 금액 · 번호는 그대로
-  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 3000 },
-  { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 5000 },
-  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 7000 },
-  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 10000 },
-  { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 20000 },
-  { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 30000 },
-  { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 50000 },
-  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 100000 },
+  { id: 3, key: 'dark', name: '시야 축소', desc: '30초 동안 코앞만 보인다', amount: 2500 },
+  { id: 4, key: 'elite', name: '정예 무리', desc: '정예 하나 + 졸개 셋', amount: 2000 },
+  { id: 5, key: 'invert', name: '거꾸로 걷기', desc: '20초 동안 이동이 반대로', amount: 4000 },
+  { id: 6, key: 'unique', name: '중간보스', desc: '우두머리 + 호위 셋', amount: 3000 },
+  { id: 7, key: 'seal', name: '스킬 봉인', desc: '30초 동안 스킬 금지 (궁극기 · 구르기는 된다)', amount: 10000 },
+  { id: 8, key: 'rage', name: '광폭화', desc: '60초 동안 괴물이 1.5배 세고 빠르다', amount: 20000 },
+  { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 5000 },
+  { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 30000 },
 ]
 
 /**
@@ -56,9 +56,9 @@ export interface CheerDef extends DonateEvent {
 // 이름 = 효과 (2026-09-24 사용자: "힘내라 · 함성 · 기적 이런 건 직관적이지 않다 — 무슨 효과인지 간단하게")
 export const CHEER_EVENTS: CheerDef[] = [
   { id: 11, key: 'cheer', name: '회복 구슬 3개', desc: '둘레에 회복 구슬 셋 (밟으면 체력 25%)', amount: 1000, globes: 3, rate: 1, pow: 1, ticks: 0, allies: 0, allyTicks: 0, allyBoss: false },
-  { id: 12, key: 'cheer', name: '회복 구슬 5개 + 공격 속도', desc: '회복 구슬 다섯 · 우리 편 20초 공격 속도 +30%', amount: 5000, globes: 5, rate: 1.3, pow: 1, ticks: 20 * TICK_RATE, allies: 0, allyTicks: 0, allyBoss: false },
-  { id: 13, key: 'cheer', name: '아군 괴물 넷 + 공격 강화', desc: '아군 괴물 넷이 10초 싸운다 · 우리 편 30초 공격력 · 공격 속도 +40%', amount: 10000, globes: 0, rate: 1.4, pow: 1.4, ticks: 30 * TICK_RATE, allies: 4, allyTicks: 10 * TICK_RATE, allyBoss: false },
-  { id: 14, key: 'cheer', name: '아군 보스 + 공격 강화', desc: '막 보스가 20초 우리 편 · 우리 편 40초 공격력 · 공격 속도 +60% · 회복 구슬 다섯', amount: 30000, globes: 5, rate: 1.6, pow: 1.6, ticks: 40 * TICK_RATE, allies: 1, allyTicks: 20 * TICK_RATE, allyBoss: true },
+  { id: 12, key: 'cheer', name: '회복 구슬 5개 + 공격 속도', desc: '회복 구슬 다섯 · 우리 편 20초 공격 속도 +30%', amount: 2000, globes: 5, rate: 1.3, pow: 1, ticks: 20 * TICK_RATE, allies: 0, allyTicks: 0, allyBoss: false },
+  { id: 13, key: 'cheer', name: '아군 괴물 넷 + 공격 강화', desc: '아군 괴물 넷이 10초 싸운다 · 우리 편 30초 공격력 · 공격 속도 +40%', amount: 3000, globes: 0, rate: 1.4, pow: 1.4, ticks: 30 * TICK_RATE, allies: 4, allyTicks: 10 * TICK_RATE, allyBoss: false },
+  { id: 14, key: 'cheer', name: '아군 보스 + 공격 강화', desc: '막 보스가 20초 우리 편 · 우리 편 40초 공격력 · 공격 속도 +60% · 회복 구슬 다섯', amount: 5000, globes: 5, rate: 1.6, pow: 1.6, ticks: 40 * TICK_RATE, allies: 1, allyTicks: 20 * TICK_RATE, allyBoss: true },
 ]
 /** 아군 괴물 한 번 치는 피해: 그 지역 구울 체력의 이만큼 (보스 모습은 둘레 ALLY_BOSS_SPLASH 를 함께 친다) */
 export const ALLY_HIT = 0.35

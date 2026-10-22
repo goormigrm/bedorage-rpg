@@ -7,10 +7,10 @@ import { itemIconUrl } from './itemIcons'
 import { clickSuppressed, makeDraggable } from './dragItem'
 import { keyLabel } from '../game/keymap'
 import { CHARACTERS } from '../core/characters'
-import { CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
+import { CMD_BAGUP, CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
 import {
-  AFFIXES, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, computeStats, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
+  AFFIXES, BAG_MAX, BAG_STEP, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
+  affixText, affixValue, armorBase, bagUpPrice, computeStats, goldText, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -80,6 +80,13 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
 }
 
 /** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */
+/** 가방 칸 늘리기 단추 (2026-10-22 사용자: "아이템 창에서 바로 칸 늘리기 — 상점 안 가도") */
+function bagUpBtn(bagMax: number, gold: number): string {
+  if (bagMax >= BAG_MAX) return ''
+  const price = bagUpPrice(bagMax)
+  return `<button class="bag-sort bag-up" data-bagup ${gold >= price ? '' : 'disabled'} title="가방 ${bagMax} → ${bagMax + BAG_STEP}칸 · 이 캐릭터만">＋${BAG_STEP}칸 · ${goldText(price)}</button>`
+}
+
 export class ItemTip {
   readonly el: HTMLElement
   constructor(parent: HTMLElement) {
@@ -255,18 +262,17 @@ export class Inventory {
         <div class="inv-right">
           <div class="bag-h"><span class="bag-n">가방 ${me.bag.length} / ${me.bagMax}</span>
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
+            ${bagUpBtn(me.bagMax, me.gold)}
             <small>${
-               this.mode === 'stash'
-                 ? '<b>클릭 · 오른클릭 → 보관함</b> · 끌어서 장비 칸에 끼기 · <b>Shift+클릭 잠금</b>'
-                 : this.mode === 'sell'
-                   ? '<b>오른클릭 팔기</b>(전설 이상은 두 번) · 왼클릭 끼기 · <b>Shift+클릭 잠금</b>'
-                   : '왼클릭 끼기 · 오른클릭 버리기 · 끌어서 장비 칸 · <b>Shift+클릭 잠금</b>(팔기 · 재료에서 빠짐)'
+               this.mode === 'stash' ? '클릭 → 보관함 · Shift+클릭 잠금' : this.mode === 'sell' ? '오른클릭 팔기 · Shift+클릭 잠금' : '왼클릭 끼기 · 오른클릭 버리기 · Shift+클릭 잠금'
              }</small></div>
           ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
           <div class="bag" data-drop="bag">${cells.join('')}</div>
         </div>
       </div>`
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
+    const upBtn = this.el.querySelector('[data-bagup]') as HTMLButtonElement | null
+    if (upBtn) upBtn.onclick = () => this.send(CMD_BAGUP, 0)
     const sortBtn = this.el.querySelector('[data-sort]') as HTMLButtonElement | null
     if (sortBtn)
       sortBtn.onclick = () => {
