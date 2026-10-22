@@ -10,7 +10,7 @@ export type Action =
   | 'dash' | 'sprint' | 'use' | 'portal'
   | 'skill1' | 'skill2' | 'ult' | 'skill3' | 'skill4'
   | 'bag' | 'skills' | 'attr' | 'quest' | 'map'
-  | 'voice' | 'mark' | 'mute' | 'donHold' | 'items'
+  | 'mark' | 'mute' | 'donHold' | 'items'
 
 export const ACTIONS: { id: Action; label: string; def: string; group: string }[] = [
   { id: 'up', label: '위로', def: 'KeyW', group: '이동' },
@@ -34,7 +34,6 @@ export const ACTIONS: { id: Action; label: string; def: string; group: string }[
   { id: 'attr', label: '능력치', def: 'KeyC', group: '창' },
   { id: 'quest', label: '퀘스트', def: 'KeyJ', group: '창' },
   { id: 'map', label: '지도', def: 'KeyM', group: '창' },
-  { id: 'voice', label: '음성(누르고 말하기)', def: 'KeyB', group: '기타' },
   { id: 'mark', label: '신호', def: 'KeyV', group: '기타' },
   { id: 'mute', label: '소리 켜고 끄기', def: 'KeyN', group: '기타' },
   { id: 'donHold', label: '후원 방해 이벤트 멈춤', def: 'KeyP', group: '기타' },
@@ -165,7 +164,6 @@ export function keysHintHtml(): string {
     it(k('attr'), '능력치'),
     it(k('quest'), '퀘스트'),
     it(k('map'), '지도'),
-    it(k('voice'), '음성'),
     it(k('mark'), '신호'),
     it('Enter', '채팅'),
     it('Esc', '메뉴'),

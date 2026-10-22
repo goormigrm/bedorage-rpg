@@ -22,7 +22,7 @@ const TIER_DESC = [
 ]
 import { CHAR_SKILLS, SKILLS, TREE_ACTIVE } from '../core/skills'
 import { sanitizeSheet } from '../core/items'
-import { SAVE_SLOTS, activeSlot, backupNag, clearSlot, exportSave, importSave, levelOf, playTimeOf, setActiveSlot, sheetOf, slotSummary } from '../game/save'
+import { SAVE_SLOTS, activeSlot, backupNag, clearSlot, exportSave, importSave, levelOf, setActiveSlot, sheetOf, slotSummary } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
   CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode, arenaStartBlock, seatTeam,
@@ -163,7 +163,7 @@ export class Lobby {
       return `<button type="button" class="slot${n === cur ? ' on' : ''}" data-slot="${n}" title="세이브 칸 ${n} — 캐릭터 열둘 · 보관함이 칸마다 따로입니다"><b>칸 ${n}</b><small>${sub}</small></button>`
     }).join('')
     return `<div class="save-slots" id="save-slots"><div class="sl-row">${btns}</div>
-      <div class="sl-foot"><span>세이브 칸 — 칸마다 캐릭터 · 보관함이 따로 (내보내기 · 가져오기도 이 칸)</span><button type="button" class="lnk sl-clear" id="slot-clear">${this.slotClearArm ? `한 번 더 누르면 칸 ${cur}을 비웁니다` : `칸 ${cur} 비우기`}</button></div></div>`
+      <div class="sl-foot"><span></span><button type="button" class="lnk sl-clear" id="slot-clear">${this.slotClearArm ? `한 번 더 누르면 칸 ${cur}을 비웁니다` : `칸 ${cur} 비우기`}</button></div></div>`
   }
 
   private bindSlots(h: HTMLElement): void {
@@ -212,7 +212,6 @@ export class Lobby {
           <button class="arrow" id="char-prev" title="이전 캐릭터">◀</button>
           <div class="ci" id="char-info"></div>
           <button class="arrow" id="char-next" title="다음 캐릭터">▶</button>
-          <p class="pickhint">발판 위의 캐릭터를 눌러 고를 수도 있습니다</p>
         </div>
         <div class="d2-side">
           <div class="panel">
@@ -221,7 +220,6 @@ export class Lobby {
               <input class="nick big" id="nick" maxlength="8" placeholder="닉네임 (비우면 캐릭터 이름)" value="${this.nick.replace(/"/g, '&quot;')}" autocomplete="off" spellcheck="false">
             </div>
             <button class="btn main lg" id="btn-host">게임 만들기</button>
-            <p class="hintline">혼자 시작해도 되고, 친구는 아래 <b>게임 목록</b>에서 들어온다 (최대 ${MAX_PLAYERS}명 · 게임 중에도).</p>
             <div class="tools">
               <button class="tool t-set" id="btn-settings" title="소리 · 화질 · 실사 괴물 · 조작 안내 · 키 설정 · 자동 줍기">⚙️ 설정</button>
               <button class="tool t-exp" id="btn-export" title="세이브를 파일로 받아 둡니다 — 다른 PC 로 옮기거나 백업">💾 세이브 내보내기</button>
@@ -557,23 +555,22 @@ export class Lobby {
     const c = CHARACTERS[this.char]
     const el = this.host.querySelector('#char-info') as HTMLElement | null
     if (!el) return
-    const played = playTimeOf(c.id)
     const own = CHAR_SKILLS[c.id]
     // 스킬 설명 (2026-09-19 요청 "스킬들 설명 보이게"): Q · E · R 은 설명과 재사용 대기를 다 보이고,
     // 스킬 트리에서 더 배우는 셋은 이름표 — 마우스를 올리면 설명
     const extra = (TREE_ACTIVE[c.id] ?? []).filter((sid) => !own.includes(sid))
     const cd = (sid: keyof typeof SKILLS) => `${Math.round(SKILLS[sid].cd / 60)}초`
     const role = ROLE_INFO[c.role]
-    el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name} · 체력 ${c.maxHp}${played ? ` · 플레이 ${played}` : ''}</span>
-      <div class="cp"><i>${c.passiveName}</i> ${krWrap(c.passiveDesc)}</div>
-      <div class="crole" style="--rc:${role.color}" title="${role.desc}"><b>${role.name}</b> ${krWrap(role.short)} <small>(던전)</small></div></div>
+    el.innerHTML = `<div class="ch-l"><b class="cn">${c.name}<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="cl">레벨 ${levelOf(c.id)} · ${WEAPONS[c.weapon].name}</span>
+      <div class="cp"><i>${c.passiveName}</i> ${krWrap(c.passiveDesc)}</div></div>
       <div class="ch-r"><div class="skd">${own
         .map(
           // 키 · (이름 / 재사용) · 설명 세 칸 — 설명은 제 칸 안에서만 접힌다 (예전에는 한 줄에 이어 써서 둘째 줄이 이름 밑으로 돌아가고 "1.5배." 처럼 끝이 홀로 떨어졌다)
-          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}"><i>${['Q', 'E', 'R'][k]}</i><div class="sh"><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}재사용 ${cd(sid)}</em></div><div class="sd">${krWrap(SKILLS[sid].desc)}</div></div>`,
+          // 2026-10-22 "글이 너무 많다" — 한 줄에 키 · 이름 · 재사용만, 설명은 마우스를 올리면 (스킬 트리 스킬과 같게)
+          (sid, k) => `<div class="s${k === 2 ? ' ult' : ''}" tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')}"><i>${['Q', 'E', 'R'][k]}</i><div class="sh"><b>${SKILLS[sid].name}</b><em>${k === 2 ? '궁극기 · ' : ''}${cd(sid)}</em></div></div>`,
         )
         .join('')}</div>
-      ${extra.length ? `<div class="skx"><small>스킬 트리(K)에서 더 배우는 스킬</small>${extra.map((sid) => `<span tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')} (재사용 ${cd(sid)})">${SKILLS[sid].name}</span>`).join('')}</div>` : ''}</div>`
+      ${extra.length ? `<div class="skx"><small>더 배우는 스킬 (K)</small>${extra.map((sid) => `<span tabindex="0" data-tip="${SKILLS[sid].desc.replace(/"/g, '&quot;')} (재사용 ${cd(sid)})">${SKILLS[sid].name}</span>`).join('')}</div>` : ''}</div>`
     this.bonfire?.select(this.char)
     // 카드 높이가 캐릭터마다 달라 무대 칸도 바뀐다
     requestAnimationFrame(() => this.bonfire?.refit())

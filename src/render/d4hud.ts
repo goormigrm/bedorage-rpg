@@ -928,7 +928,7 @@ export class D4Hud {
     if (mates.length === 0) return
     const c = h.ctx
     const x = 16
-    // 왼쪽 위 단추 줄(치지직 · 음성 · 소리 · 로비로 — 위 16 · 높이 약 32) 아래로 띄운다 (2026-09-23 겹침)
+    // 왼쪽 위 단추 줄(치지직 · 소리 · 로비로 — 위 16 · 높이 약 32) 아래로 띄운다 (2026-09-23 겹침)
     let y = 70
     for (const p of mates) {
       const def = CHARACTERS[p.char]
@@ -973,22 +973,8 @@ export class D4Hud {
       c.textAlign = 'left'
       c.textBaseline = 'alphabetic'
       c.fillStyle = '#efe4cf'
-      const speaking = !!opts.speaking?.[p.id]
-      const nameT = fitText(c, opts.names[p.id] ?? def.name, W - 62 - roleW - (speaking ? 18 : 0))
+      const nameT = fitText(c, opts.names[p.id] ?? def.name, W - 62 - roleW)
       c.fillText(nameT, x + 52, y + 20)
-      // 말하는 중: 이름 옆 초록 소리 표시 (음성 대화)
-      if (speaking) {
-        const nx = x + 58 + c.measureText(nameT).width
-        c.fillStyle = '#6aff8a'
-        c.beginPath()
-        c.moveTo(nx, y + 11)
-        c.lineTo(nx + 5, y + 11)
-        c.lineTo(nx + 10, y + 7)
-        c.lineTo(nx + 10, y + 21)
-        c.lineTo(nx + 5, y + 17)
-        c.lineTo(nx, y + 17)
-        c.fill()
-      }
       const hpK = p.alive && !p.downed && !gone ? Math.max(0, p.hp / p.maxHp) : 0
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 52, y + 27, W - 64, 7)

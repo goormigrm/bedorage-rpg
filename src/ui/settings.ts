@@ -117,10 +117,11 @@ let aim: { shape: AimShape; size: number } = (() => {
   try {
     const v = JSON.parse(get(AIM_KEY) ?? '{}') as { shape?: string; size?: number }
     const shape = AIM_SHAPES.some((a) => a.id === v.shape) ? (v.shape as AimShape) : 'cross'
-    const size = AIM_SIZES.some((a) => a.k === v.size) ? (v.size as number) : 1
+    // 처음 값은 크게 (2026-10-22 사용자: "기본 에임 크기도 크게") — 고른 적이 있으면 그 값
+    const size = AIM_SIZES.some((a) => a.k === v.size) ? (v.size as number) : 1.4
     return { shape, size }
   } catch {
-    return { shape: 'cross' as AimShape, size: 1 }
+    return { shape: 'cross' as AimShape, size: 1.4 }
   }
 })()
 export const aimStyle = (): { shape: AimShape; size: number } => aim
@@ -158,10 +159,11 @@ export const setKeysShown = (on: boolean): void => set(KEYS_KEY, on ? '1' : '0')
  * HUD 크기 (2026-09-23 사용자: "HUD 를 전체적으로 작게"). 논리 1px 을 화면 몇 px 로 보일지의 목표 — hud.ts setViewSize.
  * 전에는 논리 높이 720 고정이라 1080p 창에서 약 1.3 배 · 1440p 에서 1.8 배로 커 보였다. 보통 = 1 배.
  */
+// 2026-10-22 사용자: "40세 아저씨가 하는 게임 — 글씨를 최대한 알아보기 쉽고 크게 · 이게 제일 중요" → 보통을 1.3 배로 (예전 보통 1 = 지금 작게)
 export const HUD_SIZES = [
-  { id: 'small', name: '작게', k: 0.85 },
-  { id: 'normal', name: '보통', k: 1 },
-  { id: 'large', name: '크게', k: 1.2 },
+  { id: 'small', name: '작게', k: 1 },
+  { id: 'normal', name: '보통', k: 1.3 },
+  { id: 'large', name: '크게', k: 1.5 },
 ] as const
 export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
   const v = get(HUD_KEY)
@@ -169,7 +171,20 @@ export function hudSize(): (typeof HUD_SIZES)[number]['id'] {
 }
 /** 소개 영상은 더 작게 (2026-10-08 사용자: "영상은 HUD 자체도 작게" — tools/trailer.js 가 'tiny' 를 넣는다 · 설정 창에는 없다) */
 export const hudScale = (): number => (get(HUD_KEY) === 'tiny' ? 0.7 : (HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1))
-export const setHudSize = (id: string): void => set(HUD_KEY, id)
+export const setHudSize = (id: string): void => {
+  set(HUD_KEY, id)
+  applyUiZoom()
+}
+/** 창(HTML — 로비 · 가방 · 상점 · 설정 …) 배율: 창 높이 800px 에 1 배(1080p 에서 1.35) × 글자 크기 설정(보통 = 1). 1 ~ 1.7 */
+export function uiZoom(winH: number): number {
+  const k = (HUD_SIZES.find((h) => h.id === hudSize())?.k ?? 1.3) / 1.3
+  return Math.max(1, Math.min(1.7, (winH / 800) * k))
+}
+/** CSS 변수 --uiz 를 맞춘다 (style.css 의 zoom). 폰은 따로 짠 화면이라 1 */
+export function applyUiZoom(): void {
+  const touch = window.matchMedia?.('(pointer: coarse)').matches || location.search.includes('touch=1')
+  document.documentElement.style.setProperty('--uiz', touch ? '1' : uiZoom(window.innerHeight).toFixed(3))
+}
 
 /**
  * 화질 (2026-09-23 최적화 — "서버 없는 게임이니 4명이 해도 렉이 없게"). 락스텝이라 한 사람이 느리면 모두가 기다린다.
@@ -282,7 +297,7 @@ function gfxRowHtml(): string {
 function hudRowHtml(): string {
   const cur = hudSize()
   const btns = HUD_SIZES.map((h) => `<button type="button" data-hud="${h.id}" class="${h.id === cur ? 'on' : ''}">${h.name}</button>`).join('')
-  return `<div class="srow"><b>HUD 크기</b><div class="seg small hudseg">${btns}</div></div>`
+  return `<div class="srow"><b>글자 크기</b><div class="seg small hudseg">${btns}</div></div>`
 }
 
 /**

@@ -2015,24 +2015,6 @@ export class Sfx {
     this.shimmer(0.5, 1)
   }
 
-  /**
-   * 음성 대화 확인음 (2026-10-08 사용자: "음성 켜기 끄기를 눌러도 소리가 안 난다" — 내 목소리는 나에게 들리지 않아, 눌렀는지 귀로 알 길이 없었다):
-   * 켬 = 오르는 두 음 · 끔 = 내리는 두 음 · 누르고 말하기 시작 = 짧은 똑 · 뗌 = 더 낮은 똑
-   */
-  voiceCue(kind: 'on' | 'off' | 'talk' | 'stop'): void {
-    if (!this.ready()) return
-    const { node, t0 } = this.bus({ gain: 1, pan: 0, far: 0 }, 0.5)
-    if (kind === 'on') {
-      this.tone(node, t0, 0.09, 'sine', 660, 660, 0.3, 0.004)
-      this.tone(node, t0 + 0.09, 0.14, 'sine', 990, 990, 0.3, 0.004)
-    } else if (kind === 'off') {
-      this.tone(node, t0, 0.09, 'sine', 880, 880, 0.26, 0.004)
-      this.tone(node, t0 + 0.09, 0.14, 'sine', 587, 587, 0.26, 0.004)
-    } else {
-      this.tone(node, t0, 0.05, 'triangle', kind === 'talk' ? 1320 : 880, kind === 'talk' ? 1500 : 760, 0.22, 0.002)
-    }
-  }
-
   /** 짧은 알림음 (창 열기·줍기 등 UI) */
   blip(): void {
     if (!this.ready()) return

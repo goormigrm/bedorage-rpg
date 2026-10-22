@@ -24,7 +24,6 @@ import { isKey, keyLabel, keyOf, keysHintHtml, onKeymap } from './keymap'
 import { LORD_KIND, MONSTER_LIST, TIER_LABEL, isGiant, tierOf } from '../core/monsters'
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
-import { Voice } from '../net/voice'
 import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
 import { Skin, asSkin, isBright, setSkin, skinMap } from './skin'
 import './skinThemes'
@@ -136,7 +135,6 @@ export class Session {
   private chars!: CharSheet
   private quests!: QuestLog
   /** 음성 대화 (방이 있을 때만) */
-  private voice: Voice | null = null
   /** 텍스트 채팅 (방 통로가 있을 때만 — 방장이 나가 혼자 이어 가는 판에는 없다) */
   private chat: ChatBox | null = null
   private state: GameState
@@ -345,7 +343,7 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-voice-mode" hidden title="음성 방식 바꾸기">눌러서 말하기</button><button class="btn secondary" id="btn-voice" hidden>음성 (B)</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
@@ -462,33 +460,8 @@ export class Session {
       }
     }
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.confirmExit()
-    // 음성 대화: 같은 게임(방)에 있는 사람끼리 (최대 4명)
+    // 텍스트 채팅: 같은 게임(방)에 있는 사람끼리 (음성 대화는 2026-10-22 뺐다 — 사용자: "방송으로 방송인만 말이 나가는 게 맞다")
     if (cfg.link) {
-      this.voice = new Voice(cfg.link)
-      const vb = host.querySelector('#btn-voice') as HTMLButtonElement
-      const mb = host.querySelector('#btn-voice-mode') as HTMLButtonElement
-      vb.hidden = false
-      mb.hidden = false
-      // 눌러서 말하기: 버튼을 누르고 있는 동안 · 계속 켜기: 누를 때마다 켜고 끈다
-      vb.onpointerdown = (e) => {
-        e.preventDefault()
-        if (this.voice?.mode === 'ptt') void this.pttHold(true)
-        else void this.toggleVoice()
-      }
-      const release = () => {
-        if (this.voice?.mode === 'ptt') void this.pttHold(false)
-      }
-      vb.onpointerup = release
-      vb.onpointerleave = release
-      mb.onclick = () => {
-        if (!this.voice) return
-        this.voice.setMode(this.voice.mode === 'ptt' ? 'open' : 'ptt')
-        this.syncVoiceUi()
-        this.message = this.voice.mode === 'ptt' ? '음성: 눌러서 말하기 — B(또는 음성 버튼)를 누르는 동안만 들린다' : '음성: 계속 켜기 — B(또는 음성 버튼)로 켜고 끈다'
-        setTimeout(() => (this.message = ''), 2500)
-      }
-      this.syncVoiceUi()
-      window.addEventListener('keyup', this.onKeyUp)
       this.chat = new ChatBox(this.stage.querySelector('.game-ui') as HTMLElement, (text) => this.sendChat(text))
       if (cfg.chatLog) this.chat.load(cfg.chatLog)
     }
@@ -756,74 +729,6 @@ export class Session {
         ? `${tag}${a.act + 1}막 · ${a.lore ?? '안전지대'}`
         : `${tag}지역 레벨 ${a.level + tierOf(t).lvl}${a.lore ? ` · ${a.lore}` : ''}`
     this.renderer.banner(a.name, sub)
-  }
-
-  /** 계속 켜기 방식: 음성 켜기/끄기 (버튼 · B) */
-  private async toggleVoice(): Promise<void> {
-    if (!this.voice) return
-    const was = this.voice.on
-    const on = await this.voice.toggle()
-    this.syncVoiceUi()
-    if (!was && !on) this.message = '마이크를 쓸 수 없습니다 (브라우저 권한을 확인하세요)'
-    else {
-      // 눌렀다는 것을 귀로도 (내 목소리는 나에게 들리지 않는다 — 2026-10-08)
-      this.sfx.voiceCue(on ? 'on' : 'off')
-      this.message = on ? (this.othersHere() ? '음성 켜짐 — 같은 게임의 모두에게 들린다' : '음성 켜짐 — 지금은 같은 게임에 다른 사람이 없어 들을 사람이 없다 (내 목소리는 나에게 들리지 않는다)') : '음성 꺼짐'
-    }
-    setTimeout(() => {
-      if (this.message.startsWith('음성') || this.message.startsWith('마이크')) this.message = ''
-    }, 2500)
-  }
-
-  /** 음성 버튼 모양: 방식 · 켜짐 · 말하는 중 */
-  private syncVoiceUi(): void {
-    const v = this.voice
-    if (!v) return
-    const vb = this.stage.querySelector('#btn-voice') as HTMLButtonElement | null
-    const mb = this.stage.querySelector('#btn-voice-mode') as HTMLButtonElement | null
-    if (mb) mb.textContent = v.mode === 'ptt' ? '방식: 눌러서 말하기' : '방식: 계속 켜기'
-    if (vb) {
-      vb.textContent = v.mode === 'ptt' ? (v.live ? '말하는 중… (B)' : '누르고 말하기 (B)') : v.on ? '음성 끄기 (B)' : '음성 켜기 (B)'
-      vb.classList.toggle('live', v.live)
-    }
-  }
-
-  /** 눌러서 말하기: B 를 떼면 멈춘다 */
-  private onKeyUp = (e: KeyboardEvent): void => {
-    if (!isKey(e, 'voice') || !this.voice || this.voice.mode !== 'ptt') return
-    void this.pttHold(false)
-  }
-
-  /** 같은 게임에 나 말고 사람이 있나 (봇 · 빈 자리 빼고) — 음성을 들을 사람 */
-  private othersHere(): boolean {
-    return this.state.players.some((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i])
-  }
-
-  /** 눌러서 말하기: 누름 · 뗌 + 확인음 (말하기 시작 · 끝을 귀로 — 2026-10-08) */
-  private async pttHold(down: boolean): Promise<void> {
-    const v = this.voice
-    if (!v) return
-    const was = v.live
-    const had = v.on
-    await v.hold(down)
-    this.syncVoiceUi()
-    if (down && !had && !v.on) {
-      this.message = '마이크를 쓸 수 없습니다 (브라우저 권한을 확인하세요)'
-      setTimeout(() => this.message.startsWith('마이크') && (this.message = ''), 2500)
-      return
-    }
-    if (v.live !== was) this.sfx.voiceCue(v.live ? 'talk' : 'stop')
-    if (down && v.live && !this.othersHere()) {
-      this.message = '말하는 중 — 지금은 같은 게임에 다른 사람이 없어 들을 사람이 없다 (내 목소리는 나에게 들리지 않는다)'
-      setTimeout(() => this.message.startsWith('말하는 중') && (this.message = ''), 2500)
-    }
-  }
-
-  /** 자리별로 지금 말하고 있나 */
-  private speakingList(): boolean[] | undefined {
-    const v = this.voice
-    if (!v) return undefined
-    return this.cfg.chars.map((_, i) => (i === this.cfg.localPlayer ? v.on && v.speaking(null) : !!this.cfg.peerIds?.[i] && v.speaking(this.cfg.peerIds[i])))
   }
 
   /** 곁에서 싸우는 괴물이 있나 (웨이포인트 창을 열지 말지 — 2026-09-25) */
@@ -1149,13 +1054,6 @@ export class Session {
       return
     }
     // 신호: 커서가 가리키는 곳에 "여기" 를 찍는다 (협동이라 언제나)
-    if (isKey(e, 'voice') && this.voice) {
-      e.preventDefault()
-      if (e.repeat) return
-      if (this.voice.mode === 'ptt') void this.pttHold(true)
-      else void this.toggleVoice()
-      return
-    }
     if (isKey(e, 'mark')) {
       this.sendMark()
       e.preventDefault()
@@ -2045,7 +1943,6 @@ export class Session {
       cursor: this.aimCursor(),
       touch: this.touch !== null,
       floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
-      speaking: this.speakingList(),
       // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
       rightColTop: this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined,
       uiRects: this.uiRects(),
@@ -3027,8 +2924,6 @@ export class Session {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
-    this.voice?.dispose()
-    this.voice = null
     this.chat?.dispose()
     this.chat = null
     this.unlistenStream?.()
@@ -3043,7 +2938,6 @@ export class Session {
     this.czClose?.()
     this.czBadge?.dispose()
     this.czBadge = null
-    window.removeEventListener('keyup', this.onKeyUp)
     this.offKeymap()
     clearInterval(this.lobbyBeacon)
     if (this.cfg.lobby) {

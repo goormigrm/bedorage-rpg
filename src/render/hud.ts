@@ -35,7 +35,7 @@ export const MAX_VIEW_H = 1440
 
 /**
  * 창 크기(CSS px)에 맞춰 논리 크기를 정한다. 바뀌었으면 true (캔버스·카메라 갱신 필요).
- * `hudScale` 은 논리 1px 이 화면 몇 px 인지의 목표(설정의 HUD 크기 — 작게 0.85 · 보통 1 · 크게 1.2). 0 이면 720 고정(폰).
+ * `hudScale` 은 논리 1px 이 화면 몇 px 인지의 목표(설정의 HUD 크기 — 작게 1 · 보통 1.3 · 크게 1.5). 0 이면 720 고정(폰).
  * 비율 하한은 기준 비율(16:9) — 더 좁히면 가운데 점수판과 오른쪽 위 버튼이 겹친다.
  */
 export function setViewSize(winW: number, winH: number, hudScale = 1): boolean {
@@ -97,9 +97,7 @@ export interface RenderOptions {
   touch?: boolean
   /** 층 이름 (위 가운데 목표 패널) */
   floorName?: string
-  /** 자리별로 지금 말하고 있나 (음성 대화) */
-  speaking?: boolean[]
-  /** 오른쪽 아래 단추 기둥(창 단추 · 음성 · 소리 · 로비로)의 위 끝 (논리 좌표) — 추적 칸이 그 위에서 멈춘다 */
+  /** 오른쪽 아래 단추 기둥(창 단추 · 소리 · 로비로)의 위 끝 (논리 좌표) — 추적 칸이 그 위에서 멈춘다 */
   rightColTop?: number
   /**
    * 게임 위 반투명 DOM(조작 안내 띠 · 오른쪽 아래 단추 기둥 · 안내 말풍선)의 자리 (논리 좌표).

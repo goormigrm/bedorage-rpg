@@ -11,6 +11,7 @@ import { installDevKey } from './game/devmode'
 import { installErrorReport } from './ui/errorReport'
 import { installKoBreak } from './ui/koBreak'
 import { setInLobby, watchUpdates } from './ui/update'
+import { applyUiZoom } from './ui/settings'
 
 // 오류 보고 단추 (2026-10-08 — 잡히지 않은 오류가 나면 화면 아래에 · ui/errorReport.ts)
 installErrorReport()
@@ -18,6 +19,9 @@ installErrorReport()
 installKoBreak()
 // 새 판 알림 · 로비 구석 판 번호 (ui/update.ts — 열어 둔 탭이 옛 판으로 계속 돌지 않게)
 watchUpdates()
+// 창 글자 배율 (2026-10-22 — 창 높이 · 글자 크기 설정에 맞춰 HTML 창을 통째로 키운다)
+applyUiZoom()
+window.addEventListener('resize', applyUiZoom)
 
 const app = document.getElementById('app')!
 // 개발자 모드 (Ctrl + Shift + D — 치지직 창의 시험 단추)
