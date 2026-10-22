@@ -291,9 +291,9 @@ export class TownPanel {
         // 전부 팔기를 맨 위에 크게 (2026-10-22 사용자: "전부 팔기 버튼을 크게") — 실수 방지로 두 번 눌러야 판다
         bulk = `<div class="sell-all">
           <button class="btn ${this.sellArmed ? 'danger' : 'main'} sell-big" data-sellall ${all.length ? '' : 'disabled'}>${
-            this.sellArmed ? `한 번 더 — ${all.length}개 · ${sum(all)} 골드` : `전부 팔기 — ${all.length}개 · ${sum(all)} 골드`
+            this.sellArmed ? `한 번 더 — ${all.length}개 · ${goldText(sum(all))}` : `전부 팔기 — ${all.length}개 · ${goldText(sum(all))}`
           }</button>
-          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템만 팔기 — ${junk.length}개 · ${sum(junk)} 골드</button>
+          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템만 팔기 — ${junk.length}개 · ${goldText(sum(junk))}</button>
           ${locked ? `<p class="tp-hint">🔒 잠근 ${locked}개는 안 판다 (가방에서 Shift+클릭)</p>` : ''}
         </div>`
       }

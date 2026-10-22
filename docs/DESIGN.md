@@ -94,7 +94,7 @@
 - 전설 고유 효과: `Item.leg`(전설만, `rollItem` 이 굴린다) → `PlayerState.legs` 비트(`recalc` 의 `legMask`) → sim 곳곳에서 `hasLeg(p, LEG_*)`:
   `hurtMonster`(피의 갈증 · 서리탄 · 연쇄 번개) · `killMonster`(시체 폭탄 — 폭발 대기열 `safe` · 광란 · 탄약 주머니) · `hurtPlayer`(불굴 `legCd`) · `takenMul`/`stepDowned`(수호자) · `recalc`(집중 CDR+15) · `pickUp`(황금 손).
 - 보물 고블린(kind 4, `attack: 'flee'`): 지역 시드로 14%. 깨어나면 늘 달아나고(`away`) `m.t` 로 깨어 있던 틱을 세며 70틱마다 공용 골드를 흘리고 20초에 사라진다(`goblinGone`). 잡으면 분수.
-- 음성(`net/voice.ts`): 게임 연결에 마이크 스트림을 얹는다(`RoomLink.setVoice/onVoice`). 눌러서 말하기는 트랙 `enabled` 를 누르는 동안만 켠다. sim 과 무관.
+- 음성 대화는 없다 — v1.9.0 에서 `net/voice.ts` · `RoomLink.setVoice/onVoice` 를 지웠다(2026-10-22 사용자: "방송으로 방송인만 말 나가는 게 맞다 · 정신없어").
 
 ## 3.8 성장 · 전투 (D4)
 
