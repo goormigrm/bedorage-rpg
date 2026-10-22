@@ -3,7 +3,7 @@
 
 import { keyLabel } from '../game/keymap'
 import { CMD_WAYPOINT } from '../core/input'
-import { ACTS, AREAS, WAYPOINTS, wpBit } from '../core/world'
+import { ACTS, AREAS, WAYPOINTS, actLocked, wpBit } from '../core/world'
 import { PlayerState } from '../core/state'
 
 export class WaypointPanel {
@@ -34,6 +34,8 @@ export class WaypointPanel {
   private render(): void {
     const me = this.me()
     const acts = ACTS.map((act, ai) => {
+      // 깬 막은 보이지 않는다 — 돌아가지 않는다 (2026-10-22)
+      if (actLocked(me.quests, ai)) return ''
       // 길에서 뺀 지역(retired)의 웨이포인트는 비트 자리만 남았다 — 창에 보이지 않는다
       const rows = WAYPOINTS.filter((id) => AREAS[id].act === ai && !AREAS[id].retired)
         .map((id) => {
@@ -47,7 +49,7 @@ export class WaypointPanel {
       return `<div class="wpp-act"><div class="wpp-actn">${ai + 1}막 · ${act.name}</div>${rows}</div>`
     }).join('')
     this.el.innerHTML = `<div class="wpp-head"><b>웨이포인트</b><button class="inv-x" data-x>✕</button></div>
-      <p class="wpp-hint">밟아서 연 웨이포인트로 곧장 건너갑니다 · ${keyLabel('use')} / Esc 로 닫기</p>${acts}`
+      <p class="wpp-hint">가 본 지역으로 곧장 · ${keyLabel('use')} / Esc 로 닫기</p>${acts}`
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.toggle(false)
     this.el.querySelectorAll<HTMLButtonElement>('button[data-a]').forEach((b) => {
       b.onclick = () => {

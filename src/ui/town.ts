@@ -11,7 +11,7 @@ import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
-  BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_PICK, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
+  BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_ALL, QUEST_PICK, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
   upgradeMaterials, upgradeNeed, upgradePrice,
 } from '../core/items'
 import { GameState, PlayerState } from '../core/state'
@@ -19,7 +19,7 @@ import { ItemTip, cellHtml, itemHtml } from './inventory'
 import { WEAPONS } from '../core/weapons'
 import { WEAPON_IDS, SLOT_WEAPON } from '../core/items'
 import { keyLabel } from '../game/keymap'
-import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_MAX, RIFT_TICKS, actReached, areaDef, questDiscount, riftOpen, riftScale } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, NpcId, QUESTS, RIFT_MAX, RIFT_TICKS, actReached, areaDef, elderMarks, questDiscount, riftOpen, riftScale } from '../core/world'
 import { CMD_QUEST } from '../core/input'
 
 /** 퀘스트 목록 (촌장 창 — 버튼 있음 · 퀘스트 기록 — 버튼 없음) */
@@ -449,16 +449,22 @@ export class TownPanel {
     } else if (npc === 'elder') {
       const reach = actReached(me.quests)
       const here = areaDef(me.area).act
-      const travel = ACTS.map((a, i) => (i <= reach && i !== here ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${100 + i}">${i + 1}막 ${a.name}으로 — ${AREAS[a.town].name}</button>` : '')).join('')
+      // 다음 막으로만 (깬 막으로는 돌아가지 않는다 — 2026-10-22)
+      const travel = ACTS.map((a, i) => (i === reach && i !== here ? `<button class="btn" data-cmd="${CMD_QUEST}" data-arg="${100 + i}">${i + 1}막 ${a.name}으로 — ${AREAS[a.town].name}</button>` : '')).join('')
       // 이 막의 퀘스트가 먼저, 그 아래 **다른 막**의 맡을 · 진행 중 · 보고할 일 (끝낸 것은 뺀다) — 어느 야영지 촌장이든 받는다 (2026-09-25)
       const other = questList(
         me.quests.map((v, i) => {
           const a = QUESTS[i]?.act
-          return a !== undefined && a !== here && a <= reach && v !== 3 ? v : -1
+          // 깬 막(돌아갈 수 없는 막)은 이룬 것(보상 받기)만
+          return a !== undefined && a !== here && a <= reach && v !== 3 && (a >= reach || v === 2) ? v : -1
         }),
         true,
       )
+      // 한 번에 (2026-10-22 사용자: "퀘스트는 그냥 퀘스트 NPC 가 모두 처리할 수 있게") — 맡을 일 다 받기 · 이룬 일 보상 다 받기
+      const marks = elderMarks(me.quests)
+      const allBtn = marks.offer || marks.report ? `<button class="btn main quest-all" data-cmd="${CMD_QUEST}" data-arg="${QUEST_ALL}">${marks.report ? '보상 모두 받기' : ''}${marks.report && marks.offer ? ' · ' : ''}${marks.offer ? '할 일 모두 받기' : ''}</button>` : ''
       body =
+        allBtn +
         questList(me.quests.map((v, i) => (QUESTS[i]?.act === here ? v : -1)), true) +
         (other ? `<div class="tp-sub">다른 막의 일 — 여기서도 맡고 보고할 수 있다</div>${other}` : '') +
         (travel ? `<div class="tp-slots">${travel}</div>` : '')

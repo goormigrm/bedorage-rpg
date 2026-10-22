@@ -13,7 +13,7 @@ import {
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, QUEST_ALL, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -30,7 +30,7 @@ import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dun
 import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
 import { botSheet, botSkillNext, gearLevelOf } from './botsheet'
-import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
+import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
 import { variantKind,
@@ -532,8 +532,16 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록").
   // **마을로는 안 따라간다**(같은 날 사용자 — 싸울 곳이 아니다): 남은 지역에서 제 둘레 괴물과 싸우다(동료가 있으면 돕는다) 사람이 모두 떠나면 사라진다
   if (from !== to && !isTown(to)) carryAllies(state, map, p, from, a)
-  // 마을에 들어서면 그 마을의 웨이포인트가 열린다
+  // 마을에 들어서면 그 마을의 웨이포인트가 열린다 · 2026-10-22 부터 웨이포인트가 있는 지역은 **들어서기만 하면** 열린다
+  // (사용자: "웨이포인트는 밟지 않더라도 그 지역 입성만 하면 자동으로 뚫리도록")
   if (isTown(to)) p.wps |= wpBit(to)
+  else {
+    const bit = wpBit(to)
+    if (bit && (p.wps & bit) === 0 && p.merc < 0 && !p.cameo) {
+      p.wps |= bit
+      state.events.push({ type: 'wpFound', p: p.id, area: to })
+    }
+  }
   // 상인 진열: 마지막으로 깐 뒤 SHOP_RESTOCK_TICKS 가 지났으면 마을에 들어선 사람의 레벨로 공짜로 새로 (진열은 파티 공용)
   if (isTown(to) && from !== to && p.merc < 0 && state.tick - (state.shopAt ?? 0) >= SHOP_RESTOCK_TICKS) {
     restockShop(state, p.level, state.rng)
@@ -760,20 +768,36 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
     i = Math.floor((i - QUEST_PICK) / SLOT_COUNT)
     if (!QUESTS[i]?.legend) return
   }
-  // 막 이동 (arg = 100 + 막): 앞 막의 보스를 쓰러뜨렸으면 그 막의 마을로 (디아블로 2 — 촌장이 길을 안내한다)
+  // 막 이동 (arg = 100 + 막): 앞 막의 보스를 쓰러뜨렸으면 **다음 막**의 마을로 (디아블로 2 — 촌장이 길을 안내한다) · 깬 막으로는 안 된다(actLocked)
   if (slot < 0 && i >= 100) {
     const act = i - 100
-    if (!ACTS[act] || act > actReached(p.quests) || act === areaDef(p.area).act) return
+    if (!ACTS[act] || act > actReached(p.quests) || actLocked(p.quests, act) || act === areaDef(p.area).act) return
     queueMove(p, { to: ACTS[act].town, how: 'wp' })
+    return
+  }
+  if (i === QUEST_ALL) {
+    const reach = actReached(p.quests)
+    QUESTS.forEach((d, k) => {
+      if (d.act > reach) return
+      const st = p.quests[k] ?? 0
+      if (st === 0 && !actLocked(p.quests, d.act)) p.quests[k] = 1
+      else if (st === 2) questReward(state, p, k, -1)
+    })
     return
   }
   if (!QUESTS[i]) return
   const st = p.quests[i] ?? 0
   if (st === 0) {
-    p.quests[i] = 1
+    // 깬 막의 일은 새로 맡지 않는다 — 그 막으로 돌아갈 수 없다 (actLocked)
+    if (!actLocked(p.quests, QUESTS[i].act)) p.quests[i] = 1
     return
   }
   if (st !== 2) return
+  questReward(state, p, i, slot)
+}
+
+/** 이룬 퀘스트의 보상 (전설은 slot 부위 — -1 이면 무작위) */
+function questReward(state: GameState, p: PlayerState, i: number, slot: number): void {
   p.quests[i] = 3
   p.spBonus = questPoints(p.quests)
   const qd = QUESTS[i]
@@ -4038,7 +4062,7 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     if (state.mode !== 'dungeon' || !isActive(p) || arg === p.area) return
     const l = areaLayout(p.area, map)
     const bit = wpBit(arg)
-    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0 || areaDef(arg).retired) return
+    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0 || areaDef(arg).retired || actLocked(p.quests, areaDef(arg).act)) return
     queueMove(p, { to: arg, how: 'wp' })
     return
   }

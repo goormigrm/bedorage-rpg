@@ -397,6 +397,8 @@ export const shopNewPrice = (level: number) => 150 + level * 20
 export const SHOP_RESTOCK_TICKS = 10 * 60 * 60
 /** 전설 보상 부위 고르기: CMD_QUEST arg = QUEST_PICK + 퀘스트 번호 × SLOT_COUNT + 장비 칸 (2026-10-17 "퀘스트 보상 고르기") */
 export const QUEST_PICK = 150
+/** 촌장 "모두": 맡을 일을 다 받고 이룬 일의 보상을 다 받는다 (2026-10-22 사용자: "퀘스트는 그냥 퀘스트 NPC 가 모두 처리") — 퀘스트 번호(16 아래) · 막 이동(100 ~) 과 겹치지 않는 수 */
+export const QUEST_ALL = 99
 
 /**
  * 골드 글자는 **여기 하나**로 만든다 (2026-09-25 사용자: "골드 표시를 통일해 줘").

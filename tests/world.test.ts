@@ -3,8 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import { MAPS } from '../src/core/maps'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
+import { QUEST_ALL } from '../src/core/items'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, actBossQuest, actLocked, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
 import { flowField } from '../src/core/flow'
 import { TILE, TILE_FLOOR } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
@@ -143,7 +144,48 @@ describe('이어진 세계', () => {
     expect(p.area).toBe(1)
   })
 
-  it('웨이포인트: 밟으면 열리고, 곁에서 열린 곳으로만 건너간다', () => {
+  // 2026-10-22 사용자: "1막을 클리어하고 나서는 1막으로 다시 갈 수 없게 — 1막만 두 번 돌아 버렸다"
+  it('막 보스를 쓰러뜨린 막은 잠긴다 — 웨이포인트로 그 막에 못 가고, 촌장도 다음 막으로만', () => {
+    const { s, mapOf, run } = game(['chim'])
+    const p = s.players[0]
+    const tl = areaLayout(TOWN, mapOf(TOWN))
+    p.wps |= wpBit(1)
+    p.x = tl.wp!.x
+    p.y = tl.wp!.y
+    expect(actLocked(p.quests, 0)).toBe(false)
+    p.quests[actBossQuest(0)] = 2
+    expect(actLocked(p.quests, 0)).toBe(true)
+    expect(actLocked(p.quests, 1)).toBe(false)
+    run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: 1 }))
+    expect(p.area).toBe(TOWN)
+    // 촌장: 1막(지금 막 · 잠긴 막)으로는 안 되고 2막으로는 된다
+    const elder = townNpcs(TOWN).find((n) => n.id === 'elder')!
+    p.x = elder.x + 20
+    p.y = elder.y
+    run(1, () => ({ ...idle(), cmd: CMD_QUEST, arg: 100 }))
+    expect(p.area).toBe(TOWN)
+    run(1, () => ({ ...idle(), cmd: CMD_QUEST, arg: 101 }))
+    run(2)
+    expect(AREAS[p.area].act).toBe(1)
+  })
+
+  it('촌장 "모두": 이 막의 할 일을 다 받고 이룬 일의 보상을 다 받는다 · 깬 막의 새 일은 받지 않는다', () => {
+    const { s, run } = game(['chim'])
+    const p = s.players[0]
+    const elder = townNpcs(TOWN).find((n) => n.id === 'elder')!
+    p.x = elder.x + 20
+    p.y = elder.y
+    const act0 = QUESTS.map((d, i) => (d.act === 0 ? i : -1)).filter((i) => i >= 0)
+    // 하나는 이룸(보상 대기) · 나머지는 아직
+    p.quests[act0[0]] = 2
+    const gold = p.gold
+    run(1, () => ({ ...idle(), cmd: CMD_QUEST, arg: QUEST_ALL }))
+    expect(p.quests[act0[0]]).toBe(3)
+    for (const i of act0.slice(1)) expect(p.quests[i]).toBe(1)
+    expect(p.gold >= gold).toBe(true)
+  })
+
+  it('웨이포인트: 그 지역에 들어서면 열리고(2026-10-22 — 밟지 않아도), 곁에서 열린 곳으로만 건너간다', () => {
     const { s, mapOf, run } = game(['chim'])
     const p = s.players[0]
     const tl = areaLayout(TOWN, mapOf(TOWN))
@@ -152,15 +194,16 @@ describe('이어진 세계', () => {
     p.y = tl.wp!.y
     run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: 1 }))
     expect(p.area).toBe(TOWN)
-    // 들판으로 걸어 나가 웨이포인트를 밟는다
+    // 들판으로 걸어 나가기만 하면 열린다 (웨이포인트를 밟지 않아도)
     standOnExit(s, mapOf, 0, 1)
     run(1)
+    expect(p.area).toBe(1)
+    expect(p.wps & wpBit(1)).not.toBe(0)
+    expect(s.events.some((e) => e.type === 'wpFound' && e.area === 1)).toBe(true)
+    // 마을로 웨이포인트 이동(웨이포인트 곁에서) → 다시 들판으로
     const l1 = areaLayout(1, mapOf(1))
     p.x = l1.wp!.x
     p.y = l1.wp!.y
-    run(1)
-    expect(p.wps & wpBit(1)).not.toBe(0)
-    // 마을로 웨이포인트 이동 → 다시 들판으로
     run(1, () => ({ ...idle(), cmd: CMD_WAYPOINT, arg: TOWN }))
     expect(p.area).toBe(TOWN)
     p.x = tl.wp!.x

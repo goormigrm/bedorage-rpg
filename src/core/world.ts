@@ -557,6 +557,12 @@ export function actReached(q: number[]): number {
   return act
 }
 
+/**
+ * 깬 막(앞 막)으로는 돌아가지 않는다 (2026-10-22 사용자: "1막을 클리어하고 나서는 1막으로 다시 갈 수 없게 — 1막만 두 번 돌아 버리는 사태가 생겼다").
+ * 웨이포인트 · 촌장 이동이 이것을 본다. 막 사이에 이어진 출구는 없다(다음 막 문은 한쪽으로만)
+ */
+export const actLocked = (q: number[], act: number): boolean => act < actReached(q)
+
 /** 지역 사이 가장 짧은 길 (출구 links — 양쪽으로). from 부터 to 까지 지역 번호들, 없으면 null */
 export function areaPath(from: number, to: number): number[] | null {
   if (from === to) return [from]
@@ -615,7 +621,8 @@ export function elderMarks(q: number[]): { report: boolean; offer: boolean } {
     if (d.act > reach) return
     const st = q[i] ?? 0
     if (st === 2) report = true
-    else if (st === 0) offer = true
+    // 깬 막의 맡지 않은 일은 세지 않는다 — 그 막으로 돌아갈 수 없다 (2026-10-22 actLocked)
+    else if (st === 0 && d.act >= reach) offer = true
   })
   return { report, offer }
 }
