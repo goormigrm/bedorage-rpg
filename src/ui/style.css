@@ -1488,3 +1488,21 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 #update-bar[hidden] {
   display: none;
 }
+
+/* ---- 가방 창 크게 (2026-10-22 사용자: "아이템 창에서 정렬과 칸 수 늘리는 단추가 너무 작아 — 가방 창 자체를 더 키워도") ----
+   너비는 화면에 맞춰 560 ~ 780px (1366 화면에서는 왼쪽에 같이 열리는 상점 · 보관함 창과 겹치지 않게 46vw) · 칸 · 그림 · 단추 · 글자를 함께 키운다 */
+.inv { width: clamp(560px, calc(46vw / var(--z, 1)), 780px); font-size: 14.5px; padding: 16px 18px; }
+.inv-head b { font-size: 24px; }
+.inv-left { width: clamp(200px, 34%, 260px); flex-shrink: 0; }
+.eq { min-height: 48px; padding-top: 7px; padding-bottom: 7px; padding-left: 54px; }
+.eq .ic { width: 38px; height: 38px; left: 8px; }
+.eq small { font-size: 13px; }
+.eq b, .eq i { font-size: 14.5px; }
+.inv-stats { font-size: 14px; gap: 4px; }
+.bag-h { font-size: 16px; gap: 10px; margin-bottom: 10px; }
+.bag-sort, .bag-up { padding: 7px 16px; font: 800 15px "IBM Plex Sans KR", sans-serif; border-width: 1.5px; border-radius: 5px; }
+.inv .bag { gap: 7px; }
+.inv .cell { height: 66px; }
+.inv .cell .ic { width: 42px; height: 42px; top: 3px; }
+.inv .cell b { font-size: 13px; }
+.bag-hint { font-size: 14px; }
