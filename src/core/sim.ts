@@ -54,7 +54,10 @@ const WAKE_RANGE = 11 * TILE
  * 총소리: 쏜 자리에서 이 거리 안의 잠든 무리가 깬다 (벽 너머도 — 소리니까). 한 방씩 조용히 정리하지 못하게 해서
  * 무리를 몰고 다니는 디아블로식 압박을 만든다. **소음기 권총(단군란)은 깨우지 않는다** — 덕의 소음기가 여기서 정찰이 된다
  */
-const NOISE_RANGE = 7 * TILE
+// 2026-10-22 사용자: "몹들이 굳이 근처를 안 가더라도 소리를 듣고 다 몰려오게 (이동 적게)" · "몹이 몰려오는 느낌이 더" — 7 → 16칸
+const NOISE_RANGE = 16 * TILE
+/** 탱커에게 맞은 괴물은 이만큼 그 탱커만 노린다 (2026-10-22 사용자: "탱커한테 맞으면 몹들이 어그로가 끌려서") · 보스는 빼고 */
+const TANK_AGGRO_TICKS = 180
 /** 이 거리 안에서 표적이 보이면 흐름장 대신 곧장 다가간다 */
 const DIRECT_RANGE = 6 * TILE
 /** 몬스터가 한 틱에 돌 수 있는 각도 (1024 단위) */
@@ -3355,6 +3358,10 @@ function hurtMonster(state: GameState, m: Monster, dmg: number, by: number, crit
   if (m.hitTick < 0 && isGiant(m) && !isHumanSeat(by >= 0 ? state.players[by] : undefined)) return
   // 정예·보스 피해 옵션 (옛 탄창 칸)
   const hitter = by >= 0 ? state.players[by] : undefined
+  if (hitter && roleOn && !MONSTER_LIST[m.kind].boss && roleOf(hitter) === 'tank' && isActive(hitter)) {
+    m.target = hitter.id
+    m.taunt = Math.max(m.taunt, TANK_AGGRO_TICKS)
+  }
   if (hitter && hitter.st[ST_ELITEDMG] > 0 && (m.elite || MONSTER_LIST[m.kind].boss)) dmg = Math.round(dmg * (1 + hitter.st[ST_ELITEDMG] / 100))
   // 약화(생중계·스포트라이트): 받는 피해 증가
   if (m.vuln > 0 && m.vulnPct > 0) dmg = Math.round(dmg * (1 + m.vulnPct / 100))

@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
+import { flowField, flowStep } from '../core/flow'
 import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_SHIELD, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
@@ -2293,6 +2294,7 @@ export class Renderer3D {
       // 옆으로 흩어지는 것(dx)은 화면 가로로 — 맵 x 에 더하면 쿼터뷰에서 오른쪽 아래로 흘러 숫자마다 뜨는 높이가 달랐다
       return { x: p.x + (t.sx ?? 0) + (t.dx ?? 0) * 40 * (1 - k), y: p.y, text: t.text, k, color: t.color, big: t.big, scale: 1 + (t.pop ?? 0.8) * Math.max(0, (k - 0.72) / 0.28) }
     })
+    if (opts.showHud) this.drawFloorNav(curr, opts.localPlayer)
     this.drawMonsterBars(curr)
     this.drawAllyTags(curr)
     this.drawUltWarn()
@@ -2818,6 +2820,69 @@ export class Renderer3D {
    * 퀘스트 길 안내 (2026-09-25 사용자 고른 개선 4): 가야 할 곳을 금빛으로 — 다른 지역이면 그리로 가는 **출구**, 이 지역이면
    * 촌장 · 우두머리 · 보스 자리(잡기) · 가장 가까운 괴물(비우기). 창 안이면 깜빡이는 금테, 창 밖이면 가장자리 화살표 + 글.
    */
+  /**
+   * 바닥 길 안내 (2026-10-22 사용자: "다음 맵으로 넘어가는 길을 내비게이션으로 바닥에 알려줘"): 미니맵 금빛 화살표와 같은 목표
+   * (퀘스트 — 없으면 다음 지역 출구)까지 흐름장(괴물이 쓰는 길찾기)을 따라 바닥에 금빛 화살표를 잇는다. 목표 곁(2칸)이면 감춘다
+   */
+  private drawFloorNav(curr: GameState, lp: number): void {
+    if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return
+    const me = curr.players[lp]
+    if (!me || !me.alive || me.downed) return
+    const t = this.questTarget(curr, lp) ?? this.forwardExit(curr)
+    if (!t || Math.hypot(t.x - me.x, t.y - me.y) < 2 * TILE) return
+    const map = this.map
+    const tx = Math.floor(t.x / TILE)
+    const ty = Math.floor(t.y / TILE)
+    if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return
+    const field = flowField(map, ty * map.w + tx)
+    const pts: { x: number; y: number }[] = []
+    let x = me.x
+    let y = me.y
+    for (let i = 0; i < 40; i++) {
+      const n = flowStep(map, field, x, y)
+      if (!n) break
+      x = n.x
+      y = n.y
+      pts.push(n)
+    }
+    if (pts.length < 2) return
+    const ctx = this.hud.ctx
+    ctx.save()
+    ctx.lineJoin = 'round'
+    // 화살표가 목표 쪽으로 흐르듯 (0.6초에 한 칸) · 가까운 것부터 진하게
+    const flow = (this.t / 0.6) % 1
+    for (let i = 1; i < pts.length; i += 2) {
+      const a = this.worldToScreen(pts[i - 1].x * U, 0.05, pts[i - 1].y * U)
+      const b = this.worldToScreen(pts[i].x * U, 0.05, pts[i].y * U)
+      const ang = Math.atan2(b.y - a.y, b.x - a.x)
+      const k = (i + flow * 2) / pts.length
+      ctx.save()
+      ctx.globalAlpha = Math.max(0.15, 0.85 * (1 - k))
+      ctx.translate(b.x, b.y)
+      ctx.rotate(ang)
+      ctx.beginPath()
+      ctx.moveTo(-9, -8)
+      ctx.lineTo(4, 0)
+      ctx.lineTo(-9, 8)
+      ctx.lineWidth = 7
+      ctx.strokeStyle = 'rgba(20,14,0,0.55)'
+      ctx.stroke()
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#ffd84a'
+      ctx.stroke()
+      ctx.restore()
+    }
+    ctx.restore()
+  }
+
+  /** 퀘스트가 없을 때 길 안내의 목표: 이 막에서 더 안쪽(번호가 큰) 지역으로 가는 출구 — 마을 · 앞 지역으로 되돌아가는 출구는 빼고 */
+  private forwardExit(curr: GameState): { x: number; y: number } | null {
+    const l = areaLayout(curr.curArea, this.map)
+    let best: { x: number; y: number; to: number } | null = null
+    for (const e of l.exits) if (!isTown(e.to) && e.to > curr.curArea && (!best || e.to > best.to)) best = e
+    return best
+  }
+
   private questTarget(curr: GameState, lp: number): { x: number; y: number; label: string } | null {
     if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return null
     const me = curr.players[lp]
