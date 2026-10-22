@@ -81,8 +81,10 @@ function audit() {
     if (['IMG', 'INPUT', 'BUTTON', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return true
     return boxy(el) || own(el).length > 0
   }
-  // 일부러 위에 뜨는 창 · 대화상자 (덮어도 문제가 아니다)
-  const WIN = '.dlg, .tp, .inv, .wpp, .ending, .overlay, .menu, .sp, .skt, .cs, .czp, .czpanel-wrap, .joining, .game-load, .inv-tip, .tip, .drag-ghost, .settings'
+  // 일부러 모두 위에 뜨는 것 (대화상자 · 메뉴 · 설명 풍선 — 덮어도 문제가 아니다)
+  const MODAL = '.dlg, .ending, .overlay, .menu, .czpanel-wrap, .joining, .game-load, .inv-tip, .tip, .drag-ghost, .settings'
+  // 창 — HUD 위에는 떠도 되지만 **창끼리 겹치면 안 된다** (2026-10-22 사용자: "아이템 창과 능력치 창을 같이 열면 겹친다")
+  const WIN = '.tp, .inv, .wpp'
   const texts = [...document.querySelectorAll('body *')].filter((el) => {
     if (el.closest('svg') || el.tagName === 'CANVAS' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return false
     const t = own(el)
@@ -138,9 +140,10 @@ function audit() {
       const stack = document.elementsFromPoint(x, y)
       const top = stack.find((h) => h === el || el.contains(h) || h.contains(el) || visual(h))
       if (!top || top === el || el.contains(top) || top.contains(el)) continue
-      // 창 · 대화상자가 덮은 것 — 일부러
+      // 대화상자 · 메뉴가 덮은 것 — 일부러
+      if (top.closest(MODAL) && top.closest(MODAL) !== el.closest(MODAL)) continue
+      // 창이 HUD 를 덮은 것 — 괜찮다 (창끼리는 센다)
       if (top.closest(WIN) && !el.closest(WIN)) continue
-      if (top.closest(WIN) && el.closest(WIN) && top.closest(WIN) !== el.closest(WIN)) continue
       hidden++
       by = top
     }
@@ -260,6 +263,28 @@ const SCENES = [
   ['능력치', key('KeyC')],
   ['퀘스트', key('KeyJ')],
   ['메뉴', key('Escape')],
+  ['가방 + 능력치', async (page) => {
+    await page.keyboard.press('KeyI')
+    await sleep(400)
+    await page.keyboard.press('KeyC')
+    await sleep(700)
+    undo = async (p) => {
+      await p.keyboard.press('KeyC')
+      await p.keyboard.press('KeyI')
+      await sleep(300)
+    }
+  }],
+  ['가방 + 스킬', async (page) => {
+    await page.keyboard.press('KeyI')
+    await sleep(400)
+    await page.keyboard.press('KeyK')
+    await sleep(700)
+    undo = async (p) => {
+      await p.keyboard.press('KeyK')
+      await p.keyboard.press('KeyI')
+      await sleep(300)
+    }
+  }],
   ['치지직', async (page) => {
     await page.evaluate(() => document.querySelector('.czbadge, #czbadge, [data-cz], .cz-badge')?.click())
     await sleep(900)

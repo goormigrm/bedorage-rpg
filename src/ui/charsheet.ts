@@ -64,7 +64,7 @@ export class CharSheet {
     const rows = MASTERY_NAMES.map(
       (name, i) => `<div class="cs-row ms">
         <div class="cs-h"><b>${name}</b><span class="cs-pt">${p.mst[i]}<small>/${MASTERY_CAP}</small></span>
-          <button class="sk-up" data-cmd="${CMD_ATTR}" data-arg="${20 + i}" ${free > 0 && p.mst[i] < MASTERY_CAP ? '' : 'disabled'}>+</button></div>
+          <button class="sk-up big" data-cmd="${CMD_ATTR}" data-arg="${20 + i}" ${free > 0 && p.mst[i] < MASTERY_CAP ? '' : 'disabled'}>+</button></div>
         <div class="cs-d">${MASTERY_DESC[i]} · <em>지금 ${now[i]}</em></div></div>`,
     ).join('')
     return `<div class="cs-ms"><div class="cs-t">숙련 ${p.mlv} · 남은 점수 ${free} <span class="cs-mbar"><i style="width:${k}%"></i></span><small>${k}%</small></div>
@@ -85,7 +85,7 @@ export class CharSheet {
       const star = rec[0] === i ? '<span class="cs-rec">★ 추천(주)</span>' : rec[1] === i ? '<span class="cs-rec sub">★ 추천(부)</span>' : ''
       return `<div class="cs-row ${rec.includes(i) ? 'rec' : ''}">
         <div class="cs-h"><b>${name}</b>${star}<span class="cs-pt">${p.attr[i]}</span>
-          <button class="sk-up" data-cmd="${CMD_ATTR}" data-arg="${i}" ${free > 0 ? '' : 'disabled'}>+</button></div>
+          <button class="sk-up big" data-cmd="${CMD_ATTR}" data-arg="${i}" ${free > 0 ? '' : 'disabled'}>+</button></div>
         <div class="cs-d">${ATTR_DESC[i]} · <em>지금 ${attrEffect(i, p.attr[i])}</em></div></div>`
     }).join('')
     const town = isTown(p.area)

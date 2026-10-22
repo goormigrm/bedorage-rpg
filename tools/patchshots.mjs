@@ -31,7 +31,8 @@ await page.addInitScript(() => {
 })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const shot = async (name) => {
-  const file = `${dir}/${qa ? 'qa-' : ''}${name}.png`
+  // SHOT_SUFFIX=_dark — 🌙 판을 같은 폴더에 (패치 영상 🌙 판이 쓴다)
+  const file = `${dir}/${qa ? 'qa-' : ''}${name}${process.env.SHOT_SUFFIX ?? ''}.png`
   await page.screenshot({ path: file })
   console.log('찍음', file)
 }
@@ -125,6 +126,15 @@ const SCENES = {
     await sleep(900)
     await shot('03_bag_expand')
     await page.keyboard.press('KeyI')
+  },
+  skill: async () => {
+    // 스킬 창 — 큰 + 단추 · 한 줄 설명 (포인트가 남게 레벨 12)
+    await page.evaluate(() => (window.__bd.state().players[0].level = 12))
+    await sleep(300)
+    await page.keyboard.press('KeyK')
+    await sleep(900)
+    await shot('11_skill_window')
+    await page.keyboard.press('KeyK')
   },
   shop: async () => {
     await nearNpc('merchant')
@@ -233,9 +243,9 @@ const SCENES = {
   },
 }
 
-const order = pick.length ? pick : ['lobby', 'town', 'bag', 'shop', 'elder', 'field', 'bubbles', 'stream', 'captain']
+const order = pick.length ? pick : ['lobby', 'town', 'bag', 'skill', 'shop', 'elder', 'field', 'bubbles', 'stream', 'captain']
 // 판이 필요한 장면을 고르면 먼저 판을 연다
-const needGame = new Set(['bag', 'shop', 'elder', 'field', 'bubbles', 'stream', 'boss'])
+const needGame = new Set(['bag', 'skill', 'shop', 'elder', 'field', 'bubbles', 'stream', 'boss'])
 let opened = false
 for (const name of order) {
   if (needGame.has(name) && !opened) {

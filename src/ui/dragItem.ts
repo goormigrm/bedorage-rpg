@@ -8,6 +8,8 @@ export interface DragSrc {
   from: DragFrom
   index: number
   icon: string
+  /** 아이템 부위 — 끄는 동안 그 장비 칸에 테두리를 띄운다 (투구면 투구 칸 — 2026-10-22 사용자) */
+  slot?: number
 }
 
 let suppress = false
@@ -48,6 +50,7 @@ export function makeDraggable(cell: HTMLElement, src: () => DragSrc | null, onDr
         document.body.appendChild(ghost)
         cell.classList.add('dragging')
         document.body.classList.add('drag-item')
+        if (s.slot !== undefined) document.querySelectorAll(`[data-eq="${s.slot}"]`).forEach((q) => q.classList.add('drop-hint'))
       }
       ghost.style.left = `${ev.clientX}px`
       ghost.style.top = `${ev.clientY}px`
@@ -62,6 +65,7 @@ export function makeDraggable(cell: HTMLElement, src: () => DragSrc | null, onDr
       ghost.remove()
       cell.classList.remove('dragging')
       document.body.classList.remove('drag-item')
+      document.querySelectorAll('.drop-hint').forEach((q) => q.classList.remove('drop-hint'))
       highlight(null)
       suppress = true
       setTimeout(() => (suppress = false), 0)

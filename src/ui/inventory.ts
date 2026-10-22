@@ -213,6 +213,8 @@ export class Inventory {
     this.lastKey = ''
     clearInterval(this.timer)
     if (this.open) {
+      // 열 때마다 정렬 (2026-10-22 사용자: "아이템 창은 열 때마다 자동 정렬") — 등급 높은 것부터
+      if (this.me().bag.length > 1) this.send(CMD_SORT, 0)
       this.render()
       // 판이 도는 중이라 줍거나 레벨이 오르면 바뀐다 — 가볍게 자주 다시 그린다 (바뀐 게 없으면 건너뛴다)
       this.timer = window.setInterval(() => this.render(), 200)
@@ -253,8 +255,8 @@ export class Inventory {
     const cells: string[] = []
     for (let i = 0; i < me.bagMax; i++) cells.push(cellHtml(me.bag[i], `data-bag="${i}"`, me))
     this.el.innerHTML = `
-      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="gold">${myGoldText(me.gold)}</span><button class="inv-x" title="닫기 (${keyLabel('bag')} · Tab · Esc)">✕</button></div>
-      <div class="inv-xp"><i style="width:${Math.min(100, (me.xp / need) * 100).toFixed(1)}%"></i><span>${me.xp} / ${need}</span></div>
+      <div class="inv-head"><b>${c.name}</b><span>레벨 ${me.level}</span><span class="xpn">경험치 ${me.xp} / ${need}</span><span class="gold">${myGoldText(me.gold)}</span><button class="inv-x" title="닫기 (${keyLabel('bag')} · Tab · Esc)">✕</button></div>
+      <div class="inv-xp"><i style="width:${Math.min(100, (me.xp / need) * 100).toFixed(1)}%"></i></div>
       <div class="inv-body">
         <div class="inv-left">
           <div class="eqs">${Array.from({ length: SLOT_COUNT }, (_, i) => slot(i)).join('')}</div>
@@ -308,7 +310,7 @@ export class Inventory {
         if (!it.lk) this.send(CMD_DROP, i)
       }
       // 끌어다 놓기: 보관함 칸 → 보관 · 장비 칸 → 끼기 · 상인 창 → 팔기
-      makeDraggable(cell, () => (me.bag[i] ? { from: 'bag', index: i, icon: itemIconUrl(me.bag[i]) } : null), (s, t) => {
+      makeDraggable(cell, () => (me.bag[i] ? { from: 'bag', index: i, icon: itemIconUrl(me.bag[i]), slot: me.bag[i].slot } : null), (s, t) => {
         this.tip.hide()
         const d = t.dataset.drop
         if (d === 'stash') this.send(CMD_STASH_PUT, s.index)

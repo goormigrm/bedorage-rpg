@@ -517,7 +517,6 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .inv-x { background: none; border: 1px solid rgba(201,162,74,0.4); color: #c9a24a; border-radius: 4px; cursor: pointer; margin-left: 8px; }
 .inv-xp { position: relative; height: 8px; background: rgba(255,255,255,0.07); border-radius: 3px; margin: 8px 0 12px; }
 .inv-xp i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #8a6a2a, #e8c46a); border-radius: 3px; }
-.inv-xp span { position: absolute; right: 0; top: 10px; font-size: 12px; color: #8d8170; }
 .inv-body { display: flex; gap: 14px; margin-top: 16px; }
 .inv-left { width: 200px; }
 .eqs { display: grid; gap: 6px; }
@@ -1491,7 +1490,15 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 
 /* ---- 가방 창 크게 (2026-10-22 사용자: "아이템 창에서 정렬과 칸 수 늘리는 단추가 너무 작아 — 가방 창 자체를 더 키워도") ----
    너비는 화면에 맞춰 560 ~ 780px (1366 화면에서는 왼쪽에 같이 열리는 상점 · 보관함 창과 겹치지 않게 46vw) · 칸 · 그림 · 단추 · 글자를 함께 키운다 */
-.inv { width: clamp(560px, calc(46vw / var(--z, 1)), 780px); font-size: 14.5px; padding: 16px 18px; }
+.game-ui { --inv-w: clamp(560px, calc(46vw / var(--z, 1)), 780px); }
+.inv { width: var(--inv-w); font-size: 14.5px; padding: 16px 18px; }
+.inv-head .xpn { font-size: 13px; color: #a89a80; white-space: nowrap; }
+/* 가방과 같이 열린 창(능력치 · 스킬 · 퀘스트 · 마을 사람)은 왼쪽으로 비켜 겹치지 않게 (2026-10-22 사용자: "아이템 창과 능력치 창을 같이 열면 겹친다") */
+.game-ui:has(.inv:not([hidden])) .tp:not([hidden]) { left: 18px; transform: none; width: min(880px, calc(100% - var(--inv-w) - 54px)); }
+.tp.docked { width: min(600px, calc(100% - var(--inv-w) - 54px)); }
+/* 끄는 아이템이 들어갈 장비 칸 (투구면 투구 칸) */
+.drop-hint { outline: 2px dashed #ffd84a; outline-offset: -3px; box-shadow: 0 0 16px rgba(255,216,74,.55), inset 0 0 18px rgba(255,216,74,.22) !important; animation: dropHint .7s ease-in-out infinite alternate; }
+@keyframes dropHint { to { outline-color: rgba(255,216,74,.35); box-shadow: 0 0 6px rgba(255,216,74,.3), inset 0 0 8px rgba(255,216,74,.1); } }
 .inv-head b { font-size: 24px; }
 .inv-left { width: clamp(200px, 34%, 260px); flex-shrink: 0; }
 .eq { min-height: 48px; padding-top: 7px; padding-bottom: 7px; padding-left: 54px; }
@@ -1502,7 +1509,21 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .bag-h { font-size: 16px; gap: 10px; margin-bottom: 10px; }
 .bag-sort, .bag-up { padding: 7px 16px; font: 800 15px "IBM Plex Sans KR", sans-serif; border-width: 1.5px; border-radius: 5px; }
 .inv .bag { gap: 7px; }
-.inv .cell { height: 66px; }
-.inv .cell .ic { width: 42px; height: 42px; top: 3px; }
+/* 칸은 창 높이에 맞춰 50 ~ 66px (1366×768 에서 맨 아래 설명 줄이 잘려 굴려야 보였다) */
+.inv .cell { height: clamp(50px, calc(6.1vh / var(--z, 1)), 66px); }
+.inv .cell .ic { width: clamp(32px, calc(3.9vh / var(--z, 1)), 42px); height: clamp(32px, calc(3.9vh / var(--z, 1)), 42px); top: 3px; }
 .inv .cell b { font-size: 13px; }
 .bag-hint { font-size: 14px; }
+
+/* ---- 스킬 창 크게 (2026-10-22 사용자: "스킬 창도 버튼 자체를 더 크게 해서 전투 중에도 간단하게 찍을 수 있도록 · 설명은 정말 간단하게") ---- */
+.skp { width: min(900px, calc(100vw / var(--z, 1) - 40px)); }
+.skp .sk-row { padding: 9px 12px; margin-bottom: 7px; }
+.skp .sk-h { gap: 10px; }
+.skp .sk-h b { font-size: 17px; }
+.skp .sk-r { font-size: 15px; letter-spacing: 2px; }
+.sk-up.big { width: 46px; height: 46px; border-radius: 10px; border-width: 2px; font: 900 28px/1 "IBM Plex Sans KR", sans-serif; box-shadow: 0 2px 0 #1a1208; flex-shrink: 0; }
+.sk-up.big:not([disabled]) { background: linear-gradient(180deg, #6a4c18, #3a2a10); border-color: #f1d58a; color: #fff3c4; }
+.sk-up.big:not([disabled]):hover { filter: brightness(1.25); }
+.skp .sk-d { font-size: 14.5px; color: #e2d6bc; margin: 4px 0 6px; }
+.skp .sk-f { font-size: 13px; gap: 10px; }
+.skp .sk-f button { padding: 5px 12px; font: 800 14px "IBM Plex Sans KR", sans-serif; margin-left: 4px; border-radius: 5px; }

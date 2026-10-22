@@ -49,7 +49,7 @@ let PART = 1
  */
 let NOTES = false
 const NOTES_DIR = 'patch-2026-10-22'
-const SLIDE_FILES = ['01_lobby', '03_bag_expand', '04_shop_sell', '05_elder_all', '06_captain_mercs']
+const SLIDE_FILES = ['01_lobby', '03_bag_expand', '11_skill_window', '04_shop_sell', '05_elder_all', '06_captain_mercs']
 const SLIDES = {}
 /** 자막 고르기: 어둡게 · 밝게 */
 const L = (dark, bright) => (BRIGHT ? bright : dark)
@@ -796,7 +796,7 @@ function scenes(part) {
   return tl.done()
 }
 
-/** 패치 영상의 장면 (NOTES) — 스크린샷 다섯 → 들판(바닥 점 · 괴물 떼 · 남은 괴물 몰려옴) → 후원 → 막 보스 등장 · 경직. 끝 카드 없이 */
+/** 패치 영상의 장면 (NOTES) — 스크린샷 다섯 → 들판(바닥 점 · 괴물 떼 · 남은 괴물 몰려옴) → 후원. 끝 카드 · 보스 장면 없이 */
 function notesScenes() {
   const tl = timeline()
   const { at, every } = tl
@@ -813,7 +813,8 @@ function notesScenes() {
     cue('calm', { town: true })
   })
   slide('01_lobby', '작은 글씨는 키우고 · 글은 짧게', '캐릭터 카드 · 창마다 — 칸 밖으로 넘치는 글 없이', 4.6, 0.15, 0.95)
-  slide('03_bag_expand', '가방 창에서 바로 칸 늘리기', '상인에게 가지 않아도 ＋6칸 · 0 인 능력치는 감춘다', 4.4, 0.85, 0.3)
+  slide('03_bag_expand', '가방 창 크게 · 열 때마다 정렬', '상인에게 가지 않아도 ＋6칸 · 끄는 아이템이 들어갈 장비 칸에 테두리', 4.4, 0.85, 0.3)
+  slide('11_skill_window', '스킬 창 — 큰 ＋ 단추 · 한 줄 설명', '전투 중에도 바로 찍는다', 4.2, 0.5, 0.3)
   slide('04_shop_sell', '상점은 팔기부터 · 큰 전부 팔기', '잡템만 팔기 · 자동 줍기는 처음부터 희귀 이상만', 4.4, 0.1, 0.4)
   slide('05_elder_all', '촌장 한 번에 — 할 일 · 보상 모두 받기', '깬 막으로는 돌아가지 않는다 — 다음 막으로만', 4.4, 0.5, 0.35)
   slide('06_captain_mercs', '용병은 빈 자리마다 — 4인 방이면 셋', '캐릭터 이름 · 내 레벨 · 장비 수준 · 한 명 더 데려올수록 비싸게', 4.4, 0.5, 0.4)
@@ -881,49 +882,7 @@ function notesScenes() {
   at(3.0, () => M.stream.fakeDonation(9000))
   at(1.0, () => caption('시청자 말풍선은 크게', '괴물 머리 위에 — 시청자 이름과 함께'))
   at(5.6, () => {})
-  // ---- 막 보스: 등장 장면 → 경직 (즉사기는 넣지 않는다 — 스포일러 · 2026-09-24 사용자)
-  at(0, () => {
-    dissolve()
-    holding = true
-    ov.cap = null
-    ov.don = false
-    const s = st()
-    for (const m of s.monsters) m.hp = 0
-    for (const q of s.players) if (q.don) q.don.fill(0)
-    s.allies = undefined
-    S().autopilot = false
-    warpParty(9)
-  })
-  at(1.8, () => {
-    // 보스에게서 13칸 (깨는 거리 11칸 밖 · 총소리 16칸 안) — 준비하는 동안 깨면 등장 장면이 영상에 안 담긴다
-    const l = M.world.areaLayout(9, window.__bd.map())
-    const p = st().players[0]
-    p.x = l.special.x + Math.SQRT1_2 * 13 * T
-    p.y = l.special.y + Math.SQRT1_2 * 13 * T
-    gatherBots()
-    S().renderer.setDebugZoom(1.15)
-  })
-  at(0.4, () => {
-    holding = false
-    // 곁에 졸개 — 봇이 쏘는 소리에 보스가 깨고, 등장 장면 동안 졸개는 멈춘다
-    spawn([0, 1], 12, 3, 6)
-    caption('막 보스 등장 장면', '졸개는 멈추고 · 어둠이 걷히고 · 보스마다 등장 대사')
-  })
-  at(4.2, () => {
-    const b = st().monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
-    if (b) {
-      b.hitTick = st().tick
-      b.kcd = 1e9
-      b.target = 0
-      b.los = 1
-      b.scd = 30
-      b.stag = 940
-    }
-    S().autopilot = true
-    cue('boss', { act: 0 })
-    caption('경직은 한 번쯤 · 즉사기는 두 번 넘게', '즉사기는 구르기로 못 피한다 — 범위 밖으로')
-  })
-  at(5.6, () => {})
+  // 막 보스 장면(등장 · 경직 · 즉사기)은 넣지 않는다 (2026-10-22 사용자: "영상으로 먼저 봐 버리면 게임의 흥미가 떨어진다")
   at(0, null)
   return tl.done()
 }
@@ -1685,7 +1644,6 @@ export async function start(opts = {}) {
     sim: await sameModule('/src/core/sim.ts'),
     chars: await sameModule('/src/core/characters.ts'),
     skills: await sameModule('/src/core/skills.ts'),
-    monsters: await sameModule('/src/core/monsters.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -1721,7 +1679,7 @@ export async function start(opts = {}) {
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
   const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `patch${PART}_${BRIGHT ? 'bright' : 'dark'}`
   // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
-  const encs = NOTES ? [{ name: 'patchnote', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
+  const encs = NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
     { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
     { name: BASE, w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
@@ -1780,7 +1738,8 @@ export async function start(opts = {}) {
   if (NOTES)
     for (const f of SLIDE_FILES) {
       const img = new Image()
-      img.src = `/bedorage-rpg/docs/img/${NOTES_DIR}/${f}.png`
+      // 🌙 판은 🌙 스크린샷 (SHOT_SKIN=dark SHOT_SUFFIX=_dark node tools/patchshots.mjs)
+      img.src = `/bedorage-rpg/docs/img/${NOTES_DIR}/${f}${BRIGHT ? '' : '_dark'}.png`
       await img.decode().then(() => (SLIDES[f] = img), () => log.push('사진 없음 ' + f))
     }
   // 고르는 화면은 1편에만 — 다른 편은 로비에서 부르면 판만 연다 (이미 판 안이면 그대로 이어서)

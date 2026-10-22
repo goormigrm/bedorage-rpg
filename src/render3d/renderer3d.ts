@@ -2871,45 +2871,67 @@ export class Renderer3D {
    * 바닥 길 안내 (2026-10-22 사용자: "다음 맵으로 넘어가는 길을 내비게이션으로 바닥에 알려줘"): 미니맵 금빛 화살표와 같은 목표
    * (퀘스트 — 없으면 다음 지역 출구)까지 흐름장(괴물이 쓰는 길찾기)을 따라 바닥에 금빛 화살표를 잇는다. 목표 곁(2칸)이면 감춘다
    */
+  /**
+   * 바닥 길 안내의 길: 지역에 들어설 때 · 목표가 바뀔 때만 한 번 정해 바닥에 박아 둔다 (2026-10-22 사용자: "점이 움직일 때마다 너무 자주
+   * 깜빡여서 신경 쓰여 — 특정 구역 이동할 때까지는 바꾸지 않고"). 전에는 프레임마다 내 자리에서 다시 그어 걸을 때마다 점이 옮겨 다녔다
+   */
+  private navPath: { area: number; gx: number; gy: number; pts: { x: number; y: number }[] } | null = null
+
   private drawFloorNav(curr: GameState, lp: number): void {
     if (lp < 0 || curr.mode !== 'dungeon' || curr.curArea < 0) return
     const me = curr.players[lp]
     if (!me || !me.alive || me.downed) return
     // 다음 맵으로 가는 길 (2026-10-22 사용자): 퀘스트가 다른 지역 · NPC · 특별한 곳을 가리키면 그리로, '남은 괴물'이면 앞으로 가는 출구로
+    // (움직이는 괴물을 따라가는 길은 긋지 않는다 — 점이 계속 바뀐다)
     const q = this.questTarget(curr, lp)
-    const t = (q && !q.mob ? q : this.forwardExit(curr)) ?? q
-    if (!t || Math.hypot(t.x - me.x, t.y - me.y) < 2 * TILE) return
+    const t = q && !q.mob ? q : this.forwardExit(curr)
+    if (!t) return
     const map = this.map
     const tx = Math.floor(t.x / TILE)
     const ty = Math.floor(t.y / TILE)
     if (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h) return
-    const field = flowField(map, ty * map.w + tx)
-    const pts: { x: number; y: number }[] = []
-    let x = me.x
-    let y = me.y
-    for (let i = 0; i < 40; i++) {
-      const n = flowStep(map, field, x, y)
-      if (!n) break
-      x = n.x
-      y = n.y
-      pts.push(n)
+    const old = this.navPath
+    // 같은 지역에서 목표가 3칸 안으로만 움직였으면(시련의 수호자 같은) 그대로 둔다
+    if (!old || old.area !== curr.curArea || Math.abs(old.gx - tx) + Math.abs(old.gy - ty) > 3) {
+      const field = flowField(map, ty * map.w + tx)
+      const pts: { x: number; y: number }[] = []
+      let x = me.x
+      let y = me.y
+      for (let i = 0; i < 600; i++) {
+        const n = flowStep(map, field, x, y)
+        if (!n) break
+        x = n.x
+        y = n.y
+        if (i % 2 === 1) pts.push(n)
+      }
+      this.navPath = { area: curr.curArea, gx: tx, gy: ty, pts }
     }
+    const pts = this.navPath!.pts
     if (pts.length < 2) return
+    // 지나간 점은 지운다 — 가장 가까운 점까지 (점 자체는 바닥에 그대로)
+    let near = 0
+    let nd = Infinity
+    for (let i = 0; i < pts.length; i++) {
+      const d = (pts[i].x - me.x) ** 2 + (pts[i].y - me.y) ** 2
+      if (d < nd) {
+        nd = d
+        near = i
+      }
+    }
     const ctx = this.hud.ctx
     ctx.save()
-    // 점 (2026-10-22 사용자: "> 모양은 각도가 계속 바뀌어 정신없다 — 점만 따라가면 되니까 점으로") — 목표 쪽으로 흐르듯 (0.6초에 한 칸) · 가까운 것부터 진하게
-    const flow = (this.t / 0.6) % 1
-    for (let i = 1; i < pts.length; i += 2) {
+    // 점 (2026-10-22 사용자: "> 모양은 각도가 계속 바뀌어 정신없다 — 점만 따라가면 되니까 점으로") · 깜빡이지 않게 늘 같은 진하기
+    ctx.globalAlpha = 0.9
+    ctx.fillStyle = '#ffd84a'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(30,18,0,0.75)'
+    for (let i = near + (nd < (1.5 * TILE) ** 2 ? 1 : 0); i < pts.length; i++) {
       const b = this.worldToScreen(pts[i].x * U, 0.05, pts[i].y * U)
-      const k = (i + flow * 2) / pts.length
-      ctx.globalAlpha = Math.max(0.2, 0.95 * (1 - k))
+      if (b.x < -20 || b.y < -20 || b.x > VIEW_W + 20 || b.y > VIEW_H + 20) continue
       ctx.beginPath()
       ctx.arc(b.x, b.y, 7, 0, Math.PI * 2)
-      ctx.fillStyle = '#ffd84a'
       ctx.fill()
       // 진한 테두리 — ☀ 모래 바닥에서도 보이게
-      ctx.lineWidth = 3
-      ctx.strokeStyle = 'rgba(30,18,0,0.75)'
       ctx.stroke()
     }
     ctx.restore()
