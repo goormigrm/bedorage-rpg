@@ -42,6 +42,15 @@ let BRIGHT = false
 let SELECT = false
 /** 몇 편 (start({ part: 1 ~ 2 }) — 2026-10-08 사용자: "40초 분량으로 여러 개" · 2026-10-09 "최종 결과물을 2개로 해서 40초 이하 정도씩") */
 let PART = 1
+/**
+ * 패치 영상 (2026-10-22 사용자: "오늘 업데이트 내역이 잘 보이게 동영상으로도 — 트레일러와 비슷하지만 오프닝 · 엔딩은 빼고 패치 내역만 ·
+ * 1개 · 길이는 상관없고 화질 · 해상도 좋게"): start({ mode: 'notes' }) → docs/img/patch-2026-10-22/patchnote.webm (1080 · 고화질 한 벌).
+ * 창(가방 · 상점 · 촌장 · 용병)은 HTML 이라 게임 캔버스에 안 담긴다 → 그날 찍은 스크린샷(tools/patchshots.mjs)을 화면 가득 천천히 다가가며
+ */
+let NOTES = false
+const NOTES_DIR = 'patch-2026-10-22'
+const SLIDE_FILES = ['01_lobby', '03_bag_expand', '04_shop_sell', '05_elder_all', '06_captain_mercs']
+const SLIDES = {}
 /** 자막 고르기: 어둡게 · 밝게 */
 const L = (dark, bright) => (BRIGHT ? bright : dark)
 let log = []
@@ -211,8 +220,18 @@ function drawDonTable() {
   g.restore()
 }
 
+/** 스크린샷 장면: 화면 가득 · 천천히 다가간다(fx · fy = 다가가는 쪽 0 ~ 1) */
+function drawSlide() {
+  const sl = ov.slide
+  const img = SLIDES[sl.file]
+  if (!img) return
+  const k = 1 + 0.06 * ease((now() - sl.at) / (sl.dur * 1000))
+  g.drawImage(img, (W - W * k) * sl.fx, (H - H * k) * sl.fy, W * k, H * k)
+}
+
 function drawOverlay() {
   const t = now()
+  if (ov.slide) drawSlide()
   const vg = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.72)
   vg.addColorStop(0, 'rgba(0,0,0,0)')
   vg.addColorStop(1, 'rgba(0,0,0,0.2)')
@@ -777,6 +796,138 @@ function scenes(part) {
   return tl.done()
 }
 
+/** 패치 영상의 장면 (NOTES) — 스크린샷 다섯 → 들판(바닥 점 · 괴물 떼 · 남은 괴물 몰려옴) → 후원 → 막 보스 등장 · 경직. 끝 카드 없이 */
+function notesScenes() {
+  const tl = timeline()
+  const { at, every } = tl
+  const slide = (file, cap, sub, sec, fx, fy) => {
+    at(0, () => {
+      dissolve(500)
+      ov.slide = { file, at: now(), dur: sec, fx, fy }
+      caption(cap, sub)
+    })
+    at(sec, () => {})
+  }
+  at(0, () => {
+    S().autopilot = false
+    cue('calm', { town: true })
+  })
+  slide('01_lobby', '작은 글씨는 키우고 · 글은 짧게', '캐릭터 카드 · 창마다 — 칸 밖으로 넘치는 글 없이', 4.6, 0.15, 0.95)
+  slide('03_bag_expand', '가방 창에서 바로 칸 늘리기', '상인에게 가지 않아도 ＋6칸 · 0 인 능력치는 감춘다', 4.4, 0.85, 0.3)
+  slide('04_shop_sell', '상점은 팔기부터 · 큰 전부 팔기', '잡템만 팔기 · 자동 줍기는 처음부터 희귀 이상만', 4.4, 0.1, 0.4)
+  slide('05_elder_all', '촌장 한 번에 — 할 일 · 보상 모두 받기', '깬 막으로는 돌아가지 않는다 — 다음 막으로만', 4.4, 0.5, 0.35)
+  slide('06_captain_mercs', '용병은 빈 자리마다 — 4인 방이면 셋', '캐릭터 이름 · 내 레벨 · 장비 수준 · 한 명 더 데려올수록 비싸게', 4.4, 0.5, 0.4)
+  // ---- 들판: 바닥 점 → 괴물 떼 → 남은 괴물 몰려옴
+  at(0, () => {
+    dissolve()
+    holding = true
+    ov.slide = null
+    ov.cap = null
+    // 1막 퀘스트를 맡아 둔다 — 바닥 점이 다음 지역을 가리키게
+    for (const q of st().players) M.world.QUESTS.forEach((d, i) => d.act === 0 && !(q.quests[i] > 0) && (q.quests[i] = 1))
+    warpParty(1)
+  })
+  at(1.6, () => gatherBots())
+  at(0.4, () => {
+    holding = false
+    cue('calm', { act: 0 })
+    S().renderer.setDebugZoom(0.9)
+    caption('바닥의 금빛 점 — 다음 지역 가는 길', '들어서기만 해도 웨이포인트가 열린다')
+  })
+  at(4.6, () => {
+    S().autopilot = true
+    S().renderer.setDebugZoom(0.74)
+    spawn([0, 1, 2, 0], 45, 5, 12)
+    cue('hot', { act: 0 })
+    caption('괴물이 몰려도 매끄럽게', '🌙 · ☀ 모두 가볍게 · 총소리를 듣고 멀리서도 · 탱커에게 맞으면 탱커를 노린다')
+  })
+  const f0 = tl.t
+  every(f0 + 1, f0 + 5, 1, () => alive() < 40 && spawn([0, 1, 2, 0], 14, 6, 12))
+  at(5.4, () => {
+    // 남은 괴물을 4분의 1 아래로 — 가까운 것부터 치우고 멀리 잠든 무리만 남긴다 → 모두 깨어 몰려온다 (sim rushLeft)
+    const s = st()
+    const p = s.players[0]
+    const d = (m) => Math.hypot(m.x - p.x, m.y - p.y)
+    const left = s.monsters.filter((m) => m.hp > 0 && m.sum === undefined).sort((a, b) => d(b) - d(a))
+    left.slice(Math.floor(s.monstersTotal * 0.2)).forEach((m) => (m.hp = 0))
+    S().renderer.setDebugZoom(1.1)
+    caption('남은 괴물이 4분의 1 아래면 — 모두 몰려온다', '남은 괴물을 찾아다니지 않아도 된다')
+  })
+  at(6.4, () => {})
+  // ---- 후원: 천 원마다 · 큰 말풍선
+  at(0, () => {
+    dissolve()
+    holding = true
+    ov.cap = null
+    for (const m of st().monsters) m.hp = 0
+    const spot = openSpot()
+    if (spot) {
+      st().players[0].x = spot.x
+      st().players[0].y = spot.y
+    }
+    gatherBots()
+    S().renderer.setDebugZoom(0.8)
+  })
+  at(0.6, () => {
+    holding = false
+    ov.don = true
+    cue('hot', { act: 0 })
+    caption('천 원마다 다른 후원', '2천 화면 흔들림 · 4천 거꾸로 걷기 · 6천 총잡이 무리 · 9천 괴물 대행진')
+    for (let i = 0; i < 4; i++) M.stream.fakeChat(false)
+    M.stream.fakeDonation(6000)
+  })
+  const d0 = tl.t
+  every(d0 + 0.3, d0 + 10, 0.45, () => M.stream.fakeChat(false))
+  at(3.0, () => M.stream.fakeDonation(9000))
+  at(1.0, () => caption('시청자 말풍선은 크게', '괴물 머리 위에 — 시청자 이름과 함께'))
+  at(5.6, () => {})
+  // ---- 막 보스: 등장 장면 → 경직 (즉사기는 넣지 않는다 — 스포일러 · 2026-09-24 사용자)
+  at(0, () => {
+    dissolve()
+    holding = true
+    ov.cap = null
+    ov.don = false
+    const s = st()
+    for (const m of s.monsters) m.hp = 0
+    for (const q of s.players) if (q.don) q.don.fill(0)
+    s.allies = undefined
+    S().autopilot = false
+    warpParty(9)
+  })
+  at(1.8, () => {
+    // 보스에게서 13칸 (깨는 거리 11칸 밖 · 총소리 16칸 안) — 준비하는 동안 깨면 등장 장면이 영상에 안 담긴다
+    const l = M.world.areaLayout(9, window.__bd.map())
+    const p = st().players[0]
+    p.x = l.special.x + Math.SQRT1_2 * 13 * T
+    p.y = l.special.y + Math.SQRT1_2 * 13 * T
+    gatherBots()
+    S().renderer.setDebugZoom(1.15)
+  })
+  at(0.4, () => {
+    holding = false
+    // 곁에 졸개 — 봇이 쏘는 소리에 보스가 깨고, 등장 장면 동안 졸개는 멈춘다
+    spawn([0, 1], 12, 3, 6)
+    caption('막 보스 등장 장면', '졸개는 멈추고 · 어둠이 걷히고 · 보스마다 등장 대사')
+  })
+  at(4.2, () => {
+    const b = st().monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
+    if (b) {
+      b.hitTick = st().tick
+      b.kcd = 1e9
+      b.target = 0
+      b.los = 1
+      b.scd = 30
+      b.stag = 940
+    }
+    S().autopilot = true
+    cue('boss', { act: 0 })
+    caption('경직은 한 번쯤 · 즉사기는 두 번 넘게', '즉사기는 구르기로 못 피한다 — 범위 밖으로')
+  })
+  at(5.6, () => {})
+  at(0, null)
+  return tl.done()
+}
+
 /** 1편 마을 (약 4초 — 2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도"): 고르는 화면이 녹아 사라지며 파티가 마을을 걷는다 */
 function partTown(tl = timeline()) {
   const { at } = tl
@@ -1131,7 +1282,7 @@ function dummyAudio(getT) {
 /** 게임의 소리판(sfx)을 오프라인 소리판에 옮긴 사본 — 되풀이 제한 시각 · 동시 음원 수를 가상 시각에 맞춘다 */
 function cloneSfx(live, ctx, master, bgm, noise, clock) {
   const sx = Object.assign(Object.create(Object.getPrototypeOf(live)), live)
-  Object.assign(sx, { ctx, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {} })
+  Object.assign(sx, { ctx, master, bgmGain: bgm, noise, mutedFlag: false, busRef: new WeakMap(), live: 0, tokens: 36, tokenAt: 0, bgmTimer: 0, bgmOn: false, bgmNextBeat: 0.15, bgmBeatIndex: 0, boss: 0, intensity: 0, lineBufs: new Map(), lineLoading: new Set(), verbIr: null, loadLine: () => {}, speak: () => {} })
   // 되풀이 제한의 시각(last… · kindVoice · nextIdle)을 비운다 — 살아 있는 게임에서 복사한 **실제 시각**(수십만 ms)이 그대로면
   // 가상 시각(0 부터)과 비교해 늘 "방금 냈다"가 되어 괴물 소리 · 맞는 소리 · 폭발 … 이 영상 내내 하나도 나지 않았다 (2026-09-24 사용자:
   // "trailer_hq 에서는 왜 몬스터 잡는데 몬스터 소리가 안 들려?")
@@ -1293,6 +1444,9 @@ async function renderAudio(durSec) {
         // 밝은 판은 밝은 대사(boss_<번호>_b.wav) — sfx.lineKey 처럼 1000 을 더한 칸에
         const res = await fetch(`/bedorage-rpg/voice/boss_${k}${BRIGHT ? '_b' : ''}.wav?${Date.now()}`)
         if (res.ok) sx.lineBufs.set(k + (BRIGHT ? 1000 : 0), await mctx.decodeAudioData(await res.arrayBuffer()))
+        // 등장 대사 (2026-10-22 — sfx.lineKey 처럼 2000 을 더한 칸)
+        const ri = await fetch(`/bedorage-rpg/voice/boss_${k}_in${BRIGHT ? '_b' : ''}.wav?${Date.now()}`)
+        if (ri.ok) sx.lineBufs.set(k + (BRIGHT ? 1000 : 0) + 2000, await mctx.decodeAudioData(await ri.arrayBuffer()))
       } catch (e) {
         log.push(`목소리 ${k} ` + e)
       }
@@ -1306,6 +1460,11 @@ async function renderAudio(durSec) {
         if (e.type !== 'bossUlt') continue
         fakeT = c.t + 0.1
         if (sx.bossLine(e.kind)) n++
+      }
+      for (const e of c.ev ?? []) {
+        if (e.type !== 'bossCut') continue
+        fakeT = c.t + 0.1
+        if (sx.bossLine(e.kind, true)) n++
       }
     }
     log.push(`보스 목소리 ${n}번 (소리 파일 ${sx.lineBufs.size}개)`)
@@ -1526,6 +1685,7 @@ export async function start(opts = {}) {
     sim: await sameModule('/src/core/sim.ts'),
     chars: await sameModule('/src/core/characters.ts'),
     skills: await sameModule('/src/core/skills.ts'),
+    monsters: await sameModule('/src/core/monsters.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -1546,6 +1706,7 @@ export async function start(opts = {}) {
   const LOW_MAX = opts.lowMax ?? 38_000_000
   // 영상 종류: 소개 영상(trailer) · 보스 목소리(boss_voice — 즉사기 넷 + 대사 목소리, TTS 는 소개 영상에 넣지 않는다)
   ULT = opts.mode === 'ult'
+  NOTES = opts.mode === 'notes'
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
   // 2026-10-08 사용자: "트레일러는 이제 철면수심전용 버전에서만 만들어" — 기본이 밝은 분위기 (공포스러움은 skin: 'dark' 일 때만)
   BRIGHT = opts.skin !== 'dark'
@@ -1556,10 +1717,11 @@ export async function start(opts = {}) {
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
   PART = Math.max(1, Math.min(2, opts.part ?? 1))
-  SELECT = !ULT && PART === 1 && opts.select !== false
+  SELECT = !ULT && !NOTES && PART === 1 && opts.select !== false
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
   const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `patch${PART}_${BRIGHT ? 'bright' : 'dark'}`
-  const encs = [
+  // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
+  const encs = NOTES ? [{ name: 'patchnote', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
     { name: BASE, w: 1280, h: 720, bitrate: opts.bitrate ?? 3_000_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
     { name: BASE, w: 1280, h: 720, bitrate: 2_200_000, mode: 'constant', low: true, key: FPS * 8, chunks: [] },
@@ -1613,7 +1775,14 @@ export async function start(opts = {}) {
 
   // 여는 장면: 캐릭터 고르는 화면 — 로비에서 부르면 모닥불 장면을 담고 방을 만들어 판을 연다
   Object.defineProperty(window, 'devicePixelRatio', { get: () => 1, configurable: true })
-  localStorage.setItem('brpg.hud', 'tiny')
+  // 패치 영상은 게임 그대로의 HUD 크기 (보통) — 소개 영상은 작게
+  localStorage.setItem('brpg.hud', NOTES ? 'normal' : 'tiny')
+  if (NOTES)
+    for (const f of SLIDE_FILES) {
+      const img = new Image()
+      img.src = `/bedorage-rpg/docs/img/${NOTES_DIR}/${f}.png`
+      await img.decode().then(() => (SLIDES[f] = img), () => log.push('사진 없음 ' + f))
+    }
   // 고르는 화면은 1편에만 — 다른 편은 로비에서 부르면 판만 연다 (이미 판 안이면 그대로 이어서)
   if (!S()) {
     // 2026-10-17: 1편은 다시 고르는 화면 → 마을로 연다(사용자: "첫 장면이 썸네일이 돼서 적절치 않아 · 캐릭터 선택 및 마을 장면도") — 끄려면 start({ select: false })
@@ -1686,7 +1855,7 @@ export async function start(opts = {}) {
   Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
 
   diag = []
-  const acts = ULT ? ultScenes() : scenes(PART)
+  const acts = ULT ? ultScenes() : NOTES ? notesScenes() : scenes(PART)
   let ai = 0
   // WebGL 컨텍스트를 잃으면(가려진 창 · GPU 메모리) 그동안은 게임도 녹화도 멈추고 되살아나길 기다린다 — 안 그러면 까만 장면이 들어간다
   const glc = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)[0]
@@ -1831,9 +2000,13 @@ export async function start(opts = {}) {
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
   const fit = lows.filter((x) => x.size <= LOW_MAX).sort((a, b) => b.size - a.size)[0] ?? lows.sort((a, b) => a.size - b.size)[0]
   log.push('게시판용 후보 ' + lows.map((x) => `${x.e.h}p ${(x.e.bitrate / 1e6).toFixed(1)} Mbps → ${(x.size / 1e6).toFixed(1)} MB`).join(' · '))
-  for (const { e, file } of [fit, ...encs.filter((e) => !e.low).map((e) => ({ e, file: mux(e) }))]) {
-    const res = await fetch(`/__save?name=${e.name}&ext=webm`, { method: 'POST', body: file })
-    log.push(`저장 ${await res.text()} (${e.h}p ${(e.bitrate / 1e6).toFixed(1)} Mbps ${e.mode === 'constant' ? '고정' : '가변'})`)
+  for (const { e, file } of [...(fit ? [fit] : []), ...encs.filter((e) => !e.low).map((e) => ({ e, file: mux(e) }))]) {
+    // 16 MB 조각으로 보낸다 — 한 번에 보내면 Playwright(헤드리스 녹화 — tools/patchvideo.mjs)가 요청 본문을 통째로 받다 512 MB 한도에 걸려 죽었다
+    const blob = file instanceof Blob ? file : new Blob([file])
+    let res = null
+    for (let o = 0, k = 0; o < blob.size; o += 16e6, k++)
+      res = await fetch(`/__save?name=${e.name}&ext=webm${NOTES ? `&dir=${NOTES_DIR}` : ''}${k ? '&append=1' : ''}`, { method: 'POST', body: blob.slice(o, o + 16e6) })
+    log.push(`저장 ${await res.text()} · 모두 ${(blob.size / 1e6).toFixed(1)} MB (${e.h}p ${(e.bitrate / 1e6).toFixed(1)} Mbps ${e.mode === 'constant' ? '고정' : '가변'})`)
   }
   log.push('사진 ' + (await Promise.all(saves)).join(' · '))
   running = false
