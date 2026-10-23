@@ -192,6 +192,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const pos = new THREE.Vector3()
   const scl = new THREE.Vector3()
   const col = new THREE.Color()
+  const made: THREE.InstancedMesh[] = []
   const inst = (geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], n: number, shadow = true) => {
     const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n))
     m.castShadow = shadow
@@ -199,6 +200,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     m.count = 0
     disposables.push(geo)
     group.add(m)
+    made.push(m)
     return m
   }
   const put = (m: THREE.InstancedMesh, x: number, y: number, z: number, sx: number, sy: number, sz: number, rotY = 0, color?: THREE.Color) => {
@@ -482,7 +484,8 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     }
   }
 
-  const cover = coverParts(group.children.slice(crateFrom), map.w)
+  const coverMeshes = group.children.slice(crateFrom)
+  const cover = coverParts(coverMeshes, map.w)
 
   // ---- 소품 (밟히지 않는 장식 — sim 과 무관) ----
   const floors: [number, number][] = []
@@ -671,6 +674,11 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   group.add(hemi)
   const sun = makeSun(t.sunColor, t.dark ? t.dark.sun : 2.2)
   group.add(sun, sun.target)
+
+  // 큰 소품 묶음은 구역으로 나눠 화면 밖을 거른다 — 칸 번호로 붙잡는 모래주머니 · 던전 구조물은 그대로
+  const pinned = new Set<THREE.Object3D>(coverMeshes)
+  if (bags) pinned.add(bags)
+  chunkInstances(made.filter((m) => !pinned.has(m)))
 
   let lastPick = -1
   return {
@@ -1334,6 +1342,58 @@ function buildClassic(map: GameMap): World3D {
  * 던전 구조물(상자 타일) 조각을 타일마다 묶는다 — 모래주머니처럼 깎이면 어둡게 · 부서지면 숨긴다 (2026-10-17).
  * 조각이 어느 타일 것인지는 인스턴스 자리(타일 안)로 안다. 인스턴스 색이 없던 메시는 흰색으로 채워 둔다(재질 색에 곱해진다)
  */
+/**
+ * 맵 전체에 깔린 큰 소품 묶음을 구역(CHUNK 칸 네모)마다 나눈다 (2026-10-24 최적화): 인스턴스 묶음은 경계 구가 맵 전체라 통째로만 걸러져,
+ * ☀ 울타리 313마디(삼각형 9만 · 그림자 패스까지)가 화면 밖까지 늘 그려졌다. 구역마다 따로 두면 three 가 화면 · 그림자 시야 밖 구역을 거른다.
+ * 삼각형이 적은 묶음은 그대로 — 나누면 그리기 호출만 는다
+ */
+const CHUNK = 12
+const CHUNK_MIN_TRIS = 20000
+export function chunkInstances(meshes: THREE.InstancedMesh[]): number {
+  const m4 = new THREE.Matrix4()
+  const p = new THREE.Vector3()
+  const c = new THREE.Color()
+  let made = 0
+  for (const m of meshes) {
+    const g = m.geometry
+    const tris = ((g.index ? g.index.count : g.attributes.position.count) / 3) * m.count
+    if (tris < CHUNK_MIN_TRIS || !m.parent) continue
+    const buckets = new Map<number, number[]>()
+    for (let k = 0; k < m.count; k++) {
+      m.getMatrixAt(k, m4)
+      p.setFromMatrixPosition(m4)
+      const key = Math.floor(p.z / CHUNK) * 1000 + Math.floor(p.x / CHUNK)
+      const list = buckets.get(key)
+      if (list) list.push(k)
+      else buckets.set(key, [k])
+    }
+    if (buckets.size < 2) continue
+    const parent = m.parent
+    for (const ids of buckets.values()) {
+      const part = new THREE.InstancedMesh(g, m.material, ids.length)
+      ids.forEach((k, j) => {
+        m.getMatrixAt(k, m4)
+        part.setMatrixAt(j, m4)
+        if (m.instanceColor) {
+          m.getColorAt(k, c)
+          part.setColorAt(j, c)
+        }
+      })
+      part.castShadow = m.castShadow
+      part.receiveShadow = m.receiveShadow
+      part.renderOrder = m.renderOrder
+      part.userData = { ...m.userData }
+      part.computeBoundingSphere()
+      parent.add(part)
+      made++
+    }
+    parent.remove(m)
+    // 지오메트리 · 재질은 나눈 것들이 같이 쓴다 (치우기는 지역 dispose 가 한 번)
+    m.dispose()
+  }
+  return made
+}
+
 function coverParts(meshes: THREE.Object3D[], w: number): { hide(i: number): void; tint(i: number, k: number): void } {
   const parts = new Map<number, { m: THREE.InstancedMesh; k: number; c: THREE.Color }[]>()
   const m4 = new THREE.Matrix4()

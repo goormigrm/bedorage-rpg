@@ -242,7 +242,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   return rig
 }
 
-function buildGun(w: WeaponDef, R: number): { group: THREE.Group; tip: THREE.Object3D } {
+export function buildGun(w: WeaponDef, R: number): { group: THREE.Group; tip: THREE.Object3D } {
   const g = new THREE.Group()
   const len = (0.26 + w.length / 120) * Math.max(0.8, R / 0.42)
   const bodyM = mat(w.color)

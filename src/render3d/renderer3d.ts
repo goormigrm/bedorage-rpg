@@ -49,7 +49,7 @@ import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText,
 import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
-import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } from './character3d'
+import { CharacterRig, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { buildNpc } from './npc3d'
@@ -2449,6 +2449,7 @@ export class Renderer3D {
     this.updateLanterns(curr, pos)
     this.updateGiantLight(curr)
     this.updateCamera(curr, pos, dt, opts)
+    this.updateViewGun(opts.localPlayer >= 0 ? curr.players[opts.localPlayer] : undefined)
     this.world.update(this.t, this.camTarget.x, this.camTarget.z)
     // 떠다니는 것: 던전만 (투기장은 끈다) · 지역이 바뀌면 그 막 · 분위기의 종류로
     const amb = curr.mode === 'dungeon' && curr.curArea >= 0
@@ -4935,6 +4936,42 @@ export class Renderer3D {
   /**
    * 몬스터 머리 위 체력 바 (최근 3초 안에 맞은 것만) + 궁수 조준선(예고 동안 붉은 선 — 피할 때라는 신호)
    */
+  /** 1인칭 손에 든 무기 (뷰모델 — 2026-10-24): 내 몸은 숨기니 무기만 카메라 오른쪽 아래에. 근접 무기는 모양이 어색해 띄우지 않는다 */
+  private viewGun: { id: string; group: THREE.Group } | null = null
+  private flipY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
+  private dropViewGun(): void {
+    if (!this.viewGun) return
+    this.scene.remove(this.viewGun.group)
+    this.viewGun.group.traverse((o) => {
+      const m = o as THREE.Mesh
+      m.geometry?.dispose()
+      ;(m.material as THREE.Material | undefined)?.dispose?.()
+    })
+    this.viewGun = null
+  }
+  private updateViewGun(p: PlayerState | undefined): void {
+    const w = p ? WEAPONS[p.weapon] : undefined
+    if (!this.fpsCam || !p || !p.alive || !w || w.melee) {
+      if (this.viewGun) this.viewGun.group.visible = false
+      return
+    }
+    if (this.viewGun?.id !== p.weapon) {
+      this.dropViewGun()
+      const group = buildGun(w, 0.42).group
+      group.traverse((o) => (o.castShadow = o.receiveShadow = false))
+      // 몸에 들린 크기 그대로면 눈앞에서 화면 아래를 다 가렸다
+      group.scale.setScalar(0.6)
+      this.scene.add(group)
+      this.viewGun = { id: p.weapon, group }
+    }
+    const g = this.viewGun!.group
+    g.visible = true
+    // 카메라 기준 오른쪽 0.2 · 아래 0.17 · 앞 0.46 — 쏘면 반동만큼 뒤로 · 총의 앞(+z)을 카메라 앞(-z)으로 돌린다
+    const kick = Math.min(0.06, p.recoil * 0.003)
+    g.position.copy(this.tmpV3.set(0.2, -0.17, -0.46 + kick).applyQuaternion(this.camera.quaternion).add(this.camera.position))
+    g.quaternion.copy(this.camera.quaternion).multiply(this.flipY)
+  }
+
   /** 맞은 쪽 (화면 기준 각도 — HUD 가장자리 호). 1인칭은 시선이 화면 위 — 쿼터뷰의 고정 각도(worldDirToScreen)로는 엉뚱한 쪽을 가리켰다 */
   private hitDirAngle(wx: number, wy: number): number | null {
     if (wx === 0 && wy === 0) return null
@@ -5052,6 +5089,8 @@ export class Renderer3D {
       }
       this.drawSay(ctx, m, at, def)
       // 정예는 늘, 나머지는 맞은 뒤 3초만. 보스 · 우두머리는 화면 위 큰 막대와 따로 머리 위에 큰 이름표
+      // 1인칭: 먼 괴물의 이름 · 체력 띠는 그리지 않는다 — 지평선까지 겹쳐 보였다 (보스 이름표 · 공격 예고는 그대로)
+      if (this.fpsCam && !isBossLike(m) && Math.hypot(at.x - this.camera.position.x, at.z - this.camera.position.z) > 14) continue
       const goblin = def.attack === 'flee'
       if (isBossLike(m)) {
         this.drawBossPlate(ctx, curr, m, at, def)
@@ -5916,6 +5955,7 @@ export class Renderer3D {
   /** keepGl: GL 맥락 · 캔버스는 다음 렌더러가 쓴다 (constructor prev) */
   dispose(keepGl = false): void {
     this.retired?.dispose(true)
+    this.dropViewGun()
     this.skillFx.dispose()
     this.quarks.dispose()
     this.ambient.dispose()

@@ -26,7 +26,8 @@
 - **⑥ 끝(v1.10.11 — 쿼터뷰 ↔ 1인칭)**: 판은 `analog`(|mx|·|my| > 1 = ×100 방향 → 길이 1 · 이동 · 구르기 — 시험 fpsmove.test.ts). 입력 `LocalInput.fps · yaw · pitch · lockPointer`(포인터 잠금 — mousemove 의 movementX/Y · 잠금이 풀린 채 누르면 다시 가두기만 · WASD 를 시선 기준 ×100). 렌더러 `fpsPlayer · fpsYaw · fpsPitch`(session 이 프레임마다) · `updateCamera` 앞 갈래(눈높이 = 키 × 0.82 · 시야각 72 / 정조준 50 / 조준경 28 · near 0.08 · far 72) · `fpsPrep`(들어갈 때 장면 compileAsync + 텍스처 — 끝날 때까지 쿼터뷰 · setMap 에서 다시) · `fpsAim`(가운데에 걸린 괴물 — 머리 30% 면 가운데 · 몸이면 앞쪽 · 아니면 땅) · `hitDirAngle` · `worldToScreen` 이 카메라 뒤를 화면 밖으로. 세션 `toggleView` · `syncSwitch`(스위치 둘이 같이 쓴다) · `loadViewPref`(skin.ts · brpg.view) · 키 `view`(B — V 는 신호). 확인 `.frames/fpsview.mjs [dark|bright]` · `.frames/fpsperf.mjs`(시점별 프레임 · 들어갈 때 프레임마다 셰이더 수).
   - 남은 것(1인칭): 총 · 팔(뷰모델)이 없다 · 멀리 있는 괴물 이름표가 겹친다 · 쿼터뷰용 바닥 길 안내 · 땅 원(예고)이 눈높이에서는 납작하다.
 - **최적화(v1.10.12 — 사용자: "전체적인 최적화까지 마무리")**: 괴물 거르기 `monsterView.update(…, inView)` ← 렌더러 `cullFrustum`(지난 프레임 카메라 + 여유 1.5 · 보통 2.5 · 거대 9 — 카메라는 괴물 갱신 뒤에 움직인다). `worldToScreen` · `screenToWorld` 벡터 다시 쓰기 · `uiRects` 0.2초. 계측 도구: 삼각형 나누기 `.frames/tris.mjs [bright|dark] [지역]`(이 PC 에만 — 물체별 삼각형 × 인스턴스). 이 PC 의 화면 간격 95% 33ms 는 WSL d3d12 화면 출력 탓(CPU · GPU 는 2 ~ 3ms · 60Hz 에서 제한기는 건너뛰지 않는다 — 문턱 8.3ms).
-  - 다음 후보: ☀ 울타리 · 벽(맵 전체 한 인스턴스 — 313마디 × 408 삼각형 · 그림자 포함)은 구역으로 쪼개야 걸러진다 · 캐릭터가 쓰러질 때 투명 재질 셰이더 둘(entrycheck 17) · 지역 9 바닥 투명 무늬 하나.
+  - (v1.10.14) 맵 소품 구역 나누기 `world3d chunkInstances`(buildDark 끝 · 삼각형 2만 넘는 묶음만 · 12칸 · 모래주머니 `bags` · 던전 구조물 `coverMeshes` 는 칸 번호로 붙잡으니 뺀다 — 시험 chunks.test.ts). 1인칭 총 `renderer3d updateViewGun`(`buildGun` 을 내보냄 · 0.6배 · 근접 무기 빼고) · 먼 괴물 이름표 14칸.
+  - 쓰러질 때 셰이더(entrycheck 17)는 재질 투명이 아니었다(쓰러뜨려 재 보니 새 셰이더 0 · `.frames/deathcheck.mjs`) — 내 등불이 꺼져 빛 수가 4 · 0 으로 바뀐 몫으로 보인다(덮개 뒤에서는 12 · 16 · 8 만 데운다). 다음 후보: 지역 9 바닥 투명 무늬 하나 · 빛 4 · 0 데우기를 마을에서 마저.
 
 ## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 · 벼리기 장인 · 도박 확률 (2026-10-23 · 원격 개발 PC — v1.10.7 배포 · 남은 것 ⑥)
 
