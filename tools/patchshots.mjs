@@ -6,7 +6,7 @@
 // 장면: lobby · town · bag · shop · elder · captain · field · bubbles · stream · boss(따로 — SHOT_SKIN=dark node tools/patchshots.mjs boss) (아래 SCENES). 1920 × 1080 · 소리 끔 · 헤드리스 크로미움.
 import { chromium } from 'playwright'
 import { gpuLaunch } from './gpu.mjs'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 
 const URL = process.env.SHOT_URL ?? 'http://localhost:5173/bedorage-rpg/?shot=1'
 const args = process.argv.slice(2)
@@ -110,6 +110,72 @@ async function nearNpc(id) {
 }
 
 const SCENES = {
+  // ---- 2026-10-24 패치 영상 (v1.10.7 ~ v1.10.12): SHOT_DIR=patch-2026-10-24 node tools/patchshots.mjs smith bagscore shop switches
+  smith: async () => {
+    // 대장장이 모루: 옛 전설 반지(20)를 올리고 가방에 +3 반지 — 강화 이어받기 · 레벨 올리기가 같이 보이게
+    await page.evaluate(async (SAME) => {
+      const same = eval(SAME)
+      const items = await same('/src/core/items.ts')
+      const rngM = await same('/src/core/rng.ts')
+      const p = window.__bd.state().players[0]
+      p.level = 30
+      p.gold = 186400
+      const r = rngM.makeRng(41)
+      const t = items.rollItem(r, 980001, 20, p.weapon, 'boss', 0, 3, 3)
+      const m = items.rollItem(r, 980002, 24, p.weapon, 'boss', 0, 3, 3)
+      m.up = 3
+      p.bag.unshift(t, m)
+    }, SAME)
+    await nearNpc('smith')
+    await page.evaluate(() => window.__session.town.show('smith'))
+    await sleep(700)
+    await page.evaluate(() => window.__session.town.pickSmith(980001))
+    await sleep(2600)
+    await shot('01_smith_anvil')
+    await page.evaluate(() => window.__session.town.show(null))
+  },
+  bagscore: async () => {
+    // 신화는 제값으로: 낀 것은 전설(26) · 가방의 신화(26)에 빨간 ▲
+    await page.evaluate(async (SAME) => {
+      const same = eval(SAME)
+      const items = await same('/src/core/items.ts')
+      const rngM = await same('/src/core/rng.ts')
+      const p = window.__bd.state().players[0]
+      const r = rngM.makeRng(43)
+      for (let k = 1; k < 5; k++) p.equip[k] = items.rollItem(r, 981000 + k, 26, p.weapon, 'boss', 0, 3, k)
+      for (let k = 1; k < 5; k++) {
+        const it = items.rollItem(r, 982000 + k, 26, p.weapon, 'boss', 0, 4, k)
+        it.rarity = 4
+        p.bag.unshift(it)
+      }
+    }, SAME)
+    await sleep(300)
+    await page.keyboard.press('KeyI')
+    await sleep(1200)
+    await shot('02_bag_score')
+    await page.keyboard.press('KeyI')
+  },
+  switches: async () => {
+    // 오른쪽 아래 두 스위치를 2배로: 1인칭으로 바꾼 채(배경이 1인칭 화면) · 화면 배율 2 로 오른쪽 아래 1/4 을 찍는다
+    await page.keyboard.press('KeyB')
+    await page.evaluate(() => {
+      // 동료는 비켜 세우고 마을 가운데(모닥불) 쪽을 본다
+      const s = window.__bd.state()
+      const me = s.players[0]
+      s.players.forEach((q, i) => i > 0 && ((q.x = me.x - 260 + i * 40), (q.y = me.y + 260)))
+      window.__session.input.yaw = 0.9
+      window.__session.input.pitch = -0.08
+    })
+    await sleep(1500)
+    // 오른쪽 아래 1/4 을 두 배로 그린다 (CDP 캡처의 scale — HTML 글씨는 선명하게 · 3D 캔버스는 늘린다)
+    const cdp = await page.context().newCDPSession(page)
+    const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 960, y: 540, width: 960, height: 540, scale: 2 } })
+    const file = `${dir}/${qa ? 'qa-' : ''}05_switches${process.env.SHOT_SUFFIX ?? ''}.png`
+    writeFileSync(file, Buffer.from(data, 'base64'))
+    console.log('찍음', file)
+    await page.keyboard.press('KeyB')
+    await sleep(800)
+  },
   lobby: async () => {
     await openLobby()
     await shot('01_lobby')
@@ -246,7 +312,7 @@ const SCENES = {
 
 const order = pick.length ? pick : ['lobby', 'town', 'bag', 'skill', 'shop', 'elder', 'field', 'bubbles', 'stream', 'captain']
 // 판이 필요한 장면을 고르면 먼저 판을 연다
-const needGame = new Set(['bag', 'skill', 'shop', 'elder', 'field', 'bubbles', 'stream', 'boss'])
+const needGame = new Set(['bag', 'skill', 'shop', 'elder', 'field', 'bubbles', 'stream', 'boss', 'smith', 'bagscore', 'switches'])
 let opened = false
 for (const name of order) {
   if (needGame.has(name) && !opened) {

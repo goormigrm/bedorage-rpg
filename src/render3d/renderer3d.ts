@@ -3776,8 +3776,8 @@ export class Renderer3D {
       rig.body.position.y = 0
       setRigOpacity(rig, 1)
     }
-    // 1인칭이면 내 몸은 숨긴다 (카메라가 몸 안에 있다)
-    root.visible = !(this.fpsCam && i === this.fpsPlayer)
+    // 1인칭이면 내 몸은 숨긴다 (카메라가 몸 안에 있다) · 바짝 붙은 동료도(따라다니는 봇의 몸이 화면을 다 가렸다)
+    root.visible = !(this.fpsCam && (i === this.fpsPlayer || Math.hypot(pos.x - this.camera.position.x, pos.z - this.camera.position.z) < 1.3))
 
     // 말랑 스프링
     const k = 220
