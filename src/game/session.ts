@@ -234,6 +234,9 @@ export class Session {
   private stage: HTMLElement
   /** 오른쪽 아래 단추 기둥 — 추적 칸이 그 위에서 멈춘다(RenderOptions.rightColTop) */
   private rbcol: HTMLElement | null = null
+  /** 시점 · 모드 스위치 줄 — 퀘스트 칸(캔버스) 아래 끝을 따라간다 */
+  private swcol: HTMLElement | null = null
+  private swTop = -1
   private overlay: HTMLElement
   private paused = false
   private stallSince = -1
@@ -345,8 +348,10 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-view"${this.arena || isTouchDevice() ? ' hidden' : ''}></button><button class="btn secondary" id="btn-skin"${this.arena ? ' hidden' : ''}></button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
+            <!-- 시점 · 모드 스위치는 오른쪽 위 퀘스트 칸 바로 아래 (2026-10-24 사용자) — 칸의 아래 끝을 따라간다 (frame — trackerBottom) -->
+            <div class="swcol"${this.arena ? ' hidden' : ''}><button class="btn secondary" id="btn-view"${isTouchDevice() ? ' hidden' : ''}></button><button class="btn secondary" id="btn-skin"></button></div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
         </div>
@@ -354,6 +359,7 @@ export class Session {
     this.root = host.querySelector('.game-root') as HTMLElement
     this.stage = host.querySelector('#stage') as HTMLElement
     this.rbcol = host.querySelector('.rbcol')
+    this.swcol = host.querySelector('.swcol')
     this.overlay = host.querySelector('#overlay') as HTMLElement
     // 조작 안내 띠: 처음 두 판만 보이고 그 뒤로는 감춘다(화면 아래 34px). Esc 메뉴에서 다시 켤 수 있다 (2026-09-05)
     try {
@@ -2059,9 +2065,16 @@ export class Session {
       floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
       // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
       rightColTop: this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined,
+      belowTracker: this.swcol && !this.swcol.hidden && this.swcol.offsetHeight > 0 ? this.swcol.offsetHeight + 8 : undefined,
       uiRects: this.uiRects(),
       itemsHeld: this.input.itemsHeld && !this.arena,
     })
+    // 시점 · 모드 스위치를 퀘스트 칸 바로 아래로 (칸 높이는 퀘스트 줄 수에 따라 바뀐다)
+    const tb = this.renderer.hud.d4.trackerBottom
+    if (this.swcol && tb > 0 && tb !== this.swTop) {
+      this.swTop = tb
+      this.swcol.style.top = `${tb + 8}px`
+    }
     // 첫 draw 로 물체가 다 만들어졌다 → 셰이더를 비동기로 미리 컴파일하고, 끝나면 로딩 화면을 걷는다
     if (!this.prepStarted) {
       this.prepStarted = true
@@ -2085,7 +2098,7 @@ export class Session {
     const st = this.stage.getBoundingClientRect()
     const k = st.width > 0 ? VIEW_W / st.width : 1
     const out: UiRect[] = []
-    for (const el of this.stage.querySelectorAll<HTMLElement>('.keys, .rbcol .wbtn, .rbcol .btn, .tutor')) {
+    for (const el of this.stage.querySelectorAll<HTMLElement>('.keys, .rbcol .wbtn, .rbcol .btn, .swcol .btn, .tutor')) {
       if (el.offsetParent === null) continue
       const r = el.getBoundingClientRect()
       if (r.width < 1 || r.height < 1) continue

@@ -389,6 +389,8 @@ function sealMark(c: CanvasRenderingContext2D, x: number, y: number, s: number, 
 }
 
 export class D4Hud {
+  /** 오른쪽 위 추적 칸(퀘스트)의 아래 끝 (논리 좌표 — 세션이 시점 · 모드 스위치를 그 아래에 둔다) */
+  trackerBottom = 0
   private portraits = new Map<string, HTMLCanvasElement>()
   /** 마우스를 올린 스킬 칸 (툴팁) 과 올려 둔 시간 */
   private hoverSlot = -1
@@ -427,8 +429,8 @@ export class D4Hud {
     const barW = n * S + (n - 1) * GAP + 40
     const bx = cx - barW / 2
     const by = baseY - S / 2 - 16
-    // 위: 기력 바 · 무기 이름 / 아래: 키 명패 · 경험치 줄
-    ironPanel(c, bx, by - 30, barW, S + 76)
+    // 위: 기력 바 · 무기 이름 / 아래: 키 명패 · 경험치 줄 · 레벨 · 골드 · 가방 (2026-10-24 — 글자가 아래 테두리에 걸쳐 10px 늘렸다)
+    ironPanel(c, bx, by - 30, barW, S + 86)
     // 물약(3)은 없앴다 — 회복은 체력 구슬 하나로 (2026-09-19)
     // 기력 (위 가는 막대): 형광 하늘색이 화면에서 튀어 **놋쇠빛**으로 (2026-09-20)
     const stK = Math.max(0, Math.min(1, me.stamina / me.staminaMax))
@@ -530,12 +532,18 @@ export class D4Hud {
     c.fillStyle = '#d8c79a'
     c.fillText(w.name, slotX(6) + S / 2, by - 6)
     c.restore()
-    // 경험치 (아래 가는 막대) — 키 명패 아래
-    const xpY = by + S + 24
+    // 경험치 — 키 명패 아래. 4 → 8px · 밝은 금빛 · 테두리 (2026-10-24 사용자: "경험치 바도 눈에 잘 띄게 두껍게")
+    const xpY = by + S + 21
     // 만렙 뒤에는 숙련 막대 (보랏빛 — 2026-10-08 퀄리티 2차 7단계 D3)
     const capped = me.level >= LEVEL_CAP
     const xpK = capped ? Math.min(1, me.mxp / MASTERY_XP) : Math.min(1, me.xp / xpNeed(me.level))
-    thinBar(c, bx + 20, xpY, barW - 40, 4, xpK, capped ? ['#d8a8ff', '#5a2a8a'] : ['#f1d58a', '#8a6a28'])
+    thinBar(c, bx + 20, xpY, barW - 40, 8, xpK, capped ? ['#ecc4ff', '#7a3ab0'] : ['#ffe89a', '#c8902a'])
+    c.save()
+    c.strokeStyle = capped ? 'rgba(216,168,255,0.55)' : 'rgba(241,213,138,0.55)'
+    c.lineWidth = 1
+    rr(c, bx + 19.5, xpY - 0.5, barW - 39, 9, 4.5)
+    c.stroke()
+    c.restore()
     // 레벨 · 골드 · 가방: 방송 화면에서도 읽히게 굵은 고딕 · 밝은 색 · 검은 테두리 (2026-10-23 사용자: "글씨가 너무 작아 눈에 안 들어온다" — 칸은 그대로)
     c.save()
     c.textBaseline = 'middle'
@@ -544,17 +552,24 @@ export class D4Hud {
     c.strokeStyle = 'rgba(0,0,0,0.85)'
     const mFree = capped ? masteryFree(me.mlv, me.mst) : 0
     const lvT = capped ? `Lv ${me.level} · 숙련 ${me.mlv}${mFree > 0 ? ` (+${mFree})` : ''}` : `Lv ${me.level}`
+    // 글자는 경험치 띠 아래 판 안에 · 두 쪽이 겹치거나 칸을 넘으면 오른쪽(골드 · 가방)부터 줄이고, 그래도 넘치면 줄여 쓴다 (2026-10-24 사용자: "칸을 넘어가지 않게")
+    const ty = xpY + 22
+    const room = barW - 40
     c.font = `900 15px ${SANS}`
+    const lvW = c.measureText(lvT).width
     c.textAlign = 'left'
-    c.strokeText(lvT, bx + 20, xpY + 15)
+    c.strokeText(lvT, bx + 20, ty)
     c.fillStyle = '#ffe28a'
-    c.fillText(lvT, bx + 20, xpY + 15)
+    c.fillText(lvT, bx + 20, ty)
     c.textAlign = 'right'
-    c.font = `800 14px ${SANS}`
-    const bagT = `${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (${keyLabel('bag')})`
-    c.strokeText(bagT, bx + barW - 20, xpY + 15)
+    const bag0 = `${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (${keyLabel('bag')})`
+    let fs = 14
+    c.font = `800 ${fs}px ${SANS}`
+    while (fs > 11 && lvW + 16 + c.measureText(bag0).width > room) c.font = `800 ${--fs}px ${SANS}`
+    const bagT = fitText(c, bag0, room - lvW - 16)
+    c.strokeText(bagT, bx + barW - 20, ty)
     c.fillStyle = me.bag.length >= me.bagMax ? '#ff8a7a' : '#f3e8d0'
-    c.fillText(bagT, bx + barW - 20, xpY + 15)
+    c.fillText(bagT, bx + barW - 20, ty)
     c.restore()
 
     // ---- 체력 오브 (왼쪽)
@@ -717,7 +732,7 @@ export class D4Hud {
       const ex = (goalLines.length - 1) * 18
       // 퀘스트 줄은 오른쪽 아래 단추 기둥(가방 · 스킬 …) 위까지만 — 낮은 창(1280×720 · 브라우저 안 768)에서 칸이 단추를 덮었다 (2026-10-08).
       // 넘치면 진행 중 · 보고할 것을 먼저 남기고, 나머지는 "외 N개"로 접는다
-      const room = Math.floor(((opts.rightColTop ?? h.H) - 8 - (y + 84 + ex) - QL_PAD) / QL_ROW)
+      const room = Math.floor(((opts.rightColTop ?? h.H) - 8 - (opts.belowTracker ?? 0) - (y + 84 + ex) - QL_PAD) / QL_ROW)
       let actQuests = allQuests
       if (room < allQuests.length) {
         // 먼저 남길 차례: 보고할 것(2) → 진행 중(1) → 아직(0) → 끝(3)
@@ -727,7 +742,9 @@ export class D4Hud {
       }
       const more = allQuests.length - actQuests.length
       const showList = actQuests.length > 0 || (more > 0 && room >= 0)
-      ironPanel(c, x, y, W, 84 + ex + (showList ? QL_PAD + actQuests.length * QL_ROW : 0), false)
+      const panelH = 84 + ex + (showList ? QL_PAD + actQuests.length * QL_ROW : 0)
+      ironPanel(c, x, y, W, panelH, false)
+      this.trackerBottom = y + panelH
       c.font = `800 16px ${SERIF}`
       c.fillStyle = GOLD_HI
       c.fillText(fitText(c, opts.floorName ?? '던전', inner), x + 12, y + 24)
@@ -763,6 +780,7 @@ export class D4Hud {
             .sort((a, b) => b.kills - a.kills)
       const H = 44 + rows.length * 20
       ironPanel(c, x, y, W, H, false)
+      this.trackerBottom = y + H
       c.font = `800 16px ${SERIF}`
       c.fillStyle = GOLD_HI
       c.fillText(opts.floorName ?? '투기장', x + 12, y + 24)
