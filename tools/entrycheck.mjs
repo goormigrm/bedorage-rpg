@@ -37,7 +37,7 @@ await page.waitForFunction(() => window.__bd?.phase?.() === 'playing' && window.
 // 방을 만들고 곧장 나가는 사람처럼: 마을에서 오래 기다리지 않는다 (사용자 상황)
 await sleep(2500)
 await page.keyboard.down('KeyD')
-const out = await page.evaluate(async (AREA) => {
+const out = await page.evaluate(async ([AREA, BOSS]) => {
   document.querySelector('.ending.intro .ending-go')?.click()
   const S = window.__session
   const R = S.renderer
@@ -50,7 +50,46 @@ const out = await page.evaluate(async (AREA) => {
   let t0 = 0
   let hp0 = me.hp
   let np = R.gl.info.programs.length
+  let jumped = false
+  let liftAt = null
+  let bossT = -1
   const newProgs = []
+  // 덮개가 걷힌 뒤 새 셰이더가 생기면 그때 그리던 물체 (renderBufferDirect 의 물체 · 재질)
+  let cur = null
+  const rbd = R.gl.renderBufferDirect
+  R.gl.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+    cur = { material, object }
+    return rbd.call(this, camera, scene, geometry, material, object, group)
+  }
+  const owners = []
+  // 덮개가 걷힌 뒤 오래 걸린 텍스처 올리기 (4ms 넘는 것)
+  const uploads = []
+  const ctx = R.gl.getContext()
+  for (const fn of ['texImage2D', 'texSubImage2D', 'texStorage2D', 'generateMipmap']) {
+    const f0 = ctx[fn].bind(ctx)
+    ctx[fn] = (...a) => {
+      const s0 = performance.now()
+      const r = f0(...a)
+      const d = performance.now() - s0
+      if (d > 4 && t0 > 0 && !(R.areaCompiling || R.areaHold)) {
+        const src = a.find((x) => x && typeof x === 'object' && 'width' in x)
+        uploads.push(`${Math.round(performance.now() - t0)}ms ${fn} ${d.toFixed(1)}ms ${src ? `${src.width}×${src.height} ${src.constructor?.name}` : a.slice(3, 5).join('×')}`)
+      }
+      return r
+    }
+  }
+  const progs = R.gl.info.programs
+  const push0 = progs.push
+  progs.push = function (...a) {
+    if (t0 > 0 && !(R.areaCompiling || R.areaHold)) {
+      const o = cur?.object
+      const chain = []
+      for (let q = o; q && chain.length < 4; q = q.parent) chain.push(q.name || q.type)
+      const m = cur?.material
+      owners.push(`${Math.round(performance.now() - t0)}ms ${m?.type ?? '?'}${m?.name ? `(${m.name})` : ''} 빛받음 ${!!(m && (m.isMeshLambertMaterial || m.isMeshToonMaterial || m.isMeshStandardMaterial || m.lights))} · ${o?.geometry?.type ?? ''}${o?.isInstancedMesh ? ' inst' : ''} · map ${!!m?.map} side ${m?.side} vc ${!!m?.vertexColors} 투명 ${m?.transparent} 색 ${m?.color?.getHexString?.()} 섞기 ${m?.blending} 톤 ${m?.toneMapped} 알파 ${m?.alphaTest} 인스색 ${!!o?.instanceColor} 덧씌움 ${m?.onBeforeCompile && m.onBeforeCompile.toString().length > 20} 속성 ${Object.keys(o?.geometry?.attributes ?? {}).join('+')} @${chain.join('<')}`)
+    }
+    return push0.apply(this, a)
+  }
   let hits = 0
   let hitsCovered = 0
   await new Promise((res) => {
@@ -63,6 +102,19 @@ const out = await page.evaluate(async (AREA) => {
       }
       const p = window.__bd.state().players[0]
       const covered = R.areaCompiling || R.areaHold
+      // BOSS=1: 덮개가 걷히고 0.5초 뒤 보스 앞(5칸)으로 — 보스가 깨는 장면 · 첫 싸움 계측
+      if (BOSS && t0 > 0 && !covered && t - t0 > 1500 && !jumped && !(rows.at(-1)?.cov !== '-')) {
+        liftAt ??= t
+        if (t - liftAt > 500) {
+          jumped = true
+          const b = window.__bd.state().monsters.reduce((a, m) => (m.hp > 0 && (!a || m.maxHp > a.maxHp) ? m : a), null)
+          if (b) {
+            p.x = b.x - 5 * 32
+            p.y = b.y
+            bossT = Math.round(t - t0)
+          }
+        }
+      }
       const pr = R.gl.info.programs
       if (pr.length > np && t - t0 > 4000) {
         const olds = pr.slice(0, np).map((q) => q.cacheKey.split(','))
@@ -106,18 +158,19 @@ const out = await page.evaluate(async (AREA) => {
         if (covered) hitsCovered++
       }
       hp0 = p.hp
-      rows.push({ x: Math.round(p.x), y: Math.round(p.y), t: Math.round(t - t0), iv: Math.round(iv), cov: covered ? (R.areaCompiling ? 'C' : 'H') : '-', hp: Math.round(p.hp), max: p.maxHp, inv: p.invuln, near: window.__bd.view().monsters.filter((m) => m.hp > 0 && m.st !== 0 && Math.hypot(m.x - p.x, m.y - p.y) < 6 * 32).length, cv: `프로그램 ${R.gl.info.programs.length} · 빛 ${(() => { let n = 0; R.scene.traverse((o) => { if (o.isLight && o.visible && !o.isAmbientLight && !o.isHemisphereLight) n++ }); return n })()} · 텍스처 ${R.gl.info.memory.textures}` })
+      rows.push({ q: R.prepJobs.length, wait: Math.max(0, Math.round(R.warmUntil - performance.now())), x: Math.round(p.x), y: Math.round(p.y), t: Math.round(t - t0), iv: Math.round(iv), cov: covered ? (R.areaCompiling ? 'C' : 'H') : '-', hp: Math.round(p.hp), max: p.maxHp, inv: p.invuln, near: window.__bd.view().monsters.filter((m) => m.hp > 0 && m.st !== 0 && Math.hypot(m.x - p.x, m.y - p.y) < 6 * 32).length, cv: `프로그램 ${R.gl.info.programs.length} · 빛 ${(() => { let n = 0; R.scene.traverse((o) => { if (o.isLight && o.visible && !o.isAmbientLight && !o.isHemisphereLight) n++ }); return n })()} · 텍스처 ${R.gl.info.memory.textures}` })
       if (t - t0 < 15000) requestAnimationFrame(step)
       else res()
     }
     requestAnimationFrame(step)
   })
-  return { rows, hits, hitsCovered, newProgs, tick: window.__bd.state().tick }
-}, AREA)
+  return { rows, hits, hitsCovered, newProgs, owners, uploads, bossT, tick: window.__bd.state().tick }
+}, [AREA, !!process.env.BOSS])
 await page.keyboard.up('KeyD')
 const lift = out.rows.find((r, i) => i > 0 && r.cov === '-' && out.rows[i - 1].cov !== '-')
 const protEnd = out.rows.find((r, i) => i > 0 && r.inv === 0 && out.rows[i - 1].inv > 0)
 console.log(`분위기 ${skin} · 지역 ${AREA} · 덮개 걷힘 ${lift?.t ?? '?'}ms · 보호 끝 ${protEnd?.t ?? '?'}ms · 맞은 프레임 ${out.hits} (덮개 안 ${out.hitsCovered})`)
+if (process.env.PREP) for (const r of out.rows.filter((r, i) => i % 30 === 0 && r.cov !== '-')) console.log(`  준비 ${String(r.t).padStart(5)}ms 줄 ${r.q} 기다림 ${r.wait}ms 프로그램 ${r.cv}`)
 for (const r of out.rows) if (r.iv > 50 || r === lift || r === protEnd) console.log(`  ${String(r.t).padStart(5)}ms 간격 ${String(r.iv).padStart(4)} 덮개 ${r.cov} 체력 ${r.hp}/${r.max} 무적 ${r.inv} 곁의 깬 괴물 ${r.near} | ${r.cv}`)
 const firstHit = out.rows.find((r, i) => i > 0 && r.hp < out.rows[i - 1].hp)
 if (firstHit) console.log(`  처음 맞음 ${firstHit.t}ms 덮개 ${firstHit.cov}`)
@@ -125,8 +178,11 @@ const cov = out.rows.filter((r) => r.cov !== '-' && r.t > 300)
 const moved = cov.length ? Math.hypot(cov[cov.length - 1].x - cov[0].x, cov[cov.length - 1].y - cov[0].y) : -1
 const after = out.rows.filter((r) => r.cov === '-' && r.t > (lift?.t ?? 0))
 const movedAfter = after.length > 30 ? Math.hypot(after[30].x - after[0].x, after[30].y - after[0].y) : -1
+if (out.bossT >= 0) console.log(`  보스 앞으로 ${out.bossT}ms`)
 console.log(`  D 를 누른 채 — 덮개 동안 움직인 거리 ${Math.round(moved)}px · 걷힌 뒤 0.5초 동안 ${Math.round(movedAfter)}px`)
 for (const l of out.newProgs) console.log('  새 셰이더', l.slice(0, 600))
+for (const l of out.owners) console.log('  새 셰이더를 만든 물체', l)
+for (const l of out.uploads) console.log('  느린 텍스처 올리기', l)
 const minHp = Math.min(...out.rows.map((r) => r.hp))
 console.log(`  가장 낮은 체력 ${minHp}`)
 await browser.close()

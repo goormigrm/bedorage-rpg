@@ -17,6 +17,10 @@ export const CHZZK_PROXY = 'https://bedorage-proxy.1117tkdrms.workers.dev'
 
 const LS_TOKEN = 'brpg.chzzk.token'
 const LS_STATE = 'brpg.chzzk.state'
+/** 작은 창 로그인의 확인 값 — 돌아온 창이 이것과 같으면 작은 창이다 (entry.ts) */
+const LS_POPUP = 'brpg.chzzk.popup'
+/** 작은 창이 돌아온 code 를 원래 창에 넘기는 통로 (entry.ts 와 같은 이름) */
+const CZ_CHANNEL = 'brpg-chzzk'
 
 interface TokenSet {
   accessToken: string
@@ -68,11 +72,19 @@ export function redirectUri(): string {
   return location.origin + location.pathname
 }
 
-/** 치지직 로그인(계정 연동) 페이지로 간다 — 동의하면 이 페이지로 code 를 들고 돌아온다 */
+/** 이 창이 연 로그인의 확인 값 (작은 창이 넘긴 code 가 이 창 것일 때만 받는다 — 게임 탭이 둘이어도) */
+let pendingState = ''
+
+/**
+ * 치지직 로그인(계정 연동)을 **작은 창**으로 연다 — 동의하면 그 창이 code 를 들고 이 주소로 돌아와 이 창에 넘기고 닫힌다(entry.ts).
+ * 전에는 이 창을 통째로 옮겨 방 · P2P 연결이 끊겼다 (2026-10-23 사용자: "최초 치지직 로그인하면 방이 나가지고 다시 방을 만들어야").
+ * 팝업이 막히면 안내만 한다 — 이 창을 옮기면 방이 나가진다
+ */
 export function startLogin(): void {
   const state = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
   try {
     localStorage.setItem(LS_STATE, state)
+    localStorage.setItem(LS_POPUP, state)
   } catch {
     /* 저장소 없음 */
   }
@@ -80,16 +92,53 @@ export function startLogin(): void {
   u.searchParams.set('clientId', CHZZK_CLIENT_ID)
   u.searchParams.set('redirectUri', redirectUri())
   u.searchParams.set('state', state)
-  location.href = u.toString()
+  pendingState = state
+  listenLoginPopup()
+  const w = window.open(u.toString(), 'brpg-chzzk', 'popup,width=520,height=760')
+  if (w) w.focus()
+  else stream.setStatus('error', '로그인 창(팝업)이 막혔습니다 — 주소창 오른쪽에서 팝업을 허용하고 다시 눌러 주세요')
 }
 
-/** 로그인 뒤 돌아온 code 를 토큰으로 바꾼다. 바꿨으면 true (주소의 code · state 는 지운다) */
+let loginChannel: BroadcastChannel | null = null
+/** 작은 창이 넘기는 code 를 받는다 — 토큰으로 바꾸고 연결 (방 · 판은 그대로) */
+function listenLoginPopup(): void {
+  if (loginChannel || typeof BroadcastChannel === 'undefined') return
+  loginChannel = new BroadcastChannel(CZ_CHANNEL)
+  loginChannel.onmessage = (e: MessageEvent<{ code?: string; state?: string }>) => {
+    const { code, state } = e.data ?? {}
+    if (!code || !state || state !== pendingState) return
+    pendingState = ''
+    try {
+      localStorage.removeItem(LS_POPUP)
+    } catch {
+      /* 저장소 없음 */
+    }
+    void exchangeCode(code, state).then((ok) => {
+      if (!ok) return
+      onLoginDone?.()
+      void connect()
+    })
+  }
+}
+
+/** 작은 창 로그인이 끝났을 때 (main.ts — 자동 연결을 켠다) */
+let onLoginDone: (() => void) | null = null
+export function setOnLoginDone(f: () => void): void {
+  onLoginDone = f
+}
+
+/** 로그인 뒤 돌아온 code 를 토큰으로 바꾼다. 바꿨으면 true (주소의 code · state 는 지운다) — 예전처럼 이 창으로 돌아온 경우 */
 export async function handleOAuthRedirect(): Promise<boolean> {
   const params = new URLSearchParams(location.search)
   const code = params.get('code')
   const st = params.get('state')
   if (!code) return false
   history.replaceState(null, '', location.pathname + location.hash)
+  return exchangeCode(code, st)
+}
+
+/** code → 토큰 (확인 값 state 가 이 브라우저가 연 로그인 것이어야 한다) */
+async function exchangeCode(code: string, st: string | null): Promise<boolean> {
   if (!st || st !== localStorage.getItem(LS_STATE)) {
     stream.setStatus('error', '로그인 확인 값(state)이 맞지 않습니다 — 다시 로그인해 주세요')
     return false

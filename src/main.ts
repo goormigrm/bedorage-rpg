@@ -5,7 +5,7 @@ import { setFavicon } from './ui/favicon'
 import { restoreFromMirror } from './game/save'
 import { openLobby } from './net/room'
 import { Lobby } from './ui/lobby'
-import { connect, handleOAuthRedirect, hasToken } from './net/chzzk'
+import { connect, handleOAuthRedirect, hasToken, setOnLoginDone } from './net/chzzk'
 import { loadStreamCfg, saveStreamCfg } from './game/stream'
 import { installDevKey } from './game/devmode'
 import { installErrorReport } from './ui/errorReport'
@@ -99,6 +99,12 @@ void Promise.all([restoreFromMirror().catch(() => false), fontsReady().catch(() 
   .finally(() => setTimeout(hideBoot, 60))
 
 // 치지직 방송 연동 (2026-09-23): 로그인에서 돌아왔으면(?code=) 토큰으로 바꾸고 연결, 전에 연결해 두었으면 다시 연결
+// 작은 창 로그인(방에 있어도 그대로 — net/chzzk.ts startLogin)이 끝나면 다음부터 자동 연결
+setOnLoginDone(() => {
+  const c = loadStreamCfg()
+  c.auto = true
+  saveStreamCfg(c)
+})
 void (async () => {
   const back = await handleOAuthRedirect()
   if (back) {

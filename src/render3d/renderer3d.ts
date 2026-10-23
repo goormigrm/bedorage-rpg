@@ -224,6 +224,8 @@ const LIGHT_STEP = 4
 const LIGHT_MAX = 16
 /** 미리 컴파일하는 빛 수 차례 — 던전에서 흔한 것부터 (등불만 4 · 드랍 빛 8 …, 0 은 모두 쓰러졌을 때뿐) */
 const WARM_ORDER = [4, 8, 12, 16, 0]
+/** 덮개 동안 끝내야 하는 빛 수 — 던전 싸움에서 나오는 것 (등불 넷 + 횃불 · 섬광). 이 차례로 먼저 한다 */
+const WARM_HOLD = [12, 16, 8]
 
 export const EMOTES: Record<number, string> = { 1: 'ㅋㅋㅋ', 2: '굿 👍', 3: '미안 🙏' }
 
@@ -748,8 +750,13 @@ export class Renderer3D {
   setMap(map: GameMap): void {
     this.emotes.clear()
     this.says.clear()
-    // 핏자국 · 시체는 떠나온 지역 것 — 새 지역 바닥에 남지 않게
-    this.blood?.clear()
+    // 핏자국 · 시체는 떠나온 지역 것 — 새 지역 바닥에 남지 않게.
+    // 핏자국 묶음은 여기서 장면에 넣는다 — 덮개 동안 셰이더를 데우게 (2026-10-23: 첫 타격 때 만들어 첫 싸움에서 100 ~ 330ms 멈췄다)
+    if (!this.blood) {
+      this.blood = new BloodDecals()
+      this.scene.add(this.blood.mesh)
+    }
+    this.blood.clear()
     this.monsterView.clearCorpses()
     this.hud.clearNotices()
     this.skillFx?.clear()
@@ -842,6 +849,11 @@ export class Renderer3D {
   private holdTex = false
   private warmGood = 0
 
+  /** 덮개를 쥐어야 할 준비가 남았나: 텍스처 · 할 일 · 던전 빛 수(WARM_HOLD)의 데우기 */
+  private holdNeeds(): boolean {
+    return this.prepJobs.some((j) => j.t !== 'warm' || WARM_HOLD.includes(j.n))
+  }
+
   /** 장면 재질의 텍스처를 모두 GPU 로 올린다 (이미 올린 것은 three 가 건너뛴다) */
   private uploadSceneTextures(): void {
     const seen = new Set<THREE.Texture>()
@@ -919,6 +931,32 @@ export class Renderer3D {
    * 빛을 쓰는 재질(Lambert 등)은 빛 수 단위마다, 빛을 안 쓰는 재질은 한 번(그 뒤로는 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다).
    * 빛 수 순서는 던전에서 흔한 것부터 — 등불(사람마다 하나)만 켜진 4 · 드랍 빛이 는 8 …
    */
+  /**
+   * 싸움에서 그때그때 생기는 이펙트(고리 · 섬광 · 파편 · 조각 · 떨어진 아이템)의 재질 갈래 견본 — 장면에는 넣지 않고 준비 줄에서 빛 수마다 데운다.
+   * three 는 같은 갈래 · 같은 빛 수면 셰이더를 함께 쓰므로, 견본이 있으면 처음 생기는 이펙트가 셰이더를 새로 만들지 않는다
+   * (2026-10-23 계측: 첫 싸움에서 이런 재질이 셰이더를 1 ~ 4 개씩 만들며 70 ~ 120ms 멈췄다 — 양면 투명은 뒷면 · 앞면 둘)
+   */
+  private warmKitGroup: THREE.Group | null = null
+  private warmKit(): THREE.Group {
+    if (this.warmKitGroup) return this.warmKitGroup
+    const g = new THREE.Group()
+    const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+    tex.needsUpdate = true
+    const plane = new THREE.PlaneGeometry(1, 1)
+    // 계측에서 본 갈래만 (하나 만들 때마다 끝나길 기다려 견본이 많으면 덮개가 길어졌다): 양면 투명(뒷면 · 앞면 둘) 그림 없음 · 있음 · 앞면 투명 · 앞면 불투명 · 스프라이트 · 법선 없는 양면 투명
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true })))
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ transparent: true })))
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial()))
+    g.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })))
+    // 법선 없는 도형(꼭짓점만 짠 이펙트) — three 는 법선 유무(vertexNormals)로 셰이더를 가른다 (2026-10-23 계측: 덮개 뒤 양면 투명 둘)
+    const bare = new THREE.BufferGeometry()
+    bare.setAttribute('position', plane.getAttribute('position'))
+    g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
+    this.warmKitGroup = g
+    return g
+  }
+
   private queueWarm(root: THREE.Object3D): void {
     const warm: { obj: THREE.Object3D; key: string; lit: boolean }[] = []
     root.traverse((o) => {
@@ -940,10 +978,14 @@ export class Renderer3D {
         warm.push({ obj: o, key: `${m.uuid}|${shape}`, lit })
       }
     })
+    // 빛을 안 받는 재질도 셰이더 열쇠에 점광원 수가 들어간다(three) — 장면 것은 첫 빛 수 하나만(모두 하면 덮개가 9초까지 길어졌다),
+    // 견본 묶음(warmKit — 싸움 이펙트 갈래)은 모든 빛 수로
+    const kit = root === this.warmKitGroup
     for (const n of WARM_ORDER) {
       for (const w of warm) {
-        if (!w.lit && n !== WARM_ORDER[0]) continue
-        const k = `${w.key}|${w.lit ? n : '-'}`
+        // 견본은 싸움에서 나오는 빛 수만 (8 · 12 · 16)
+        if (kit ? n < 8 : !w.lit && n !== 12 && n !== 16) continue
+        const k = `${w.key}|${w.lit || kit ? n : '-'}`
         if (this.warmKeys.has(k)) continue
         this.warmKeys.add(k)
         this.prepJobs.push({ t: 'warm', obj: w.obj, n, k })
@@ -962,6 +1004,7 @@ export class Renderer3D {
       // 캐릭터 · 괴물(도형) · 효과 재질은 장면에 있다 — 던전의 빛 수에서도 쓰게 한 번 줄 세운다
       this.sceneQueued = true
       this.queueWarm(this.scene)
+      this.queueWarm(this.warmKit())
     }
     const t0 = performance.now()
     if (t0 < this.warmUntil) return true
@@ -2339,6 +2382,9 @@ export class Renderer3D {
             return false
           })
           this.queueWarm(this.scene)
+          // 던전에서 나오는 빛 수부터 (덮개는 그것만 끝나면 걷힌다 — holdNeeds). 빛 4 · 0 은 덮개를 늘리지 않게 뒤로 (2026-10-23: 다 하면 판마다 4 ~ 9초)
+          const rank = (j: (typeof this.prepJobs)[number]) => (j.t !== 'warm' ? 0 : WARM_HOLD.indexOf(j.n) >= 0 ? 1 + WARM_HOLD.indexOf(j.n) : 9)
+          this.prepJobs.sort((a, b) => rank(a) - rank(b))
         }
         // 준비 줄(빛 수마다의 셰이더 · 텍스처)을 덮개 뒤에서 마저 한다 — 방을 만들고 마을에서 곧장 나오면 남아 있어,
         // 첫 싸움에서 빛 수가 바뀔 때마다 모든 재질을 다시 컴파일하며 0.3초씩 멈췄다 (2026-10-17 계측)
@@ -2350,7 +2396,7 @@ export class Renderer3D {
       this.post.render(this.scene, this.camera)
       if (this.areaHold) {
         this.warmGood = performance.now() - r0 < 25 && this.lastDt < 0.05 ? this.warmGood + 1 : 0
-        if ((!prepBusy && this.warmGood >= 3) || performance.now() - this.holdAt > HOLD_MAX) this.areaHold = false
+        if ((!this.holdNeeds() && performance.now() >= this.warmUntil && this.warmGood >= 3) || performance.now() - this.holdAt > HOLD_MAX) this.areaHold = false
       }
     }
 
@@ -5633,13 +5679,9 @@ export class Renderer3D {
     return d < 1 ? { x: 0, z: 0 } : { x: dx / d, z: dy / d }
   }
 
-  /** 바닥 핏자국 하나 (처음 쓸 때 만든다). dir = 튄 방향(월드 x · z) — 튄 자국 모양을 그쪽으로 눕힌다 */
+  /** 바닥 핏자국 하나 (묶음은 setMap 에서 만든다). dir = 튄 방향(월드 x · z) — 튄 자국 모양을 그쪽으로 눕힌다 */
   private addBlood(x: number, z: number, size: number, kinds: number[], dir?: { x: number; z: number }): void {
-    if (!this.blood) {
-      this.blood = new BloodDecals()
-      this.scene.add(this.blood.mesh)
-    }
-    this.blood.add(x, z, size, kinds, dir && (dir.x !== 0 || dir.z !== 0) ? Math.atan2(dir.z, dir.x) : undefined)
+    this.blood?.add(x, z, size, kinds, dir && (dir.x !== 0 || dir.z !== 0) ? Math.atan2(dir.z, dir.x) : undefined)
   }
 
   /** 관전 시트용: 캐릭터를 특정 위치·회전으로 직접 배치하고 렌더 */

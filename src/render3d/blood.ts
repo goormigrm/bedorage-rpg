@@ -187,6 +187,8 @@ export class BloodDecals {
         .replace('#include <uv_vertex>', `#include <uv_vertex>\n  vMapUv = vMapUv * vec2(${1 / COLS}, ${1 / ROWS}) + vec2(mod(aTile, ${COLS}.0) * ${1 / COLS}, (${ROWS - 1}.0 - floor(aTile / ${COLS}.0)) * ${1 / ROWS});`)
     }
     this.mesh = new THREE.InstancedMesh(geo, mat, BLOOD_MAX)
+    // 인스턴스 색을 처음부터 둔다 — 셰이더 갈래(instancingColor)가 첫 자국 때 바뀌면 덮개 동안 데운 것을 못 쓴다
+    this.mesh.setColorAt(0, this.col)
     this.mesh.count = 0
     this.mesh.frustumCulled = false
     this.mesh.renderOrder = 1
