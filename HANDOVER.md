@@ -10,13 +10,12 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 (2026-10-23 · 원격 개발 PC — v1.10.7 준비 · ④ ~ ⑥ 끝나면 함께 푸시)
+## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 · 벼리기 장인 · 도박 확률 (2026-10-23 · 원격 개발 PC — v1.10.7 배포 · 남은 것 ⑥)
 
-- **멈춘 까닭**: 사용자가 git 연동을 하고 이어가기로 했다 → 같은 날 `gh` 2.45(apt) 설치 · goormigrm 로그인(기기 코드) · `gh auth setup-git` 으로 이 PC 에서 푸시된다(`push --dry-run` 확인). 토큰은 `~/.config/gh/hosts.yml`(WSL 에 키링이 없어 평문 · 600). 커밋은 **로컬에만** 있다(③ 은 확인했다 — ④ ~ ⑥ 을 끝내고 v1.10.7 로 함께 올린다) — 배포 사이트는 그대로 v1.10.6(ec11f1b — Actions 성공 확인).
-  - 이어받는 세션: 먼저 `git -C ~/work/bedorage-rpg log origin/main..main` 로 안 올라간 커밋을 본다. 푸시 = 배포이니 ④ ~ ⑥ 과 v1.10.7 마무리(uicheck · 빌드) 뒤에 올린다.
+- **배포**: ① ~ ⑤ 를 v1.10.7 로 올렸다(시험 418 · tsc · 빌드 · uicheck 여섯 크기 0건 · 로컬 uitest 통과 뒤). 사용자 규칙(첫 세션 지시): "끝나는 대로 버전 올려 커밋 · 푸시 — 검증 뒤 묻지 말고 main 푸시(=배포)". 이 PC 는 `gh` 2.45 로그인(goormigrm · `gh auth setup-git` · 토큰 `~/.config/gh/hosts.yml` 평문 600)으로 푸시된다. 배포 확인 `gh run list -L 2`.
 - **이 PC 환경**(WSL dev): 저장소 `~/work/bedorage-rpg`(`\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg`) · Node 24 는 `~/work/node/bin`(PATH 앞에 넣는다 — 시스템 node 18 은 npm 이 없다) · Google Chrome · Playwright 크로미움 깔림 · 배포 확인은 `gh run list -L 2`. uicheck 한 바퀴(여섯 크기)가 3분쯤 걸린다(실제 GPU — 아래 tools/gpu.mjs).
 - **사용자 규칙(2026-10-23)**: "실제 플레이어는 대부분 1920×1080" → 화면 검사는 **`node tools/uicheck.mjs 1920x1080` 먼저**, `SHOT=1` 사진으로 글씨를 본 뒤 나머지 크기.
-- **끝낸 것**(시험 63 파일 417 통과 · `tsc --noEmit` · `npm run build` · uicheck 여섯 크기 0건):
+- **끝낸 것**(시험 63 파일 418 통과 · `tsc --noEmit` · `npm run build` · uicheck 여섯 크기 0건 · uitest 통과):
   - uicheck 5건 → 0건: 1280×720 에서 가방 머리가 두 줄이 되어(좋은 장비 끼기) 맨 아래 안내 글이 창 밖으로 밀리고 조작 안내 띠에 가려졌다 → `.inv` max-height 의 아래 몫 200 → 160px(스킬 바 위 끝 142px 는 비운다 · style.css 맨 끝). 1280×720 만 다시 돌려 0건.
   - ① 들판 문 → `gateTarget(town, wps)`(world.ts): 이 막에서 웨이포인트를 연 가장 뒤 지역(레벨 기준 · 보스 방 포함 · 길에서 뺀 곳 빼고), 없으면 첫 맵. sim 출구에서 `how: 'wp'` 로 그 웨이포인트 앞에. 이름표 · 작은 지도 글도 그곳 이름, 퀘스트 길 안내는 들판 문이 다른 곳으로 가면 성문으로. **지난 타운 포털**: 웨이포인트를 새로 열 때(`wpFound` — 두 곳에서 쓰던 것을 합침) 그보다 앞 지역(레벨 낮음)에 둔 **내** 포털을 닫는다. 이미 앞서 간 뒤 일부러 뒤에 연 포털은 남는다(연 순간만 본다). 시험 world.test.ts 셋.
   - ② 괴물 그림 1.3배(`MOB_VIEW` — monsters3d viewScale · 보스 방 거대 보스 빼고 · 맞는 크기 r 은 그대로) · 상자(보통 · 금빛 · 저주) 1.45배 · 이름표 높이. 1920 사진(☀ 1 · 🌙 2)으로 봤다.
@@ -26,7 +25,8 @@
     - 잰 것(이 PC 실제 GPU · `.frames/skinswitch.mjs` · `tools/entrycheck.mjs`): 바꾸기 4번 2 ~ 5.6초 · 무적 90 · 이동 0 ~ 10px(누르기 전 입력 지연) · 캔버스 2 · 오류 0. 지역 1 덮개 ☀ 7.5 → 4.2초 · 🌙 6.7 → 3.9초 · 걷힌 뒤 새 셰이더 48 · 43 → 2 · 0 · 덮개 동안 이동 0 · 맞음 0.
 - **이 PC 도구는 실제 GPU 로**(`tools/gpu.mjs gpuLaunch` — entrycheck · perf · uicheck · patchshots · patchvideo): WSL 에서 예전 `--use-angle=d3d11` 은 SwiftShader(CPU)가 잡혀 덮개가 9초(상한)로 나왔다. `/dev/dxg` 가 있으면 `--use-gl=angle --use-angle=gl-egl` + `GALLIUM_DRIVER=d3d12`(RTX 4080 SUPER · 병렬 컴파일 됨). uicheck 여섯 크기 5분 → 3분쯤. uitest 는 일부러 SwiftShader 그대로.
   - ④ **끝냄**: 벼리기 장인 `forger`(브란 · ☀ 조립 박사 브란) — 대장장이 천막 앞 네 칸 곁(캠프 26,8 · 숲 19,8 · 지하도 16,8 · 심연 25,6 — 심연은 25,7 이 포털 25,10 과 3칸이라 world.test 포털 간격 110px 에 걸렸다). 대장장이는 강화만(`CMD_UPGRADE`), 벼리기는 `CMD_FORGE && npc === 'forger'`. town.ts 탭(smithTab · data-stab)을 없앴고 창 폭은 둘 다 `.tp.smith`. 그림 npc3d(보안경 · 집게 · 도가니 — 빛 없이 스스로 빛나는 색) · 초상 · 작은 지도 점 `#7ae0e0` · uicheck 장면 '벼리기 장인' · 플레이 가이드 표.
-- **남은 할 일**(사용자 요청 순): ⑤ 도박 높은 등급 확률 낮추기(sim CMD_GAMBLE · items.ts pickRarity 'gamble') → ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.7(package.json · CHANGELOG 맨 위 "작업 중" 절 제목을 판 번호로) → uicheck 1920 먼저 · 전체 0건 · 빌드 → 커밋 · 푸시 → Actions 확인.
+  - ⑤ **끝냄**: 사용자 "도박꾼: 드롭률에 비해 높은 등급이 너무 쉽게 나온다" → `DROP_TABLE.gamble` [0, 0.55, 0.35, 0.095, 0.005](보스 한 개와 같았다) → [0, 0.8, 0.17, 0.028, 0.002](금빛 상자 쯤). 천장 `GAMBLE_PITY` 30 은 그대로(사용자가 고른 기능) — 천장까지 셈하면 전설 약 10번 → 약 20번에 하나. 시험 items.test.ts 하나.
+- **남은 할 일**(사용자 요청 순): ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.8(package.json · package-lock 두 곳 · CHANGELOG) → uicheck 1920 먼저 · 전체 0건 · 빌드 · `uitest`(빌드 → `npx vite preview --port 4173` — Actions 와 같은 시험) → 커밋 · 푸시 → Actions 확인.
 
 ## 🔖 좀비 떼 · 닉네임 · 좋은 장비 끼기 · 방송용 글씨 (2026-10-23 · 노트북 — v1.10.6)
 

@@ -344,6 +344,21 @@ describe('희귀 이상은 낮은 레벨일수록 드물다', () => {
     expect(lootLevelMul(13)).toBe(1)
   })
 
+  it('도박은 보스 한 개보다 짜다 — 희귀 이상 약 20% · 전설 이상 약 3% (2026-10-23)', () => {
+    const rng = makeRng(23)
+    let rare = 0
+    let leg = 0
+    for (let i = 0; i < 20000; i++) {
+      const r = pickRarity(rng, 'gamble', 0, 30)
+      if (r >= 2) rare++
+      if (r >= 3) leg++
+    }
+    expect(rare / 20000).toBeGreaterThan(0.17)
+    expect(rare / 20000).toBeLessThan(0.23)
+    expect(leg / 20000).toBeGreaterThan(0.02)
+    expect(leg / 20000).toBeLessThan(0.04)
+  })
+
   it('도박 · 상점은 레벨로 줄지 않는다 (값을 치른다)', () => {
     const rng = makeRng(22)
     let a = 0
