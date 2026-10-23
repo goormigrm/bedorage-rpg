@@ -3,9 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import { BTN_DASH, BTN_FIRE, BTN_SKILL1, BTN_ULT, BTN_USE, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../src/core/input'
 import { GameMap, isWallAt } from '../src/core/map'
-import { ACTS, areaLayout, buildAreaMap } from '../src/core/world'
+import { ACTS, areaDef, areaLayout, areaLevel, buildAreaMap } from '../src/core/world'
 import { EA_UNIQUE, MONSTER_LIST, levelHp, tierOf } from '../src/core/monsters'
-import { SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
+import { HORDE_SIZE, SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
@@ -106,15 +106,28 @@ describe('후원 이벤트 — 소환', () => {
     expect(g.s.players[0].don).toBeUndefined()
   })
 
+  it('좀비 떼는 부른 사람 레벨이 지역보다 높으면 그 레벨 + 1 로 나온다', () => {
+    const g = game()
+    toField(g)
+    g.s.players[0].level = 20
+    g.donate(ev('horde', 1))
+    const got = summoned(g.s)
+    expect(got.length).toBe(HORDE_SIZE)
+    expect(got.every((m) => m.lvl === 21)).toBe(true)
+  })
+
   it('좀비 떼 · 정예 · 중간보스 · 막 보스가 부른 사람 둘레에 깨어 나온다', () => {
     const g = game()
     toField(g)
     const p = g.s.players[0]
     g.donate(ev('horde', 1))
     let got = summoned(g.s)
-    expect(got.length).toBe(8)
+    expect(got.length).toBe(HORDE_SIZE)
     expect(got.every((m) => m.st === MS_CHASE && m.sumBy === 0 && m.sum === 2)).toBe(true)
     for (const m of got) expect(Math.hypot(m.x - p.x, m.y - p.y)).toBeLessThan(12 * 32)
+    // 이 지역(핏빛 들판 — 구울 무리) 괴물 · 지역 레벨 + 1 (2026-10-23 사용자: "지역과 레벨에 맞게")
+    const kinds = new Set((areaDef(1).packs ?? []).flatMap((k) => k.groups.map((x) => x[0])))
+    expect(got.every((m) => kinds.has(m.kind) && m.lvl === areaLevel(1, g.s.tier) + 1)).toBe(true)
 
     g.donate(ev('elite', 2))
     expect(summoned(g.s).filter((m) => m.sum === 3 && m.elite !== 0).length).toBe(1)

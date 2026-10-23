@@ -155,7 +155,7 @@ export class SkillPanel {
     const ultRow = `<div class="sk-row ult"><div class="sk-h"><b>${ult.name}</b><small>궁극기 · R</small>${pips(ULT_NODE)}${plus(ULT_NODE)}</div><div class="sk-d" title="${ult.desc}">${short(CHAR_SKILLS[p.char][2])}</div><div class="sk-f">${mods(ULT_NODE, CHAR_SKILLS[p.char][2])}</div></div>`
     const passives = PASSIVES.map((ps, k) => `<div class="sk-row pas"><div class="sk-h"><b>${ps.name}</b>${pips(6 + k)}${plus(6 + k)}</div><div class="sk-d">${ps.desc}</div></div>`).join('')
     const respec = isTown(p.area) ? `<button class="btn" data-cmd="${CMD_RESPEC}" data-arg="0" ${p.gold >= 50 * p.level ? '' : 'disabled'}>재분배 · ${50 * p.level} 골드</button>` : '<span class="tp-note">재분배는 마을에서</span>'
-    this.el.innerHTML = `<div class="tp-head"><b>스킬</b><span class="tp-gold">남은 포인트 ${free}</span><button class="inv-x" data-x>✕</button></div>
+    this.el.innerHTML = `<div class="tp-head"><b>스킬</b><span class="tp-gold"><span class="pts${free > 0 ? ' on' : ''}">남은 포인트 ${free}</span></span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">＋ 를 눌러 배운다 · 칸 단추로 ${skillKeyLabel(0)} · ${skillKeyLabel(1)} · ${skillKeyLabel(3)} · ${skillKeyLabel(4)} 에 건다 (궁극기 ${skillKeyLabel(2)})</p>
       <div class="sk-grid"><div>${actives.join('')}</div><div>${ultRow}${passives}<div class="sk-respec">${respec}</div></div></div>
       <p class="tp-hint">${keyLabel('skills')} · Esc 로 닫기</p>`

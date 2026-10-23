@@ -110,7 +110,7 @@ export class CharSheet {
     const need = xpNeed(p.level)
     const mastery = this.masteryHtml(p, town)
     const role = ROLE_INFO[c.role]
-    this.el.innerHTML = `<div class="tp-head"><b>능력치 — ${c.name} <span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="tp-gold">레벨 ${p.level} · 남은 포인트 ${free}</span><button class="inv-x" data-x>✕</button></div>
+    this.el.innerHTML = `<div class="tp-head"><b>능력치 — ${c.name} <span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span></b><span class="tp-gold">레벨 ${p.level} · <span class="pts${free > 0 ? ' on' : ''}">남은 포인트 ${free}</span></span><button class="inv-x" data-x>✕</button></div>
       <p class="tp-line">레벨마다 능력치 포인트 3점. ★ 는 ${c.name}에게 추천하는 능력치(주 6 : 부 4). ${p.level >= LEVEL_CAP ? `만렙 — 경험치는 숙련으로 쌓인다` : `경험치 ${Math.floor(p.xp)} / ${need}`}</p>
       <div class="cs-grid"><div>${rows}${acts}${mastery}</div><div class="cs-sts"><div class="cs-t">세부 능력치 (레벨 · 장비 · 능력치 · 패시브 합)</div>${lines.join('')}</div></div>
       <p class="tp-hint">${keyLabel('attr')} · Esc 로 닫기</p>`

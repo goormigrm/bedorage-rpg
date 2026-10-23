@@ -2271,8 +2271,8 @@ export class Session {
     const me = this.state.players[this.cfg.localPlayer]
     if (!effectFits(ev, me?.don, me?.donCap ?? DON_CAP_DEFAULT, rage)) return false
     if (!SUMMON_KEYS.has(e.key)) return true
-    // 부르는 수만큼 자리가 있을 때 (대행진 스물 · 지옥문 열셋 · 총잡이 · 중간보스 여섯 · 나머지 넷)
-    const size = e.key === 'march' ? MARCH_SIZE : e.key === 'hell' ? 13 : e.key === 'gun' || e.key === 'unique' ? 6 : 4
+    // 부르는 수만큼 자리가 있을 때 (대행진 스물넷 · 지옥문 열셋 · 좀비 떼 열 · 총잡이 · 중간보스 여섯 · 나머지 넷)
+    const size = e.key === 'march' ? MARCH_SIZE : e.key === 'hell' ? 13 : e.key === 'horde' ? 10 : e.key === 'gun' || e.key === 'unique' ? 6 : 4
     if (summoned >= SUMMON_CAP - size) return false
     if ((e.key === 'boss' || e.key === 'hell') && boss) return false
     return true

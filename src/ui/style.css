@@ -1532,3 +1532,37 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .dlg .czask { margin: 10px 0 12px; padding-left: 22px; font-size: 16px; line-height: 1.8; color: var(--ink); }
 .dlg .czask b { color: #00ffa3; }
 #dlg-cz .cardp { font-size: 15px; }
+
+/* ---- 가방 칸: 끼고 있는 것과 견준 표 (2026-10-23 사용자: "좋으면 빨간 위쪽 화살표 · 비슷하면 - · 아래면 파란 아래쪽 화살표") — 왼쪽 위 ---- */
+.cell .cmpm { position: absolute; left: 4px; top: 4px; font: 900 15px/1 "IBM Plex Sans KR", sans-serif; font-style: normal; text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; }
+.cell .cmpm.up { color: #ff3b3b; }
+.cell .cmpm.dn { color: #4a95ff; }
+.cell .cmpm.eq { color: #e6ddcb; font-size: 20px; top: 0; }
+.bag-best { border-color: #ff6b6b; color: #ffd7d7; }
+
+/* ---- 방송 화면에서 글씨가 눈에 들어오게 (2026-10-23 사용자: "40대가 하고 방송에 송출 — GUI 자체는 키우지 말고 글씨 크기 · 색 · 글꼴 · 자간으로.
+   레벨과 남은 포인트 · 스킬 창도 글씨가 눈에 안 들어오고 색도 눈에 띄지 않는다") — 창 크기는 그대로. 작은 회색 명조 → 굵은 고딕 · 밝은 색 ---- */
+.tp-gold { font: 800 17px "IBM Plex Sans KR", sans-serif; color: #ffe08a; letter-spacing: .01em; }
+/* 남은 포인트가 있으면 노란 알약 — 찍을 게 있다는 것이 한눈에 */
+.tp-gold .pts.on { color: #1c1406; background: #ffd34d; padding: 1px 10px; border-radius: 12px; box-shadow: 0 0 10px rgba(255,211,77,.45); }
+.tp-line { font: 600 14px "IBM Plex Sans KR", sans-serif; color: #ddd0b4; letter-spacing: .01em; }
+.tp-hint { color: #b9ab8e; }
+.csp .cs-h b { font: 800 17px "IBM Plex Sans KR", sans-serif; color: #ffe08a; }
+.csp .cs-pt { font-size: 19px; color: #fff6e2; }
+.csp .cs-d { font-size: 13.5px; font-weight: 600; color: #ddcfae; letter-spacing: .01em; }
+.csp .cs-d em { color: #fff4dc; }
+.csp .cs-t { font-size: 13.5px; color: #e3cf9c; }
+.csp .cs-st { font-size: 14px; }
+.csp .cs-st span { color: #e0d2b2; }
+.csp .cs-st b { color: #fff4dc; }
+.csp .cs-st.zero b { color: #8f826a; }
+.sk-h small { color: #c9b994; font-size: 13px; font-weight: 700; }
+.skp .sk-r { color: #ffd34d; }
+.skp .sk-f { font-size: 14px; color: #c9b994; }
+/* 치지직 창 후원 이벤트 설명 · 안내 글 */
+.czpanel .czr span { color: #cfe0d8; font-size: 14px; font-weight: 600; }
+.czpanel .czr b { font-size: 14px; }
+.czpanel .czd { font-size: 13.5px; color: #b8d0c6; }
+.inv-head span { font: 800 16px "IBM Plex Sans KR", sans-serif; color: #ffe08a; }
+.inv-head .xpn { font-size: 13.5px; font-weight: 600; color: #d6c8a8; }
+.inv-head .gold { font-size: 16px; }

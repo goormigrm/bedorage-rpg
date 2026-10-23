@@ -7,10 +7,10 @@ import { itemIconUrl } from './itemIcons'
 import { clickSuppressed, makeDraggable } from './dragItem'
 import { keyLabel } from '../game/keymap'
 import { CHARACTERS } from '../core/characters'
-import { CMD_BAGUP, CMD_DROP, CMD_EQUIP, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
+import { CMD_BAGUP, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_LOCK, CMD_SELL, CMD_SORT, CMD_STASH_PUT, CMD_UNEQUIP } from '../core/input'
 import {
   AFFIXES, BAG_MAX, BAG_STEP, Item, LEGENDS, RARITY_NAMES, SETS, SLOT_COUNT, SLOT_NAMES, SLOT_WEAPON, ST_COUNT, WEAPON_IDS,
-  affixText, affixValue, armorBase, bagUpPrice, computeStats, goldText, hasImplicit, itemColor, itemName, myGoldText, setCounts, weaponBaseDmg, xpNeed,
+  affixText, affixValue, armorBase, bagUpPrice, computeStats, goldText, hasImplicit, itemColor, itemName, itemScore, myGoldText, setCounts, weaponBaseDmg, xpNeed,
 } from '../core/items'
 import { PlayerState } from '../core/state'
 import { WEAPONS, weaponDps } from '../core/weapons'
@@ -67,6 +67,17 @@ function cellTag(it: Item): string {
 }
 
 /**
+ * 끼고 있는 것과 견준 표 (2026-10-23 사용자: "좋으면 빨간 위쪽 화살표 · 비슷하면 - · 아래면 파란 아래쪽 화살표").
+ * 수준(itemScore — 아이템 레벨 · 강화 · 등급) 차이 1 까지는 비슷하다. 그 부위가 비어 있으면 위. 못 끼는 무기는 표 없음
+ */
+function cmpMark(it: Item, me: PlayerState): string {
+  if (it.slot === SLOT_WEAPON && !canWield(me, it)) return ''
+  const eq = me.equip[it.slot]
+  const d = eq ? itemScore(it) - itemScore(eq) : 99
+  return d > 1 ? '<i class="cmpm up" title="끼고 있는 것보다 좋다">▲</i>' : d < -1 ? '<i class="cmpm dn" title="끼고 있는 것보다 낮다">▼</i>' : '<i class="cmpm eq" title="끼고 있는 것과 비슷하다">-</i>'
+}
+
+/**
  * 가방 칸 하나. **보관함 창도 같은 것을 쓴다** — 보관함을 가방처럼 칸으로 본다(2026-09-25 요청).
  * `attr` 은 누를 때 알아볼 표(data-bag="3" 같은 것), `me` 를 주면 못 끼는 무기를 흐리게 한다.
  */
@@ -76,7 +87,7 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
   const tag = cellTag(it)
-  return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}</div>`
+  return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}${me ? cmpMark(it, me) : ''}</div>`
 }
 
 /** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */
@@ -265,6 +276,7 @@ export class Inventory {
         <div class="inv-right">
           <div class="bag-h"><span class="bag-n">가방 ${me.bag.length} / ${me.bagMax}</span>
             <button class="bag-sort" data-sort title="등급이 높은 것부터 줄 세운다">정렬</button>
+            <button class="bag-sort bag-best" data-best title="부위마다 가방에서 가장 좋은 것(↑)을 낀다">좋은 장비 끼기</button>
             ${bagUpBtn(me.bagMax, me.gold)}</div>
           ${this.note ? `<p class="inv-note">${esc(this.note)}</p>` : ''}
           <div class="bag" data-drop="bag">${cells.join('')}</div>
@@ -276,6 +288,10 @@ export class Inventory {
     ;(this.el.querySelector('.inv-x') as HTMLButtonElement).onclick = () => this.toggle(false)
     const upBtn = this.el.querySelector('[data-bagup]') as HTMLButtonElement | null
     if (upBtn) upBtn.onclick = () => this.send(CMD_BAGUP, 0)
+    ;(this.el.querySelector('[data-best]') as HTMLButtonElement).onclick = () => {
+      this.send(CMD_EQUIP_BEST, 0)
+      this.lastKey = ''
+    }
     const sortBtn = this.el.querySelector('[data-sort]') as HTMLButtonElement | null
     if (sortBtn)
       sortBtn.onclick = () => {

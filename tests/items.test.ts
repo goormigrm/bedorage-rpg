@@ -1,6 +1,6 @@
 // 성장·전리품: 스마트 루트 · 개인 전리품 · 줍기 · 장착 명령 · 버리기(선물) · 경험치 공유 · 레벨업 · 소실 규칙 · 세이브 검사.
 import { describe, expect, it } from 'vitest'
-import { BTN_USE, CMD_AUTOPICK, CMD_DROP, CMD_EQUIP, CMD_PICK, Input } from '../src/core/input'
+import { BTN_USE, CMD_AUTOPICK, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_PICK, Input } from '../src/core/input'
 import { buildMap } from '../src/core/map'
 import { makeMonster } from '../src/core/dungeon'
 import { createState, step } from '../src/core/sim'
@@ -292,6 +292,21 @@ describe('전리품 · 성장 (sim)', () => {
     for (let t = 0; t < 120; t++) step(s, map, [idle(), idle()])
     step(s, map, [idle(), { ...idle(), buttons: BTN_USE }])
     expect(b.bag.some((it) => it.uid === 12)).toBe(true)
+  })
+
+  it('좋은 장비 끼기: 부위마다 가방에서 수준이 가장 높은 것 · 못 끼는 무기 · 낮은 것은 그대로', () => {
+    const sheet = emptySheet()
+    const rifle = (uid: number, rarity: number, ilvl: number): Item => ({ uid, slot: SLOT_WEAPON, wt: WEAPON_IDS.indexOf('rifle'), rarity, ilvl, aff: [0, 20] })
+    const shotgun: Item = { uid: 20, slot: SLOT_WEAPON, wt: WEAPON_IDS.indexOf('shotgun'), rarity: 4, ilvl: 30, aff: [0, 20] }
+    const helm = (uid: number, ilvl: number): Item => ({ uid, slot: 1, wt: 0, rarity: 1, ilvl, aff: [2, 10] })
+    sheet.equip = [rifle(1, 2, 8), helm(2, 9), null, null, null]
+    sheet.bag = [shotgun, rifle(3, 2, 6), rifle(4, 3, 10), helm(5, 4), rifle(6, 3, 9)]
+    const { s, map } = ready(['chim'], [sheet])
+    const p = s.players[0]
+    step(s, map, [cmd(CMD_EQUIP_BEST, 0)])
+    expect(p.equip[SLOT_WEAPON]?.uid).toBe(4) // 전설 10 — 산탄총은 침착란이 못 낀다
+    expect(p.equip[1]?.uid).toBe(2) // 낮은 투구는 그대로
+    expect(p.bag.map((it) => it.uid).sort((a, b) => a - b)).toEqual([1, 3, 5, 6, 20])
   })
 
   it('죽음 규칙 "소실": 죽으면 경험치 10% · 골드 20% 를 잃는다', () => {

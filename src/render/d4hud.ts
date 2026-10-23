@@ -45,6 +45,8 @@ const hudSkin = () => (isBright() ? CANDY : IRON)
 export const MINIMAP_SIZE = 190
 /** 추적 칸의 퀘스트 목록: 머리 줄 + 마지막 줄 아래 여백 (전에는 22 — 마지막 줄 글자가 칸 테두리에 닿았다) */
 const QL_PAD = 28
+/** 추적 칸 퀘스트 한 줄 높이 (글씨를 키운 만큼 — 2026-10-23) */
+const QL_ROW = 20
 
 export interface HudCtx {
   ctx: CanvasRenderingContext2D
@@ -522,17 +524,25 @@ export class D4Hud {
     const capped = me.level >= LEVEL_CAP
     const xpK = capped ? Math.min(1, me.mxp / MASTERY_XP) : Math.min(1, me.xp / xpNeed(me.level))
     thinBar(c, bx + 20, xpY, barW - 40, 4, xpK, capped ? ['#d8a8ff', '#5a2a8a'] : ['#f1d58a', '#8a6a28'])
+    // 레벨 · 골드 · 가방: 방송 화면에서도 읽히게 굵은 고딕 · 밝은 색 · 검은 테두리 (2026-10-23 사용자: "글씨가 너무 작아 눈에 안 들어온다" — 칸은 그대로)
     c.save()
-    c.font = `800 11.5px ${SERIF}`
-    c.fillStyle = GOLD_HI
-    c.textAlign = 'left'
     c.textBaseline = 'middle'
+    c.lineJoin = 'round'
+    c.lineWidth = 3
+    c.strokeStyle = 'rgba(0,0,0,0.85)'
     const mFree = capped ? masteryFree(me.mlv, me.mst) : 0
-    c.fillText(capped ? `Lv ${me.level} · 숙련 ${me.mlv}${mFree > 0 ? ` (+${mFree})` : ''}` : `Lv ${me.level}`, bx + 20, xpY + 14)
+    const lvT = capped ? `Lv ${me.level} · 숙련 ${me.mlv}${mFree > 0 ? ` (+${mFree})` : ''}` : `Lv ${me.level}`
+    c.font = `900 15px ${SANS}`
+    c.textAlign = 'left'
+    c.strokeText(lvT, bx + 20, xpY + 15)
+    c.fillStyle = '#ffe28a'
+    c.fillText(lvT, bx + 20, xpY + 15)
     c.textAlign = 'right'
-    c.font = `600 10px ${SANS}`
-    c.fillStyle = '#9a8a70'
-    c.fillText(`${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (${keyLabel('bag')})`, bx + barW - 20, xpY + 14)
+    c.font = `800 14px ${SANS}`
+    const bagT = `${myGoldText(me.gold)}  ·  가방 ${me.bag.length}/${me.bagMax} (${keyLabel('bag')})`
+    c.strokeText(bagT, bx + barW - 20, xpY + 15)
+    c.fillStyle = me.bag.length >= me.bagMax ? '#ff8a7a' : '#f3e8d0'
+    c.fillText(bagT, bx + barW - 20, xpY + 15)
     c.restore()
 
     // ---- 체력 오브 (왼쪽)
@@ -610,21 +620,21 @@ export class D4Hud {
   private drawQuestList(c: CanvasRenderingContext2D, s: GameState, q: number[], list: { d: (typeof QUESTS)[number]; i: number }[], x: number, y: number, W: number, more = 0): void {
     c.fillStyle = 'rgba(201,162,74,0.25)'
     c.fillRect(x + 12, y + 2, W - 24, 1)
-    c.font = `700 11px ${SANS}`
-    c.fillStyle = '#b8a67e'
+    c.font = `800 12.5px ${SANS}`
+    c.fillStyle = '#e3cf9c'
     c.textAlign = 'left'
     c.fillText(`${areaDef(s.curArea).act + 1}막 퀘스트 · ${keyLabel('quest')}`, x + 12, y + 17)
     // 칸이 모자라 접은 퀘스트 수 (자세한 것은 퀘스트 창)
     if (more > 0) {
-      c.font = `500 11px ${SANS}`
-      c.fillStyle = '#8d8170'
+      c.font = `600 12px ${SANS}`
+      c.fillStyle = '#b3a58c'
       c.textAlign = 'right'
       c.fillText(`외 ${more}개`, x + W - 12, y + 17)
       c.textAlign = 'left'
     }
     list.forEach(({ d, i }, k) => {
       const st = q[i] ?? 0
-      const ly = y + 36 + k * 18
+      const ly = y + 37 + k * QL_ROW
       const here = d.area === s.curArea
       const left = s.monsters.filter((m) => MONSTER_LIST[m.kind].attack !== 'flee').length
       const [mark, color, right, rc] =
@@ -633,17 +643,17 @@ export class D4Hud {
           : st === 2
             ? ['◆', GOLD_HI, bt('촌장에게 보고'), GOLD_HI]
             : st === 1
-              ? ['▸', '#e8dcc4', here ? (d.goal === 'clear' ? `남은 ${left}` : '여기') : AREAS[d.area].name, here ? '#ffd88a' : '#9d8f78']
-              : ['○', '#7e7260', bt('촌장'), '#6a5e4c']
+              ? ['▸', '#f6eedc', here ? (d.goal === 'clear' ? `남은 ${left}` : '여기') : AREAS[d.area].name, here ? '#ffd88a' : '#c8b998']
+              : ['○', '#c2b496', bt('촌장'), '#a89a7e']
       // 오른쪽(상태)을 먼저 재고, 이름은 남은 폭에 맞춰 줄인다 — 둘이 겹치거나 칸을 넘지 않게
-      c.font = `500 11px ${SANS}`
+      c.font = `600 12px ${SANS}`
       const rightT = fitText(c, right, (W - 24) * 0.55)
       const rw = c.measureText(rightT).width
       c.textAlign = 'right'
       c.fillStyle = rc
       c.fillText(rightT, x + W - 12, ly)
       c.textAlign = 'left'
-      c.font = `600 12px ${SANS}`
+      c.font = `700 13.5px ${SANS}`
       c.fillStyle = color
       const other = d.act !== areaDef(s.curArea).act ? `${d.act + 1}막 ` : ''
       c.fillText(fitText(c, `${mark} ${other}${d.name}`, W - 24 - rw - 8), x + 12, ly)
@@ -689,12 +699,12 @@ export class D4Hud {
             : `◆ 우두머리 ${a.unique?.name ?? ''}`
           : `◆ ${s.tier > 0 ? TIER_LABEL[s.tier] + ' · ' : ''}지역 레벨 ${a.level + tierOf(s.tier).lvl} · ${keyLabel('portal')} 타운 포털`
       // 글이 칸을 넘지 않게 (2026-09-24 사용자): 목표는 낱말 단위로 세 줄까지 접고, 나머지는 줄여서 맞춘다
-      c.font = `600 12px ${SANS}`
+      c.font = `700 13.5px ${SANS}`
       const goalLines = wrapWords(c, goal, inner, 3)
-      const ex = (goalLines.length - 1) * 16
+      const ex = (goalLines.length - 1) * 18
       // 퀘스트 줄은 오른쪽 아래 단추 기둥(가방 · 스킬 …) 위까지만 — 낮은 창(1280×720 · 브라우저 안 768)에서 칸이 단추를 덮었다 (2026-10-08).
       // 넘치면 진행 중 · 보고할 것을 먼저 남기고, 나머지는 "외 N개"로 접는다
-      const room = Math.floor(((opts.rightColTop ?? h.H) - 8 - (y + 84 + ex) - QL_PAD) / 18)
+      const room = Math.floor(((opts.rightColTop ?? h.H) - 8 - (y + 84 + ex) - QL_PAD) / QL_ROW)
       let actQuests = allQuests
       if (room < allQuests.length) {
         // 먼저 남길 차례: 보고할 것(2) → 진행 중(1) → 아직(0) → 끝(3)
@@ -704,13 +714,13 @@ export class D4Hud {
       }
       const more = allQuests.length - actQuests.length
       const showList = actQuests.length > 0 || (more > 0 && room >= 0)
-      ironPanel(c, x, y, W, 84 + ex + (showList ? QL_PAD + actQuests.length * 18 : 0), false)
+      ironPanel(c, x, y, W, 84 + ex + (showList ? QL_PAD + actQuests.length * QL_ROW : 0), false)
       c.font = `800 16px ${SERIF}`
       c.fillStyle = GOLD_HI
       c.fillText(fitText(c, opts.floorName ?? '던전', inner), x + 12, y + 24)
-      c.font = `600 12px ${SANS}`
-      c.fillStyle = '#d8cfbf'
-      goalLines.forEach((l, i) => c.fillText(l, x + 12, y + 46 + i * 16))
+      c.font = `700 13.5px ${SANS}`
+      c.fillStyle = '#f6eedc'
+      goalLines.forEach((l, i) => c.fillText(l, x + 12, y + 46 + i * 18))
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 12, y + 53 + ex, inner, 4)
       c.fillStyle = GOLD
@@ -718,14 +728,14 @@ export class D4Hud {
       // 남은 괴물은 늘 (2026-09-24 사용자: "적을 때만 보여 주는 게 아니라 항상") — 마을은 빼고
       let used = 0
       if (!town) {
-        c.font = `700 12px ${SANS}`
-        c.fillStyle = left === 0 ? '#9fd08a' : '#e8dcc4'
+        c.font = `800 13px ${SANS}`
+        c.fillStyle = left === 0 ? '#9fd08a' : '#f3e8d0'
         const t = `남은 괴물 ${left}`
         c.fillText(t, x + 12, y + 74 + ex)
         used = c.measureText(t).width + 10
       }
-      c.font = `600 11px ${SANS}`
-      c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#8d8170'
+      c.font = `600 12px ${SANS}`
+      c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#b3a58c'
       c.textAlign = town ? 'left' : 'right'
       c.fillText(fitText(c, `죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, inner - used), town ? x + 12 : x + W - 12, y + 74 + ex)
       c.textAlign = 'left'

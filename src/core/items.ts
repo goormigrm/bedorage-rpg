@@ -541,13 +541,14 @@ export const attrFree = (level: number, attr: number[]) => attrPoints(level) - a
  * 빈 칸은 0 으로 세므로 맨몸이면 0 이다. 방을 고를 때 "나와 비슷한가" 만 보면 되니 정확한 전투력이 아니라 **견줄 수 있는 수**면 된다.
  */
 const RARITY_GS = [0, 1, 3, 6, 9]
+/** 아이템 하나의 수준 (템 수준의 칸 값) — 가방 칸의 ↑ · - · ↓ 표와 "좋은 장비 끼기"도 이것으로 견준다 */
+export const itemScore = (it: Item): number => it.ilvl + (it.up ?? 0) * 2 + (RARITY_GS[it.rarity] ?? 0)
 export function gearScore(equip: (Item | null)[] | undefined): number {
   if (!equip || equip.length === 0) return 0
   let sum = 0
   for (let i = 0; i < SLOT_COUNT; i++) {
     const it = equip[i]
-    if (!it) continue
-    sum += it.ilvl + (it.up ?? 0) * 2 + (RARITY_GS[it.rarity] ?? 0)
+    if (it) sum += itemScore(it)
   }
   return Math.round(sum / SLOT_COUNT)
 }

@@ -8,12 +8,12 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, QUEST_ALL, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, QUEST_ALL, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemScore, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -3576,7 +3576,7 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, id: numbe
       lead = summon(state, map, p, SUM_GUN, seq)
       break
     case 'march':
-      // 괴물 대행진: 좀비 떼 둘 + 정예 무리 하나 (MARCH_SIZE 스물)
+      // 괴물 대행진: 좀비 떼 둘 + 정예 무리 하나 (MARCH_SIZE 스물넷)
       lead = summon(state, map, p, SUM_ELITE, seq)
       summon(state, map, p, SUM_HORDE, seq)
       summon(state, map, p, SUM_HORDE, seq)
@@ -3758,6 +3758,18 @@ function stepAllies(state: GameState, map: GameMap): void {
 /** 한 지역에 동시에 살아 있을 수 있는 후원 소환 괴물 (졸개 포함) — 후원이 몰려도 판이 무너지지 않게 */
 export const SUMMON_CAP = 30
 
+/** 좀비 떼: 수 · 체력 배율 (2026-10-23 — 여덟 · ×1 은 너무 약했다) */
+export const HORDE_SIZE = 10
+const HORDE_HP = 1.5
+
+/** 이 지역 무리에 나오는 괴물 종류 (populate 와 같은 무리 — 도망치는 고블린 · 보스는 빼고) */
+function areaKinds(area: number): number[] {
+  const def = areaDef(area)
+  const set = new Set<number>()
+  for (const p of def.packs ?? ACTS[def.act]?.packs ?? []) for (const g of p.groups) set.add(g[0])
+  return [...set].filter((k) => !MONSTER_LIST[k].boss && MONSTER_LIST[k].attack !== 'flee').sort((a, b) => a - b)
+}
+
 /** 막마다 부를 수 있는 괴물 종류 (막 무리 · 그 막 지역 무리에 나오는 것 — 도망치는 고블린 · 보스는 빼고) */
 function summonPool(act: number): number[] {
   const set = new Set<number>()
@@ -3768,23 +3780,27 @@ function summonPool(act: number): number[] {
 
 /**
  * 후원 소환. 부른 사람 둘레 5~8 칸에 깨어 있는 채로 나와 그 사람을 노린다. 돌려주는 것은 우두머리(없으면 null — 한도에 걸림).
- * - 좀비 떼: 이 막 졸개 여덟 · 정예: 정예 하나(접두 능력 지역 레벨만큼 + 1) + 같은 종류 셋
+ * - 좀비 떼: 이 지역 괴물 열(체력 ×1.5) · 정예: 정예 하나(접두 능력 지역 레벨만큼 + 1) + 같은 종류 셋
  * - 우두머리(중간보스): 지역 우두머리와 같은 세기(체력 ×9 · 접두 셋) + 호위 다섯 · 총잡이 무리: 총 쏘는 괴물 여섯 · 막 보스: 이 막의 보스
- * 레벨은 지역 레벨 + 1(보스는 + 2). 전리품 · 경험치는 보통 괴물과 같다.
+ * 레벨은 지역 레벨 + 1(보스는 + 2) — 좀비 떼는 부른 사람 레벨이 더 높으면 그 레벨에서. 전리품 · 경험치는 보통 괴물과 같다.
  */
 function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, seq: number): Monster | null {
   const alive = state.monsters.filter((m) => m.hp > 0 && m.sum !== undefined).length
   if (alive >= SUMMON_CAP) return null
   const act = areaDef(p.area).act
   // 막 보스 · 총잡이 무리 · 중간보스는 + 2 (6천 · 7천 원으로 오른 만큼 세게 — 2026-10-22)
-  const lvl = areaLevel(p.area, state.tier) + (tier === SUM_BOSS || tier === SUM_GUN || tier === SUM_UNIQUE ? 2 : 1)
+  // 좀비 떼는 부른 사람 레벨까지 (2026-10-23 사용자: "천 원 좀비 떼가 너무 약하다 — 지역과 레벨에 맞게")
+  const base = tier === SUM_HORDE ? Math.max(areaLevel(p.area, state.tier), p.level) : areaLevel(p.area, state.tier)
+  const lvl = base + (tier === SUM_BOSS || tier === SUM_GUN || tier === SUM_UNIQUE ? 2 : 1)
   const tr = tierOf(state.tier)
   const seats = state.players.length
   // 시련이면 그 단계의 세기를 같이 받는다 (riftHere — 시련 괴물과 같게)
   const rs = riftHere(state, p.area)
-  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp * (rs?.hp ?? 1)
+  const hpMul = (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tr.hp * (rs?.hp ?? 1) * (tier === SUM_HORDE ? HORDE_HP : 1)
   const pow = Math.round(levelPow(lvl) * tr.pow * (rs?.pow ?? 1))
-  const pool = summonPool(act)
+  // 좀비 떼는 이 지역에 나오는 괴물로 (없으면 막 전체)
+  const here = tier === SUM_HORDE ? areaKinds(p.area) : []
+  const pool = here.length ? here : summonPool(act)
   const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
   const guns = tier === SUM_GUN ? GUN_KINDS : null
   const kind = tier === SUM_BOSS && boss !== undefined ? boss : guns ? guns[randInt(state.rng, 0, guns.length)] : pool[randInt(state.rng, 0, pool.length)] ?? GHOUL_KIND
@@ -3833,7 +3849,7 @@ function summon(state: GameState, map: GameMap, p: PlayerState, tier: number, se
     lead = wake(makeMonster(state, kind, at.x, at.y, pack, hpMul, pow, lvl), 0)
   }
   // 호위 · 무리: 정예는 같은 종류 셋 · 우두머리는 다섯 · 총잡이는 다섯(모두 여섯) · 좀비 떼는 일곱을 더 데려온다
-  const more = tier === SUM_BOSS ? 0 : tier === SUM_HORDE ? 7 : tier === SUM_UNIQUE || tier === SUM_GUN ? 5 : 3
+  const more = tier === SUM_BOSS ? 0 : tier === SUM_HORDE ? HORDE_SIZE - 1 : tier === SUM_UNIQUE || tier === SUM_GUN ? 5 : 3
   for (let i = 0; i < more; i++) {
     const a = (a0 + 200 + i * 341) & 1023
     const g = moveCircle(map, at.x, at.y, r, cosA(a) * (40 + (i >> 2) * 30), sinA(a) * (40 + (i >> 2) * 30))
@@ -4151,16 +4167,37 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     queueMove(p, { to: arg, how: 'wp' })
     return
   }
-  if (cmd === CMD_EQUIP) {
-    const it = p.bag[arg]
-    if (!it) return
-    if (it.slot === SLOT_WEAPON && WEAPONS[WEAPON_IDS[it.wt]]?.family !== WEAPONS[CHARACTERS[p.char].weapon].family) return
+  const wieldable = (it: Item) => it.slot !== SLOT_WEAPON || WEAPONS[WEAPON_IDS[it.wt]]?.family === WEAPONS[CHARACTERS[p.char].weapon].family
+  // 가방 i 칸을 낀다 (끼고 있던 것은 그 칸으로 — 없으면 칸이 빠진다)
+  const wear = (i: number) => {
+    const it = p.bag[i]
     const old = p.equip[it.slot]
     p.equip[it.slot] = it
-    if (old) p.bag[arg] = old
-    else p.bag.splice(arg, 1)
+    if (old) p.bag[i] = old
+    else p.bag.splice(i, 1)
     recalc(p)
     state.events.push({ type: 'equip', p: p.id, slot: it.slot })
+  }
+  if (cmd === CMD_EQUIP) {
+    const it = p.bag[arg]
+    if (!it || !wieldable(it)) return
+    wear(arg)
+  } else if (cmd === CMD_EQUIP_BEST) {
+    for (let s = 0; s < SLOT_COUNT; s++) {
+      const cur = p.equip[s]
+      let best = -1
+      let bs = cur ? itemScore(cur) : -1
+      for (let i = 0; i < p.bag.length; i++) {
+        const it = p.bag[i]
+        if (it.slot !== s || !wieldable(it)) continue
+        const sc = itemScore(it)
+        if (sc > bs) {
+          bs = sc
+          best = i
+        }
+      }
+      if (best >= 0) wear(best)
+    }
   } else if (cmd === CMD_UNEQUIP) {
     const it = p.equip[arg]
     if (!it || p.bag.length >= p.bagMax) return

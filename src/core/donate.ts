@@ -22,7 +22,7 @@ export interface DonateEvent {
 }
 
 export const DONATE_EVENTS: DonateEvent[] = [
-  { id: 1, key: 'horde', name: '좀비 떼', desc: '졸개 여덟이 몰려온다', amount: 1000 },
+  { id: 1, key: 'horde', name: '좀비 떼', desc: '이 지역 괴물 열이 몰려온다', amount: 1000 },
   { id: 2, key: 'shake', name: '화면 흔들림', desc: '5초 동안 화면이 떨린다', amount: 2000 },
   // 이름 암흑 → 시야 축소 (2026-10-07 사용자) — 효과 · 금액 · 번호는 그대로
   { id: 3, key: 'dark', name: '시야 축소', desc: '20초 동안 코앞만 보인다', amount: 8000 },
@@ -34,7 +34,7 @@ export const DONATE_EVENTS: DonateEvent[] = [
   { id: 9, key: 'boss', name: '막 보스', desc: '이 막의 보스 — 체력 절반 · 즉사기 없음', amount: 5000 },
   { id: 10, key: 'hell', name: '지옥문', desc: '막 보스(체력 절반) + 중간보스 둘 + 시야 축소', amount: 30000 },
   { id: 15, key: 'gun', name: '총잡이 무리', desc: '총 쏘는 괴물 여섯이 몰려온다', amount: 6000 },
-  { id: 16, key: 'march', name: '괴물 대행진', desc: '졸개 열여섯 + 정예 무리', amount: 9000 },
+  { id: 16, key: 'march', name: '괴물 대행진', desc: '괴물 스물 + 정예 무리', amount: 9000 },
 ]
 
 /**
@@ -85,7 +85,7 @@ export const SUMMON_BOSS_HP = 0.5
 /** 소환하는 이벤트 (소환 상한에 걸리면 자리가 날 때까지 기다린다) */
 export const SUMMON_KEYS = new Set<DonateEvent['key']>(['horde', 'elite', 'unique', 'boss', 'hell', 'gun', 'march'])
 /** 괴물 대행진이 한 번에 부르는 수 (소환 상한 안에 들어갈 때만 — session.canRunDonation) */
-export const MARCH_SIZE = 20
+export const MARCH_SIZE = 24
 
 export const donateEvent = (id: number): DonateEvent | undefined => cheerEvent(id) ?? DONATE_EVENTS.find((e) => e.id === id)
 

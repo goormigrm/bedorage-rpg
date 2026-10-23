@@ -413,6 +413,8 @@ export class Renderer3D {
   }
   /** 후원 소환 괴물의 이름표: (부른 사람, 후원 번호) → "○○님의" (세션이 넣는다 — 이름은 sim 밖) */
   private summonLabel: ((by: number, seq: number) => string | undefined) | null = null
+  /** 이번 프레임에 큰 닉네임을 그린 후원 무리 (drawSay) */
+  private sumLead = new Set<string>()
 
   setSummonLabel(fn: (by: number, seq: number) => string | undefined): void {
     this.summonLabel = fn
@@ -4820,6 +4822,7 @@ export class Renderer3D {
    */
   private drawMonsterBars(curr: GameState): void {
     const ctx = this.hud.ctx
+    this.sumLead.clear()
     for (const m of curr.monsters) {
       if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
       const at = this.monsterView.shown.get(m.id)
@@ -5096,18 +5099,24 @@ export class Renderer3D {
     if (m.sum !== undefined) {
       const who = this.summonLabel?.(m.sumBy ?? -1, m.sum - 1)
       if (who) {
+        // 한 번에 부른 무리의 첫 괴물만 닉네임을 크게 (2026-10-23 사용자: "후원한 사람 닉네임 잘 보이게 크게") — 나머지는 작게(열이 다 크면 화면을 덮는다)
+        const key = `${m.sumBy}:${m.sum}`
+        const lead = !this.sumLead.has(key)
+        this.sumLead.add(key)
+        const px = Math.round((lead ? 22 : 12) * this.sayScale)
         ctx.save()
-        ctx.font = `800 ${Math.round(12 * this.sayScale)}px ${SAY_FONT}`
+        ctx.font = `${lead ? 900 : 800} ${px}px ${SAY_FONT}`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'alphabetic'
-        ctx.lineWidth = 3
-        ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = lead ? 6 : 3
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)'
         const label = `${who} ${def.name}`
         ctx.strokeText(label, head.x, head.y - 14)
         ctx.fillStyle = '#7dffc4'
         ctx.fillText(label, head.x, head.y - 14)
         ctx.restore()
-        head = { x: head.x, y: head.y - 16 * this.sayScale }
+        head = { x: head.x, y: head.y - (px + 4) }
       }
     }
     // 시청자 이름 괴물: 머리 위에 하늘빛 닉네임 (말풍선은 그 위)
