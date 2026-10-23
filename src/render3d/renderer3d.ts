@@ -58,6 +58,7 @@ import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
 import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
+import { drawFlashBar, drawGhostBar, hpGhost } from '../render/hpGhost'
 
 export { VIEW_W, VIEW_H }
 export type { RenderOptions }
@@ -93,6 +94,8 @@ const NPC_DOT: Record<string, string> = {
  * 준비가 끝날 때까지 쥔다 — 처음 한 번만 길다. 판의 덮임 보호 상한(sim LOADING_MAX)이 이보다 길어야 한다
  */
 const HOLD_MAX = 9000
+/** 처치 자리 X 가 남는 시간 (초 — drawKillXs) */
+const KILLX_LIFE = 0.55
 
 const MINIMAP_SIZE = 190
 /**
@@ -1758,6 +1761,7 @@ export class Renderer3D {
             // 졸개를 잡을 때마다 당기던 것을 뺐다 (2026-10-08 멀미) — 정예 · 보스만
             if (rank >= 1) this.punch = Math.max(this.punch, rank >= 2 ? 0.6 : 0.3)
             this.hud.killMark()
+            this.killXs.push({ x: e.x * U, z: e.y * U, t: KILLX_LIFE })
             // 연속 처치: 2.5초 안에 다음을 잡으면 이어진다 (HUD 가 셋부터 보인다)
             this.combo = this.t - this.comboAt < 2.5 ? this.combo + 1 : 1
             this.comboAt = this.t
@@ -2442,6 +2446,7 @@ export class Renderer3D {
     })
     if (opts.showHud) this.drawFloorNav(curr, opts.localPlayer)
     this.drawMonsterBars(curr)
+    this.drawKillXs(dt)
     this.drawAllyTags(curr)
     this.drawUltWarn()
     this.drawDonWarn()
@@ -3594,8 +3599,11 @@ export class Renderer3D {
       // 체력: 머리 위 가로 막대
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
       ctx.fillRect(s.x - w / 2, ny + 4, w, mine ? 6 : 5)
+      const gh = hpGhost(`head${i}`, hpK)
+      drawGhostBar(ctx, s.x - w / 2 + 1, ny + 5, w - 2, mine ? 4 : 3, hpK, gh.ghost)
       ctx.fillStyle = hpK > 0.5 ? '#6fd66a' : hpK > 0.25 ? '#f2c94c' : '#f25c4c'
       ctx.fillRect(s.x - w / 2 + 1, ny + 5, (w - 2) * hpK, mine ? 4 : 3)
+      drawFlashBar(ctx, s.x - w / 2 + 1, ny + 5, w - 2, mine ? 4 : 3, hpK, gh.flash)
       // 기력: 캐릭터 오른쪽 세로 막대 (나·아군만)
       if (mine || ally) {
         const bh = 34
@@ -4852,6 +4860,40 @@ export class Renderer3D {
   /**
    * 몬스터 머리 위 체력 바 (최근 3초 안에 맞은 것만) + 궁수 조준선(예고 동안 붉은 선 — 피할 때라는 신호)
    */
+  /** 내가 쓰러뜨린 자리의 붉은 X (2026-10-24 — 덕코프 영상: 처치하면 그 자리에 X 와 작은 고리가 잠깐 남는다) */
+  private killXs: { x: number; z: number; t: number }[] = []
+  private drawKillXs(dt: number): void {
+    if (this.killXs.length === 0) return
+    const ctx = this.hud.ctx
+    ctx.save()
+    ctx.lineCap = 'round'
+    ctx.shadowColor = 'rgba(255,30,30,0.9)'
+    ctx.shadowBlur = 10
+    for (const m of this.killXs) {
+      m.t -= dt
+      const k = Math.max(0, m.t / KILLX_LIFE)
+      const p = this.worldToScreen(m.x, 0.9, m.z)
+      // 처음엔 크게 찍혔다가 제 크기로 · 끝 40% 동안 흐려진다
+      const d = 14 * (1 + Math.max(0, (k - 0.8) / 0.2) * 0.6)
+      ctx.globalAlpha = Math.min(1, k * 2.5)
+      ctx.strokeStyle = '#ff4a40'
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      ctx.moveTo(p.x - d, p.y - d)
+      ctx.lineTo(p.x + d, p.y + d)
+      ctx.moveTo(p.x + d, p.y - d)
+      ctx.lineTo(p.x - d, p.y + d)
+      ctx.stroke()
+      ctx.strokeStyle = '#ffe8e0'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+    this.killXs = this.killXs.filter((m) => m.t > 0)
+  }
+
   private drawMonsterBars(curr: GameState): void {
     const ctx = this.hud.ctx
     this.sumLead.clear()
@@ -4943,11 +4985,15 @@ export class Renderer3D {
       ctx.fillRect(s0.x - w / 2 - 1, s0.y - 1, w + 2, bh + 2)
       ctx.fillStyle = 'rgba(70,40,40,0.9)'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, w - 2, bh - 2)
+      // 깎인 몫은 흰 띠로 잠깐 남았다 줄어든다 · 맞은 순간 번쩍 (2026-10-24 — 덕코프)
+      const gh = hpGhost(`m${m.id}`, k)
+      drawGhostBar(ctx, s0.x - w / 2 + 1, s0.y + 1, w - 2, bh - 2, k, gh.ghost)
       ctx.fillStyle = m.elite || goblin ? '#ffb84a' : '#ef4a3a'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, bh - 2)
       // 위쪽 빛 한 줄 (막대가 납작한 판처럼 보이지 않게)
       ctx.fillStyle = 'rgba(255,255,255,0.28)'
       ctx.fillRect(s0.x - w / 2 + 1, s0.y + 1, (w - 2) * k, 2)
+      drawFlashBar(ctx, s0.x - w / 2 + 1, s0.y + 1, w - 2, bh - 2, k, gh.flash)
       if (goblin) {
         // 크게 · 테두리 · 깜빡이는 금빛 — 멀리서도 눈에 띄게 (2026-09-25 사용자: "보이지도 않았는데 이미 도망갔대")
         const pulse = 0.75 + 0.25 * Math.sin(this.t * 6)
@@ -5006,11 +5052,14 @@ export class Renderer3D {
     const k = Math.max(0, Math.min(1, m.hp / m.maxHp))
     ctx.fillStyle = 'rgba(0,0,0,0.72)'
     ctx.fillRect(p.x - w / 2, by, w, 7)
+    const gh = hpGhost(`m${m.id}`, k)
+    drawGhostBar(ctx, p.x - w / 2 + 1, by + 1, w - 2, 5, k, gh.ghost)
     const g = ctx.createLinearGradient(p.x - w / 2, 0, p.x + w / 2, 0)
     g.addColorStop(0, '#6a0a0a')
     g.addColorStop(1, '#e0402a')
     ctx.fillStyle = g
     ctx.fillRect(p.x - w / 2 + 1, by + 1, (w - 2) * k, 5)
+    drawFlashBar(ctx, p.x - w / 2 + 1, by + 1, w - 2, 5, k, gh.flash)
     ctx.strokeStyle = 'rgba(201,162,74,0.85)'
     ctx.lineWidth = 1
     ctx.strokeRect(p.x - w / 2 - 0.5, by - 0.5, w + 1, 8)

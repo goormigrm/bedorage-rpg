@@ -23,6 +23,7 @@ import { drawPortrait } from './character'
 import { drawDashIcon, drawSkillIcon } from './skillIcons'
 import type { RenderOptions } from './hud'
 import { koLines } from '../ui/koBreak'
+import { drawFlashBar, drawGhostBar, hpGhost } from './hpGhost'
 
 const SERIF = '"Nanum Myeongjo", "Batang", serif'
 const SANS = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
@@ -160,7 +161,7 @@ export function ironPanel(c: CanvasRenderingContext2D, x: number, y: number, w: 
  * 오브: 둥근 유리 안에 물이 차 있다. k = 0..1 채움. 수면은 천천히 출렁이고, 위쪽엔 유리 반사.
  * 둘레는 쇠 고리 + 금테.
  */
-function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [string, string], label: string, sub: string, pulse = 0): void {
+function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [string, string], label: string, sub: string, pulse = 0, ghost = k, flash = 0): void {
   const c = h.ctx
   c.save()
   // 바깥 쇠 고리
@@ -194,6 +195,13 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
   c.arc(cx, cy, r - 1, 0, Math.PI * 2)
   c.clip()
   const top = cy + r - 2 * r * Math.max(0, Math.min(1, k))
+  // 깎인 몫 잔상 (2026-10-24 — 체력 띠와 같은 hpGhost): 물 위에 옅은 물이 잠깐 남았다 내려간다.
+  // 흰색이면 연달아 맞을 때 구슬이 가득 찬 것처럼 보여 옅은 분홍 반투명으로
+  if (ghost > k + 1e-3) {
+    const gt = cy + r - 2 * r * Math.min(1, ghost)
+    c.fillStyle = 'rgba(255,170,150,0.45)'
+    c.fillRect(cx - r, gt, r * 2, top - gt + 4)
+  }
   const lg = c.createLinearGradient(0, cy - r, 0, cy + r)
   lg.addColorStop(0, liquid[0])
   lg.addColorStop(1, liquid[1])
@@ -219,6 +227,10 @@ function orb(h: HudCtx, cx: number, cy: number, r: number, k: number, liquid: [s
   c.stroke()
   if (pulse > 0) {
     c.fillStyle = `rgba(255,60,40,${(0.18 * pulse).toFixed(3)})`
+    c.fillRect(cx - r, cy - r, r * 2, r * 2)
+  }
+  if (flash > 0) {
+    c.fillStyle = `rgba(255,255,255,${(0.4 * flash).toFixed(3)})`
     c.fillRect(cx - r, cy - r, r * 2, r * 2)
   }
   c.restore()
@@ -549,7 +561,8 @@ export class D4Hud {
     const hpK = me.maxHp > 0 ? me.hp / me.maxHp : 0
     const lowPulse = me.alive && !me.downed && hpK < 0.3 ? 0.5 + 0.5 * Math.sin(h.t * 6) : 0
     const hpLabel = me.downed ? '쓰러짐' : !me.alive ? (me.out ? '탈락' : '사망') : `${Math.ceil(me.hp)}`
-    orb(h, bx - R - 26, baseY - 6, R, me.alive ? hpK : 0, me.downed ? ['#5a5050', '#2a2424'] : ['#d8382a', '#5a0a0a'], hpLabel, me.alive && !me.downed ? `/ ${me.maxHp}` : '', lowPulse)
+    const hg = hpGhost(`orb${me.id}`, me.alive ? hpK : 0)
+    orb(h, bx - R - 26, baseY - 6, R, me.alive ? hpK : 0, me.downed ? ['#5a5050', '#2a2424'] : ['#d8382a', '#5a0a0a'], hpLabel, me.alive && !me.downed ? `/ ${me.maxHp}` : '', lowPulse, hg.ghost, hg.flash)
     // ---- 집중 오브 (오른쪽, D4): 총이 맞으면 차고 스킬이 쓴다 (던전). 투기장은 예전처럼 탄약
     if (this.dungeon) {
       orb(h, bx + barW + R + 26, baseY - 6, R, me.focus / 100, ['#4a8aff', '#0a1a5a'], `${Math.floor(me.focus)}`, '집중', 0)
@@ -812,11 +825,14 @@ export class D4Hud {
     c.fillStyle = 'rgba(255,255,255,0.06)'
     c.fillRect(x, y + 14, W, 10)
     const k = Math.max(0, boss.hp / boss.maxHp)
+    const gh = hpGhost(`top${boss.id}`, k)
+    drawGhostBar(c, x, y + 14, W, 10, k, gh.ghost)
     const g = c.createLinearGradient(x, 0, x + W, 0)
     g.addColorStop(0, '#6a0a0a')
     g.addColorStop(1, '#d8382a')
     c.fillStyle = g
     c.fillRect(x, y + 14, W * k, 10)
+    drawFlashBar(c, x, y + 14, W, 10, k, gh.flash)
     // 경직 막대 (막 보스 · 2026-10-08 — 디아블로 4): 체력 아래 가는 금빛 막대. 차면 3초 경직 — 막대가 번쩍이며 "경직"
     if (MONSTER_LIST[boss.kind].boss && s.mode === 'dungeon') {
       const st = boss.stagT ?? 0
@@ -988,8 +1004,11 @@ export class D4Hud {
       const hpK = p.alive && !p.downed && !gone ? Math.max(0, p.hp / p.maxHp) : 0
       c.fillStyle = 'rgba(255,255,255,0.08)'
       c.fillRect(x + 52, y + 27, W - 64, 7)
+      const gh = hpGhost(`party${p.id}`, hpK)
+      drawGhostBar(c, x + 52, y + 27, W - 64, 7, hpK, gh.ghost)
       c.fillStyle = hpK > 0.5 ? '#b83a2a' : hpK > 0.25 ? '#d8782a' : '#ff3a2a'
       c.fillRect(x + 52, y + 27, (W - 64) * hpK, 7)
+      drawFlashBar(c, x + 52, y + 27, W - 64, 7, hpK, gh.flash)
       // 아래 줄: 상태. 다른 지역에 있으면 그 지역 이름 — 전에는 이름 위(y + 8)에 그려 칸 테두리에 걸쳤다
       c.font = `600 10px ${SANS}`
       c.fillStyle = p.downed ? '#ff8a7a' : p.away && p.alive ? '#9ac8ff' : '#8d8170'

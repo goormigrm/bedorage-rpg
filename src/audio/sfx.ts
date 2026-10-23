@@ -672,6 +672,7 @@ export class Sfx {
             if (now - this.lastMelee > 90) {
               this.lastMelee = now
               this.meleeHit(sp(e.x, e.y), e.crit, mw.family)
+              if (e.by === localPlayer) this.hitTick(e.crit)
             }
             break
           }
@@ -1204,6 +1205,7 @@ export class Sfx {
       this.noiseBurst(node, t0, 0.04, 'bandpass', 2200 * k, 1200 * k, 0.4, 1.5)
     }
     if (mine) {
+      this.hitTick(head)
       this.tone(node, t0, 0.055, 'sine', 170 * k, 70, 0.55, 0.002)
       // 내 총알이 박히는 살 소리 한 겹 (2026-10-08 S4 — 남의 명중은 많아 합성만)
       if (!isBright()) this.sample('flesh', node, t0, 0.4, 1.1)
@@ -1213,6 +1215,14 @@ export class Sfx {
       this.tone(node, t0 + 0.01, 0.14, 'sine', 1500, 1100, 0.6)
       this.tone(node, t0 + 0.02, 0.2, 'triangle', 2400, 1900, 0.45)
     }
+  }
+
+  /** 맞혔다는 확인음 '틱' (2026-10-24 손맛 — 덕코프): 맞은 자리가 아니라 내 귀에 — 멀리 쏴도 들린다 */
+  private hitTick(head: boolean): void {
+    const ui = this.bus({ gain: 1, pan: 0, far: 0 }, head ? 0.6 : 0.5)
+    const k = 0.95 + Math.random() * 0.1
+    this.tone(ui.node, ui.t0, 0.022, isBright() ? 'triangle' : 'square', 3400 * k, 2600 * k, 0.1, 0.001)
+    this.noiseBurst(ui.node, ui.t0, 0.012, 'highpass', 6500, 5200, 0.16, 0.6)
   }
 
   /** 근접 타격음: 바이올린 = 살을 치는 묵직한 퍽 · 검 = 베는 쉭 · 후라이팬 = 쇠 울림 (+ 치명타 팅) */
@@ -1261,6 +1271,10 @@ export class Sfx {
     const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.8)
     this.tone(b.node, b.t0, 0.14, 'sine', 120, 42, 0.9, 0.002)
     this.noiseBurst(b.node, b.t0, 0.07, 'lowpass', 1400, 300, 0.5, 1)
+    // 처치 확인 (2026-10-24 손맛): 뼈가 꺾이는 짧은 '크랙' + 낮아지는 두 음 '틱-틱' — 명중 '틱' 과 구분된다
+    this.noiseBurst(b.node, b.t0, 0.05, 'bandpass', 2600, 900, 0.4, 1.2)
+    this.tone(b.node, b.t0 + 0.005, 0.03, 'square', 2300, 2100, 0.07, 0.001)
+    this.tone(b.node, b.t0 + 0.06, 0.035, 'square', 1700, 1500, 0.07, 0.001)
     // 셋째부터 반음씩 올라가는 맑은 "띵" (한 옥타브까지) — 몰아 잡는 맛
     if (combo >= 3) {
       const f = 660 * Math.pow(2, Math.min(12, combo - 3) / 12)

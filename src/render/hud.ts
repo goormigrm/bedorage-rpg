@@ -554,7 +554,8 @@ export class Hud {
     // 모양 · 크기는 설정 (2026-10-08 — ui/settings.ts aimStyle)
     const st = aimStyle()
     const k = st.size
-    const r = (me.ads ? 6 : 12 + me.recoil * 0.4) * k
+    // 맞히면 조준점이 잠깐 벌어진다 (반동 — 2026-10-24 손맛)
+    const r = (me.ads ? 6 : 12 + me.recoil * 0.4) * k + (this.hitMarkT > 0 ? (this.hitMarkHead ? 5 : 3) * (this.hitMarkT / this.hitMarkMax) * k : 0)
     const tick = 6 * k
     const col = on ? 'rgba(255,216,74,0.95)' : 'rgba(255,255,255,0.92)'
     const path = () => {
@@ -595,40 +596,66 @@ export class Hud {
     ctx.beginPath()
     ctx.arc(cur.x, cur.y, dr, 0, Math.PI * 2)
     ctx.fill()
-    // 히트마커: 네 귀퉁이 사선이 바깥으로 벌어지며 사라진다. 몸통은 **빨강**, 머리는 **금색**으로 더 크고 오래 + 링
+    // 히트마커 (2026-10-24 사용자: 덕코프처럼 — 영상 참고): 네 대각선마다 **두 줄(//)** 이 빛나며 크게 튀어나왔다가 벌어지며 사라진다.
+    // 몸통은 주황빛 · 머리는 금빛으로 크고 오래(+ 링) · 처치는 붉게 굵게
     if (this.hitMarkT > 0) {
-      const k = this.hitMarkT / this.hitMarkMax
       const head = this.hitMarkHead
-      const d0 = r + 6 + (1 - k) * (head ? 9 : 5)
-      const d1 = d0 + (head ? 16 : 10)
-      ctx.strokeStyle = head ? `rgba(255,216,74,${k.toFixed(3)})` : `rgba(255,70,58,${k.toFixed(3)})`
-      ctx.lineWidth = head ? 4 : 3
-      ctx.beginPath()
-      for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
-        ctx.moveTo(cur.x + sx * d0 * 0.7071, cur.y + sy * d0 * 0.7071)
-        ctx.lineTo(cur.x + sx * d1 * 0.7071, cur.y + sy * d1 * 0.7071)
-      }
-      ctx.stroke()
+      const kk = this.hitMarkT / this.hitMarkMax
+      this.slashes(cur, kk, r + 5 + (1 - kk) * (head ? 9 : 6), head ? 13 : 9, head ? 3 : 2.5, 255, head ? 222 : 196, head ? 96 : 138, head ? '#ffb020' : '#ff7a1a')
       if (head) {
+        ctx.save()
+        ctx.strokeStyle = `rgba(255,216,74,${kk.toFixed(3)})`
         ctx.lineWidth = 2
         ctx.beginPath()
-        ctx.arc(cur.x, cur.y, d1 + 4 + (1 - k) * 10, 0, Math.PI * 2)
+        ctx.arc(cur.x, cur.y, r + 24 + (1 - kk) * 10, 0, Math.PI * 2)
         ctx.stroke()
+        ctx.restore()
       }
     }
     if (this.killMarkT > 0) {
-      const k = this.killMarkT / 0.4
-      const d0 = r + 4
-      const d1 = d0 + 20 + (1 - k) * 8
-      ctx.strokeStyle = `rgba(255,40,30,${k.toFixed(3)})`
-      ctx.lineWidth = 5
+      const kk = this.killMarkT / 0.4
+      this.slashes(cur, kk, r + 4 + (1 - kk) * 8, 16, 3.5, 255, 58, 52, '#ff1a1a')
+    }
+  }
+
+  /**
+   * 대각선 네 쪽의 두 줄 표시: 중심에서 d0 떨어져 len 길이. 처음 25% 동안은 1.35배로 튀어나와 있다가 제 크기로 · 빛 번짐(shadowBlur).
+   * k = 남은 몫(1 → 0) — 투명해진다
+   */
+  private slashes(cur: { x: number; y: number }, k: number, d0: number, len: number, lw: number, cr: number, cg: number, cb: number, glow: string): void {
+    const ctx = this.ctx
+    const pop = 1 + Math.max(0, (k - 0.75) / 0.25) * 0.35
+    const l = len * pop
+    const gap = lw * 0.95
+    const a = Math.min(1, k * 1.6)
+    const path = () => {
       ctx.beginPath()
       for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
-        ctx.moveTo(cur.x + sx * d0 * 0.7071, cur.y + sy * d0 * 0.7071)
-        ctx.lineTo(cur.x + sx * d1 * 0.7071, cur.y + sy * d1 * 0.7071)
+        const ux = sx * 0.7071
+        const uy = sy * 0.7071
+        // 대각선에 수직인 쪽으로 두 줄을 벌린다
+        for (const o of [-gap, gap]) {
+          const nx = -uy * o
+          const ny = ux * o
+          ctx.moveTo(cur.x + ux * d0 + nx, cur.y + uy * d0 + ny)
+          ctx.lineTo(cur.x + ux * (d0 + l) + nx, cur.y + uy * (d0 + l) + ny)
+        }
       }
-      ctx.stroke()
     }
+    ctx.save()
+    ctx.lineCap = 'round'
+    // 어두운 테두리 먼저 (☀ 밝은 바닥에서 주황이 묻혔다 — 조준선과 같은 방법)
+    ctx.strokeStyle = `rgba(20,14,30,${(0.5 * a).toFixed(3)})`
+    ctx.lineWidth = lw + 2.2
+    path()
+    ctx.stroke()
+    ctx.shadowColor = glow
+    ctx.shadowBlur = 9
+    ctx.strokeStyle = `rgba(${cr},${cg},${cb},${a.toFixed(3)})`
+    ctx.lineWidth = lw
+    path()
+    ctx.stroke()
+    ctx.restore()
   }
 }
 
