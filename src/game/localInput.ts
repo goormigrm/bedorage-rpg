@@ -87,9 +87,11 @@ export class LocalInput {
   yaw = 0
   pitch = -0.12
   private stage: HTMLElement | null = null
-  /** 1인칭이면 마우스를 가둔다 (사용자 동작 안에서만 된다 — 클릭 · 단추) */
+  /** 3인칭 · 1인칭이면 마우스를 가둔다 (사용자 동작 안에서만 된다 — 클릭 · 단추 · 키. 아니면 조용히 넘어간다) */
   lockPointer(): void {
-    if (this.fps && this.stage && document.pointerLockElement !== this.stage) void this.stage.requestPointerLock?.()
+    if (!this.fps || !this.stage || document.pointerLockElement === this.stage) return
+    const r = this.stage.requestPointerLock?.() as Promise<void> | undefined
+    r?.catch?.(() => {})
   }
   get pointerLocked(): boolean {
     return !!this.stage && document.pointerLockElement === this.stage
@@ -304,10 +306,12 @@ export class LocalInput {
     if (t && auto) {
       this.autoAim(auto, mx, my)
     } else if (this.fps && renderer.fpsAim) {
-      // 1인칭: 시선 쪽을 겨누고, 화면 가운데에 걸린 자리까지의 거리(헤드샷 · 던지는 스킬)
+      // 3인칭 · 1인칭: 화면 가운데에 걸린 자리를 겨눈다 — 3인칭은 카메라가 어깨 뒤라 시선 각과 조금 다르다(헤드샷 · 던지는 스킬의 거리도 그 자리까지)
       const w = renderer.fpsAim({ x: meX, y: meY })
-      this.lastAim = radToAngle(this.yaw)
-      this.lastDist = Math.hypot(w.x - meX, w.y - meY)
+      const dx = w.x - meX
+      const dy = w.y - meY
+      this.lastAim = dx !== 0 || dy !== 0 ? radToAngle(Math.atan2(dy, dx)) : radToAngle(this.yaw)
+      this.lastDist = Math.hypot(dx, dy)
     } else {
       const w = renderer.aimPoint ? renderer.aimPoint(this.mouse.x, this.mouse.y, undefined, { x: meX, y: meY }) : renderer.screenToWorld(this.mouse.x, this.mouse.y)
       const dx = w.x - meX

@@ -682,7 +682,7 @@ export class Session {
   private viewBtn!: HTMLButtonElement
   private syncViewBtn(): void {
     const f = this.input.fps
-    this.syncSwitch(this.viewBtn, f, '시점 바꾸기 ↔', ['🗺️', '👁️'], f ? '1인칭' : '쿼터뷰', f ? `눌러서 쿼터뷰로 바꾸기 (${keyLabel('view')})` : `눌러서 1인칭으로 바꾸기 — 마우스로 둘러보기 (${keyLabel('view')})`)
+    this.syncSwitch(this.viewBtn, f, '시점 바꾸기 ↔', ['🗺️', '🎯'], f ? '3인칭' : '쿼터뷰', f ? `눌러서 쿼터뷰로 바꾸기 (${keyLabel('view')})` : `눌러서 3인칭으로 바꾸기 — 마우스로 둘러보기 · 오른쪽 버튼 = 1인칭 조준 (${keyLabel('view')})`)
     this.viewBtn.classList.add('view-sw')
   }
 
@@ -697,9 +697,10 @@ export class Session {
     if (on) {
       const me = this.state.players[this.cfg.localPlayer]
       if (me) this.input.yaw = angleToRad(me.aim)
-      this.input.pitch = -0.12
+      // 조금 내려다본다 (3인칭 카메라가 머리 위에서 앞 땅을 넓게 본다)
+      this.input.pitch = -0.2
       this.input.lockPointer()
-      this.renderer.notice(`👁 1인칭 — 마우스로 둘러보기 · W 앞 · A · D 옆걸음 · ${keyLabel('view')} 로 쿼터뷰 · Esc 로 마우스 풀기`, '#9ad8ff', 4)
+      this.renderer.notice(`🎯 3인칭 — 마우스로 둘러보기 · 오른쪽 버튼을 누르는 동안 1인칭 조준 · W 앞 · A · D 옆걸음 · ${keyLabel('view')} 로 쿼터뷰 · Esc 로 마우스 풀기`, '#9ad8ff', 5)
     } else if (document.pointerLockElement) document.exitPointerLock()
     this.syncViewBtn()
   }
@@ -1332,6 +1333,8 @@ export class Session {
   private hideOverlay(): void {
     this.overlay.hidden = true
     this.touch?.setVisible(true)
+    // 메뉴를 닫으면 3인칭 조준을 바로 다시 (닫는 누름이 사용자 동작)
+    if (!this.input.uiOpen) this.input.lockPointer()
     if (this.cfg.mode === 'solo' && this.state.phase !== 'over') this.paused = false
   }
 
@@ -2109,8 +2112,8 @@ export class Session {
 
   /** 조준선 화면 좌표. 터치면 화면 중앙에서 조준 방향으로 띄운다 */
   private aimCursor(): { x: number; y: number } {
-    // 1인칭은 화면 가운데
-    if (this.input.fps) return { x: VIEW_W / 2, y: VIEW_H / 2 }
+    // 3인칭 · 1인칭은 화면 가운데 — 마우스가 풀려 있으면(Esc · 창) 커서 자리에 그려 둘이 따로 놀지 않게
+    if (this.input.fps) return this.input.pointerLocked ? { x: VIEW_W / 2, y: VIEW_H / 2 } : this.input.mouse
     // 게임패드로 조준 중이면 패드가 겨눈 자리에 (마우스를 움직이면 마우스 자리로)
     if (this.input.padActive) {
       const me = this.state.players[this.cfg.localPlayer]
@@ -2473,9 +2476,12 @@ export class Session {
   }
 
   private syncUi(): void {
+    const was = this.input.uiOpen
     this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open || this.czClose)
-    // 1인칭: 창이 열리면 마우스를 풀어 창을 누를 수 있게 (닫고 화면을 누르면 다시 가둔다)
+    // 3인칭 · 1인칭: 창이 열리면 마우스를 풀어 창을 누를 수 있게 · 닫으면 바로 다시 가둔다 (2026-10-24 사용자: "창을 닫았을 때 에임이 커서를 바로
+    // 따라오지 않아 마우스가 어디 있는지 찾기 어렵다" — 전에는 화면을 한 번 더 눌러야 했다). 닫는 누름 · 키가 사용자 동작이라 바로 된다
     if (this.input.uiOpen && this.input.pointerLocked) document.exitPointerLock()
+    else if (was && !this.input.uiOpen && this.overlay.hidden) this.input.lockPointer()
   }
 
   /** 가운데 창(스킬 · 능력치 · 퀘스트 · 마을 사람 · 웨이포인트)은 같은 자리에 뜬다 — 하나만 남기고 닫는다 (2026-10-08 — K 가 대장장이 창을 덮었다) */

@@ -94,6 +94,9 @@ const NPC_DOT: Record<string, string> = {
  * 준비가 끝날 때까지 쥔다 — 처음 한 번만 길다. 판의 덮임 보호 상한(sim LOADING_MAX)이 이보다 길어야 한다
  */
 const HOLD_MAX = 9000
+/** 3인칭 카메라: 머리 뒤 거리 · 오른쪽 어깨 (2026-10-24 — 배틀그라운드처럼) */
+const TPP_DIST = 3.2
+const TPP_SIDE = 0.6
 /** 처치 자리 X 가 남는 시간 (초 — drawKillXs) */
 const KILLX_LIFE = 0.55
 
@@ -260,8 +263,12 @@ export class Renderer3D {
   private cullFrustum = new THREE.Frustum()
   private cullMat = new THREE.Matrix4()
   private cullSphere = new THREE.Sphere()
-  /** 지난 프레임을 1인칭 카메라로 그렸다 (쿼터뷰로 돌아갈 때 시야각 · 가까운 면을 되돌린다) */
+  /** 지난 프레임을 3인칭 · 1인칭 카메라로 그렸다 (쿼터뷰로 돌아갈 때 시야각 · 가까운 면을 되돌린다) */
   private fpsCam = false
+  /** 그중 1인칭(정조준)이었다 — 내 몸 · 손에 든 총 */
+  private fpsFirst = false
+  /** 3인칭 카메라가 벽에 막혀 당겨진 거리 (가까우면 내 몸을 숨긴다) */
+  private tppDist = TPP_DIST
   /**
    * 1인칭 준비: 쿼터뷰에서는 화면 밖이라 한 번도 안 그린 물체의 셰이더 · 텍스처를 먼저 (2026-10-24 계측: 처음 돌아볼 때 셰이더 11개로 0.4초 멈췄다).
    * 끝날 때까지는 쿼터뷰로 그린다. 지역을 옮기면(setMap) 다시
@@ -3777,8 +3784,12 @@ export class Renderer3D {
       rig.body.position.y = 0
       setRigOpacity(rig, 1)
     }
-    // 1인칭이면 내 몸은 숨긴다 (카메라가 몸 안에 있다) · 바짝 붙은 동료도(따라다니는 봇의 몸이 화면을 다 가렸다)
-    root.visible = !(this.fpsCam && (i === this.fpsPlayer || Math.hypot(pos.x - this.camera.position.x, pos.z - this.camera.position.z) < 1.3))
+    // 1인칭(정조준)이면 내 몸은 숨긴다(카메라가 몸 안에 있다) · 3인칭은 벽에 막혀 카메라가 바짝 당겨졌을 때만 · 카메라에 바짝 붙은 동료도(봇의 몸이 화면을 다 가렸다)
+    const mine = i === this.fpsPlayer
+    root.visible = !(
+      this.fpsCam &&
+      ((mine && (this.fpsFirst || this.tppDist < 1.1)) || (!mine && Math.hypot(pos.x - this.camera.position.x, pos.z - this.camera.position.z) < 1.0))
+    )
 
     // 말랑 스프링
     const k = 220
@@ -4951,7 +4962,7 @@ export class Renderer3D {
   }
   private updateViewGun(p: PlayerState | undefined): void {
     const w = p ? WEAPONS[p.weapon] : undefined
-    if (!this.fpsCam || !p || !p.alive || !w || w.melee) {
+    if (!this.fpsCam || !this.fpsFirst || !p || !p.alive || !w || w.melee) {
       if (this.viewGun) this.viewGun.group.visible = false
       return
     }
@@ -5779,13 +5790,43 @@ export class Renderer3D {
       })
     }
     if (wantFps && this.fpsPrep === 'done') {
+      // 배틀그라운드처럼 (2026-10-24 사용자: "1인칭은 시점이 너무 낮고 시야가 좁다 — 이동 · 전투는 3인칭, 오른쪽 버튼 조준만 1인칭"):
+      // 평소는 어깨 너머 3인칭(머리 뒤 · 위 · 오른쪽 어깨), 정조준하는 동안만 눈높이 1인칭
       const p = pos[lp]
-      const eye = (this.rigs[lp]?.height ?? 1.6) * 0.82
+      const h = this.rigs[lp]?.height ?? 1.6
       const cp = Math.cos(this.fpsPitch)
-      this.camera.position.set(p.x, eye, p.z)
-      this.camera.lookAt(p.x + Math.cos(this.fpsYaw) * cp, eye + Math.sin(this.fpsPitch), p.z + Math.sin(this.fpsYaw) * cp)
-      // 정조준은 시야를 좁힌다 (조준경은 더). 벽에 붙어도 벽이 잘리지 않게 가까운 면을 당긴다
-      const fov = curr.players[lp].ads ? (this.scoped ? 28 : 50) : 72
+      const fx = Math.cos(this.fpsYaw) * cp
+      const fy = Math.sin(this.fpsPitch)
+      const fz = Math.sin(this.fpsYaw) * cp
+      const ads = curr.players[lp].ads
+      this.fpsFirst = ads
+      if (ads) {
+        const eye = h * 0.82
+        this.camera.position.set(p.x, eye, p.z)
+      } else {
+        // 머리 위를 중심으로 시선 반대쪽 3.2 · 오른쪽 어깨 0.6 · 0.45 위 — 캐릭터는 화면 아래 가운데, 앞이 넓게 보인다.
+        // 벽에 막히면 그 앞까지 당긴다 — ☀ 생울타리처럼 칸보다 크게 그려지는 벽이 있어 둘레 0.4칸까지 본다
+        const rx = -Math.sin(this.fpsYaw)
+        const rz = Math.cos(this.fpsYaw)
+        const wallAt = (x: number, z: number) => {
+          for (const [ox, oz] of [[0, 0], [0.4, 0.4], [-0.4, 0.4], [0.4, -0.4], [-0.4, -0.4]])
+            if (this.map.tiles[Math.floor(z + oz) * this.map.w + Math.floor(x + ox)] === TILE_WALL) return true
+          return false
+        }
+        let d = TPP_DIST
+        for (let k = 0.6; k <= TPP_DIST; k += 0.15) {
+          if (wallAt(p.x - fx * k + rx * TPP_SIDE * (k / TPP_DIST), p.z - fz * k + rz * TPP_SIDE * (k / TPP_DIST))) {
+            d = Math.max(0.6, k - 0.3)
+            break
+          }
+        }
+        this.camera.position.set(p.x - fx * d + rx * TPP_SIDE * (d / TPP_DIST), Math.max(0.5, h * 1.1 - fy * d + 0.45), p.z - fz * d + rz * TPP_SIDE * (d / TPP_DIST))
+        this.tppDist = d
+      }
+      const c = this.camera.position
+      this.camera.lookAt(c.x + fx, c.y + fy, c.z + fz)
+      // 3인칭은 넓게 · 정조준(1인칭)은 좁게 (조준경은 더). 벽에 붙어도 벽이 잘리지 않게 가까운 면을 당긴다
+      const fov = ads ? (this.scoped ? 28 : 50) : 74
       if (!this.fpsCam || Math.abs(this.camera.fov - fov) > 0.05) {
         this.camera.fov = this.fpsCam ? this.camera.fov + (fov - this.camera.fov) * Math.min(1, dt * 12) : fov
         this.camera.near = 0.08
