@@ -255,6 +255,7 @@ const SCENES = [
   ['가방', key('KeyI')],
   ['상점', npcScene('merchant')],
   ['대장장이', npcScene('smith')],
+  ['벼리기 장인', npcScene('forger')],
   ['도박꾼', npcScene('gambler')],
   ['보관함', npcScene('stash')],
   ['촌장', npcScene('elder')],

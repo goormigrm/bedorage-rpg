@@ -1,6 +1,7 @@
 // 마을 사람 (2026-10-08 퀄리티 4단계 — 전에는 원뿔 몸 + 두건이라 이 게임의 계란 캐릭터들 사이에서 혼자 어색했다):
 // 플레이어처럼 **계란 몸**에 눈 · 볼 · 웃는 입, 역할마다 차림 하나씩.
 //   상인 = 납작 모자 · 앞치마 · 돈주머니 / 대장장이 = 가죽 앞치마 · 머리띠 · 망치 · 옆에 모루 / 도박꾼 = 실크햇 · 나비넥타이 · 주사위
+//   벼리기 장인 = 이마의 보안경 · 집게 · 옆에 쇳물 도가니
 //   촌장 = 흰 수염 · 지팡이 (철면수심전용: 안내원 모모 = 분홍 모자 · 깃발 · 호루라기) / 용병 대장 = 투구 · 깃털 · 허리 칼
 //   보관함 = 쇠테 궤짝 (철면수심전용: 민트 사물함 궤짝)
 // 그림만 — 자리 · 말 걸기는 그대로(core/world townNpcs). 가만히 서서 숨 쉬듯 통통 (renderer3d updateMarkers 가 userData.npc 로 움직인다).
@@ -199,6 +200,33 @@ export function buildNpc(id: NpcId, bright: boolean): THREE.Group {
     anvil.add(mesh(new THREE.BoxGeometry(0.46, 0.1, 0.22), lam(0x5a6068), 0, 0.33, 0))
     anvil.position.set(0.72, 0, 0.1)
     f.add(apron, band, hammer, anvil)
+  } else if (id === 'forger') {
+    const { handR } = eggBody(f, 0x2a4a4a)
+    const apron = mesh(new THREE.BoxGeometry(0.46, 0.44, 0.05), lam(0x4a3a2a), 0, CY - 0.18, R * 0.9)
+    // 보안경: 이마 띠 + 알 둘
+    const strap = mesh(new THREE.TorusGeometry(R * 0.82, 0.03, 6, 24), lam(0x3a3e44), 0, CY + 0.34, 0)
+    strap.rotation.x = Math.PI / 2
+    const lensM = lam(0x7ae0e0, { emissive: 0x0a3a3a })
+    const lenses = [-1, 1].map((s) => {
+      const l = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 14), lensM, s * 0.1, CY + 0.36, R * 0.78)
+      l.rotation.x = Math.PI / 2
+      return l
+    })
+    // 집게
+    const tongs = new THREE.Group()
+    for (const s of [-1, 1]) {
+      const arm = mesh(new THREE.BoxGeometry(0.025, 0.42, 0.025), lam(0x5a6068), s * 0.025, 0.16, 0)
+      arm.rotation.z = s * 0.08
+      tongs.add(arm)
+    }
+    tongs.position.copy(handR)
+    tongs.rotation.z = -0.4
+    // 쇳물 도가니 (옆) — 빛은 두지 않는다(마을 빛 수가 바뀌면 셰이더를 다시 짠다), 쇳물은 스스로 빛나는 색으로만
+    const pot = new THREE.Group()
+    pot.add(mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.3, 14), lam(0x3a3e44), 0, 0.15, 0))
+    pot.add(mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 14), lam(0xff9a3a, { emissive: 0xc84a10 }), 0, 0.3, 0))
+    pot.position.set(0.72, 0, 0.1)
+    f.add(apron, strap, ...lenses, tongs, pot)
   } else if (id === 'gambler') {
     const { handL } = eggBody(f, 0x4a2a52)
     // 실크햇 + 띠 + 나비넥타이 + 주사위

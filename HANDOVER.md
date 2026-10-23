@@ -25,7 +25,8 @@
     - **덮개 동안 셰이더 여덟 개씩 함께**(`WARM_PAR` — prepStep · `warmBusy`): 하나씩 기다리면 75개 × 60ms. 덮개 밖(마을 미리 준비)은 예전대로 하나씩. 걷힘 조건은 `warmBusy === 0`.
     - 잰 것(이 PC 실제 GPU · `.frames/skinswitch.mjs` · `tools/entrycheck.mjs`): 바꾸기 4번 2 ~ 5.6초 · 무적 90 · 이동 0 ~ 10px(누르기 전 입력 지연) · 캔버스 2 · 오류 0. 지역 1 덮개 ☀ 7.5 → 4.2초 · 🌙 6.7 → 3.9초 · 걷힌 뒤 새 셰이더 48 · 43 → 2 · 0 · 덮개 동안 이동 0 · 맞음 0.
 - **이 PC 도구는 실제 GPU 로**(`tools/gpu.mjs gpuLaunch` — entrycheck · perf · uicheck · patchshots · patchvideo): WSL 에서 예전 `--use-angle=d3d11` 은 SwiftShader(CPU)가 잡혀 덮개가 9초(상한)로 나왔다. `/dev/dxg` 가 있으면 `--use-gl=angle --use-angle=gl-egl` + `GALLIUM_DRIVER=d3d12`(RTX 4080 SUPER · 병렬 컴파일 됨). uicheck 여섯 크기 5분 → 3분쯤. uitest 는 일부러 SwiftShader 그대로.
-- **남은 할 일**(사용자 요청 순): ④ 강화 · 벼리기 NPC 를 따로 두 명(붙여 세우되 tests/towns.test.ts 의 NPC 간격 3칸 넘게 · 각자 한 기능 — town.ts 탭을 나눈다) → ⑤ 도박 높은 등급 확률 낮추기(sim CMD_GAMBLE · items.ts pickRarity 'gamble') → ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.7(package.json · CHANGELOG 맨 위 "작업 중" 절 제목을 판 번호로) → uicheck 1920 먼저 · 전체 0건 · 빌드 → 커밋 · 푸시 → Actions 확인.
+  - ④ **끝냄**: 벼리기 장인 `forger`(브란 · ☀ 조립 박사 브란) — 대장장이 천막 앞 네 칸 곁(캠프 26,8 · 숲 19,8 · 지하도 16,8 · 심연 25,6 — 심연은 25,7 이 포털 25,10 과 3칸이라 world.test 포털 간격 110px 에 걸렸다). 대장장이는 강화만(`CMD_UPGRADE`), 벼리기는 `CMD_FORGE && npc === 'forger'`. town.ts 탭(smithTab · data-stab)을 없앴고 창 폭은 둘 다 `.tp.smith`. 그림 npc3d(보안경 · 집게 · 도가니 — 빛 없이 스스로 빛나는 색) · 초상 · 작은 지도 점 `#7ae0e0` · uicheck 장면 '벼리기 장인' · 플레이 가이드 표.
+- **남은 할 일**(사용자 요청 순): ⑤ 도박 높은 등급 확률 낮추기(sim CMD_GAMBLE · items.ts pickRarity 'gamble') → ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.7(package.json · CHANGELOG 맨 위 "작업 중" 절 제목을 판 번호로) → uicheck 1920 먼저 · 전체 0건 · 빌드 → 커밋 · 푸시 → Actions 확인.
 
 ## 🔖 좀비 떼 · 닉네임 · 좋은 장비 끼기 · 방송용 글씨 (2026-10-23 · 노트북 — v1.10.6)
 

@@ -20,6 +20,7 @@ export function npcPortrait(id: NpcId, bright: boolean): string {
   const tint: Record<NpcId, string> = {
     merchant: '#5a7a3a',
     smith: '#8a4a2a',
+    forger: '#2a6a6a',
     gambler: bright ? '#a47ad8' : '#4a2a52',
     stash: '#6a4a2a',
     elder: bright ? '#ff8fb8' : '#5a5a4a',
@@ -44,7 +45,7 @@ function drawEgg(g: CanvasRenderingContext2D, S: number, id: NpcId, bright: bool
   const cy = S * 0.6
   const rx = S * 0.3
   const ry = S * 0.38
-  const cloth: Partial<Record<NpcId, string>> = { merchant: '#5a7a3a', smith: '#4a3a30', gambler: '#4a2a52', elder: bright ? '#ff8fb8' : '#5a5a4a', captain: '#5a2a22' }
+  const cloth: Partial<Record<NpcId, string>> = { merchant: '#5a7a3a', smith: '#4a3a30', forger: '#2a4a4a', gambler: '#4a2a52', elder: bright ? '#ff8fb8' : '#5a5a4a', captain: '#5a2a22' }
   // 몸 (계란) — 아래 40% 는 옷
   g.save()
   g.beginPath()
@@ -109,6 +110,24 @@ function drawEgg(g: CanvasRenderingContext2D, S: number, id: NpcId, bright: bool
     g.fillRect(cx + rx * 0.8, cy - 4, 5, 40)
     g.fillStyle = '#8b949c'
     g.fillRect(cx + rx * 0.8 - 8, cy - 12, 22, 12)
+  } else if (id === 'forger') {
+    // 이마의 보안경 + 녹은 쇳물 도가니
+    g.fillStyle = '#3a3e44'
+    g.fillRect(cx - rx, top + ry * 0.42, rx * 2, 6)
+    for (const s of [-1, 1]) {
+      g.fillStyle = '#3a3e44'
+      g.beginPath()
+      g.arc(cx + s * 13, top + ry * 0.42 + 3, 10, 0, Math.PI * 2)
+      g.fill()
+      g.fillStyle = '#7ae0e0'
+      g.beginPath()
+      g.arc(cx + s * 13, top + ry * 0.42 + 3, 6.5, 0, Math.PI * 2)
+      g.fill()
+    }
+    g.fillStyle = '#5a6068'
+    g.fillRect(cx + rx * 0.7, cy + ry * 0.35, 26, 18)
+    g.fillStyle = '#ff9a3a'
+    g.fillRect(cx + rx * 0.7 + 3, cy + ry * 0.35, 20, 5)
   } else if (id === 'gambler') {
     // 실크햇 + 띠
     g.fillStyle = bright ? '#c6a4ff' : '#2a1e30'

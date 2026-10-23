@@ -79,6 +79,7 @@ const GUN_H = 0.95
 const NPC_DOT: Record<string, string> = {
   merchant: '#ffd86a',
   smith: '#c8c8c8',
+  forger: '#7ae0e0',
   gambler: '#d8a8ff',
   stash: '#c98a4a',
   elder: '#8affa8',

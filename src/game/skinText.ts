@@ -104,6 +104,7 @@ for (const a of AREAS) if (a.unique && UNIQUE_NAMES[a.id]) registerText(a.unique
 const NPC_TEXT: Partial<Record<NpcId, string>> = {
   merchant: '매점 말린',
   smith: '장난감 수리공 그룬',
+  forger: '조립 박사 브란',
   gambler: '뽑기 언니 엘자',
   stash: '사물함',
   elder: '안내원 모모',

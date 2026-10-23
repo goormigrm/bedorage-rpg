@@ -42,10 +42,10 @@ function fillRares(s: GameState, n: number, ilvl = 14): void {
   for (let i = 0; i < n; i++) p.bag.push(rollItem(rng, 90000 + i, ilvl, p.weapon, 'goldchest', 0, 2))
 }
 
-/** 대장장이 곁에 세운다 */
-function atSmith(s: GameState): void {
+/** NPC 곁에 세운다 (벼리기는 벼리기 장인 — 2026-10-23 대장장이에서 떼어 냈다) */
+function atNpc(s: GameState, id: 'forger' | 'smith' = 'forger'): void {
   const p = s.players[0]
-  const n = townNpcs(p.area).find((x) => x.id === 'smith')!
+  const n = townNpcs(p.area).find((x) => x.id === id)!
   p.x = n.x + 10
   p.y = n.y + 10
   p.btnPrev = 0
@@ -57,8 +57,12 @@ describe('벼리기', () => {
     const p = s.players[0]
     run(2)
     fillRares(s, 6)
-    atSmith(s)
     p.gold = 9999
+    // 대장장이는 강화만 한다 — 벼리기는 곁의 벼리기 장인
+    atNpc(s, 'smith')
+    step(s, (id) => buildAreaMap(61, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 2 }])
+    expect(p.bag.length).toBe(6)
+    atNpc(s)
     const need = forgeNeed(2)
     const ilvl = forgeIlvl(p.bag, p.stash, forgeMaterials(p.bag, p.stash, 2).slice(0, need))
     const price = forgePrice(ilvl, 2)
@@ -78,7 +82,7 @@ describe('벼리기', () => {
     const p = s.players[0]
     run(2)
     fillRares(s, 4)
-    atSmith(s)
+    atNpc(s)
     p.gold = 9999
     step(s, (id) => buildAreaMap(62, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 0 }])
     expect(p.bag.length).toBe(4)
@@ -121,7 +125,7 @@ describe('벼리기', () => {
         it.rarity = 3
         delete it.set
       })
-      atSmith(s)
+      atNpc(s)
       p.gold = 99999
       step(s, (id) => buildAreaMap(64, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 3 * 16 + 1 }])
       const made = p.bag[p.bag.length - 1]
@@ -145,7 +149,7 @@ describe('벼리기', () => {
     const rng = makeRng(41)
     p.stash.length = 0
     for (let i = 0; i < 3; i++) p.stash.push(rollItem(rng, 91000 + i, 14, p.weapon, 'goldchest', 0, 2))
-    atSmith(s)
+    atNpc(s)
     p.gold = 9999
     expect(forgeMaterials(p.bag, p.stash).length).toBe(5)
     step(s, (id) => buildAreaMap(63, id), [{ ...idle(), buttons: BTN_USE, cmd: CMD_FORGE, arg: 2 * 16 + 1 }])

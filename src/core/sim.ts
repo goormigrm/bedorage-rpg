@@ -949,7 +949,7 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     p.bag = keep
     p.gold += gold
     state.events.push({ type: 'trade', p: p.id, what: 'sellAll', gold, uid: n })
-  } else if (cmd === CMD_FORGE && npc === 'smith') {
+  } else if (cmd === CMD_FORGE && npc === 'forger') {
     // 벼리기 (2026-09-20 등급 사다리): arg = 재료 등급 × 16 + 부위.
     // 같은 등급 여럿 + 골드 → 그 **윗 등급**이 나올 확률을 굴린다. 실패해도 같은 등급 하나는 나온다.
     const slot = arg & 15

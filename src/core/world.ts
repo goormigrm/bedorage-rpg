@@ -642,11 +642,12 @@ interface TownSpots {
   npcs: Record<NpcId, [number, number]>
 }
 
-/** 마을 사람들 (GUIDE 4장): 상인 · 대장장이 · 도박꾼 · 보관함 · 촌장(퀘스트, D5) · 용병 대장(D4) */
-export type NpcId = 'merchant' | 'smith' | 'gambler' | 'stash' | 'elder' | 'captain' | 'trial'
+/** 마을 사람들 (GUIDE 4장): 상인 · 대장장이(강화) · 벼리기 장인 · 도박꾼 · 보관함 · 촌장(퀘스트, D5) · 용병 대장(D4) */
+export type NpcId = 'merchant' | 'smith' | 'forger' | 'gambler' | 'stash' | 'elder' | 'captain' | 'trial'
 export const NPC_NAMES: Record<NpcId, string> = {
   merchant: '상인 말린',
   smith: '대장장이 그룬',
+  forger: '벼리기 장인 브란',
   gambler: '도박꾼 엘자',
   stash: '보관함',
   elder: '촌장 카인',
@@ -663,7 +664,8 @@ const CAMP: TownSpots = {
   spawn: [9, 17], wp: [15, 13], exits: [[44, 17]], portals: [[25, 19], [25, 14], [20, 20], [20, 14]],
   // 들판 문: 웨이포인트의 화면 오른쪽(성문 쪽) 두 칸 — 처음 자리에서도 몇 걸음
   fieldGate: [17, 11],
-  npcs: { merchant: [10, 9], smith: [22, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23], trial: [30, 20] },
+  // 벼리기 장인은 대장장이 천막 앞 옆자리 (2026-10-23 사용자 요청 — 강화 · 벼리기 NPC 를 따로. NPC 간격 3칸 넘게 · 포털과 110px 넘게)
+  npcs: { merchant: [10, 9], smith: [22, 8], forger: [26, 8], gambler: [34, 9], stash: [18, 17], elder: [10, 23], captain: [34, 23], trial: [30, 20] },
 }
 /**
  * 막마다 다른 마을 (2026-10-08 퀄리티 2차 7단계 D4 — 전에는 넷이 CAMP 배치를 같이 썼다). 맵은 maps.ts town2Rows ~ town4Rows.
@@ -672,17 +674,17 @@ const CAMP: TownSpots = {
 const FOREST: TownSpots = {
   spawn: [4, 18], wp: [21, 12], exits: [[24, 1]], portals: [[19, 18], [19, 14], [14, 19], [14, 14]],
   fieldGate: [23, 10],
-  npcs: { merchant: [9, 17], smith: [15, 8], gambler: [29, 8], stash: [17, 22], elder: [11, 23], captain: [32, 22], trial: [25, 21] },
+  npcs: { merchant: [9, 17], smith: [15, 8], forger: [19, 8], gambler: [29, 8], stash: [17, 22], elder: [11, 23], captain: [32, 22], trial: [25, 21] },
 }
 const SLUICE: TownSpots = {
   spawn: [6, 19], wp: [22, 10], exits: [[44, 29]], portals: [[25, 22], [25, 17], [20, 23], [20, 17]],
   fieldGate: [24, 8],
-  npcs: { merchant: [8, 9], smith: [20, 8], gambler: [35, 9], stash: [17, 20], elder: [8, 22], captain: [35, 22], trial: [30, 19] },
+  npcs: { merchant: [8, 9], smith: [20, 8], forger: [16, 8], gambler: [35, 9], stash: [17, 20], elder: [8, 22], captain: [35, 22], trial: [30, 19] },
 }
 const LASTGATE: TownSpots = {
   spawn: [23, 7], wp: [17, 15], exits: [[22, 32]], portals: [[25, 14], [25, 10], [20, 14], [20, 10]],
   fieldGate: [19, 13],
-  npcs: { merchant: [17, 7], smith: [29, 7], gambler: [7, 16], stash: [28, 12], elder: [39, 16], captain: [8, 19], trial: [29, 17] },
+  npcs: { merchant: [17, 7], smith: [29, 7], forger: [25, 6], gambler: [7, 16], stash: [28, 12], elder: [39, 16], captain: [8, 19], trial: [29, 17] },
 }
 const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: FOREST, 19: SLUICE, 28: LASTGATE }
 
