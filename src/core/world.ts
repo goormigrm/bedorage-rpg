@@ -686,6 +686,20 @@ const LASTGATE: TownSpots = {
 }
 const TOWNS: Record<number, TownSpots> = { 0: CAMP, 10: FOREST, 19: SLUICE, 28: LASTGATE }
 
+/**
+ * 들판 문이 데려갈 곳 (2026-10-23 사용자: "그 막의 첫 맵 대신 웨이포인트를 연 가장 먼 지역으로"): 이 막에서 웨이포인트를 연
+ * 지역 중 가장 뒤(레벨이 가장 높은 곳 — 보스 방 포함). 더 연 곳이 없으면 예전처럼 첫 링크
+ */
+export function gateTarget(town: number, wps: number): number {
+  const d = areaDef(town)
+  let best = d.links[0]
+  for (const a of AREAS) {
+    if (a.act !== d.act || a.kind === 'town' || a.retired || (wps & wpBit(a.id)) === 0) continue
+    if (a.level > areaDef(best).level) best = a.id
+  }
+  return best
+}
+
 /** 마을이면 NPC 자리 (px) */
 export function townNpcs(area: number): { id: NpcId; x: number; y: number }[] {
   const t = TOWNS[area]

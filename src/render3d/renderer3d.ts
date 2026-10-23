@@ -34,7 +34,7 @@ registerText(BOSS_INTRO, 'butcher', '무궁화 운동장의 술래 — 움직이
 registerText(BOSS_INTRO, 'queen', '벌집 궁전의 여왕벌 — 꿀단지를 지키러 깨어났다')
 registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 반칙하면 바로 탈락이다')
 registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
-import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, isRift, isTown, questGuide, townNpcs } from '../core/world'
+import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, gateTarget, isRift, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
 import { allyGood, allyTagCss } from '../core/palette'
@@ -53,7 +53,7 @@ import { CharacterRig, buildCharacter, enableXray, setRigOpacity, makeShield } f
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures } from './vision'
 import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { buildNpc } from './npc3d'
-import { MONSTER_TOP, MonsterView, isQuadruped, monsterTop } from './monsters3d'
+import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
@@ -3046,7 +3046,8 @@ export class Renderer3D {
     if (g.area !== curr.curArea) {
       const path = areaPath(curr.curArea, g.area)
       const hop = path?.[1]
-      const e = hop === undefined ? null : l.exits.find((q) => q.to === hop)
+      // 들판 문은 더 먼 곳으로 데려갈 수 있다 — 그때는 성문으로
+      const e = hop === undefined ? null : l.exits.find((q) => q.to === hop && (!q.gate || gateTarget(curr.curArea, me.wps) === hop))
       return e ? { x: e.x, y: e.y, label: `${bt(g.label)} → ${AREAS[hop!].name}` } : null
     }
     if (g.npc) {
@@ -3352,7 +3353,7 @@ export class Renderer3D {
         ctx.strokeStyle = isTown(e.to) ? '#ffd88a' : '#ff9a5a'
         ctx.lineWidth = 2.5 * rp
         ctx.strokeRect(e.x / TILE - 4 * rp, e.y / TILE - 4 * rp, 8 * rp, 8 * rp)
-        place(e.x, e.y, `→ ${AREAS[e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
+        place(e.x, e.y, `→ ${AREAS[e.gate && me ? gateTarget(curr.curArea, me.wps) : e.to].name}`, isTown(e.to) ? '#ffd88a' : '#ffb07a')
       }
       if (l.wp) {
         dot(l.wp.x, l.wp.y, '#7ab8ff', 4)
@@ -4039,6 +4040,8 @@ export class Renderer3D {
         }
         g.position.set(o.x * U, 0, o.y * U)
         g.rotation.y = ((o.id * 97) % 628) / 100
+        // 상자는 1.45배 (2026-10-23 사용자: "상자와 몬스터가 작아서 위압감이 없다")
+        if (o.kind === OBJ_CHEST || o.kind === OBJ_GOLDCHEST || o.kind === OBJ_CURSED) g.scale.setScalar(1.45)
         this.scene.add(g)
         this.objMeshes.set(o.id, g)
       }
@@ -4118,7 +4121,7 @@ export class Renderer3D {
     }
     // 이름표의 키는 설정을 따른다 (2026-09-23 키 재설정 — 기본 F)
     const F = keyLabel('use')
-    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.to].name} · ${F}`, isTown(e.to) ? '#ffd88a' : '#ffb07a', e.gate ? 2.4 : 1.6)
+    for (const e of l.exits) label(e.x, e.y, `→ ${AREAS[e.gate ? gateTarget(curr.curArea, me.wps) : e.to].name} · ${F}`, isTown(e.to) ? '#ffd88a' : '#ffb07a', e.gate ? 2.4 : 1.6)
     // 다음 막 문 (보스를 잡았을 때만 보인다)
     const gdef = areaDef(curr.curArea)
     if (gdef.gate !== undefined && l.special && gateOpen(gdef, me)) {
@@ -4156,7 +4159,7 @@ export class Renderer3D {
       if (o.kind === OBJ_CURSED && o.v > 0) continue
       const name = o.kind === OBJ_SHRINE ? SHRINE_NAMES[o.v] : o.kind === OBJ_GOLDCHEST ? '금빛 상자' : o.kind === OBJ_CURSED ? bt('저주받은 상자') : o.kind === OBJ_SECRET ? '숨은 보물' : '상자'
       const col = o.kind === OBJ_GOLDCHEST || o.kind === OBJ_SECRET ? '#ffd86a' : o.kind === OBJ_SHRINE ? '#d8c8ff' : o.kind === OBJ_CURSED ? '#c88aff' : '#d8cfbf'
-      label(o.x, o.y, `${name} · ${F}`, col, o.kind === OBJ_SHRINE ? 1.85 : o.kind === OBJ_CURSED ? 1.05 : o.kind === OBJ_SECRET ? 0.8 : 0.95)
+      label(o.x, o.y, `${name} · ${F}`, col, o.kind === OBJ_SHRINE ? 1.85 : o.kind === OBJ_CURSED ? 1.4 : o.kind === OBJ_SECRET ? 0.8 : 1.3)
     }
     if (l.wp) label(l.wp.x, l.wp.y, `웨이포인트 · ${F}`, '#9ac8ff')
     if (isTown(curr.curArea)) {
@@ -5158,7 +5161,7 @@ export class Renderer3D {
       const at = this.monsterView.shown.get(a.id)
       if (!at) continue
       const def = MONSTER_LIST[a.kind]
-      const p = this.worldToScreen(at.x, MONSTER_TOP[a.kind] * (def.r / 13) + 0.3, at.z)
+      const p = this.worldToScreen(at.x, monsterTop({ kind: a.kind }) + 0.3, at.z)
       const who = def.boss ? this.summonLabel?.(a.by, a.seq) : undefined
       const label = `${who ? `${who}님의 아군` : '아군'} · ${Math.ceil(a.t / 60)}`
       ctx.font = `800 ${def.boss ? 14 : 11}px ${SAY_FONT}`
@@ -5727,6 +5730,8 @@ export class Renderer3D {
       this.vision.dispose()
       this.world.dispose()
       this.gl.dispose()
+      // 🌙 ↔ ☀ 를 바꿀 때마다 렌더러를 새로 만든다 — 맥락을 바로 돌려줘야 브라우저 한도(16 안팎)에 걸리지 않는다
+      this.gl.forceContextLoss()
     })
     this.canvas.remove()
     this.hud.canvas.remove()

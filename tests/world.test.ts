@@ -5,7 +5,7 @@ import { MAPS } from '../src/core/maps'
 import { BTN_FIRE, BTN_PORTAL, BTN_USE, CMD_QUEST, CMD_WAYPOINT, Input } from '../src/core/input'
 import { QUEST_ALL } from '../src/core/items'
 import { GameMap } from '../src/core/map'
-import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, actBossQuest, actLocked, areaLayout, buildAreaMap, townNpcs, wpBit } from '../src/core/world'
+import { AREAS, ACTS, NPC_RANGE, QUESTS, WAYPOINTS, actBossQuest, actLocked, areaLayout, buildAreaMap, gateTarget, townNpcs, wpBit } from '../src/core/world'
 import { flowField } from '../src/core/flow'
 import { TILE, TILE_FLOOR } from '../src/core/map'
 import { MONSTER_LIST } from '../src/core/monsters'
@@ -607,5 +607,57 @@ describe('보스 방 웨이포인트', () => {
       const ar = map.arena!
       expect(Math.hypot(l.wp!.x - ar.x, l.wp!.y - ar.y)).toBeGreaterThan(ar.r)
     }
+  })
+})
+
+// 2026-10-23 사용자: "마을 가운데 들판 문 → 그 막의 첫 맵 대신 웨이포인트를 연 가장 먼 지역으로 · 다음 단계 맵의 웨이포인트를 이미 열었으면 타운 포털을 닫는다"
+describe('들판 문 · 지난 타운 포털', () => {
+  it('들판 문은 이 막에서 웨이포인트를 연 가장 먼 지역으로 — 연 곳이 없으면 첫 맵 · 길에서 뺀 지역 · 다른 막은 보지 않는다', () => {
+    expect(gateTarget(TOWN, 0)).toBe(1)
+    expect(gateTarget(TOWN, wpBit(1) | wpBit(3))).toBe(3)
+    expect(gateTarget(TOWN, wpBit(3) | wpBit(6) | wpBit(11))).toBe(6)
+    expect(gateTarget(TOWN, wpBit(6) | wpBit(9))).toBe(9)
+    expect(gateTarget(ACTS[1].town, wpBit(14) | wpBit(17))).toBe(14)
+  })
+
+  it('들판 문에서 F → 그 지역의 웨이포인트 앞 · 연 곳이 없으면 예전처럼 첫 맵의 입구', () => {
+    const { s, mapOf, run } = game(['chim'])
+    const p = s.players[0]
+    const gate = areaLayout(TOWN, mapOf(TOWN)).exits.find((e) => e.gate)!
+    const onGate = () => {
+      p.x = gate.x
+      p.y = gate.y
+      p.exitLock = 0
+      p.btnPrev = 0
+      useNext.add(0)
+    }
+    onGate()
+    run(1)
+    expect(p.area).toBe(1)
+    run(40)
+    standOnExit(s, mapOf, 0, TOWN)
+    run(1)
+    expect(p.area).toBe(TOWN)
+    p.wps |= wpBit(3) | wpBit(6)
+    run(40)
+    onGate()
+    run(1)
+    expect(p.area).toBe(6)
+    const wa = areaLayout(6, mapOf(6)).wpArrive!
+    expect(Math.hypot(p.x - wa.x, p.y - wa.y)).toBeLessThan(80)
+  })
+
+  it('웨이포인트를 새로 열면 그보다 앞 지역에 둔 내 타운 포털이 닫힌다 — 같은 지역 · 남의 포털은 그대로', () => {
+    const { s, mapOf, run } = game(['chim', 'magic'])
+    s.portals.push({ owner: 0, area: 2, x: 0, y: 0 }, { owner: 1, area: 2, x: 0, y: 0 })
+    standOnExit(s, mapOf, 0, 1)
+    run(1)
+    // 핏빛 들판(1)은 굴(2)보다 앞 — 닫히지 않는다
+    expect(s.portals.length).toBe(2)
+    s.players[0].area = 2
+    standOnExit(s, mapOf, 0, 3)
+    run(1)
+    expect(s.players[0].area).toBe(3)
+    expect(s.portals.map((q) => q.owner)).toEqual([1])
   })
 })

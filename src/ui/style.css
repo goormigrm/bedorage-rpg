@@ -1568,3 +1568,5 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .inv-head .gold { font-size: 16px; }
 /* 가방 머리 단추가 좁은 창(1366)에서 넘치면 다음 줄로 — 옆으로 굴러 설명 풍선이 닫혔다 (2026-10-23 배포 화면 시험) */
 .bag-h { flex-wrap: wrap; row-gap: 6px; }
+/* 그 한 줄만큼 가방 창이 조작 안내 띠 위까지 내려온다 — 1280×720 에서 맨 아래 설명 줄이 잘려 굴려야 보였다 (스킬 바 위 끝 142px 는 비운다) */
+.inv { max-height: calc(100% - 60px - 160px / var(--z, 1)); }

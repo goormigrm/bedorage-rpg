@@ -5,7 +5,7 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../core/input'
+import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
@@ -25,7 +25,7 @@ import { LORD_KIND, MONSTER_LIST, TIER_LABEL, isGiant, tierOf } from '../core/mo
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
-import { Skin, asSkin, isBright, setSkin, skinMap } from './skin'
+import { Skin, asSkin, isBright, saveSkinPref, setSkin, skinMap } from './skin'
 import './skinThemes'
 import './skinText'
 import { angleToRad } from '../core/fixedmath'
@@ -139,7 +139,7 @@ export class Session {
   private chat: ChatBox | null = null
   private state: GameState
   private prev: GameState
-  private renderer: Renderer3D
+  private renderer!: Renderer3D
   private input = new LocalInput()
   private touch: TouchControls | null = null
   private sfx = new Sfx()
@@ -345,7 +345,7 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-skin"${this.arena ? ' hidden' : ''}></button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
@@ -366,15 +366,7 @@ export class Session {
     }
     this.applyKeys()
     this.viewArea = this.wantedArea()
-    this.renderer = new Renderer3D(this.stage, this.map)
-    // 창(가방 · 마을 · 스킬 …) 색: 철면수심전용은 캔디 나이트 (style.css .skin-bright — 2026-10-08 퀄리티 4단계)
-    this.stage.classList.toggle('skin-bright', isBright())
-    this.renderer.setRealMonsters(realMonstersOn())
-    this.renderer.setSummonLabel((by, seq) => {
-      const i = this.donNames.get(`${by}:${seq}`)
-      return i ? `${i.nick}님의` : undefined
-    })
-    this.renderer.setViewerLabel((id) => this.vnames.get(id)?.nick)
+    this.makeRenderer()
     this.areaBanner()
     // 캔버스가 UI 아래에 오도록 UI 를 맨 뒤로
     const ui = this.stage.querySelector('.game-ui') as HTMLElement
@@ -484,6 +476,9 @@ export class Session {
     this.czWasOn = stream.status === 'on'
     this.unlistenCzStatus = stream.onStatus((st) => this.onCzStatus(st))
     this.czBadge = new StreamBadge(this.stage.querySelector('.game-ui .top-right') as HTMLElement, () => this.openCz(), true)
+    this.skinBtn = host.querySelector('#btn-skin') as HTMLButtonElement
+    this.skinBtn.onclick = () => this.switchSkin()
+    this.syncSkinBtn()
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
     muteBtn.onclick = () => {
@@ -633,6 +628,60 @@ export class Session {
     // 나간 자리 · 아직 아무도 없는 자리는 입력을 기다리지 않는다 (둘 다 dropped 에 들어 있다)
     for (const d of this.dropped) ls.drop(d)
     return ls
+  }
+
+  /** 렌더러를 만들고 세션 쪽 설정을 건다 (처음 · 분위기를 바꿀 때) */
+  private makeRenderer(): void {
+    this.renderer = new Renderer3D(this.stage, this.map)
+    // 창(가방 · 마을 · 스킬 …) 색: 철면수심전용은 캔디 나이트 (style.css .skin-bright — 2026-10-08 퀄리티 4단계)
+    this.stage.classList.toggle('skin-bright', isBright())
+    this.renderer.setRealMonsters(realMonstersOn())
+    this.renderer.setSummonLabel((by, seq) => {
+      const i = this.donNames.get(`${by}:${seq}`)
+      return i ? `${i.nick}님의` : undefined
+    })
+    this.renderer.setViewerLabel((id) => this.vnames.get(id)?.nick)
+  }
+
+  private skinBtn!: HTMLButtonElement
+  private syncSkinBtn(): void {
+    const b = isBright()
+    this.skinBtn.textContent = b ? '☀ 철면수심 모드' : '🌙 무서운 모드'
+    this.skinBtn.title = b ? '눌러서 🌙 무서운 모드로' : '눌러서 ☀ 철면수심 모드로'
+  }
+
+  /**
+   * 🌙 ↔ ☀ (2026-10-23 사용자: "방을 새로 만들지 않아도 오른쪽 아래 단추로 — 잠깐의 로딩 동안 덮개 · 무적 · 이동 불가"): 내 화면만 바꾼다(판은 분위기를 모른다).
+   * 글 · 맵 테마를 갈아 끼우고 렌더러를 새로 만든다 — 지역을 옮길 때의 덮개(covering → BTN_LOADING)가 덮고, CMD_SKIN 이 덮임 보호를 다시 받게 한다
+   */
+  private switchSkin(): void {
+    if (this.arena || this.renderer.covering || !this.renderer.ready) return
+    const b = isBright()
+    const s: Skin = b ? 'dark' : 'bright'
+    setSkin(s)
+    saveSkinPref(s)
+    // 방장이 바꾸면 나중에 난입하는 사람 · 방 목록도 그 분위기로
+    if (this.isHost) {
+      this.cfg.skin = s
+      if (this.cfg.roomInfo) this.cfg.roomInfo.skin = s
+    }
+    for (const m of this.maps.values()) skinMap(m)
+    const { mapOpen, sayScale } = this.renderer
+    this.renderer.dispose()
+    this.makeRenderer()
+    this.renderer.mapOpen = mapOpen
+    this.renderer.sayScale = sayScale
+    this.applyGfxLevel()
+    // 캔버스가 UI 아래에 오도록 UI 를 다시 맨 뒤로
+    this.stage.appendChild(this.stage.querySelector('.game-ui') as HTMLElement)
+    this.renderer.setMap(this.map)
+    // 새 렌더러도 시작 준비(prepareStart)를 거쳐야 그린다 — 그동안 로딩 화면 (다음 프레임이 준비를 부르고 끝나면 걷는다)
+    this.prepStarted = false
+    this.showLoading(b ? '🌙 무서운 모드로 바꾸는 중…' : '☀ 철면수심 모드로 바꾸는 중…')
+    this.sfx.setBgmStyle(s)
+    this.input.queueCmd(CMD_SKIN, 0)
+    this.syncSkinBtn()
+    this.areaBanner()
   }
 
   /** 지역의 맵 (없으면 만든다) */
@@ -2288,7 +2337,7 @@ export class Session {
   private prepStarted = false
 
   /** 시작 로딩 화면을 띄운다 — 첫 화면(index.html #boot)과 같은 모양 + 도움말 한 줄 */
-  private showLoading(): void {
+  private showLoading(msg = '마을 준비 중 — 그림을 미리 그려 두는 중…'): void {
     const tips = [
       `${keyLabel('items')} 를 누르고 있으면 바닥 아이템 이름이 펼쳐지고, 이름을 누르면 그것만 주워 온다`,
       `${keyLabel('portal')} 타운 포털 — 마을에 갔다가 그 자리로 돌아온다`,
@@ -2301,7 +2350,7 @@ export class Session {
     ]
     const el = document.createElement('div')
     el.className = 'game-load'
-    el.innerHTML = `<div class="bi"><div class="bl">배도라지<b>알</b>PG</div><div class="bb"><i></i></div><div class="bm">마을 준비 중 — 그림을 미리 그려 두는 중…</div><div class="bt">${tips[Math.floor(Math.random() * tips.length)]}</div></div>`
+    el.innerHTML = `<div class="bi"><div class="bl">배도라지<b>알</b>PG</div><div class="bb"><i></i></div><div class="bm">${msg}</div><div class="bt">${tips[Math.floor(Math.random() * tips.length)]}</div></div>`
     this.root.appendChild(el)
     this.loadEl = el
     this.loadAt = performance.now()

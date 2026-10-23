@@ -1,6 +1,6 @@
 // 지역을 옮긴 직후 화면이 덮여 있는 동안(BTN_LOADING) — 보이지 않는 채로 맞지 않게 (2026-10-23 사용자: "첫 진입 끊김으로 죽을 뻔")
 import { describe, expect, it } from 'vitest'
-import { BTN_FIRE, BTN_LOADING, Input } from '../src/core/input'
+import { BTN_FIRE, BTN_LOADING, CMD_SKIN, Input } from '../src/core/input'
 import { GameMap } from '../src/core/map'
 import { createState, step, warpPlayer } from '../src/core/sim'
 import { COUNTDOWN_TICKS } from '../src/core/state'
@@ -40,5 +40,13 @@ describe('화면 덮임 보호', () => {
     const { s, mapOf } = party()
     for (let t = 0; t < 60 * 14; t++) step(s, mapOf, [{ ...idle(), buttons: BTN_LOADING }, idle()])
     expect(s.players[0].invuln).toBe(0)
+  })
+
+  it('🌙 ↔ ☀ 를 바꾸면(CMD_SKIN) 들어선 지 오래여도 덮개 동안 다시 보호된다', () => {
+    const { s, mapOf } = party()
+    for (let t = 0; t < 60 * 14; t++) step(s, mapOf, [idle(), idle()])
+    step(s, mapOf, [{ ...idle(), buttons: BTN_LOADING, cmd: CMD_SKIN, arg: 0 }, idle()])
+    for (let t = 0; t < 120; t++) step(s, mapOf, [{ ...idle(), buttons: BTN_LOADING }, idle()])
+    expect(s.players[0].invuln).toBeGreaterThan(80)
   })
 })

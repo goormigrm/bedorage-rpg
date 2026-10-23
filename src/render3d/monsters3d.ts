@@ -964,8 +964,10 @@ export function monsterTop(m: { kind: number; sum?: number; elite?: number }): n
   return MONSTER_TOP[m.kind] * (MONSTER_LIST[m.kind].r / 13) * viewScale(isGiant(m), m.kind, m.elite ?? 0)
 }
 /** 그릴 때 크기 배율 — 모델(put)과 이름표 · 체력 막대 높이(monsterTop)가 같이 쓴다 (정예 막대가 이마에 · 우두머리 이름표가 가슴에 박혔다) */
+/** 보스 방 거대 보스 말고는 그림만 1.3배 — 맞는 크기(r)는 그대로 (2026-10-23 사용자: "작아서 위압감이 없다") */
+const MOB_VIEW = 1.3
 function viewScale(giant: boolean, kind: number, elite: number): number {
-  return giant ? GIANT_VIEW : kind === GOBLIN_KIND ? GOBLIN_VIEW : elite & 64 ? 1.7 : elite ? 1.35 : 1
+  return giant ? GIANT_VIEW : (kind === GOBLIN_KIND ? GOBLIN_VIEW : elite & 64 ? 1.7 : elite ? 1.35 : 1) * MOB_VIEW
 }
 /** 네 발 짐승 (거대한 보스를 겨눌 때 옆으로 넓다) */
 export const isQuadruped = (kind: number): boolean => QUADRUPEDS.has(kind)

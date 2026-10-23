@@ -120,6 +120,8 @@ export const CMD_PICK = 30
 export const CMD_TRIAL = 31
 /** 가방에서 부위마다 가장 좋은 것(itemScore)을 낀다 — 끼고 있는 것보다 높을 때만 (2026-10-23 사용자: "자동으로 가장 좋은 템으로 장착 버튼") */
 export const CMD_EQUIP_BEST = 33
+/** 🌙 ↔ ☀ 분위기를 바꿨다 (화면만 — 판은 분위기를 모른다): 렌더러를 새로 만드는 덮개 동안 지역에 막 들어선 것처럼 덮임 보호(BTN_LOADING)를 받는다 */
+export const CMD_SKIN = 34
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

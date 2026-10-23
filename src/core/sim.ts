@@ -8,7 +8,7 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, CMD_SKIN, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
@@ -30,7 +30,7 @@ import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dun
 import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
 import { botSheet, botSkillNext, gearLevelOf } from './botsheet'
-import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
+import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, gateTarget, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
 import { variantKind,
@@ -547,10 +547,7 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   if (isTown(to)) p.wps |= wpBit(to)
   else {
     const bit = wpBit(to)
-    if (bit && (p.wps & bit) === 0 && p.merc < 0 && !p.cameo) {
-      p.wps |= bit
-      state.events.push({ type: 'wpFound', p: p.id, area: to })
-    }
+    if (bit && (p.wps & bit) === 0 && p.merc < 0 && !p.cameo) wpFound(state, p, to)
   }
   // 상인 진열: 마지막으로 깐 뒤 SHOP_RESTOCK_TICKS 가 지났으면 마을에 들어선 사람의 레벨로 공짜로 새로 (진열은 파티 공용)
   if (isTown(to) && from !== to && p.merc < 0 && state.tick - (state.shopAt ?? 0) >= SHOP_RESTOCK_TICKS) {
@@ -560,6 +557,17 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   // 이 게임에서 누군가 가 본 가장 뒤 막 (난입한 사람이 설 마을을 정한다)
   state.act = Math.max(state.act, areaDef(to).act)
   state.events.push({ type: 'areaEnter', p: p.id, area: to, from, how })
+}
+
+/**
+ * 웨이포인트를 새로 열었다. 그보다 앞 지역에 둔 내 타운 포털은 닫는다 (2026-10-23 사용자: "다음 단계 맵의 웨이포인트를 이미 열었으면
+ * 타운 포털을 닫는다" — 마을 들판 문이 더 멀리 데려간다). 지역 레벨이 나아간 순서다 · 시련(레벨 30)의 문은 남는다
+ */
+function wpFound(state: GameState, p: PlayerState, area: number): void {
+  p.wps |= wpBit(area)
+  state.events.push({ type: 'wpFound', p: p.id, area })
+  const lv = areaDef(area).level
+  state.portals = state.portals.filter((q) => q.owner !== p.id || areaDef(q.area).level >= lv)
 }
 
 /**
@@ -674,10 +682,7 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
     // 웨이포인트: 밟으면 열린다 (캐릭터에 남는다)
     if (l.wp && len(p.x - l.wp.x, p.y - l.wp.y) <= WP_R) {
       const bit = wpBit(area)
-      if (bit && (p.wps & bit) === 0) {
-        p.wps |= bit
-        state.events.push({ type: 'wpFound', p: p.id, area })
-      }
+      if (bit && (p.wps & bit) === 0) wpFound(state, p, area)
     }
     // 타운 포털 시전: 움직이거나 쏘거나 스킬을 쓰면 끊긴다 (맞으면 hurtPlayer 가 끊는다)
     if (!town && (pressed & BTN_PORTAL) !== 0 && p.portalCast === 0) {
@@ -714,7 +719,9 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
       if (!used && p.exitLock === 0) {
         for (const e of l.exits) {
           if (len(p.x - e.x, p.y - e.y) > EXIT_USE_R) continue
-          queueMove(p, { to: e.to, how: 'exit' })
+          // 마을 들판 문은 웨이포인트를 연 가장 먼 지역의 웨이포인트 앞으로
+          const far = e.gate ? gateTarget(area, p.wps) : e.to
+          queueMove(p, far === e.to ? { to: e.to, how: 'exit' } : { to: far, how: 'wp' })
           used = true
           break
         }
@@ -4139,6 +4146,11 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
       p.pickGoal = arg
       p.pickT = PICK_WALK_TICKS
     }
+    return
+  }
+  if (cmd === CMD_SKIN) {
+    // 덮임 보호가 먹는 때(LOADING_MAX)를 지금부터 다시 센다 — 보호 · 이동 막음은 덮개 동안 실리는 BTN_LOADING 이 한다
+    if (state.mode === 'dungeon') p.arriveT = state.tick
     return
   }
   if (cmd === CMD_DONCAP) {
