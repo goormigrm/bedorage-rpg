@@ -303,7 +303,7 @@ export class TownPanel {
           <button class="btn ${this.sellArmed ? 'danger' : 'main'} sell-big" data-sellall ${all.length ? '' : 'disabled'}>${
             this.sellArmed ? `한 번 더 — ${all.length}개 · ${goldText(sum(all))}` : `전부 팔기 — ${all.length}개 · ${goldText(sum(all))}`
           }</button>
-          <button class="btn secondary" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템만 팔기 — ${junk.length}개 · ${goldText(sum(junk))}</button>
+          <button class="btn sell-junk" data-cmd="${CMD_SELL_ALL}" data-arg="0" ${junk.length ? '' : 'disabled'}>잡템만 팔기 <small>(일반 · 마법)</small> — ${junk.length}개 · ${goldText(sum(junk))}</button>
           ${locked ? `<p class="tp-hint">🔒 잠근 ${locked}개는 안 판다 (가방에서 Shift+클릭)</p>` : ''}
         </div>`
       }

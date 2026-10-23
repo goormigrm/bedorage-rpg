@@ -646,10 +646,22 @@ export class Session {
   }
 
   private skinBtn!: HTMLButtonElement
+  /**
+   * 🌙 ↔ ☀ 미끄럼 스위치 (2026-10-24 사용자: "바꾸는 단추인지 상태를 알려 주는 단추인지 개발자인 나도 늦게 알아차렸다 — 슬라이더나 누가 봐도 바꾸는 단추로"):
+   * 양끝에 🌙 · ☀ · 손잡이는 지금 모드 쪽 · 위에 "모드 바꾸기 ↔". 손잡이가 미끄러지게 글을 갈아 끼우지 않고 class 만 바꾼다
+   */
   private syncSkinBtn(): void {
     const b = isBright()
-    this.skinBtn.textContent = b ? '☀ 철면수심 모드' : '🌙 무서운 모드'
-    this.skinBtn.title = b ? '눌러서 🌙 무서운 모드로' : '눌러서 ☀ 철면수심 모드로'
+    const el = this.skinBtn
+    if (!el.querySelector('.sw-track')) {
+      el.classList.add('skin-sw')
+      el.setAttribute('role', 'switch')
+      el.innerHTML = '<span class="sw-cap">모드 바꾸기 ↔</span><span class="sw-track"><b>🌙</b><b>☀️</b><i></i></span><span class="sw-name"></span>'
+    }
+    el.classList.toggle('on', b)
+    el.setAttribute('aria-checked', String(b))
+    ;(el.querySelector('.sw-name') as HTMLElement).textContent = b ? '철면수심 모드' : '무서운 모드'
+    el.title = b ? '눌러서 🌙 무서운 모드로 바꾸기' : '눌러서 ☀ 철면수심 모드로 바꾸기'
   }
 
   /**
@@ -2673,9 +2685,11 @@ export class Session {
       el.dataset.h = html
       el.innerHTML = html
     }
-    // 큰 글자 표가 작은 창에서 체력 오브(왼쪽 끝 = 가운데 − 366, d4hud drawBottom)를 가리면 그 앞까지만 키운다 (1배 아래로는 안 줄인다)
+    // 작은 창에서 표가 체력 오브(왼쪽 끝 = 가운데 − 366, d4hud drawBottom)를 가리거나 위쪽 파티 칸까지 올라가면 그 안으로 줄인다.
+    // 2026-10-24 글씨를 16px 로 키운 뒤로는 1배에서도 1280 창에서 넘쳤다 — 예전 글씨 크기(0.75배)까지만 줄인다
     const room = ((VIEW_W / 2 - 366) * this.stage.clientWidth) / VIEW_W - 20
-    if (cfg.textScale > 1 && el.offsetWidth > room) el.style.setProperty('--dk', String(Math.max(1, (cfg.textScale * room) / el.offsetWidth)))
+    const fit = Math.min(room / el.offsetWidth, (this.stage.clientHeight * 0.6) / el.offsetHeight)
+    if (fit < 1) el.style.setProperty('--dk', String(Math.max(0.75, cfg.textScale * fit)))
     // 채팅 칸은 후원 표 위로 (둘 다 왼쪽 아래 — 표가 커지면 겹쳤다, 2026-09-23). 표를 고친 뒤에 잰다
     this.chat?.setBottom(Math.max(222, 12 + el.offsetHeight + 14))
   }
