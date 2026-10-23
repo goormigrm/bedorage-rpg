@@ -10,11 +10,11 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 작업 중 (2026-10-23 · 원격 개발 PC — v1.10.7 준비 · **푸시 못 함**)
+## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 작업 중 (2026-10-23 · 원격 개발 PC — v1.10.7 준비 · ③ 확인 전이라 푸시 안 함)
 
-- **멈춘 까닭**: 사용자가 git 연동(수작업)을 하고 이어가기로 했다. 이 PC 에는 GitHub 자격 증명이 없어 **로컬 커밋만** 있다(`git push` → "could not read Username"). 배포 사이트는 그대로 v1.10.6(ec11f1b — Actions 성공 확인).
+- **멈춘 까닭**: 사용자가 git 연동을 하고 이어가기로 했다 → 같은 날 `gh` 2.45(apt) 설치 · goormigrm 로그인(기기 코드) · `gh auth setup-git` 으로 이 PC 에서 푸시된다(`push --dry-run` 확인). 토큰은 `~/.config/gh/hosts.yml`(WSL 에 키링이 없어 평문 · 600). 커밋은 **로컬에만** 있다 — 배포 사이트는 그대로 v1.10.6(ec11f1b — Actions 성공 확인).
   - 이어받는 세션: 먼저 `git -C ~/work/bedorage-rpg log origin/main..main` 로 안 올라간 커밋을 보고, ③ 을 확인한 뒤 푸시한다. 푸시 = 배포이니 ③ 확인 전에는 올리지 말 것.
-- **이 PC 환경**(WSL dev): 저장소 `~/work/bedorage-rpg`(`\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg`) · Node 24 는 `~/work/node/bin`(PATH 앞에 넣는다 — 시스템 node 18 은 npm 이 없다) · Google Chrome · Playwright 크로미움 깔림 · `gh` 없음 → 배포 확인은 `curl -s 'https://api.github.com/repos/goormigrm/bedorage-rpg/actions/runs?per_page=2'`(공개 저장소). uicheck 한 바퀴(여섯 크기)가 5분쯤 걸린다.
+- **이 PC 환경**(WSL dev): 저장소 `~/work/bedorage-rpg`(`\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg`) · Node 24 는 `~/work/node/bin`(PATH 앞에 넣는다 — 시스템 node 18 은 npm 이 없다) · Google Chrome · Playwright 크로미움 깔림 · 배포 확인은 `gh run list -L 2`. uicheck 한 바퀴(여섯 크기)가 5분쯤 걸린다.
 - **사용자 규칙(2026-10-23)**: "실제 플레이어는 대부분 1920×1080" → 화면 검사는 **`node tools/uicheck.mjs 1920x1080` 먼저**, `SHOT=1` 사진으로 글씨를 본 뒤 나머지 크기.
 - **끝낸 것**(시험 63 파일 417 통과 · `tsc --noEmit` 통과 · `npm run build` 와 uicheck 전체는 아직):
   - uicheck 5건 → 0건: 1280×720 에서 가방 머리가 두 줄이 되어(좋은 장비 끼기) 맨 아래 안내 글이 창 밖으로 밀리고 조작 안내 띠에 가려졌다 → `.inv` max-height 의 아래 몫 200 → 160px(스킬 바 위 끝 142px 는 비운다 · style.css 맨 끝). 1280×720 만 다시 돌려 0건.
