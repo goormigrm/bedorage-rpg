@@ -2071,7 +2071,17 @@ export class Session {
   }
 
   /** 게임 위 반투명 DOM 의 자리 (논리 좌표 — 무대 배율을 되돌린다). 바닥 이름표가 그 밑에 깔리지 않게 (RenderOptions.uiRects) */
+  private uiRectsAt = -1e9
+  private uiRectsLast: UiRect[] = []
   private uiRects(): UiRect[] {
+    // 0.2초마다만 잰다 (2026-10-24 최적화): 프레임마다 DOM 크기를 읽으면 그때마다 배치를 다시 계산한다(느린 PC 에서 무겁다)
+    const now = performance.now()
+    if (now - this.uiRectsAt < 200) return this.uiRectsLast
+    this.uiRectsAt = now
+    this.uiRectsLast = this.measureUiRects()
+    return this.uiRectsLast
+  }
+  private measureUiRects(): UiRect[] {
     const st = this.stage.getBoundingClientRect()
     const k = st.width > 0 ? VIEW_W / st.width : 1
     const out: UiRect[] = []

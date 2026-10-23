@@ -256,6 +256,10 @@ export class Renderer3D {
   fpsPlayer = -1
   fpsYaw = 0
   fpsPitch = 0
+  /** 괴물 시야 판정 (monsterView.update — 시야 밖은 그리지 않는다) */
+  private cullFrustum = new THREE.Frustum()
+  private cullMat = new THREE.Matrix4()
+  private cullSphere = new THREE.Sphere()
   /** 지난 프레임을 1인칭 카메라로 그렸다 (쿼터뷰로 돌아갈 때 시야각 · 가까운 면을 되돌린다) */
   private fpsCam = false
   /**
@@ -1246,19 +1250,22 @@ export class Renderer3D {
   }
 
   /** 화면 좌표(1280x720 프레임) → sim 좌표(px) */
+  private s2wNdc = new THREE.Vector2()
+  private s2wHit = new THREE.Vector3()
+  private gunPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -GUN_H)
   screenToWorld(sx: number, sy: number): { x: number; y: number } {
-    const ndc = new THREE.Vector2((sx / VIEW_W) * 2 - 1, -(sy / VIEW_H) * 2 + 1)
-    this.raycaster.setFromCamera(ndc, this.camera)
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -GUN_H)
-    const hit = new THREE.Vector3()
-    if (!this.raycaster.ray.intersectPlane(plane, hit)) {
+    this.raycaster.setFromCamera(this.s2wNdc.set((sx / VIEW_W) * 2 - 1, -(sy / VIEW_H) * 2 + 1), this.camera)
+    const hit = this.s2wHit.set(0, 0, 0)
+    if (!this.raycaster.ray.intersectPlane(this.gunPlane, hit)) {
       this.raycaster.ray.intersectPlane(this.ground, hit)
     }
     return { x: hit.x / U, y: hit.z / U }
   }
 
+  /** worldToScreen 이 다시 쓰는 벡터 — 프레임마다 수백 번 불려(이름표 · 막대 · 숫자) 새로 만들면 쓰레기 수거가 잦았다 (2026-10-24 최적화) */
+  private w2s = new THREE.Vector3()
   worldToScreen(x: number, y: number, z: number): { x: number; y: number } {
-    const v = new THREE.Vector3(x, y, z).project(this.camera)
+    const v = this.w2s.set(x, y, z).project(this.camera)
     // 카메라 뒤(1인칭)는 화면 밖으로 — 뒤집혀 앞에 비치지 않게
     if (v.z > 1) return { x: -1e4, y: -1e4 }
     return { x: ((v.x + 1) / 2) * VIEW_W, y: ((1 - v.y) / 2) * VIEW_H }
@@ -2419,7 +2426,16 @@ export class Renderer3D {
     this.announceBoss(curr)
     for (let i = 0; i < n; i++) this.updateRig(i, curr.players[i], pos[i], sdt)
     // 응원 아군 괴물은 괴물과 같은 표에 초록으로 그린다 (sim 에서는 따로 — core/state.ts Ally)
-    this.monsterView.update(withAllies(prev), withAllies(curr), alpha, sdt, (m) => this.hiddenM.has(m.id))
+    // 시야 밖 괴물 · 시체는 그리지 않는다 (2026-10-24 최적화: 인스턴스 메시는 통째로만 걸러져 ☀ 지역 17 에서 괴물 모델만 삼각형 160만 개 —
+    // 화면에 없는 220마리까지 그렸다). 카메라는 이 뒤에 움직이니 지난 프레임 시야에 여유를 둔다
+    this.cullMat.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+    this.cullFrustum.setFromProjectionMatrix(this.cullMat)
+    const sph = this.cullSphere
+    this.monsterView.update(withAllies(prev), withAllies(curr), alpha, sdt, (m) => this.hiddenM.has(m.id), (x, z, r) => {
+      sph.center.set(x, 1, z)
+      sph.radius = r + 1.5
+      return this.cullFrustum.intersectsSphere(sph)
+    })
     this.updateBullets(prev, curr, alpha)
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)

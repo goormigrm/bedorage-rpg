@@ -1293,7 +1293,8 @@ export class MonsterView {
    * 한 프레임 그리기. hidden(m) = 시야 밖이라 숨길지.
    * prev 는 보간용 이전 틱 상태 (몬스터 배열이 줄어들 수 있어 id 로 찾는다)
    */
-  update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean): void {
+  /** inView(x, z, 반지름): 카메라 시야에 드나 — 밖이면 그리지 않는다(위치 shown 은 그대로 — 이름표 · 조준이 쓴다) */
+  update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean, inView: (x: number, z: number, r: number) => boolean = () => true): void {
     this.prevPos.clear()
     for (const m of prev.monsters) this.prevPos.set(m.id, { x: m.x, y: m.y })
     const counts = this.kinds.map(() => 0)
@@ -1343,7 +1344,7 @@ export class MonsterView {
       v.ally = (m as { ally?: number }).ally === 1
       v.boss = !!def.boss
       this.want(m.kind)
-      if (hidden(m)) continue
+      if (hidden(m) || !inView(x, z, v.giant ? 9 : 2.5)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
     for (const id of this.vis.keys()) if (!live.has(id)) this.vis.delete(id)
@@ -1375,6 +1376,7 @@ export class MonsterView {
       dead.unique = c.unique
       dead.giant = c.giant
       still.push(c)
+      if (!inView(c.x, c.z, c.giant ? 9 : 2.5)) continue
       // 죽음 동작이 있는 모델은 동작을 0.8초에 걸쳐 튼다 (없으면 0.35초 만에 넘어진다)
       const mk = this.real ? this.models[c.kind] : undefined
       dead.dead = Math.min(1, c.t / (mk && typeof mk !== 'string' && mk.baked.seg.death ? 0.8 : 0.35))
