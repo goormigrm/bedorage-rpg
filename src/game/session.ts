@@ -5,7 +5,7 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../core/input'
+import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, Input } from '../core/input'
 import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
 import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
@@ -1707,7 +1707,7 @@ export class Session {
       const t = this.state.tick
       // 자동 조종이어도 대기열의 명령(치지직 후원 · 가방)은 싣는다 — 전에는 봇 입력만 보내 후원이 판에 닿지 않았다(2026-09-24 소개 영상에서 확인)
       const autoCmd = this.autopilot ? this.input.takeCmd() : undefined
-      const localIn = this.autopilot
+      let localIn = this.autopilot
         ? { ...this.botFor(lp, 'normal'), ...(autoCmd ? { cmd: autoCmd.cmd, arg: autoCmd.arg } : {}) }
         : this.input.sample(
             this.renderer,
@@ -1716,6 +1716,8 @@ export class Session {
             // 터치 조작이면 조준을 대신 해 준다 (스틱 두 개는 폰에서 무리)
             this.touch ? { state: this.view(), map: this.map, me: this.cfg.localPlayer } : undefined,
           )
+      // 내 화면이 덮여 있는 동안("길을 여는 중…")은 서 있고 판에 알린다 — 보이지 않는 채로 맞지 않게 (sim BTN_LOADING · 2026-10-23)
+      if (this.renderer.covering && !this.arena) localIn = { ...localIn, mx: 0, my: 0, buttons: BTN_LOADING }
       if (!this.autopilot) this.sealHint(localIn)
       let inputs: Input[]
       if (this.lockstep) {

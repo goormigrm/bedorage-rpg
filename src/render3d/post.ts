@@ -164,6 +164,10 @@ export class PostFx {
   readonly supported: boolean
   readonly grade: Grade = { ...NEUTRAL, shadow: [1, 1, 1], high: [1, 1, 1] }
   private readonly scene: THREE.WebGLRenderTarget
+  /** 장면을 그리는 곳 (꺼져 있으면 화면 = null) — 셰이더를 미리 만들 때도 여기를 대상으로 (색공간 · 톤 매핑이 같아야 같은 셰이더) */
+  get target(): THREE.WebGLRenderTarget | null {
+    return this.enabled ? this.scene : null
+  }
   private readonly qa: THREE.WebGLRenderTarget
   private readonly qb: THREE.WebGLRenderTarget
   private readonly ea: THREE.WebGLRenderTarget

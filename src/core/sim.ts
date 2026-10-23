@@ -8,7 +8,7 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, CMD_TRIAL, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_GAMBLE, CMD_PICK, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
@@ -125,6 +125,10 @@ export const PORTAL_CAST = 90
 // tools/bossfight.ts (4인 · 사람 수준): 보스마다 경직 5.7 ~ 6.7 · 즉사기 0.7 ~ 1.3 번이었다
 export const STAGGER_HP = 0.6
 const STAGGER_TICKS = 180
+/** 화면 덮임 보호(BTN_LOADING)가 먹는 시간 — 지역에 들어선 뒤 12초 (덮개는 늦어도 9초에 걷힌다 — renderer3d HOLD_MAX · 느린 PC 몫을 더해) */
+const LOADING_MAX = 60 * 12
+/** 들어선 뒤 잠든 괴물이 알아채지 못하는 틱 — 덮임 신호(BTN_LOADING)가 입력 지연(3틱 안팎)만큼 늦게 닿는 틈 */
+const ARRIVE_QUIET = 12
 const STAGGER_DMG = 1.25
 /** 사람이 없는 지역을 얼려 두는 수 (넘으면 가장 오래된 것부터 버린다 — 다시 가면 새로 채워진다) */
 const FROZEN_KEEP = 3
@@ -534,6 +538,7 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   p.ads = false
   p.fx[FX_CHARGE] = 0
   p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
+  p.arriveT = state.tick
   // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록").
   // **마을로는 안 따라간다**(같은 날 사용자 — 싸울 곳이 아니다): 남은 지역에서 제 둘레 괴물과 싸우다(동료가 있으면 돕는다) 사람이 모두 떠나면 사라진다
   if (from !== to && !isTown(to)) carryAllies(state, map, p, from, a)
@@ -1646,6 +1651,16 @@ function stepAll(state: GameState, mapOf: (area: number) => GameMap, inputs: Inp
       inputs[q.id] = botInput(areaView(state, q.area), mapOf(q.area), q.id, q.bot, 'normal')
     }
   }
+  // 화면이 덮인 사람을 따라다니는 봇 · 용병도 그동안 가만히 (같은 보호) — 들어서자마자 쏴서 둘레 무리를 모두 깨웠다(2026-10-23 재현:
+  // 덮개가 걷히는 순간 곁에 깬 괴물 42)
+  if (state.mode === 'dungeon' && inputs.some((i) => i && (i.buttons & BTN_LOADING) !== 0)) {
+    inputs = inputs.map((inp, i) => {
+      const q = state.players[i]
+      const lead = q ? (q.merc >= 0 ? q.merc : q.follow) : -1
+      const l = lead >= 0 ? state.players[lead] : undefined
+      return l && l.area === q.area && ((inputs[lead]?.buttons ?? 0) & BTN_LOADING) !== 0 ? { mx: 0, my: 0, aim: inp?.aim ?? 0, buttons: BTN_LOADING, char: 0 } : inp
+    })
+  }
   // 사람이 있는 지역만, 번호 순으로 (결정론)
   for (const id of liveAreas(state)) {
     const map = mapOf(id)
@@ -1872,6 +1887,12 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (p.dashTimer === 0 && p.blockLock === 0 && !p.sprinting && p.stamina < p.staminaMax) {
     p.stamina = Math.min(p.staminaMax, p.stamina + STAMINA_REGEN * (w.melee ? 2.4 : 1) * (1 + p.st[ST_STAMINA] / 100))
   }
+  // 지역을 옮긴 직후 화면이 덮여 있는 동안(BTN_LOADING)은 보호를 붙들어, 걷힌 뒤에도 1.5초 남게 (2026-10-23 사용자: "첫 진입 끊김으로
+  // 몬스터에게 맞아 죽을 뻔" — 덮개는 처음 한 번 4.5초까지인데 보호는 1.5초라, 보이지 않는 채로 맞았다). 들어선 뒤 LOADING_MAX 안에서만
+  if ((input.buttons & BTN_LOADING) !== 0 && state.mode === 'dungeon' && state.tick - (p.arriveT ?? -LOADING_MAX) < LOADING_MAX) {
+    p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS + 1)
+    p.cover = 1
+  } else if (p.cover) delete p.cover
   if (p.invuln > 0) p.invuln--
   if (p.rollInv) p.rollInv--
   if (p.bossCd) p.bossCd--
@@ -4280,7 +4301,9 @@ function stepMonsters(state: GameState, map: GameMap): void {
       // 8틱에 한 번만 본다 (잠든 무리가 수십이라 매 틱 레이캐스트는 아깝다)
       if (((tick + m.id) & 7) !== 0) continue
       for (const p of state.players) {
-        if (!isActive(p)) continue
+        // 화면이 덮여 있는 사람(지역을 막 옮겼다)은 알아채지 못한다 — 보이기 전에 둘레 무리가 다 깨어 몰려와 있었다 (2026-10-23).
+        // 덮임 신호는 입력 지연만큼 늦게 닿으니 들어선 뒤 ARRIVE_QUIET 틱도 같게
+        if (!isActive(p) || p.cover || tick - (p.arriveT ?? -ARRIVE_QUIET) < ARRIVE_QUIET) continue
         if ((p.x - m.x) ** 2 + (p.y - m.y) ** 2 > WAKE_RANGE * WAKE_RANGE) continue
         if (rayBlocked(map, m.x, m.y, p.x, p.y)) continue
         wakePack(state, m.pack, m.x, m.y)

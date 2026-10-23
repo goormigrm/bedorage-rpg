@@ -287,6 +287,10 @@ export interface PlayerState {
   mst: number[]
   /** 시련: 제한 시간 안에 끝낸 가장 높은 단계 (세이브 Sheet.rift) */
   riftBest: number
+  /** 이 지역에 들어선 틱 (placeIn) — 화면 덮임(BTN_LOADING) 보호는 이때부터 LOADING_MAX 안에서만 */
+  arriveT?: number
+  /** 지금 화면이 덮여 있다 (1) — 잠든 괴물이 이 사람을 알아채지 못한다 */
+  cover?: number
   /** 퀘스트 상태 (world.ts QUESTS: 0 모름 · 1 받음 · 2 이룸 · 3 끝) */
   quests: number[]
   /** 용병이면 고용한 사람 (-1 = 사람) · 용병의 봇 기억 (sim 안에서 결정론으로 움직인다) */

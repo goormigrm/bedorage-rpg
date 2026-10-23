@@ -86,6 +86,13 @@ const NPC_DOT: Record<string, string> = {
   trial: '#b47aff',
 }
 
+/**
+ * 지역을 옮긴 뒤 덮개를 쥐는 가장 긴 시간 (ms). 4.5초였을 때 노트북(내장 그래픽)은 빛 수마다의 셰이더 준비가 덜 끝난 채 걷혀,
+ * 첫 싸움에서 빛 수가 바뀌자 셰이더 16개를 한꺼번에 만들며 0.6초 멈췄다(2026-10-23 계측). 덮개 동안은 움직이지도 맞지도 않으니
+ * 준비가 끝날 때까지 쥔다 — 처음 한 번만 길다. 판의 덮임 보호 상한(sim LOADING_MAX)이 이보다 길어야 한다
+ */
+const HOLD_MAX = 9000
+
 const MINIMAP_SIZE = 190
 /**
  * 이펙트 상한 · 재사용 (2026-09-23 최적화 — "4명이 해도 렉이 없게"). 전에는 고리 · 총구 섬광 구를 만들 때마다 도형 · 재질을 새로 만들고
@@ -463,7 +470,7 @@ export class Renderer3D {
   private warmScene = new THREE.Scene()
   private warmPads: THREE.PointLight[] = []
   /** 준비 작업 줄 (마을에서 prepStep 이 한 걸음씩): 텍스처 올리기 · 셰이더 컴파일(대상 × 빛 수) · 할 일 */
-  private prepJobs: ({ t: 'tex'; tex: THREE.Texture } | { t: 'warm'; obj: THREE.Object3D; n: number } | { t: 'run'; run: () => void })[] = []
+  private prepJobs: ({ t: 'tex'; tex: THREE.Texture } | { t: 'warm'; obj: THREE.Object3D; n: number; k: string } | { t: 'run'; run: () => void })[] = []
   /** 이미 줄 세운 것 (재질 · 대상 모양 · 빛 수) — 같은 셰이더를 두 번 부르지 않게 */
   private warmKeys = new Set<string>()
   private upTex = new WeakSet<THREE.Texture>()
@@ -800,7 +807,12 @@ export class Renderer3D {
   /** 지금 도는 비동기 셰이더 컴파일 — 그동안 그 재질을 지우면 three 의 컴파일 확인이 죽는다(currentProgram 이 사라져 "isReady" 오류) */
   private compiling = new Set<Promise<unknown>>()
   private compileAsync(o: THREE.Object3D, scene: THREE.Scene): Promise<unknown> {
+    // 실제로 그리는 곳(후처리 장면 그림)을 대상으로 컴파일한다 — 화면에 대고 만들면 색공간 · 톤 매핑이 달라 열쇠가 다른 셰이더가 되어,
+    // 데워 둔 것을 못 쓰고 첫 싸움에서 다시 만들며 0.7초 멈췄다 (2026-10-23 계측 — ☀ 판)
+    const rt = this.gl.getRenderTarget()
+    this.gl.setRenderTarget(this.post.target)
     const p = this.gl.compileAsync(o, this.camera, scene).catch(() => {})
+    this.gl.setRenderTarget(rt)
     this.compiling.add(p)
     void p.finally(() => this.compiling.delete(p))
     return p
@@ -822,6 +834,10 @@ export class Renderer3D {
    * 남은 준비 줄을 마저 하며 덮개 뒤에서 그려 보다가, 줄이 비고 세 장 잇달아 매끄러우면(늦어도 4.5초) 걷는다
    */
   private areaHold = false
+  /** 지역을 옮긴 뒤 화면을 덮고 있는 중 (셰이더 컴파일 · 준비) — 세션이 입력에 BTN_LOADING 으로 실어 판에 알린다 */
+  get covering(): boolean {
+    return this.areaCompiling || this.areaHold
+  }
   private holdAt = 0
   private holdTex = false
   private warmGood = 0
@@ -930,7 +946,7 @@ export class Renderer3D {
         const k = `${w.key}|${w.lit ? n : '-'}`
         if (this.warmKeys.has(k)) continue
         this.warmKeys.add(k)
-        this.prepJobs.push({ t: 'warm', obj: w.obj, n })
+        this.prepJobs.push({ t: 'warm', obj: w.obj, n, k })
       }
     }
   }
@@ -962,7 +978,12 @@ export class Renderer3D {
         job.run()
         return true
       }
-      if (this.gone.has(job.obj)) continue
+      // 치워진 물체는 건너뛰되 열쇠는 돌려준다 — 같은 재질을 지금 장면의 물체로 다시 데울 수 있게 (2026-10-23: 마을에서 곧장 나가면
+      // 미리 지은 세계가 치워지며 12 · 16칸 데우기가 열쇠만 남기고 빠져, 새 지역 재질이 첫 싸움에서 셰이더를 한꺼번에 만들었다)
+      if (this.gone.has(job.obj)) {
+        this.warmKeys.delete(job.k)
+        continue
+      }
       this.warmScene.fog = this.scene.fog
       this.warmPads.forEach((l, i) => (l.visible = i < job.n))
       // 자식은 빼고 그 물체 하나만 (그룹이면 아래 것들이 한꺼번에 컴파일된다).
@@ -2309,6 +2330,15 @@ export class Renderer3D {
         if (!this.holdTex) {
           this.holdTex = true
           this.uploadSceneTextures()
+          // 새 지역의 바닥 · 벽 · 괴물 재질도 빛 수마다 데운다 — 준비 줄은 마을에서 한 번만 훑어, 새 지역 재질은 들어선 때의 빛 수로만
+          // 컴파일된 채 첫 싸움에서 빛 수가 바뀌자 셰이더 15개를 한꺼번에 만들며 0.6초 멈췄다 (2026-10-23 계측). 이미 데운 것은 warmKeys 가 건너뛴다.
+          // 먼저 치워진 물체의 줄을 버리고 열쇠를 돌려준다 (그 재질을 지금 장면 물체로 다시 줄 세우게)
+          this.prepJobs = this.prepJobs.filter((j) => {
+            if (j.t !== 'warm' || !this.gone.has(j.obj)) return true
+            this.warmKeys.delete(j.k)
+            return false
+          })
+          this.queueWarm(this.scene)
         }
         // 준비 줄(빛 수마다의 셰이더 · 텍스처)을 덮개 뒤에서 마저 한다 — 방을 만들고 마을에서 곧장 나오면 남아 있어,
         // 첫 싸움에서 빛 수가 바뀔 때마다 모든 재질을 다시 컴파일하며 0.3초씩 멈췄다 (2026-10-17 계측)
@@ -2320,7 +2350,7 @@ export class Renderer3D {
       this.post.render(this.scene, this.camera)
       if (this.areaHold) {
         this.warmGood = performance.now() - r0 < 25 && this.lastDt < 0.05 ? this.warmGood + 1 : 0
-        if ((!prepBusy && this.warmGood >= 3) || performance.now() - this.holdAt > 4500) this.areaHold = false
+        if ((!prepBusy && this.warmGood >= 3) || performance.now() - this.holdAt > HOLD_MAX) this.areaHold = false
       }
     }
 

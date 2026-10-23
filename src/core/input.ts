@@ -17,6 +17,12 @@ export const BTN_ULT = 1 << 9
 /** 스킬 칸 1 · 2 (D4 — 스킬 트리에서 배운 스킬) */
 export const BTN_SKILL3 = 1 << 12
 export const BTN_SKILL4 = 1 << 13
+/**
+ * 지역을 옮긴 직후 내 화면이 아직 덮여 있다 ("길을 여는 중…" — renderer3d.covering). 판은 모두가 같이 돌아 덮개 동안에도 흐르므로
+ * 이 입력으로 알린다 — 그동안 움직이지 않고(세션이 이동 · 버튼을 비운다) 잠든 괴물이 알아채지 못하며, 무적은 걷힌 뒤 1.5초 더 ·
+ * 따라다니는 봇 · 용병도 가만히 (sim LOADING_MAX)
+ */
+export const BTN_LOADING = 1 << 14
 /** 스킬 칸(0 Q · 1 E · 2 R 궁극기 · 3 [1] · 4 [2]) → 버튼. 칸 번호는 PlayerState.cd 번호와 같다 */
 export const SKILL_BTNS = [BTN_SKILL1, BTN_SKILL2, BTN_ULT, BTN_SKILL3, BTN_SKILL4]
 /** 타운 포털 (T): 1.5초 시전 — 움직이거나 쏘거나 맞으면 끊긴다 */
