@@ -226,6 +226,8 @@ const LIGHT_MAX = 16
 const WARM_ORDER = [4, 8, 12, 16, 0]
 /** 덮개 동안 끝내야 하는 빛 수 — 던전 싸움에서 나오는 것 (등불 넷 + 횃불 · 섬광). 이 차례로 먼저 한다 */
 const WARM_HOLD = [12, 16, 8]
+/** 덮개 동안 함께 컴파일하는 셰이더 수 (prepStep) */
+const WARM_PAR = 8
 
 export const EMOTES: Record<number, string> = { 1: 'ㅋㅋㅋ', 2: '굿 👍', 3: '미안 🙏' }
 
@@ -241,6 +243,8 @@ export class Renderer3D {
   readonly canvas: HTMLCanvasElement
   readonly hud: Hud
   private gl: THREE.WebGLRenderer
+  /** GL 맥락을 넘겨준 앞 렌더러 — 덮개가 걷히면 치운다 (constructor prev) */
+  private retired?: Renderer3D
   private scene = new THREE.Scene()
   private camera: THREE.PerspectiveCamera
   private world: World3D
@@ -480,6 +484,8 @@ export class Renderer3D {
   private upTex = new WeakSet<THREE.Texture>()
   /** 새로 만든 셰이더가 다 될 때까지(이 시각까지) 다음 컴파일을 미룬다 — 다 됐다는 소식이 안 와도 3초면 넘어간다 */
   private warmUntil = 0
+  /** 데우기에서 새로 만들어 컴파일 중인 셰이더 수 — 덮개 동안은 WARM_PAR 개까지 함께 (병렬 컴파일이 될 때) */
+  private warmBusy = 0
   /** 버린 지역의 물체 · 텍스처 (줄에 남은 그 일은 건너뛴다 — 버린 텍스처를 올리면 GPU 메모리가 샌다) */
   private gone = new WeakSet<object>()
   private sceneQueued = false
@@ -543,25 +549,38 @@ export class Renderer3D {
   constructor(
     readonly container: HTMLElement,
     map: GameMap,
+    /**
+     * 🌙 ↔ ☀ 를 바꿀 때의 앞 렌더러: 그 GL 맥락을 넘겨받는다 — 새 맥락이면 셰이더 캐시가 비어 첫 판처럼 모두 다시 컴파일해 덮개가 6 ~ 9초였다(2026-10-23 계측).
+     * 앞 렌더러의 재질은 이 렌더러의 덮개가 걷힐 때 치운다 — 먼저 치우면 쓰는 재질이 없어진 셰이더를 three 가 지운다
+     */
+    prev?: Renderer3D,
   ) {
     this.map = map
-    this.canvas = document.createElement('canvas')
-    this.canvas.className = 'gl'
+    if (prev) {
+      this.canvas = prev.canvas
+      prev.hud.canvas.remove()
+      this.retired = prev
+    } else {
+      this.canvas = document.createElement('canvas')
+      this.canvas.className = 'gl'
+    }
     const hudCanvas = document.createElement('canvas')
     hudCanvas.className = 'hud'
     container.appendChild(this.canvas)
     container.appendChild(hudCanvas)
     this.hud = new Hud(hudCanvas)
 
-    this.gl = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      // 스텐실: 가려진 캐릭터 윤곽이 제 몸 · 다른 캐릭터 위에 그려지지 않게 (character3d enableXray)
-      stencil: true,
-      powerPreference: 'high-performance',
-      // 스크린샷을 뜰 때만 켠다(기본은 성능 우선). 주소 뒤 ?shot=1
-      preserveDrawingBuffer: typeof location !== 'undefined' && location.search.includes('shot=1'),
-    })
+    this.gl =
+      prev?.gl ??
+      new THREE.WebGLRenderer({
+        canvas: this.canvas,
+        antialias: true,
+        // 스텐실: 가려진 캐릭터 윤곽이 제 몸 · 다른 캐릭터 위에 그려지지 않게 (character3d enableXray)
+        stencil: true,
+        powerPreference: 'high-performance',
+        // 스크린샷을 뜰 때만 켠다(기본은 성능 우선). 주소 뒤 ?shot=1
+        preserveDrawingBuffer: typeof location !== 'undefined' && location.search.includes('shot=1'),
+      })
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
@@ -1039,8 +1058,13 @@ export class Renderer3D {
       one.visible = true
       const done = this.compileAsync(one, this.warmScene)
       if ((programs?.length ?? 0) > p0) {
-        this.warmUntil = t0 + 3000
-        void done.finally(() => (this.warmUntil = 0))
+        // 덮개 뒤에서는 기다리며 하나씩 할 까닭이 없다 — 하나씩이면 🌙 ↔ ☀ · 새 지역 덮개가 셰이더 75개 × 60ms 로 4 ~ 5초였다 (2026-10-23 계측)
+        const par = this.areaHold && this.gl.extensions.has('KHR_parallel_shader_compile') ? WARM_PAR : 1
+        if (++this.warmBusy >= par) this.warmUntil = t0 + 3000
+        void done.finally(() => {
+          this.warmBusy--
+          this.warmUntil = 0
+        })
         return true
       }
       if (performance.now() - t0 > budgetMs) return true
@@ -2398,7 +2422,11 @@ export class Renderer3D {
       this.post.render(this.scene, this.camera)
       if (this.areaHold) {
         this.warmGood = performance.now() - r0 < 25 && this.lastDt < 0.05 ? this.warmGood + 1 : 0
-        if ((!this.holdNeeds() && performance.now() >= this.warmUntil && this.warmGood >= 3) || performance.now() - this.holdAt > HOLD_MAX) this.areaHold = false
+        if ((!this.holdNeeds() && this.warmBusy === 0 && this.warmGood >= 3) || performance.now() - this.holdAt > HOLD_MAX) this.areaHold = false
+        if (!this.areaHold && this.retired) {
+          this.retired.dispose(true)
+          this.retired = undefined
+        }
       }
     }
 
@@ -5713,7 +5741,9 @@ export class Renderer3D {
     return this.camera
   }
 
-  dispose(): void {
+  /** keepGl: GL 맥락 · 캔버스는 다음 렌더러가 쓴다 (constructor prev) */
+  dispose(keepGl = false): void {
+    this.retired?.dispose(true)
     this.skillFx.dispose()
     this.quarks.dispose()
     this.ambient.dispose()
@@ -5729,11 +5759,12 @@ export class Renderer3D {
       this.monsterView.dispose()
       this.vision.dispose()
       this.world.dispose()
+      if (keepGl) return
       this.gl.dispose()
-      // 🌙 ↔ ☀ 를 바꿀 때마다 렌더러를 새로 만든다 — 맥락을 바로 돌려줘야 브라우저 한도(16 안팎)에 걸리지 않는다
+      // 판을 나갈 때마다 렌더러를 새로 만든다 — 맥락을 바로 돌려줘야 브라우저 한도(16 안팎)에 걸리지 않는다
       this.gl.forceContextLoss()
     })
-    this.canvas.remove()
+    if (!keepGl) this.canvas.remove()
     this.hud.canvas.remove()
   }
 }

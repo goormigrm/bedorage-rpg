@@ -7,12 +7,13 @@
 //  가려짐 — 다른 칸이 위에 덮여 안 보인다 (창 · 대화상자가 덮는 것은 뺀다 — 일부러 위에 뜬 것)
 // 캔버스에 그린 것(HUD · 이름표)은 못 본다 — 그것은 스크린샷(SHOT=1 이면 .frames/shots/ui-<크기>-<장면>.png)으로 본다.
 import { chromium } from 'playwright'
+import { gpuLaunch } from './gpu.mjs'
 import { mkdirSync } from 'node:fs'
 
 const sizes = (process.argv.slice(2).length ? process.argv.slice(2) : ['1920x1080', '2000x957', '1366x768', '1600x900', '2560x1440', '1280x720']).map((s) => s.split('x').map(Number))
 const SHOT = process.env.SHOT === '1'
 if (SHOT) mkdirSync('.frames/shots', { recursive: true })
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] })
+const browser = await chromium.launch(gpuLaunch())
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** 페이지 안에서: 보이는 HTML 글자를 훑어 문제를 모은다 */

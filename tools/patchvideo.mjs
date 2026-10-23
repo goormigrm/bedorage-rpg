@@ -4,8 +4,9 @@
 //   MODE=trailer PART=3 DIR=release-<날짜> [SKIN=dark] → 한 편 소개 intro_<분위기>.webm (파일당 20 MB 안 — 새로 올리는 사이트)
 // 깔린 Chrome(헤드리스) · 1920×1080 · 소리 끔(게임 소리는 영상에만 — trailer.js 가 오프라인으로 그린다)
 import { chromium } from 'playwright'
+import { gpuLaunch } from './gpu.mjs'
 
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] })
+const browser = await chromium.launch(gpuLaunch('--autoplay-policy=no-user-gesture-required'))
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {

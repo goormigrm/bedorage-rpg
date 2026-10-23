@@ -4,6 +4,7 @@
 // 재는 것: 한 프레임 CPU ms(그중 3D 그리기) · GPU ms(EXT_disjoint_timer_query) · 그리기 호출 · 삼각형 · 켜진 빛 · 화면 간격.
 // 깔린 Chrome 을 쓴다 (playwright 가 받은 크로미움은 이 PC 에서 실행이 막힌다 — spawn UNKNOWN).
 import { chromium } from 'playwright'
+import { gpuLaunch } from './gpu.mjs'
 
 const args = process.argv.slice(2)
 // prof=1: 지역마다 CPU 프로파일(CDP)을 떠서 제 시간(self)이 큰 함수 25개를 적는다
@@ -14,7 +15,7 @@ const skin = args[0] === 'dark' ? 'dark' : 'bright'
 const areas = args.slice(1).filter((a) => !a.includes('=')).map(Number).filter((n) => n >= 0)
 const AREAS = areas.length ? areas : [0, 1, 9, 17]
 
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] })
+const browser = await chromium.launch(gpuLaunch('--enable-gpu-rasterization'))
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {

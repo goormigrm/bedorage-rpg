@@ -631,8 +631,8 @@ export class Session {
   }
 
   /** 렌더러를 만들고 세션 쪽 설정을 건다 (처음 · 분위기를 바꿀 때) */
-  private makeRenderer(): void {
-    this.renderer = new Renderer3D(this.stage, this.map)
+  private makeRenderer(prev?: Renderer3D): void {
+    this.renderer = new Renderer3D(this.stage, this.map, prev)
     // 창(가방 · 마을 · 스킬 …) 색: 철면수심전용은 캔디 나이트 (style.css .skin-bright — 2026-10-08 퀄리티 4단계)
     this.stage.classList.toggle('skin-bright', isBright())
     this.renderer.setRealMonsters(realMonstersOn())
@@ -652,7 +652,7 @@ export class Session {
 
   /**
    * 🌙 ↔ ☀ (2026-10-23 사용자: "방을 새로 만들지 않아도 오른쪽 아래 단추로 — 잠깐의 로딩 동안 덮개 · 무적 · 이동 불가"): 내 화면만 바꾼다(판은 분위기를 모른다).
-   * 글 · 맵 테마를 갈아 끼우고 렌더러를 새로 만든다 — 지역을 옮길 때의 덮개(covering → BTN_LOADING)가 덮고, CMD_SKIN 이 덮임 보호를 다시 받게 한다
+   * 글 · 맵 테마를 갈아 끼우고 렌더러를 새로 만든다(GL 맥락은 넘겨받아 셰이더를 다시 쓴다) — 지역을 옮길 때의 덮개(covering → BTN_LOADING)가 덮고, CMD_SKIN 이 덮임 보호를 다시 받게 한다
    */
   private switchSkin(): void {
     if (this.arena || this.renderer.covering || !this.renderer.ready) return
@@ -667,8 +667,7 @@ export class Session {
     }
     for (const m of this.maps.values()) skinMap(m)
     const { mapOpen, sayScale } = this.renderer
-    this.renderer.dispose()
-    this.makeRenderer()
+    this.makeRenderer(this.renderer)
     this.renderer.mapOpen = mapOpen
     this.renderer.sayScale = sayScale
     this.applyGfxLevel()

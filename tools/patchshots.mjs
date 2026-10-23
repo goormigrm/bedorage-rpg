@@ -5,6 +5,7 @@
 //   SHOT_DIR=patch-2026-10-22 node tools/patchshots.mjs   → 폴더 이름을 정해서
 // 장면: lobby · town · bag · shop · elder · captain · field · bubbles · stream · boss(따로 — SHOT_SKIN=dark node tools/patchshots.mjs boss) (아래 SCENES). 1920 × 1080 · 소리 끔 · 헤드리스 크로미움.
 import { chromium } from 'playwright'
+import { gpuLaunch } from './gpu.mjs'
 import { mkdirSync } from 'node:fs'
 
 const URL = process.env.SHOT_URL ?? 'http://localhost:5173/bedorage-rpg/?shot=1'
@@ -17,7 +18,7 @@ mkdirSync(dir, { recursive: true })
 const skin = process.env.SHOT_SKIN ?? 'bright'
 
 // 깔린 Chrome 을 쓴다 (playwright 가 받은 크로미움은 이 PC 에서 실행이 막힌다 — spawn UNKNOWN)
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--autoplay-policy=no-user-gesture-required'] })
+const browser = await chromium.launch(gpuLaunch('--enable-gpu-rasterization', '--autoplay-policy=no-user-gesture-required'))
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {

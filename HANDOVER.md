@@ -10,20 +10,22 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 작업 중 (2026-10-23 · 원격 개발 PC — v1.10.7 준비 · ③ 확인 전이라 푸시 안 함)
+## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 (2026-10-23 · 원격 개발 PC — v1.10.7 준비 · ④ ~ ⑥ 끝나면 함께 푸시)
 
-- **멈춘 까닭**: 사용자가 git 연동을 하고 이어가기로 했다 → 같은 날 `gh` 2.45(apt) 설치 · goormigrm 로그인(기기 코드) · `gh auth setup-git` 으로 이 PC 에서 푸시된다(`push --dry-run` 확인). 토큰은 `~/.config/gh/hosts.yml`(WSL 에 키링이 없어 평문 · 600). 커밋은 **로컬에만** 있다 — 배포 사이트는 그대로 v1.10.6(ec11f1b — Actions 성공 확인).
-  - 이어받는 세션: 먼저 `git -C ~/work/bedorage-rpg log origin/main..main` 로 안 올라간 커밋을 보고, ③ 을 확인한 뒤 푸시한다. 푸시 = 배포이니 ③ 확인 전에는 올리지 말 것.
-- **이 PC 환경**(WSL dev): 저장소 `~/work/bedorage-rpg`(`\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg`) · Node 24 는 `~/work/node/bin`(PATH 앞에 넣는다 — 시스템 node 18 은 npm 이 없다) · Google Chrome · Playwright 크로미움 깔림 · 배포 확인은 `gh run list -L 2`. uicheck 한 바퀴(여섯 크기)가 5분쯤 걸린다.
+- **멈춘 까닭**: 사용자가 git 연동을 하고 이어가기로 했다 → 같은 날 `gh` 2.45(apt) 설치 · goormigrm 로그인(기기 코드) · `gh auth setup-git` 으로 이 PC 에서 푸시된다(`push --dry-run` 확인). 토큰은 `~/.config/gh/hosts.yml`(WSL 에 키링이 없어 평문 · 600). 커밋은 **로컬에만** 있다(③ 은 확인했다 — ④ ~ ⑥ 을 끝내고 v1.10.7 로 함께 올린다) — 배포 사이트는 그대로 v1.10.6(ec11f1b — Actions 성공 확인).
+  - 이어받는 세션: 먼저 `git -C ~/work/bedorage-rpg log origin/main..main` 로 안 올라간 커밋을 본다. 푸시 = 배포이니 ④ ~ ⑥ 과 v1.10.7 마무리(uicheck · 빌드) 뒤에 올린다.
+- **이 PC 환경**(WSL dev): 저장소 `~/work/bedorage-rpg`(`\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg`) · Node 24 는 `~/work/node/bin`(PATH 앞에 넣는다 — 시스템 node 18 은 npm 이 없다) · Google Chrome · Playwright 크로미움 깔림 · 배포 확인은 `gh run list -L 2`. uicheck 한 바퀴(여섯 크기)가 3분쯤 걸린다(실제 GPU — 아래 tools/gpu.mjs).
 - **사용자 규칙(2026-10-23)**: "실제 플레이어는 대부분 1920×1080" → 화면 검사는 **`node tools/uicheck.mjs 1920x1080` 먼저**, `SHOT=1` 사진으로 글씨를 본 뒤 나머지 크기.
-- **끝낸 것**(시험 63 파일 417 통과 · `tsc --noEmit` 통과 · `npm run build` 와 uicheck 전체는 아직):
+- **끝낸 것**(시험 63 파일 417 통과 · `tsc --noEmit` · `npm run build` · uicheck 여섯 크기 0건):
   - uicheck 5건 → 0건: 1280×720 에서 가방 머리가 두 줄이 되어(좋은 장비 끼기) 맨 아래 안내 글이 창 밖으로 밀리고 조작 안내 띠에 가려졌다 → `.inv` max-height 의 아래 몫 200 → 160px(스킬 바 위 끝 142px 는 비운다 · style.css 맨 끝). 1280×720 만 다시 돌려 0건.
   - ① 들판 문 → `gateTarget(town, wps)`(world.ts): 이 막에서 웨이포인트를 연 가장 뒤 지역(레벨 기준 · 보스 방 포함 · 길에서 뺀 곳 빼고), 없으면 첫 맵. sim 출구에서 `how: 'wp'` 로 그 웨이포인트 앞에. 이름표 · 작은 지도 글도 그곳 이름, 퀘스트 길 안내는 들판 문이 다른 곳으로 가면 성문으로. **지난 타운 포털**: 웨이포인트를 새로 열 때(`wpFound` — 두 곳에서 쓰던 것을 합침) 그보다 앞 지역(레벨 낮음)에 둔 **내** 포털을 닫는다. 이미 앞서 간 뒤 일부러 뒤에 연 포털은 남는다(연 순간만 본다). 시험 world.test.ts 셋.
   - ② 괴물 그림 1.3배(`MOB_VIEW` — monsters3d viewScale · 보스 방 거대 보스 빼고 · 맞는 크기 r 은 그대로) · 상자(보통 · 금빛 · 저주) 1.45배 · 이름표 높이. 1920 사진(☀ 1 · 🌙 2)으로 봤다.
-  - ③ **작업 중 — 화면 확인 전**: 오른쪽 아래 `#btn-skin`(소리 위 · "🌙 무서운 모드" / "☀ 철면수심 모드" — 지금 분위기) → `session.switchSkin`: setSkin · saveSkinPref · 맵 테마 · 렌더러를 새로 만듦(`makeRenderer` — 처음 만들 때와 같은 설정) · setMap(덮개 → BTN_LOADING) · 로딩 화면 · `CMD_SKIN`(34 — sim 이 `arriveT` 를 지금으로, 들어선 지 12초가 지나도 덮개 동안 보호). **내 화면만** 바뀐다(판은 분위기를 모른다) · 방장이 바꾸면 `cfg.skin` · 방 목록 분위기도. 렌더러 dispose 에 `forceContextLoss`(바꿀 때마다 WebGL 맥락이 쌓이지 않게). 시험 loading.test.ts 하나.
-    - 첫 화면 시험에서 **덮개가 20초 넘게 안 걷혔다**: 새 렌더러는 `ready=false` 라 draw 가 그리지 않아 areaHold 가 안 풀림 → `prepStarted = false` + `showLoading(글)` 로 다음 프레임이 prepareStart 를 부르게 고쳤다 — **다시 돌려 보지 못했다**.
-    - 확인 방법: `npx vite --port 5173 --strictPort` 띄우고 `node .frames/skinswitch.mjs`(이 PC 에만 있는 임시 스크립트 — .frames 는 git 밖): 🌙 방 → 1번 지역 → 14초 뒤 D 를 누른 채 네 번 바꿔 덮개 걷힘 · 최대 무적 · 움직인 거리 · 캔버스 2개 · 오류를 적고 `.frames/skin0~3.png` 를 남긴다. 걷힘이 빨라야(몇 초) 하고, 무적 > 0, 이동 0(누르기 전 몇 px 는 입력 지연).
-- **남은 할 일**(사용자 요청 순): ③ 확인 → ④ 강화 · 벼리기 NPC 를 따로 두 명(붙여 세우되 tests/towns.test.ts 의 NPC 간격 3칸 넘게 · 각자 한 기능 — town.ts 탭을 나눈다) → ⑤ 도박 높은 등급 확률 낮추기(sim CMD_GAMBLE · items.ts pickRarity 'gamble') → ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.7(package.json · CHANGELOG 맨 위 "작업 중" 절 제목을 판 번호로) → uicheck 1920 먼저 · 전체 0건 · 빌드 → 커밋 · 푸시 → Actions 확인.
+  - ③ **끝냄(화면 확인함)**: 오른쪽 아래 `#btn-skin`(소리 위 · "🌙 무서운 모드" / "☀ 철면수심 모드" — 지금 분위기) → `session.switchSkin`: setSkin · saveSkinPref · 맵 테마 · 렌더러를 새로 만듦(`makeRenderer(this.renderer)` — **GL 맥락은 넘겨받는다**) · setMap(덮개 → BTN_LOADING) · `prepStarted = false` + 로딩 화면(다음 프레임이 prepareStart) · `CMD_SKIN`(34 — sim 이 `arriveT` 를 지금으로, 들어선 지 12초가 지나도 덮개 동안 보호). **내 화면만** 바뀐다(판은 분위기를 모른다) · 방장이 바꾸면 `cfg.skin` · 방 목록 분위기도. 시험 loading.test.ts 하나.
+    - **GL 맥락 넘겨받기**(`new Renderer3D(stage, map, prev)`): 새 맥락이면 셰이더 캐시가 비어 첫 판처럼 다 다시 컴파일했다(6 ~ 8.5초). 앞 렌더러의 재질은 새 렌더러의 덮개가 걷힐 때 `retired.dispose(true)`(keepGl — 맥락 · 캔버스는 남김) — 먼저 치우면 쓰는 재질이 없는 셰이더를 three 가 지운다. HUD 캔버스는 바로 뗀다. 판을 나갈 때의 dispose 는 예전대로 `forceContextLoss`.
+    - **덮개 동안 셰이더 여덟 개씩 함께**(`WARM_PAR` — prepStep · `warmBusy`): 하나씩 기다리면 75개 × 60ms. 덮개 밖(마을 미리 준비)은 예전대로 하나씩. 걷힘 조건은 `warmBusy === 0`.
+    - 잰 것(이 PC 실제 GPU · `.frames/skinswitch.mjs` · `tools/entrycheck.mjs`): 바꾸기 4번 2 ~ 5.6초 · 무적 90 · 이동 0 ~ 10px(누르기 전 입력 지연) · 캔버스 2 · 오류 0. 지역 1 덮개 ☀ 7.5 → 4.2초 · 🌙 6.7 → 3.9초 · 걷힌 뒤 새 셰이더 48 · 43 → 2 · 0 · 덮개 동안 이동 0 · 맞음 0.
+- **이 PC 도구는 실제 GPU 로**(`tools/gpu.mjs gpuLaunch` — entrycheck · perf · uicheck · patchshots · patchvideo): WSL 에서 예전 `--use-angle=d3d11` 은 SwiftShader(CPU)가 잡혀 덮개가 9초(상한)로 나왔다. `/dev/dxg` 가 있으면 `--use-gl=angle --use-angle=gl-egl` + `GALLIUM_DRIVER=d3d12`(RTX 4080 SUPER · 병렬 컴파일 됨). uicheck 여섯 크기 5분 → 3분쯤. uitest 는 일부러 SwiftShader 그대로.
+- **남은 할 일**(사용자 요청 순): ④ 강화 · 벼리기 NPC 를 따로 두 명(붙여 세우되 tests/towns.test.ts 의 NPC 간격 3칸 넘게 · 각자 한 기능 — town.ts 탭을 나눈다) → ⑤ 도박 높은 등급 확률 낮추기(sim CMD_GAMBLE · items.ts pickRarity 'gamble') → ⑥ 쿼터뷰 ↔ 1인칭 검토 · 적용(모드 전환처럼). 끝나면 v1.10.7(package.json · CHANGELOG 맨 위 "작업 중" 절 제목을 판 번호로) → uicheck 1920 먼저 · 전체 0건 · 빌드 → 커밋 · 푸시 → Actions 확인.
 
 ## 🔖 좀비 떼 · 닉네임 · 좋은 장비 끼기 · 방송용 글씨 (2026-10-23 · 노트북 — v1.10.6)
 

@@ -4,10 +4,11 @@
 // 곁의 깬 괴물 · 셰이더 수 · 빛 수. 덮개가 걷힌 뒤 새로 만든 셰이더는 이미 있던 가장 비슷한 것과 열쇠(cacheKey) 차이로 적는다
 // (#34 · #36 = 점광원 수 · #2 · #4 = 색공간 · #45 · #47 = 톤 매핑). 0 이어야 할 것: 덮개 동안 움직인 거리 · 덮개 안에서 맞음 · 걷힐 때 곁의 깬 괴물
 import { chromium } from 'playwright'
+import { gpuLaunch } from './gpu.mjs'
 
 const skin = process.argv[2] === 'dark' ? 'dark' : 'bright'
 const AREA = Number(process.argv[3] ?? 1)
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] })
+const browser = await chromium.launch(gpuLaunch('--enable-gpu-rasterization'))
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {
