@@ -255,6 +255,14 @@ const SCENES = [
   ['가방', key('KeyI')],
   ['상점', npcScene('merchant')],
   ['대장장이', npcScene('smith')],
+  [
+    '대장장이 · 모루에 올림',
+    async (page) => {
+      await npcScene('smith')(page)
+      await page.evaluate(() => { const me = window.__bd.state().players[0]; window.__session.town.pickSmith((me.equip.find(Boolean) ?? me.bag[0]).uid) })
+      await sleep(400)
+    },
+  ],
   ['벼리기 장인', npcScene('forger')],
   ['도박꾼', npcScene('gambler')],
   ['보관함', npcScene('stash')],

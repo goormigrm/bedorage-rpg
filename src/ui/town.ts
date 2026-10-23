@@ -7,13 +7,14 @@ import { clickSuppressed, makeDraggable } from './dragItem'
 import { bt, isBright, registerText } from '../game/skin'
 import { npcPortrait } from './portrait'
 import { ACHIEVEMENTS, achieved } from '../core/stats'
-import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE } from '../core/input'
+import { CMD_BAGUP, CMD_BUY, CMD_FORGE, CMD_GAMBLE, CMD_HIRE, CMD_SELL, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_TRIAL, CMD_UPGRADE, CMD_RELEVEL } from '../core/input'
 import { CHARACTERS, PLAYABLE, ROLE_INFO } from '../core/characters'
 import { mercPrice } from '../core/sim'
 import {
   BAG_MAX, BAG_STEP, GAMBLE_PITY, QUEST_ALL, QUEST_PICK, itemColor, FORGE_MAX, FORGE_MIN, SETS, STASH_AT, STASH_MAX, STASH_STEP, bagUpPrice, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, goldText, isJunk, Item, LEGENDS, myGoldText, RARITY_COLORS, RARITY_NAMES, shopNewPrice, SLOT_COUNT, SLOT_NAMES, stashUpPrice, UPGRADE_MAX, affixText, affixValue, buyPrice, gamblePrice, itemName, itemValue,
-  upgradeMaterials, upgradeNeed, upgradePrice,
+  upgradeMaterials, upgradeNeed, upgradePrice, upgradeResult, matAt, relevelPrice, relevelTo,
 } from '../core/items'
+import { tierOf } from '../core/monsters'
 import { GameState, PlayerState } from '../core/state'
 import { ItemTip, cellHtml, itemHtml } from './inventory'
 import { WEAPONS } from '../core/weapons'
@@ -148,7 +149,7 @@ function matches(it: Item, q: string): boolean {
 
 const LINES: Record<NpcId, string> = {
   merchant: '살 게 있으면 사고, 팔 게 있으면 팔게.',
-  smith: '같은 부위, 같은 등급 물건을 모아 와 — 녹여서 단단하게 해 주지.',
+  smith: '손볼 물건 하나를 올려 놔. 같은 부위, 같은 등급 물건을 녹여서 단단하게 해 주지. 레벨도 올려 주고.',
   forger: '같은 등급 물건을 여럿 모아 와. 녹여서 한 단계 위를 벼려 보지 — 잘 안 돼도 같은 등급 하나는 남는다.',
   gambler: '안을 들여다보지 않고 사는 재미를 알아? 뭐가 나올지는 나도 몰라.',
   stash: '캐릭터끼리 나눠 쓰는 보관함이다. 넣어 둔 것은 다른 캐릭터로도 꺼낼 수 있다.',
@@ -168,6 +169,8 @@ export class TownPanel {
   private tab: 'buy' | 'sell' = 'sell'
   /** "전부 팔기" 를 한 번 눌렀다 (한 번 더 눌러야 실제로 판다 — 실수 방지) */
   private sellArmed = false
+  /** 대장장이 모루에 올린 아이템 uid (-1 = 없음 — 가방 · 장비 칸에서 끌어다 놓는다) */
+  private smithUid = -1
   /** 벼리기에서 고른 재료 등급 (1 마법 · 2 희귀 · 3 전설) */
   private forgeRarity = 2
   /** 마지막 벼리기 결과 (창 위에 카드로 — 2026-09-20 "뭐가 나왔는지 확실하게") */
@@ -202,6 +205,14 @@ export class TownPanel {
     // 창을 굴리면 칸이 움직인다 — 풍선이 옛 자리에 남지 않게 (2026-10-08 자잘한 편의)
     // 스크롤은 거품이 일지 않는다 — 안쪽 칸(.st-grid)을 굴려도 잡히게 capture 로
     this.el.addEventListener('scroll', () => this.tip.hide(), { passive: true, capture: true })
+  }
+
+  /** 가방 · 장비 칸의 아이템을 모루에 올린다 (가방 창이 대장장이 창에 끌어다 놓거나 눌렀을 때) */
+  pickSmith(uid: number): void {
+    if (this.open !== 'smith') return
+    this.smithUid = uid
+    this.lastSig = ''
+    this.render()
   }
 
   /** 세션이 벼리기 결과를 알려 준다 (sim 이벤트) */
@@ -255,7 +266,7 @@ export class TownPanel {
   private sigOf(me: PlayerState, s: GameState): string {
     const items = (l: Item[]) => l.map((i) => i.uid + ':' + (i.up ?? 0) + (i.lk ? 'L' : '')).join(';')
     // 용병 자리(들이고 내보내기 — 골드가 안 바뀌는 내보내기도 다시 그리게)
-    return `${s.players.map((q) => `${q.merc}${q.left ? 'L' : ''}${q.level}`).join(',')}|${this.tab}|${this.forgeRarity}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
+    return `${s.players.map((q) => `${q.merc}${q.left ? 'L' : ''}${q.level}`).join(',')}|${this.tab}|${this.forgeRarity}|${this.smithUid}|${this.sellArmed}|${this.stashTab}|${this.query}|${me.quests.join('')}|${me.gold}|${me.bagMax}|${me.stashMax}|${items(me.bag)}|${me.equip
       .map((i) => (i ? i.uid + ':' + (i.up ?? 0) : '-'))
       .join(';')}|${items(me.stash)}|${s.shop.map((i) => i.uid).join(';')}|${this.lastGamble?.items.map((i) => i.uid).join(';') ?? ''}|${this.riftStage}|${me.riftBest}|${
       s.rift ? `${s.rift.area}:${s.rift.boss}:${Math.floor((s.rift.kills / Math.max(1, s.rift.need)) * 20)}:${s.players.some((q) => !q.left && q.area === s.rift!.area)}` : ''
@@ -324,6 +335,7 @@ export class TownPanel {
       const price = forgePrice(ilvl, rar)
       const ok = have >= need && me.gold >= price && me.bag.length < me.bagMax
       const fromStash = use.filter((k) => k >= STASH_AT).length
+      const carry = have >= need ? use.reduce((a, k) => Math.max(a, matAt(me.bag, me.stash, k)?.up ?? 0), 0) : 0
       const tier = (r: number) =>
         `<button data-frar="${r}" class="${r === rar ? 'on' : ''}" style="--rc:${RARITY_COLORS[r]}">${RARITY_NAMES[r]} ${forgeNeed(r)}개<small>→ ${RARITY_NAMES[r + 1]} ${Math.round(forgeOdds(r) * 100)}%</small></button>`
       const lf = this.lastForge
@@ -341,7 +353,7 @@ export class TownPanel {
         <div class="forge-st"><span>${RARITY_NAMES[rar]} 재료 <b class="${have >= need ? 'ok' : 'bad'}">${Math.min(have, need)}/${need}</b>${
           use.length > 0 ? ` <small>(가방 ${use.length - fromStash} · 보관함 ${fromStash})</small>` : ''
         }</span>
-          <span>아이템 레벨 <b>${have >= need ? ilvl : '—'}</b> <small>(재료 평균 + 1)</small></span>
+          <span>아이템 레벨 <b>${have >= need ? ilvl : '—'}</b> <small>(재료 평균 + 1)</small>${carry > 0 ? ` · 강화 <b class="tp-carry">+${carry} 이어받기</b>` : ''}</span>
           <span>값 <b class="${me.gold >= price ? 'ok' : 'bad'}">${have >= need ? price : '—'} 골드</b></span></div>
         <div class="tp-slots">${Array.from({ length: SLOT_COUNT }, (_, k) => `<button class="btn" data-cmd="${CMD_FORGE}" data-arg="${rar * 16 + k}" ${ok ? '' : 'disabled'}>${SLOT_NAMES[k]}</button>`).join('')}</div>
         ${
@@ -352,24 +364,41 @@ export class TownPanel {
               : ''
         }`
     } else if (npc === 'smith') {
-      // 대장장이는 강화만 (같은 부위 · 등급을 녹여 단계 올리기 — 벼리기는 곁의 벼리기 장인)
-      // 강화 (2026-09-19 — 옵션 다시 굴리기를 없앴다): 낀 장비 · 가방. 같은 부위 · 같은 등급 (단계 + 1)개를 녹인다
-      const cand: { it: Item; arg: number; where: string }[] = []
-      me.equip.forEach((it, k) => it && cand.push({ it, arg: 100 + k, where: '낀 것' }))
-      me.bag.forEach((it, i) => cand.push({ it, arg: i, where: '가방' }))
-      const list = cand
-        .map(({ it, arg, where }) => {
-          const lv = it.up ?? 0
-          if (lv >= UPGRADE_MAX) return row(it, `${where} · +${lv} 최대`, '', true)
-          const need = upgradeNeed(it)
-          const have = upgradeMaterials(me.bag, me.stash, it).length
-          const g = upgradePrice(it)
-          return row(it, `${where} · +${lv} → +${lv + 1}<br>재료 ${Math.min(have, need)}/${need} · ${g} 골드`, `data-cmd="${CMD_UPGRADE}" data-arg="${arg}"`, have < need || me.gold < g)
-        })
-        .join('')
-      body = `<p class="tp-note">같은 부위 · 같은 등급의 아이템을 <b>(지금 단계 + 1)개</b> 녹여 한 단계 올린다 — 단계마다 옵션 · 기본 피해/방어 +10%, 최대 +5. 재료는 <b>가방과 보관함</b>에서 값싼 것부터 쓴다(잠근 것은 빼고).</p><div class="tp-list">${
-        list || '<p class="tp-empty">강화할 장비가 없다.</p>'
-      }</div>`
+      // 대장장이 (2026-10-24 사용자: "끼고 있는 템 또는 가방의 템 하나를 끌고 와서 하나를 강화하는 식으로 — 모든 템이 늘어서 있어 어떤 걸 강화하는지 명확하지 않다"):
+      // 가방 · 장비 칸의 아이템 하나를 이 창에 끌어다 놓거나 누르면 **모루**에 올라간다. 그 하나만 강화 · 레벨 올리기
+      const k = me.equip.findIndex((q) => q?.uid === this.smithUid)
+      const i = k >= 0 ? -1 : me.bag.findIndex((q) => q.uid === this.smithUid)
+      const it = k >= 0 ? me.equip[k]! : i >= 0 ? me.bag[i] : null
+      if (!it) {
+        this.smithUid = -1
+        body = `<div class="smith-anvil empty"><b>강화할 아이템을 여기로 끌어다 놓으세요</b><span>가방이나 <b>끼고 있는 장비</b> 칸에서 — 눌러도 올라갑니다</span></div>`
+      } else {
+        const arg = k >= 0 ? 100 + k : i
+        const lv = it.up ?? 0
+        const need = upgradeNeed(it)
+        const mats = upgradeMaterials(me.bag, me.stash, it)
+        const have = mats.length
+        const g = upgradePrice(it)
+        // 강화된 재료의 단계는 이어받는다 (upgradeResult)
+        const to = have >= need ? upgradeResult(it, mats.slice(0, need).map((m) => matAt(me.bag, me.stash, m))) : lv + 1
+        const upBox =
+          lv >= UPGRADE_MAX
+            ? `<div class="smith-act"><b>강화</b><span>+${lv} — 최대</span><button class="btn" disabled>더 못 올린다</button></div>`
+            : `<div class="smith-act"><b>강화</b><span>+${lv} → <b class="tp-up">+${to}</b>${to > lv + 1 ? ' <b class="tp-carry">이어받기</b>' : ''} · 같은 부위 · 같은 등급 재료 <b class="${have >= need ? 'ok' : 'bad'}">${Math.min(have, need)}/${need}</b> · ${goldText(g)}</span>
+                <button class="btn" data-cmd="${CMD_UPGRADE}" data-arg="${arg}" ${have >= need && me.gold >= g ? '' : 'disabled'}>강화</button></div>`
+        // 아이템 레벨 올리기: 지금 난이도에서 내 레벨까지
+        const lvTo = relevelTo(me.level, tierOf(s.tier).lvl)
+        const lg = relevelPrice(it, lvTo)
+        const lvBox =
+          it.ilvl < lvTo
+            ? `<div class="smith-act"><b>레벨 올리기</b><span>레벨 ${it.ilvl} → <b class="tp-up">${lvTo}</b> (지금 난이도의 내 레벨) · ${goldText(lg)}</span>
+                <button class="btn" data-cmd="${CMD_RELEVEL}" data-arg="${arg}" ${me.gold >= lg ? '' : 'disabled'}>레벨 올리기</button></div>`
+            : `<div class="smith-act"><b>레벨 올리기</b><span>레벨 ${it.ilvl} — 지금 난이도의 내 레벨(${lvTo}) 이상</span><button class="btn" disabled>더 못 올린다</button></div>`
+        body = `<div class="smith-anvil" style="--rc:${itemColor(it)}"><small>${k >= 0 ? '끼고 있는 것' : '가방'}</small>${itemHtml(it)}</div>
+          ${upBox}${lvBox}
+          <p class="tp-note">강화: 같은 부위 · 같은 등급을 <b>(지금 단계 + 1)개</b> 녹여 한 단계(옵션 · 기본 피해/방어 +10%, 최대 +5). 재료가 더 높이 강화돼 있으면 그 단계를 <b>이어받는다</b>. 재료는 가방과 보관함에서 싼 것부터(잠근 것은 빼고).
+          다른 아이템을 끌어다 놓으면 바뀐다.</p>`
+      }
     } else if (npc === 'gambler') {
       // 2026-09-25 요청: **10연 뽑기** 와 **뭐가 나왔는지** 카드로
       const price = gamblePrice(me.level)
@@ -598,6 +627,9 @@ export class TownPanel {
     })
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20) · 벼리기도 그 폭 그대로
     this.el.classList.toggle('smith', npc === 'smith' || npc === 'forger')
+    // 대장장이 창은 어디에 놓아도 모루로 (가방 · 장비 칸에서 끌어 온다 — dragItem 의 [data-drop])
+    if (npc === 'smith') this.el.dataset.drop = 'smith'
+    else delete this.el.dataset.drop
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
     const talk = this.el.querySelector<HTMLElement>('[data-talk]')
     if (talk)

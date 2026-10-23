@@ -432,6 +432,8 @@ export class Session {
         if (!open) this.bagDocked = false
       },
     )
+    // 대장장이 창이 열려 있으면 가방 · 장비 칸의 아이템을 끌어다 놓거나 눌러 모루에 올린다 (2026-10-24)
+    this.inventory.onSmith = (uid) => this.town.pickSmith(uid)
     this.bindWinButtons()
     // 마우스 휠: 카메라 가까이 · 멀리 (던전만 — 2026-10-08 퀄리티 2차 5단계)
     this.input.onWheel = (d) => {
@@ -2378,8 +2380,8 @@ export class Session {
   private dockBag(): void {
     if (!this.inventory) return
     const npc = this.town?.open ?? null
-    const want = npc === 'stash' || npc === 'merchant'
-    this.inventory.setMode(npc === 'stash' ? 'stash' : npc === 'merchant' ? 'sell' : 'normal')
+    const want = npc === 'stash' || npc === 'merchant' || npc === 'smith'
+    this.inventory.setMode(npc === 'stash' ? 'stash' : npc === 'merchant' ? 'sell' : npc === 'smith' ? 'smith' : 'normal')
     this.bagQuiet = true
     if (want && !this.inventory.open) {
       this.inventory.toggle(true)

@@ -122,6 +122,8 @@ export const CMD_TRIAL = 31
 export const CMD_EQUIP_BEST = 33
 /** 🌙 ↔ ☀ 분위기를 바꿨다 (화면만 — 판은 분위기를 모른다): 렌더러를 새로 만드는 덮개 동안 지역에 막 들어선 것처럼 덮임 보호(BTN_LOADING)를 받는다 */
 export const CMD_SKIN = 34
+/** 대장장이 **아이템 레벨 올리기**: arg = 가방 칸, 또는 100 + 장비 칸. 지금 난이도에서 내 레벨까지(items.ts relevelTo) — 골드만 든다 (2026-10-24) */
+export const CMD_RELEVEL = 35
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

@@ -14,6 +14,8 @@
 
 - 사용자 요청 넷(순서대로): ⓐ 타격감(덕코프 영상 참고 — 에임 효과 · 타격음 · 체력 게이지) ⓑ 신화가 전설보다 낮게 재지는 "좋은 장비 끼기" · 아이템 레벨 올릴 수단 · 강화한 것을 재료로 쓰면 더 좋아야 하지 않나 — 검토해서 아이템 개선 ⓒ 🌙 ↔ ☀ 단추가 바꾸는 단추인지 상태 표시인지 모르겠다 → 슬라이더나 누가 봐도 바꾸는 단추로 ⓓ 후원 이벤트 창 글씨 크기 · 정렬 · 자간(폰으로 보는 시청자). 그 뒤 지난 ⑥ 쿼터뷰 ↔ 1인칭 검토.
 - **ⓐ 끝(v1.10.8)**: 참고 영상은 `yt-dlp`(pipx · `--js-runtimes node:~/work/node/bin/node` 를 줘야 형식이 나온다)로 받아 크롬으로 장면을 뽑아 봤다(ffmpeg 없음 — 스크래치 도구는 git 밖). 히트마커 `hud.ts slashes`(두 줄 · 빛 번짐 · 어두운 테두리 · 반동) · 처치 X `renderer3d drawKillXs`(`KILLX_LIFE`) · 체력 잔상 `render/hpGhost.ts`(열쇠마다 — 칸마다 열쇠를 따로: m · top · orb · party · head. 같은 사람을 다른 값으로 부르면 매 프레임 번쩍인다) · 확인음 `sfx.ts hitTick` · 처치 `killThump`. 확인: `.frames/hitfx.mjs [dark|bright] [캐릭터]`(이 PC 에만 — 가까운 괴물을 겨눠 쏘며 조준점 둘레를 찍는다 · `ORB_ONLY=1` 은 체력 구슬만).
+- **ⓑ 끝(v1.10.9)**: `itemScore`(items.ts) = 옵션 값 ÷ per + 기본 피해 ÷ 0.8 + 기본 방어 ÷ 0.25 를 부위마다 `SCORE_FIT`(평균 전설 = a × 레벨 + b — `.frames/scorefit.ts` 로 부위마다 수천 개 굴려 맞춤)로 "레벨 + 6" 눈금에. 옵션 · 등급 · 균형을 바꾸면 다시 맞춘다(시험 itemlevel.test.ts 가 평균 전설 30 = 34.5 ~ 37.5 를 본다). 레벨 올리기 `CMD_RELEVEL`(35 — 대장장이 · `relevelTo` = 레벨 + 난이도 lvl · `relevelPrice` · `relevel`). 강화 이어받기 `upgradeResult` · `upgradeMaterials`(이어받을 것 하나를 앞으로 — 한 단계 위면 아낀다) · 벼리기는 sim 에서 `carry`.
+  - 대장장이 창 = 모루 하나(사용자: "하나를 끌고 와서 강화 — 어떤 걸 강화하는지 명확하지 않다"): `TownPanel.smithUid` · `pickSmith(uid)` ← 가방 창 `Inventory.onSmith`(BagMode `'smith'` — 가방 · 장비 칸 클릭 · 끌어다 놓기). 대장장이 창 뿌리가 `data-drop="smith"`. 장비 칸도 `makeDraggable`(DragFrom `'eq'` — 가방에 놓으면 벗기). dockBag 이 대장장이도 가방을 같이 연다. uicheck 장면 '대장장이 · 모루에 올림'. 확인 `.frames/smithui.mjs`(끌어다 놓기 · 레벨 올리기).
 
 ## 🔖 들판 문 · 괴물 · 상자 크기 · 🌙 ↔ ☀ 단추 · 벼리기 장인 · 도박 확률 (2026-10-23 · 원격 개발 PC — v1.10.7 배포 · 남은 것 ⑥)
 

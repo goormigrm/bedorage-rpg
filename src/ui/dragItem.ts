@@ -2,7 +2,7 @@
 // 칸을 누른 채 6px 넘게 움직이면 아이템 그림이 커서를 따라오고, 놓은 곳의 [data-drop] 칸(보관함 · 가방 · 장비 · 상인)을 알린다.
 // 움직이지 않고 떼면 보통 클릭 그대로. 끌다 놓은 뒤에 따라오는 클릭은 삼킨다(clickSuppressed).
 
-export type DragFrom = 'bag' | 'stash'
+export type DragFrom = 'bag' | 'stash' | 'eq'
 
 export interface DragSrc {
   from: DragFrom

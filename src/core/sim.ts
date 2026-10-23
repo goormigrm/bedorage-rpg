@@ -8,12 +8,12 @@ import { bossBit, sanitizeStats } from './stats'
 import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from './characters'
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
-  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, CMD_SKIN, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE,
+  BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, CMD_SKIN, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE, CMD_RELEVEL,
   CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
   TOWN_BLOCKED,
 } from './input'
 import {
-  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, QUEST_ALL, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemScore, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
+  AUTOPICK_ALL, attrFree, GAMBLE_PITY, BAG_MAX, BAG_SIZE, BAG_STEP, bagUpPrice, STASH_MAX, STASH_STEP, stashUpPrice, shopNewPrice, SHOP_RESTOCK_TICKS, QUEST_PICK, QUEST_ALL, FORGE_MAX, FORGE_MIN, forgeIlvl, forgeMaterials, forgeNeed, forgeOdds, forgePrice, takeMaterials, LEG_AMMO, LEG_BLOOD, LEG_CHAIN, LEG_CORPSE, LEG_FOCUS, LEG_FRENZY, LEG_FROST, LEG_ECHO, LEG_EMBER, LEG_GOLD, LEG_GRACE, LEG_LINGER, LEG_SHARE, LEG_GUARD, LEG_UNDYING, LEVEL_CAP, STASH_SIZE, legMask, buyPrice, gamblePrice, itemScore, itemValue, upgradeMaterials, upgradeNeed, upgradePrice, upgradeResult, relevel, relevelPrice, relevelTo, matAt, UPGRADE_MAX, LootSource, SLOT_COUNT, SLOT_WEAPON, ST_CDR, ST_CRIT, ST_DMG, ST_DR, ST_HP, ST_LIFEKILL, ST_ELITEDMG, ST_RATE, ST_SKILLPOW, ST_SPEED,
   ST_STAMINA, ST_XP, Item, Sheet, WEAPON_IDS, computeStats, isJunk, rollItem, sortItems, xpNeed, MASTERY_CAP, MASTERY_XP, masteryFree,
 } from './items'
 import { COVER_DIST, GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, isWallAt, nearSandbag, rayBlocked, rayCast } from './map'
@@ -928,10 +928,25 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     const mats = upgradeMaterials(p.bag, p.stash, it)
     if (mats.length < need || p.gold < g) return
     p.gold -= g
-    takeMaterials(p.bag, p.stash, mats.slice(0, need))
-    it.up = (it.up ?? 0) + 1
+    const use = mats.slice(0, need)
+    // 강화된 재료의 단계는 이어받는다 (2026-10-24 — upgradeResult)
+    const up = upgradeResult(it, use.map((k) => matAt(p.bag, p.stash, k)))
+    takeMaterials(p.bag, p.stash, use)
+    it.up = up
     if (eq) recalc(p)
     trade('upgrade', -g, it.uid)
+  } else if (cmd === CMD_RELEVEL && npc === 'smith') {
+    // 아이템 레벨 올리기 (2026-10-24): 지금 난이도에서 내 레벨까지 — 골드만
+    const eq = arg >= 100
+    const it = eq ? p.equip[arg - 100] : p.bag[arg]
+    const to = relevelTo(p.level, tierOf(state.tier).lvl)
+    if (!it || it.ilvl >= to) return
+    const g = relevelPrice(it, to)
+    if (p.gold < g) return
+    p.gold -= g
+    relevel(it, to)
+    if (eq) recalc(p)
+    trade('relevel', -g, it.uid)
   } else if (cmd === CMD_SELL_ALL && npc === 'merchant') {
     // 한꺼번에 팔기 (2026-09-20 요청): arg 0 = 잡템(일반 · 마법)만 · 1 = 전부. **잠근 것은 빼고** 판다
     let gold = 0
@@ -963,9 +978,12 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     const g = forgePrice(ilvl, rar)
     if (p.gold < g) return
     p.gold -= g
+    // 재료 중 가장 높은 강화 단계는 새 물건이 이어받는다 (2026-10-24 — 강화된 것을 녹여도 들인 것이 남게)
+    const carry = mats.reduce((a, k) => Math.max(a, matAt(p.bag, p.stash, k)?.up ?? 0), 0)
     takeMaterials(p.bag, p.stash, mats)
     const out = rand(state.rng) < forgeOdds(rar) ? rar + 1 : rar
     const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', 0, out, slot)
+    if (carry > 0) it.up = carry
     p.bag.push(it)
     trade('forge', -g, it.uid)
     // 화면 가운데 연출용 (성공 = 등급이 올랐다)
@@ -4109,7 +4127,7 @@ function pickItem(state: GameState, p: PlayerState): boolean {
 /** 가방·장비 명령 (Input.cmd). 무기는 내 무기 종류만 낀다 */
 function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number, arg: number): void {
   if (p.left) return
-  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_FORGE || cmd === CMD_SELL_ALL || cmd === CMD_BAGUP || cmd === CMD_STASHUP || cmd === CMD_SHOPNEW) {
+  if ((cmd >= CMD_SELL && cmd <= CMD_STASH_TAKE) || cmd === CMD_UPGRADE || cmd === CMD_RELEVEL || cmd === CMD_FORGE || cmd === CMD_SELL_ALL || cmd === CMD_BAGUP || cmd === CMD_STASHUP || cmd === CMD_SHOPNEW) {
     townCommand(state, p, cmd, arg)
     return
   }

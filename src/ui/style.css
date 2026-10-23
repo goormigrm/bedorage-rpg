@@ -784,6 +784,7 @@ body { background: var(--bg); }
 .tp-col + .tp-col .tp-row.short .tp-g { grid-column: 1; }
 .tp-col + .tp-col .tp-row.short .tp-n, .tp-col + .tp-col .tp-row.short .tp-a { grid-column: 2; }
 .tp-up { color: #8aff9a; margin-left: 4px; }
+.tp-carry { color: #8aff9a; }
 .tp-hint { margin: 10px 0 0; font-size: 12.5px; color: #6a6050; }
 
 /* 보관함 · 도박꾼 (2026-09-25): 보관함을 **가방처럼 칸으로** 보고, 돈 쓸 곳(칸 늘리기 · 진열 새로 받기)을 창 안에 둔다 */
@@ -1024,6 +1025,22 @@ body { background: var(--bg); }
 .forge-tier button.on small { color: #b8a67e; }
 
 /* 벼리기 결과 카드 (대장장이 창 — 2026-09-20) */
+/* 대장장이 모루 (2026-10-24 사용자: "끌고 와서 하나를 강화하는 식으로"): 올린 아이템 하나 · 강화 · 레벨 올리기 */
+.smith-anvil { margin: 8px 0 10px; padding: 9px 11px; border: 1px solid var(--rc, #5a4a30); border-radius: 4px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 18px rgba(0,0,0,.5); }
+.smith-anvil > small { display: block; font-size: 12.5px; color: #8d8170; margin-bottom: 3px; }
+.smith-anvil .it-name { font: 800 15px "Nanum Myeongjo", serif; }
+.smith-anvil .it-kind { font-size: 13px; color: #8d8170; margin-bottom: 3px; }
+.smith-anvil .aff, .smith-anvil .base { font-size: 13.5px; color: #b8a888; line-height: 1.6; }
+.smith-anvil.empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 12px; border: 2px dashed rgba(201,162,74,.55); text-align: center; }
+.smith-anvil.empty b { font-size: 17px; color: #f1d58a; }
+.smith-anvil.empty span { font-size: 14px; color: #c8bca0; }
+.tp.drop-hot .smith-anvil { outline: 2px solid #ffd86a; outline-offset: 2px; }
+.smith-act { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 10px; margin: 6px 0; padding: 8px 10px; border: 1px solid #3a3024; border-radius: 4px; background: rgba(0,0,0,.3); }
+.smith-act > b { font: 800 15px "Nanum Myeongjo", serif; color: #f1d58a; }
+.smith-act > span { font-size: 14px; color: #d8ccb0; line-height: 1.5; }
+.smith-act b.ok { color: #8aff9a; }
+.smith-act b.bad { color: #ff9a6a; }
+.smith-act .btn { min-width: 112px; }
 .forge-out { margin: 8px 0 10px; padding: 9px 11px; border: 1px solid var(--rc); border-radius: 4px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 18px rgba(0,0,0,.5); }
 .forge-out.win { box-shadow: inset 0 0 22px rgba(255,200,90,.16), 0 0 14px rgba(255,200,90,.12); }
 .forge-out .fo-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }

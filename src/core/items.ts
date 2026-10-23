@@ -422,6 +422,32 @@ export function myGoldText(n: number): string {
 export const upgradeNeed = (it: Item) => (it.up ?? 0) + 1
 export const upgradePrice = (it: Item) => Math.round(itemValue(it) * 0.5 * ((it.up ?? 0) + 1))
 /**
+ * 강화한 단계 (2026-10-24 사용자: "이미 강화된 아이템을 재료로 쓰면 더 좋은 게 있어야"): 한 단계 오르거나, 재료 중 더 높이 강화된 것의 단계를 **이어받는다**
+ * (+3 을 녹여 넣으면 새 아이템이 +0 → +3 — 바꿔 끼울 때 들인 강화를 잃지 않는다)
+ */
+export function upgradeResult(target: Item, mats: (Item | undefined)[]): number {
+  let up = (target.up ?? 0) + 1
+  for (const m of mats) up = Math.max(up, m?.up ?? 0)
+  return Math.min(UPGRADE_MAX, up)
+}
+
+/**
+ * **아이템 레벨 올리기** (2026-10-24 사용자: "아이템 레벨을 올리는 수단은 없었던 거 같은데"): 대장장이에게 골드를 내면
+ * 지금 난이도에서 내 레벨(보통 30 · 악몽 40 · 지옥 50 — 떨어지는 아이템 레벨과 같은 셈)까지 올린다. 옛 신화 · 전설을 버리지 않게.
+ * 옵션은 굴린 정도를 그대로 두고 새 레벨의 크기로: 값 × (기본 + 레벨당 × 새 레벨) ÷ (기본 + 레벨당 × 옛 레벨)
+ */
+export const relevelTo = (level: number, tierLvl: number) => Math.min(60, level + tierLvl)
+/** 레벨 올리는 값: 파는 값이 오르는 만큼의 네 배 (골드 쓸 곳) */
+export const relevelPrice = (it: Item, to: number) => Math.max(50, Math.round((itemValue({ ...it, ilvl: to }) - itemValue(it)) * 4))
+export function relevel(it: Item, to: number): void {
+  if (to <= it.ilvl) return
+  for (let k = 0; k < it.aff.length; k += 2) {
+    const a = AFFIXES[it.aff[k]]
+    if (a) it.aff[k + 1] = Math.max(1, Math.round((it.aff[k + 1] * (a.base + a.per * to)) / (a.base + a.per * it.ilvl)))
+  }
+  it.ilvl = to
+}
+/**
  * **전설 벼리기** (2026-09-20 사용자: "희귀템을 몇 개 이상 모아 NPC 에게 가져가면 확률적으로 전설템을 만들어 주는 식").
  * 대장장이에게 **희귀 다섯**과 골드를 주면 고른 부위의 물건 하나가 나온다 — `forge` 표대로 전설 30% · 신화 2% · 나머지는 희귀.
  *
@@ -491,10 +517,17 @@ export const isJunk = (it: Item) => it.rarity <= 1
  * 칸 번호는 벼리기와 같다: 가방 `i` · 보관함 `STASH_AT + i` (2026-09-20 요청).
  */
 export function upgradeMaterials(bag: Item[], stash: Item[], target: Item): number[] {
-  return [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
+  const all = [...bag.map((it, i) => ({ it, k: i })), ...stash.map((it, i) => ({ it, k: STASH_AT + i }))]
     .filter(({ it }) => it !== target && !it.lk && it.set === undefined && it.slot === target.slot && it.rarity === target.rarity)
     .sort((a, b) => itemValue(a.it) - itemValue(b.it) || a.k - b.k)
-    .map((o) => o.k)
+  // 한 단계보다 더 올려 줄 강화된 재료(이어받기 — upgradeResult)가 있으면 그중 가장 높은 것 하나를 맨 앞에. 나머지는 싼 것부터
+  const up = target.up ?? 0
+  let best = -1
+  all.forEach((o, i) => {
+    if ((o.it.up ?? 0) >= up + 2 && (best < 0 || (o.it.up ?? 0) > (all[best].it.up ?? 0))) best = i
+  })
+  if (best > 0) all.unshift(all.splice(best, 1)[0])
+  return all.map((o) => o.k)
 }
 
 /** 재료 칸 하나 꺼내기 (가방 · 보관함 공용) */
@@ -538,13 +571,30 @@ export const attrPoints = (level: number) => Math.max(0, level - 1) * ATTR_PER_L
 export const attrFree = (level: number, attr: number[]) => attrPoints(level) - attr.reduce((a, b) => a + b, 0)
 
 /**
- * **템 수준** — 낀 장비를 숫자 하나로 (2026-09-20 사용자: "방 목록에 레벨과 템 수준을 숫자로 — 강화 등을 포함해서").
- * 칸마다 `아이템 레벨 + 강화 × 2 + 등급값`(일반 0 · 마법 1 · 희귀 3 · 전설 6 · 신화 9)을 더해 **다섯 칸 평균**.
+ * **템 수준** — 낀 장비를 숫자 하나로 (2026-09-20 사용자: "방 목록에 레벨과 템 수준을 숫자로 — 강화 등을 포함해서"). 칸 값(itemScore)의 **다섯 칸 평균**.
  * 빈 칸은 0 으로 세므로 맨몸이면 0 이다. 방을 고를 때 "나와 비슷한가" 만 보면 되니 정확한 전투력이 아니라 **견줄 수 있는 수**면 된다.
+ *
+ * 칸 값은 **실제 값**으로 잰다 (2026-10-24 사용자: "신화가 전설보다 낮게 재진다"). 예전 `레벨 + 강화 × 2 + 등급값(전설 6 · 신화 9)` 은
+ * 등급을 덧셈으로만 쳐서, 옵션 수 · 크기가 등급을 따라 **곱으로** 느는 것을 못 담았다 — 신화 20 무기가 실제로는 전설 27 과 비슷한데 29 대 33 으로 재졌다.
+ * 이제 옵션마다 `값 ÷ 레벨당 오름(per)` + 기본 피해 ÷ 0.8 + 기본 방어 ÷ 0.25 를 더해, 부위 무리마다 **같은 레벨의 평균 전설 = 레벨 + 6**
+ * (예전과 같은 눈금 — SCORE_FIT 은 부위마다 수천 개를 굴려 맞췄다)이 되게 바꾼다. 등급 · 옵션을 잘 굴린 것 · 강화가 모두 값에 들어 있다.
+ * 30 레벨 평균: 희귀 22 ~ 31 · 전설 36 · 신화 41 ~ 52 (부위마다 — 장신구는 기본 값이 없어 옵션 하나의 몫이 크다)
  */
-const RARITY_GS = [0, 1, 3, 6, 9]
-/** 아이템 하나의 수준 (템 수준의 칸 값) — 가방 칸의 ↑ · - · ↓ 표와 "좋은 장비 끼기"도 이것으로 견준다 */
-export const itemScore = (it: Item): number => it.ilvl + (it.up ?? 0) * 2 + (RARITY_GS[it.rarity] ?? 0)
+/** 부위(칸 번호)마다 평균 전설의 값 = a × 레벨 + b */
+const SCORE_FIT: [number, number][] = [
+  [6.35, 42.5],
+  [4.99, 44.6],
+  [4.11, 41.6],
+  [3.59, 25.4],
+  [3.58, 36.6],
+]
+/** 아이템 하나의 수준 (템 수준의 칸 값) — 가방 칸의 ▲ · - · ▼ 표와 "좋은 장비 끼기"도 이것으로 견준다 */
+export function itemScore(it: Item): number {
+  let p = weaponBaseDmg(it) / 0.8 + armorBase(it) / 0.25
+  for (let k = 0; k < it.aff.length; k += 2) p += affixValue(it, k) / (AFFIXES[it.aff[k]]?.per ?? 1)
+  const [a, b] = SCORE_FIT[it.slot] ?? SCORE_FIT[0]
+  return (p - b) / a + 6
+}
 export function gearScore(equip: (Item | null)[] | undefined): number {
   if (!equip || equip.length === 0) return 0
   let sum = 0

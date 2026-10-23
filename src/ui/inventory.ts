@@ -178,7 +178,7 @@ function compareHtml(it: Item, me: PlayerState): string {
  * 가방 창의 쓰임 (2026-10-08 — 디아블로처럼 보관함 · 상인 창 옆에 같이 열린다):
  *  normal = 왼클릭 끼기 · 오른클릭 버리기 / stash = 클릭 · 오른클릭이 보관함으로 / sell = 오른클릭 팔기(전설 이상은 두 번)
  */
-export type BagMode = 'normal' | 'stash' | 'sell'
+export type BagMode = 'normal' | 'stash' | 'sell' | 'smith'
 
 export class Inventory {
   readonly el: HTMLElement
@@ -189,6 +189,8 @@ export class Inventory {
   private mode: BagMode = 'normal'
   /** 오른클릭 팔기를 한 번 누른 전설 이상 (두 번째에 판다) */
   private sellArm = -1
+  /** 대장장이 창이 열려 있을 때 아이템 하나를 모루에 올린다 (세션이 TownPanel.pickSmith 로 잇는다 — 2026-10-24) */
+  onSmith: ((uid: number) => void) | null = null
 
   constructor(
     parent: HTMLElement,
@@ -248,7 +250,7 @@ export class Inventory {
 
   private render(): void {
     const me = this.me()
-    const key = JSON.stringify([this.mode, me.level, me.xp, me.gold, me.bagMax, me.attr, me.st.map((v) => Math.round(v * 10)), me.equip.map((e) => e?.uid ?? 0), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}`), this.note])
+    const key = JSON.stringify([this.mode, me.level, me.xp, me.gold, me.bagMax, me.attr, me.st.map((v) => Math.round(v * 10)), me.equip.map((e) => (e ? `${e.uid}:${e.up ?? 0}:${e.ilvl}` : 0)), me.bag.map((b) => `${b.uid}${b.lk ? 'L' : ''}${b.up ?? 0}:${b.ilvl}`), this.note])
     if (key === this.lastKey) return
     this.lastKey = key
     const c = CHARACTERS[me.char]
@@ -302,8 +304,9 @@ export class Inventory {
       const i = Number(cell.dataset.bag)
       cell.onclick = (e) => {
         if (!me.bag[i] || clickSuppressed()) return
-        // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝). 보관함이 열려 있으면 클릭은 보관함으로
-        this.send((e as MouseEvent).shiftKey ? CMD_LOCK : this.mode === 'stash' ? CMD_STASH_PUT : CMD_EQUIP, i)
+        // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝). 보관함이 열려 있으면 클릭은 보관함으로 · 대장장이면 모루로
+        if (this.mode === 'smith' && !(e as MouseEvent).shiftKey) this.onSmith?.(me.bag[i].uid)
+        else this.send((e as MouseEvent).shiftKey ? CMD_LOCK : this.mode === 'stash' ? CMD_STASH_PUT : CMD_EQUIP, i)
         this.lastKey = ''
         this.tip.hide()
       }
@@ -325,12 +328,13 @@ export class Inventory {
         }
         if (!it.lk) this.send(CMD_DROP, i)
       }
-      // 끌어다 놓기: 보관함 칸 → 보관 · 장비 칸 → 끼기 · 상인 창 → 팔기
+      // 끌어다 놓기: 보관함 칸 → 보관 · 장비 칸 → 끼기 · 상인 창 → 팔기 · 대장장이 창 → 모루에
       makeDraggable(cell, () => (me.bag[i] ? { from: 'bag', index: i, icon: itemIconUrl(me.bag[i]), slot: me.bag[i].slot } : null), (s, t) => {
         this.tip.hide()
         const d = t.dataset.drop
         if (d === 'stash') this.send(CMD_STASH_PUT, s.index)
         else if (d === 'eq') this.send(CMD_EQUIP, s.index)
+        else if (d === 'smith' && me.bag[s.index]) this.onSmith?.(me.bag[s.index].uid)
         else if (d === 'sell') {
           const it = me.bag[s.index]
           if (it?.lk) this.flash('잠근 것은 팔 수 없다 — Shift+클릭으로 풀기')
@@ -343,12 +347,26 @@ export class Inventory {
     })
     this.el.querySelectorAll<HTMLElement>('[data-eq]').forEach((cell) => {
       const i = Number(cell.dataset.eq)
-      cell.onclick = () => {
+      const unequip = () => {
         // 가방이 가득 차면 벗을 수 없다(sim 이 조용히 거른다) — 까닭을 잠깐 보인다 (2026-10-08)
         if (me.equip[i] && me.bag.length >= me.bagMax) this.flash('가방이 가득 찼다 — 벗으려면 빈 칸이 필요하다')
         else if (me.equip[i]) this.send(CMD_UNEQUIP, i)
+      }
+      cell.onclick = () => {
+        if (clickSuppressed()) return
+        // 대장장이 창이 열려 있으면 낀 것을 모루에 (벗지 않는다)
+        if (this.mode === 'smith' && me.equip[i]) this.onSmith?.(me.equip[i]!.uid)
+        else unequip()
         this.tip.hide()
       }
+      // 장비 칸도 끌 수 있다: 대장장이 창 → 모루에 · 가방 → 벗기 (2026-10-24 사용자: "끼고 있는 템 또는 가방의 템 하나를 끌고 와서")
+      makeDraggable(cell, () => (me.equip[i] ? { from: 'eq', index: i, icon: itemIconUrl(me.equip[i]!) } : null), (s, t) => {
+        this.tip.hide()
+        const d = t.dataset.drop
+        if (d === 'smith' && me.equip[s.index]) this.onSmith?.(me.equip[s.index]!.uid)
+        else if (d === 'bag') unequip()
+        this.lastKey = ''
+      })
       cell.onmouseenter = () => this.tip.show(cell, me.equip[i] ?? undefined, me, false)
       cell.onmouseleave = () => this.tip.hide()
     })
