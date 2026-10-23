@@ -150,3 +150,19 @@ export function bt(s: string): string {
   for (const [a, b] of WORDS) s = s.split(a).join(b)
   return s
 }
+
+/** 시점 (쿼터뷰 · 1인칭 — 2026-10-24): 이 기기에서 고른 것을 다음 판에도 */
+export function loadViewPref(): 'quarter' | 'fps' {
+  try {
+    return localStorage.getItem('brpg.view') === 'fps' ? 'fps' : 'quarter'
+  } catch {
+    return 'quarter'
+  }
+}
+export function saveViewPref(v: 'quarter' | 'fps'): void {
+  try {
+    localStorage.setItem('brpg.view', v)
+  } catch {
+    /* 이번 판만 */
+  }
+}

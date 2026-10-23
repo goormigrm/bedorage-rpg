@@ -1961,6 +1961,13 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   // 이동
   let mx = input.mx
   let my = input.my
+  // 1인칭(2026-10-24)은 시선 기준 자유 방향을 ×100 정수로 보낸다(|값| > 1) — 길이 1로. 8방향(-1 · 0 · 1)은 그대로
+  const analog = Math.abs(mx) > 1 || Math.abs(my) > 1
+  if (analog) {
+    const h = Math.sqrt(mx * mx + my * my)
+    mx /= h
+    my /= h
+  }
   // 후원 "거꾸로 걷기"
   if (don && don[DON_INVERT] > 0) {
     mx = -mx
@@ -1983,7 +1990,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
     p.y = r.y
     p.moving = true
   } else if (mx !== 0 || my !== 0 || goal) {
-    let inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
+    let inv = mx !== 0 && my !== 0 && !analog ? 0.70710678 : 1
     if (goal) {
       // 아이템 쪽 단위 방향 (넘어가지 않게 남은 거리까지만)
       const gx = goal.x - p.x
@@ -2017,7 +2024,7 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if (playing && input.buttons & BTN_DASH && canDash && p.dashTimer === 0 && (mx !== 0 || my !== 0)) {
     if (dungeon) p.dashCharges--
     else p.stamina -= dashCost
-    const inv = mx !== 0 && my !== 0 ? 0.70710678 : 1
+    const inv = mx !== 0 && my !== 0 && !analog ? 0.70710678 : 1
     p.dashDx = mx * inv
     p.dashDy = my * inv
     p.dashTimer = c.id === 'juwoojae' ? Math.round(DASH_TICKS * 1.3) : DASH_TICKS

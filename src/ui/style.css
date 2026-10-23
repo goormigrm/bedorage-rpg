@@ -989,6 +989,8 @@ body { background: var(--bg); }
 .skin-sw.on .sw-track i { left: 44px; background: #fff; box-shadow: 0 0 6px rgba(255,140,190,.7); }
 .skin-sw .sw-name { font-size: 12.5px; font-weight: 700; color: #f3e8d0; }
 .skin-sw:hover:not(:disabled) .sw-track { box-shadow: 0 0 9px rgba(255,216,106,.55); }
+.skin-sw.view-sw.on .sw-track { background: #1e3a2c; border-color: #6ad89a; }
+.skin-sw.view-sw.on .sw-track i { background: #8af0b8; box-shadow: 0 0 6px rgba(120,240,170,.7); }
 .touching .sysbtns { display: none; }
 
 /* 대기실 자리: 레벨 · 템 수준 (2026-09-20) */

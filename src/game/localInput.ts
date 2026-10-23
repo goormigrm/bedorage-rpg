@@ -16,6 +16,8 @@ import { TouchControls } from './touch'
 
 interface AimSource {
   screenToWorld(sx: number, sy: number): { x: number; y: number }
+  /** 1인칭: 화면 가운데가 겨눈 자리 (괴물이 걸리면 그 괴물 — renderer3d fpsAim) */
+  fpsAim?(me: { x: number; y: number }): { x: number; y: number }
   /** 거대한 보스 몸 위를 누르면 그 보스를 겨눈다 (renderer3d aimPoint) */
   aimPoint?(sx: number, sy: number, state?: GameState, me?: { x: number; y: number }): { x: number; y: number }
 }
@@ -77,6 +79,22 @@ export class LocalInput {
   /** 마우스 휠 (세션이 카메라 줌에 단다 — +1 멀리 · -1 가까이) */
   onWheel: ((dir: number) => void) | null = null
   /**
+   * 1인칭 (2026-10-24 사용자: "쿼터뷰 ↔ 1인칭 시점 전환 — 모드 전환처럼"): 마우스를 화면에 가두고(포인터 잠금) 움직인 만큼 시선을 돌린다.
+   * WASD 는 시선 기준 · 조준은 화면 가운데 · 이동은 자유 방향(×100 — Input.mx)
+   */
+  fps = false
+  /** 시선 (sim 각도 — 라디안, x 오른쪽 · y 아래) · 위아래 (라디안, 위 +) */
+  yaw = 0
+  pitch = -0.12
+  private stage: HTMLElement | null = null
+  /** 1인칭이면 마우스를 가둔다 (사용자 동작 안에서만 된다 — 클릭 · 단추) */
+  lockPointer(): void {
+    if (this.fps && this.stage && document.pointerLockElement !== this.stage) void this.stage.requestPointerLock?.()
+  }
+  get pointerLocked(): boolean {
+    return !!this.stage && document.pointerLockElement === this.stage
+  }
+  /**
    * 게임패드 (2026-10-08 퀄리티 2차 5단계 U4 — Steam 표준): 왼스틱 이동 · 오른스틱 조준 · RT 사격 · LT 정조준 · A 구르기 ·
    * B 쓰기(F) · X · Y 스킬 · RB 궁극기 · LB · ↑ 배운 스킬 · ↓ 타운 포털 · L3 달리기. Start · Back 은 세션이 본다(takePadPress).
    * padActive = 최근에 패드를 썼다 (조준선을 패드 조준 자리에 그린다 · 마우스를 움직이면 꺼진다)
@@ -105,6 +123,7 @@ export class LocalInput {
 
   attach(stage: HTMLElement, touch: TouchControls | null = null): void {
     this.touch = touch
+    this.stage = stage
     const onKey = (e: KeyboardEvent, down: boolean) => {
       const k = e.key.toLowerCase()
       // 키는 e.code 로 본다 (keymap.ts — 한글 입력 상태에서도 W 는 KeyW 다). 게임 키로 걸린 것과 화살표만 잡는다
@@ -131,6 +150,12 @@ export class LocalInput {
     const ku = (e: KeyboardEvent) => onKey(e, false)
     const mm = (e: MouseEvent) => {
       this.padActive = false
+      if (this.pointerLocked) {
+        // 1인칭 시선: 한 칸(px)에 0.0024 라디안 · 위아래는 -0.7 ~ 0.5
+        this.yaw += e.movementX * 0.0024
+        this.pitch = Math.max(-0.7, Math.min(0.5, this.pitch - e.movementY * 0.0024))
+        return
+      }
       const r = stage.getBoundingClientRect()
       this.mouse.x = ((e.clientX - r.left) / r.width) * VIEW_W
       this.mouse.y = ((e.clientY - r.top) / r.height) * VIEW_H
@@ -140,6 +165,12 @@ export class LocalInput {
       // (2026-09-26 사용자: "소리 조절이 안 되고 그냥 캐릭터 평타 공격이 나간다" — 창 전체의 누름을 받아 막대를 못 끌었다).
       // .game-ui 는 빈 곳이 마우스를 통과시키므로(pointer-events: none) 그 안에서 눌린 것은 모두 UI 다
       if (isUiTarget(e.target)) return
+      // 1인칭인데 마우스가 풀려 있으면 이 누름은 다시 가두기만 한다 (쏘지 않는다)
+      if (this.fps && !this.pointerLocked && !this.uiOpen) {
+        this.lockPointer()
+        e.preventDefault()
+        return
+      }
       // 아이템 이름 펼치기 중 이름을 누르면 그것을 줍는다 (사격 아님)
       if (e.button === 0 && this.itemsHeld && this.labelClick) {
         const r = stage.getBoundingClientRect()
@@ -254,6 +285,16 @@ export class LocalInput {
     if (on('up') || k.has('ArrowUp')) sy -= 1
     if (on('down') || k.has('ArrowDown')) sy += 1
     let { mx, my } = moveDirFromScreen(sx, sy)
+    if (this.fps) {
+      // 1인칭: W 앞 · S 뒤 · A · D 옆걸음 — 시선 기준 자유 방향을 ×100 정수로 (판이 길이 1로 나눈다)
+      const f = -sy
+      const st = sx
+      const wx = Math.cos(this.yaw) * f - Math.sin(this.yaw) * st
+      const wy = Math.sin(this.yaw) * f + Math.cos(this.yaw) * st
+      const h = Math.hypot(wx, wy)
+      mx = h > 0 ? Math.round((wx / h) * 100) : 0
+      my = h > 0 ? Math.round((wy / h) * 100) : 0
+    }
     const t = this.touch
     if (t && (t.move.x !== 0 || t.move.y !== 0)) {
       const d = moveDirFromScreen(t.move.x, t.move.y)
@@ -262,6 +303,11 @@ export class LocalInput {
     }
     if (t && auto) {
       this.autoAim(auto, mx, my)
+    } else if (this.fps && renderer.fpsAim) {
+      // 1인칭: 시선 쪽을 겨누고, 화면 가운데에 걸린 자리까지의 거리(헤드샷 · 던지는 스킬)
+      const w = renderer.fpsAim({ x: meX, y: meY })
+      this.lastAim = radToAngle(this.yaw)
+      this.lastDist = Math.hypot(w.x - meX, w.y - meY)
     } else {
       const w = renderer.aimPoint ? renderer.aimPoint(this.mouse.x, this.mouse.y, undefined, { x: meX, y: meY }) : renderer.screenToWorld(this.mouse.x, this.mouse.y)
       const dx = w.x - meX

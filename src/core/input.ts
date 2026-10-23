@@ -36,9 +36,9 @@ export const BTN_POTION = 1 << 11
 export const TOWN_BLOCKED = BTN_PORTAL
 
 export interface Input {
-  /** -1, 0, 1 */
+  /** -1, 0, 1 — 1인칭(2026-10-24)은 시선 기준 자유 방향을 ×100 정수(-100 ~ 100)로 싣는다: |값| > 1 이면 판이 길이 1로 나눈다 */
   mx: number
-  /** -1, 0, 1 */
+  /** -1, 0, 1 (mx 와 같은 약속) */
   my: number
   /** 조준 각도 0..1023 */
   aim: number

@@ -249,6 +249,20 @@ export class Renderer3D {
   private gl: THREE.WebGLRenderer
   /** GL 맥락을 넘겨준 앞 렌더러 — 덮개가 걷히면 치운다 (constructor prev) */
   private retired?: Renderer3D
+  /**
+   * 1인칭 (2026-10-24 사용자: "쿼터뷰 ↔ 1인칭 시점 전환 — 모드 전환처럼". session 이 프레임마다 넣는다): 그 자리 사람의 눈높이에서
+   * 시선(fpsYaw — sim 각도 · fpsPitch — 위 +) 쪽을 본다. -1 = 쿼터뷰. 그 사람 몸은 숨긴다(카메라가 몸 안에 있다) · 죽거나 남을 보면 쿼터뷰로
+   */
+  fpsPlayer = -1
+  fpsYaw = 0
+  fpsPitch = 0
+  /** 지난 프레임을 1인칭 카메라로 그렸다 (쿼터뷰로 돌아갈 때 시야각 · 가까운 면을 되돌린다) */
+  private fpsCam = false
+  /**
+   * 1인칭 준비: 쿼터뷰에서는 화면 밖이라 한 번도 안 그린 물체의 셰이더 · 텍스처를 먼저 (2026-10-24 계측: 처음 돌아볼 때 셰이더 11개로 0.4초 멈췄다).
+   * 끝날 때까지는 쿼터뷰로 그린다. 지역을 옮기면(setMap) 다시
+   */
+  private fpsPrep: 'none' | 'busy' | 'done' = 'none'
   private scene = new THREE.Scene()
   private camera: THREE.PerspectiveCamera
   private world: World3D
@@ -821,6 +835,7 @@ export class Renderer3D {
     // 새 지역의 셰이더를 **페이드 동안 비동기로** 컴파일한다 — 미리 만들지 못한 지역(던전에서 곧장 넘어온 곳)은 첫 장면에서 셰이더 십여 개를
     // 한꺼번에 컴파일해 1초 넘게 멈췄다(2026-10-08 계측: gl.render 1188ms · 프로그램 97 → 110). 끝날 때까지(늦어도 2.5초) 3D 를 그리지 않고 어둡게 둔다
     const job = ++this.areaJob
+    this.fpsPrep = 'none'
     this.areaCompiling = true
     // 컴파일이 끝나도 바로 걷지 않는다: 텍스처를 올리고 몇 장을 덮개 뒤에서 그려 본 뒤 매끄러우면 걷는다 (areaHold — 2026-10-17 사용자:
     // "처음 던전에 들어갔을 때 버벅거림 — 렌더링하는 데 시간이 필요하면 페이드나 로딩 화면으로 안 느껴지게")
@@ -1244,7 +1259,50 @@ export class Renderer3D {
 
   worldToScreen(x: number, y: number, z: number): { x: number; y: number } {
     const v = new THREE.Vector3(x, y, z).project(this.camera)
+    // 카메라 뒤(1인칭)는 화면 밖으로 — 뒤집혀 앞에 비치지 않게
+    if (v.z > 1) return { x: -1e4, y: -1e4 }
     return { x: ((v.x + 1) / 2) * VIEW_W, y: ((1 - v.y) / 2) * VIEW_H }
+  }
+
+  /**
+   * 1인칭 조준점 (sim px): 화면 가운데에 걸린 괴물(가장 가까운 것) — 머리(위 30%)면 가운데(약점 · 치명타), 몸이면 몸 앞쪽(쿼터뷰 aimPoint 와 같은 규칙).
+   * 없으면 가운데 빛줄기가 총 높이에 닿는 곳(위를 볼수록 멀다), 닿지 않으면 시선 쪽 1000px
+   */
+  fpsAim(me: { x: number; y: number }): { x: number; y: number } {
+    const cx = VIEW_W / 2
+    const cy = VIEW_H / 2
+    const st = this.lastCurr
+    let best: { x: number; y: number } | null = null
+    let bd = Infinity
+    if (st)
+      for (const m of st.monsters) {
+        if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
+        const at = this.monsterView.shown.get(m.id)
+        if (!at) continue
+        const foot = this.worldToScreen(at.x, 0, at.z)
+        const top = this.worldToScreen(at.x, monsterTop(m), at.z)
+        const h = foot.y - top.y
+        if (h <= 0 || cy < top.y || cy > foot.y || Math.abs(cx - foot.x) > h * (isQuadruped(m.kind) ? 0.62 : 0.35)) continue
+        const dx = me.x - m.x
+        const dy = me.y - m.y
+        const d = Math.hypot(dx, dy) || 1
+        if (d >= bd) continue
+        bd = d
+        if (cy < top.y + h * 0.3) best = { x: m.x, y: m.y }
+        else {
+          const k = Math.min(bodyR(m) * 0.7, d * 0.5)
+          best = { x: m.x + (dx / d) * k, y: m.y + (dy / d) * k }
+        }
+      }
+    if (best) return best
+    const w = this.screenToWorld(cx, cy)
+    const fx = Math.cos(this.fpsYaw)
+    const fy = Math.sin(this.fpsYaw)
+    const dx = w.x - me.x
+    const dy = w.y - me.y
+    const d = Math.hypot(dx, dy)
+    if (!(d > 0) || dx * fx + dy * fy <= 0 || d > 1000) return { x: me.x + fx * 1000, y: me.y + fy * 1000 }
+    return w
   }
 
   /**
@@ -1437,8 +1495,8 @@ export class Renderer3D {
             const from = state.players[e.by]
             const me = state.players[e.p]
             if (from && me) {
-              const sd = worldDirToScreen(from.x - me.x, from.y - me.y)
-              if (sd.x !== 0 || sd.y !== 0) this.hud.addHitDir(Math.atan2(sd.y, sd.x), e.dmg >= 40)
+              const a = this.hitDirAngle(from.x - me.x, from.y - me.y)
+              if (a !== null) this.hud.addHitDir(a, e.dmg >= 40)
             }
           }
           break
@@ -1666,8 +1724,8 @@ export class Renderer3D {
             const me = state.players[e.p]
             const src = state.monsters.find((m) => m.id === e.by)
             if (src && me) {
-              const sd = worldDirToScreen(src.x - me.x, src.y - me.y)
-              if (sd.x !== 0 || sd.y !== 0) this.hud.addHitDir(Math.atan2(sd.y, sd.x), e.dmg >= 30)
+              const a = this.hitDirAngle(src.x - me.x, src.y - me.y)
+              if (a !== null) this.hud.addHitDir(a, e.dmg >= 30)
             }
           }
           break
@@ -2473,8 +2531,8 @@ export class Renderer3D {
     // 커서가 몬스터의 약점 위에 있는가 (보이는 것만) → 조준선 금색 = 지금 쏘면 치명타
     let cursorOn = false
     if (opts.cursor && opts.localPlayer >= 0 && curr.players[opts.localPlayer]?.alive) {
-      const w = this.aimPoint(opts.cursor.x, opts.cursor.y, curr, curr.players[opts.localPlayer])
       const me = curr.players[opts.localPlayer]
+      const w = this.fpsCam ? this.fpsAim(me) : this.aimPoint(opts.cursor.x, opts.cursor.y, curr, me)
       for (const m of curr.monsters) {
         if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
         // 거대한 보스는 등 뒤에 있을 때만 금색 (sim 과 같은 규칙 — fromBehind)
@@ -3702,7 +3760,8 @@ export class Renderer3D {
       rig.body.position.y = 0
       setRigOpacity(rig, 1)
     }
-    root.visible = true
+    // 1인칭이면 내 몸은 숨긴다 (카메라가 몸 안에 있다)
+    root.visible = !(this.fpsCam && i === this.fpsPlayer)
 
     // 말랑 스프링
     const k = 220
@@ -4860,6 +4919,14 @@ export class Renderer3D {
   /**
    * 몬스터 머리 위 체력 바 (최근 3초 안에 맞은 것만) + 궁수 조준선(예고 동안 붉은 선 — 피할 때라는 신호)
    */
+  /** 맞은 쪽 (화면 기준 각도 — HUD 가장자리 호). 1인칭은 시선이 화면 위 — 쿼터뷰의 고정 각도(worldDirToScreen)로는 엉뚱한 쪽을 가리켰다 */
+  private hitDirAngle(wx: number, wy: number): number | null {
+    if (wx === 0 && wy === 0) return null
+    if (this.fpsCam) return Math.atan2(wy, wx) - this.fpsYaw - Math.PI / 2
+    const sd = worldDirToScreen(wx, wy)
+    return sd.x !== 0 || sd.y !== 0 ? Math.atan2(sd.y, sd.x) : null
+  }
+
   /** 내가 쓰러뜨린 자리의 붉은 X (2026-10-24 — 덕코프 영상: 처치하면 그 자리에 X 와 작은 고리가 잠깐 남는다) */
   private killXs: { x: number; z: number; t: number }[] = []
   private drawKillXs(dt: number): void {
@@ -5646,6 +5713,45 @@ export class Renderer3D {
 
   private updateCamera(curr: GameState, pos: { x: number; z: number }[], dt: number, opts: RenderOptions): void {
     const lp = opts.viewer ?? opts.localPlayer
+    const wantFps = this.fpsPlayer >= 0 && this.fpsPlayer === lp && curr.players[lp]?.alive && opts.cameraMode === 'follow'
+    if (wantFps && this.fpsPrep === 'none') {
+      this.fpsPrep = 'busy'
+      this.uploadSceneTextures()
+      const job = this.areaJob
+      void this.compileAsync(this.scene, this.scene).then(() => {
+        if (this.areaJob === job) this.fpsPrep = 'done'
+        else this.fpsPrep = 'none'
+      })
+    }
+    if (wantFps && this.fpsPrep === 'done') {
+      const p = pos[lp]
+      const eye = (this.rigs[lp]?.height ?? 1.6) * 0.82
+      const cp = Math.cos(this.fpsPitch)
+      this.camera.position.set(p.x, eye, p.z)
+      this.camera.lookAt(p.x + Math.cos(this.fpsYaw) * cp, eye + Math.sin(this.fpsPitch), p.z + Math.sin(this.fpsYaw) * cp)
+      // 정조준은 시야를 좁힌다 (조준경은 더). 벽에 붙어도 벽이 잘리지 않게 가까운 면을 당긴다
+      const fov = curr.players[lp].ads ? (this.scoped ? 28 : 50) : 72
+      if (!this.fpsCam || Math.abs(this.camera.fov - fov) > 0.05) {
+        this.camera.fov = this.fpsCam ? this.camera.fov + (fov - this.camera.fov) * Math.min(1, dt * 12) : fov
+        this.camera.near = 0.08
+        // 안개(34 ~ 70)가 다 덮는 너머는 그리지 않는다 — 지평선까지 보여 쿼터뷰보다 그릴 것이 많다
+        this.camera.far = 72
+        this.camera.updateProjectionMatrix()
+      }
+      this.fpsCam = true
+      // 쿼터뷰로 돌아가면 그 자리에서 바로 (따라오는 흐름 없이)
+      this.camTarget.set(p.x, 0, p.z)
+      this.camInit = false
+      this.world.sun.position.set(p.x + 8, 18, p.z + 10)
+      this.world.sun.target.position.set(p.x, 0, p.z)
+      return
+    }
+    if (this.fpsCam) {
+      this.fpsCam = false
+      this.camera.near = 0.5
+      this.camera.far = 140
+      this.resize()
+    }
     let tx: number
     let tz: number
     let dist = FOLLOW_DIST

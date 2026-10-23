@@ -25,7 +25,7 @@ import { LORD_KIND, MONSTER_LIST, TIER_LABEL, isGiant, tierOf } from '../core/mo
 import { SkillPanel } from '../ui/skilltree'
 import { CharSheet } from '../ui/charsheet'
 import { ChatBox, ChatLine, cleanChat } from '../ui/chat'
-import { Skin, asSkin, isBright, saveSkinPref, setSkin, skinMap } from './skin'
+import { Skin, asSkin, isBright, loadViewPref, saveSkinPref, saveViewPref, setSkin, skinMap } from './skin'
 import './skinThemes'
 import './skinText'
 import { angleToRad } from '../core/fixedmath'
@@ -345,7 +345,7 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-skin"${this.arena ? ' hidden' : ''}></button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-view"${this.arena || isTouchDevice() ? ' hidden' : ''}></button><button class="btn secondary" id="btn-skin"${this.arena ? ' hidden' : ''}></button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
             <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
           </div>
@@ -481,6 +481,11 @@ export class Session {
     this.skinBtn = host.querySelector('#btn-skin') as HTMLButtonElement
     this.skinBtn.onclick = () => this.switchSkin()
     this.syncSkinBtn()
+    // 시점 스위치 (쿼터뷰 ↔ 1인칭 — 2026-10-24). 고른 시점은 다음 판에도 (터치 · 투기장은 쿼터뷰만)
+    this.viewBtn = host.querySelector('#btn-view') as HTMLButtonElement
+    this.viewBtn.onclick = () => this.toggleView()
+    this.input.fps = !this.arena && !isTouchDevice() && loadViewPref() === 'fps'
+    this.syncViewBtn()
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
     const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
     muteBtn.onclick = () => {
@@ -646,22 +651,51 @@ export class Session {
   }
 
   private skinBtn!: HTMLButtonElement
-  /**
-   * 🌙 ↔ ☀ 미끄럼 스위치 (2026-10-24 사용자: "바꾸는 단추인지 상태를 알려 주는 단추인지 개발자인 나도 늦게 알아차렸다 — 슬라이더나 누가 봐도 바꾸는 단추로"):
-   * 양끝에 🌙 · ☀ · 손잡이는 지금 모드 쪽 · 위에 "모드 바꾸기 ↔". 손잡이가 미끄러지게 글을 갈아 끼우지 않고 class 만 바꾼다
-   */
-  private syncSkinBtn(): void {
-    const b = isBright()
-    const el = this.skinBtn
+  /** 미끄럼 스위치 하나 (🌙 ↔ ☀ · 시점): 처음 한 번 틀을 만들고 class `on` 만 바꿔 손잡이가 미끄러진다 (style.css .skin-sw) */
+  private syncSwitch(el: HTMLButtonElement, on: boolean, cap: string, icons: [string, string], name: string, title: string): void {
     if (!el.querySelector('.sw-track')) {
       el.classList.add('skin-sw')
       el.setAttribute('role', 'switch')
-      el.innerHTML = '<span class="sw-cap">모드 바꾸기 ↔</span><span class="sw-track"><b>🌙</b><b>☀️</b><i></i></span><span class="sw-name"></span>'
+      el.innerHTML = `<span class="sw-cap">${cap}</span><span class="sw-track"><b>${icons[0]}</b><b>${icons[1]}</b><i></i></span><span class="sw-name"></span>`
     }
-    el.classList.toggle('on', b)
-    el.setAttribute('aria-checked', String(b))
-    ;(el.querySelector('.sw-name') as HTMLElement).textContent = b ? '철면수심 모드' : '무서운 모드'
-    el.title = b ? '눌러서 🌙 무서운 모드로 바꾸기' : '눌러서 ☀ 철면수심 모드로 바꾸기'
+    el.classList.toggle('on', on)
+    el.setAttribute('aria-checked', String(on))
+    ;(el.querySelector('.sw-name') as HTMLElement).textContent = name
+    el.title = title
+  }
+
+  /**
+   * 🌙 ↔ ☀ 미끄럼 스위치 (2026-10-24 사용자: "바꾸는 단추인지 상태를 알려 주는 단추인지 개발자인 나도 늦게 알아차렸다 — 슬라이더나 누가 봐도 바꾸는 단추로"):
+   * 양끝에 🌙 · ☀ · 손잡이는 지금 모드 쪽 · 위에 "모드 바꾸기 ↔"
+   */
+  private syncSkinBtn(): void {
+    const b = isBright()
+    this.syncSwitch(this.skinBtn, b, '모드 바꾸기 ↔', ['🌙', '☀️'], b ? '철면수심 모드' : '무서운 모드', b ? '눌러서 🌙 무서운 모드로 바꾸기' : '눌러서 ☀ 철면수심 모드로 바꾸기')
+  }
+
+  private viewBtn!: HTMLButtonElement
+  private syncViewBtn(): void {
+    const f = this.input.fps
+    this.syncSwitch(this.viewBtn, f, '시점 바꾸기 ↔', ['🗺️', '👁️'], f ? '1인칭' : '쿼터뷰', f ? `눌러서 쿼터뷰로 바꾸기 (${keyLabel('view')})` : `눌러서 1인칭으로 바꾸기 — 마우스로 둘러보기 (${keyLabel('view')})`)
+    this.viewBtn.classList.add('view-sw')
+  }
+
+  /**
+   * 쿼터뷰 ↔ 1인칭 (2026-10-24 사용자: "쿼터뷰 ↔ 1인칭 시점 전환이 가능한지 검토하고 적용 — 모드 전환처럼"). 내 화면만 바뀐다 — 판에는
+   * 조준각 · 조준 거리 · 이동(1인칭은 시선 기준 자유 방향 ×100)이 그대로 실린다. 1인칭은 마우스를 화면에 가둔다(이 누름이 사용자 동작이라 바로 된다)
+   */
+  private toggleView(): void {
+    const on = !this.input.fps
+    this.input.fps = on
+    saveViewPref(on ? 'fps' : 'quarter')
+    if (on) {
+      const me = this.state.players[this.cfg.localPlayer]
+      if (me) this.input.yaw = angleToRad(me.aim)
+      this.input.pitch = -0.12
+      this.input.lockPointer()
+      this.renderer.notice(`👁 1인칭 — 마우스로 둘러보기 · W 앞 · A · D 옆걸음 · ${keyLabel('view')} 로 쿼터뷰 · Esc 로 마우스 풀기`, '#9ad8ff', 4)
+    } else if (document.pointerLockElement) document.exitPointerLock()
+    this.syncViewBtn()
   }
 
   /**
@@ -1007,6 +1041,10 @@ export class Session {
     if (isKey(e, 'donHold') && !this.arena) {
       stream.hold = !stream.hold
       this.renderer.notice(stream.hold ? `⏸ 후원 방해 이벤트 잠깐 멈춤 — 받은 후원은 기다립니다 (${keyLabel('donHold')} 로 풀기)` : '▶ 후원 방해 이벤트 다시 — 기다리던 것이 차례로 일어납니다', stream.hold ? '#ffd24a' : '#7dffc4', 3)
+      return
+    }
+    if (isKey(e, 'view') && !this.arena && !this.touch) {
+      this.toggleView()
       return
     }
     if (isKey(e, 'mute')) {
@@ -1997,6 +2035,10 @@ export class Session {
       if (!n || !me || Math.hypot(me.x - n.x, me.y - n.y) > NPC_RANGE + 40) this.town.show(null)
       else this.town.refresh()
     }
+    // 1인칭: 살아서 내 시점일 때만 (죽어서 남을 보면 쿼터뷰)
+    this.renderer.fpsPlayer = this.input.fps && spec < 0 ? lp : -1
+    this.renderer.fpsYaw = this.input.yaw
+    this.renderer.fpsPitch = this.input.pitch
     this.renderer.draw(this.prev, view, alpha, dt, {
       showHud: true,
       localPlayer: lp,
@@ -2044,6 +2086,8 @@ export class Session {
 
   /** 조준선 화면 좌표. 터치면 화면 중앙에서 조준 방향으로 띄운다 */
   private aimCursor(): { x: number; y: number } {
+    // 1인칭은 화면 가운데
+    if (this.input.fps) return { x: VIEW_W / 2, y: VIEW_H / 2 }
     // 게임패드로 조준 중이면 패드가 겨눈 자리에 (마우스를 움직이면 마우스 자리로)
     if (this.input.padActive) {
       const me = this.state.players[this.cfg.localPlayer]
@@ -2407,6 +2451,8 @@ export class Session {
 
   private syncUi(): void {
     this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open || this.czClose)
+    // 1인칭: 창이 열리면 마우스를 풀어 창을 누를 수 있게 (닫고 화면을 누르면 다시 가둔다)
+    if (this.input.uiOpen && this.input.pointerLocked) document.exitPointerLock()
   }
 
   /** 가운데 창(스킬 · 능력치 · 퀘스트 · 마을 사람 · 웨이포인트)은 같은 자리에 뜬다 — 하나만 남기고 닫는다 (2026-10-08 — K 가 대장장이 창을 덮었다) */

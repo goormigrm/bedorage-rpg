@@ -10,7 +10,7 @@ export type Action =
   | 'dash' | 'sprint' | 'use' | 'portal'
   | 'skill1' | 'skill2' | 'ult' | 'skill3' | 'skill4'
   | 'bag' | 'skills' | 'attr' | 'quest' | 'map'
-  | 'mark' | 'mute' | 'donHold' | 'items'
+  | 'mark' | 'mute' | 'donHold' | 'items' | 'view'
 
 export const ACTIONS: { id: Action; label: string; def: string; group: string }[] = [
   { id: 'up', label: '위로', def: 'KeyW', group: '이동' },
@@ -37,6 +37,8 @@ export const ACTIONS: { id: Action; label: string; def: string; group: string }[
   { id: 'mark', label: '신호', def: 'KeyV', group: '기타' },
   { id: 'mute', label: '소리 켜고 끄기', def: 'KeyN', group: '기타' },
   { id: 'donHold', label: '후원 방해 이벤트 멈춤', def: 'KeyP', group: '기타' },
+  // 1인칭은 마우스를 가둬 스위치를 바로 못 누른다 — 키로도 (2026-10-24)
+  { id: 'view', label: '시점 바꾸기 (쿼터뷰 ↔ 1인칭)', def: 'KeyB', group: '기타' },
 ]
 
 /** 걸 수 없는 키 (정해진 뜻이 있다) */
