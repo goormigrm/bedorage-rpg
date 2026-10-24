@@ -222,9 +222,16 @@ export function hasImplicit(it: Item): boolean {
   return it.slot !== SLOT_WEAPON && it.bt !== undefined && it.bt >= 0 && !!BASE_TYPES[it.slot]?.[it.bt]
 }
 
+/** 철면란 고기 악기의 고기 (2026-10-24 사용자: "고기도 닭고기 · 오리고기 · 소고기로 나눠서 다양성을") — 아이템마다 번호로 정해진다(겉모습 · 이름만 · 판에는 영향 없음) */
+export const MEATS = ['소고기', '닭고기', '오리고기'] as const
+export const meatOf = (it: Item | null | undefined): number => (it ? it.uid % MEATS.length : 0)
+
 /** 바탕 이름: 무기 종류 · 방어구 바탕 종류 */
 export function baseName(it: Item): string {
-  if (it.slot === SLOT_WEAPON) return WEAPON_NAMES[WEAPON_IDS[it.wt] ?? 'rifle']
+  if (it.slot === SLOT_WEAPON) {
+    const id = WEAPON_IDS[it.wt] ?? 'rifle'
+    return id === 'violin' || id === 'cello' ? `${MEATS[meatOf(it)]} ${WEAPON_NAMES[id].replace('고기 ', '')}` : WEAPON_NAMES[id]
+  }
   return hasImplicit(it) ? BASE_TYPES[it.slot][it.bt!].name : BASE_NAMES[it.slot]
 }
 

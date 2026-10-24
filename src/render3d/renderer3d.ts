@@ -57,7 +57,7 @@ import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
-import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName, meatOf } from '../core/items'
 import { drawFlashBar, drawGhostBar, hpGhost } from '../render/hpGhost'
 
 export { VIEW_W, VIEW_H }
@@ -3744,7 +3744,9 @@ export class Renderer3D {
 
   private updateRig(i: number, p: PlayerState, pos: { x: number; z: number }, dt: number): void {
     const rig = this.rigs[i]
-    if (rig.weapon.id !== p.weapon) rig.setWeapon(WEAPONS[p.weapon])
+    // 고기 악기는 낀 아이템의 고기로 (소고기 · 닭고기 · 오리고기)
+    const meat = WEAPONS[p.weapon].family === 'violin' ? meatOf(p.equip?.[0]) : 0
+    if (rig.weapon.id !== p.weapon || rig.meat !== meat) rig.setWeapon(WEAPONS[p.weapon], meat)
     const v = this.vis[i]
     const root = rig.root
     root.position.set(pos.x, 0, pos.z)

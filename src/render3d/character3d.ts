@@ -17,6 +17,8 @@ const XRAY_OPACITY = 0.7
 /** 정수리 쪽 좁아지는 정도 */
 const EGG_TAPER = 0.1
 const LEG_H = 0.14
+/** 손에 든 총의 배율 */
+const GUN_HOLD = 1.4
 
 /** 계란 캐릭터 재질: 툰 명암 + 먹선 (2026-10-08 G8) */
 function mat(color: number, opts: Partial<THREE.MeshToonMaterialParameters> = {}): THREE.MeshToonMaterial {
@@ -98,6 +100,8 @@ export interface CharacterRig {
   gunTip: THREE.Object3D
   def: CharacterDef
   weapon: WeaponDef
+  /** 고기 악기의 고기 (items.ts MEATS 번호 — 철면란) */
+  meat: number
   /** 이름표 높이 (발 기준) */
   height: number
   /** 몸통(달걀) 중심 높이 — 구르기 회전축 */
@@ -110,8 +114,8 @@ export interface CharacterRig {
   flashMats: THREE.MeshToonMaterial[]
   /** 피격 플래시. tint 는 색(기본 흰색) — 몸통은 빨강, 머리는 금색 */
   setFlash(k: number, tint?: number): void
-  /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 …) */
-  setWeapon(w: WeaponDef): void
+  /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 … · 고기 악기는 고기가 바뀌어도) */
+  setWeapon(w: WeaponDef, meat?: number): void
 }
 
 export function buildCharacter(def: CharacterDef): CharacterRig {
@@ -214,61 +218,238 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   }
   arms.add(mkArm(-1), mkArm(1))
   const weapon = WEAPONS[def.weapon]
+  // 총은 몸에 비해 작아 모양이 안 보였다 — 손에 든 총만 키운다 (근접 무기는 이미 크다 · 1인칭 손 총은 따로 · 2026-10-24)
+  const hold = (w: WeaponDef, gg: THREE.Group) => {
+    gg.position.set(0.02, -0.02, armLen * 0.55)
+    if (!w.melee) gg.scale.setScalar(GUN_HOLD)
+    arms.add(gg)
+  }
   let gun = buildGun(weapon, R)
-  gun.group.position.set(0.02, -0.02, armLen * 0.55)
-  arms.add(gun.group)
+  hold(weapon, gun.group)
 
   body.scale.set(wide, tall, wide)
   const height = (centerY + R * EGG_Y + R * 0.35) * tall
   const rig: CharacterRig = {
-    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, height, centerY, xray,
+    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, meat: 0, height, centerY, xray,
     stride: Math.max(0.7, Math.min(1.55, legStretch)),
     flashMats,
     setFlash(k: number, tint = 0xffffff) {
       const e = k > 0 ? new THREE.Color(tint).multiplyScalar(k) : new THREE.Color(0, 0, 0)
       for (const m of flashMats) m.emissive.copy(e)
     },
-    setWeapon(w: WeaponDef) {
-      if (rig.weapon.id === w.id) return
+    setWeapon(w: WeaponDef, meat = 0) {
+      if (rig.weapon.id === w.id && rig.meat === meat) return
       arms.remove(gun.group)
-      gun = buildGun(w, R)
-      gun.group.position.set(0.02, -0.02, armLen * 0.55)
-      arms.add(gun.group)
+      gun.group.traverse((o) => {
+        const m = o as THREE.Mesh
+        if (!m.isMesh) return
+        m.geometry.dispose()
+        ;(m.material as THREE.Material).dispose()
+      })
+      gun = buildGun(w, R, meat)
+      hold(w, gun.group)
       if (xray.visible) markStencil(gun.group)
       rig.gunTip = gun.tip
       rig.weapon = w
+      rig.meat = meat
     },
   }
   return rig
 }
 
-export function buildGun(w: WeaponDef, R: number): { group: THREE.Group; tip: THREE.Object3D } {
-  const g = new THREE.Group()
+/**
+ * 손에 든 무기 (2026-10-24 사용자: "무기 외형이 개선됐으면 · 무기를 바꿔 꼈을 때 외형이 바뀌었으면 — 석궁을 들어도 그대로라 뭐가 바뀐 건지 몰랐다"):
+ * 예전에는 총이 모두 원통 하나 + 총열(길이 · 색만 달랐다). 이제 무기마다 위(쿼터뷰) · 뒤(3인칭)에서 알아보는 모양 —
+ * 석궁 = 가로 활대 · 시위 · 화살 / 더블배럴 = 나란한 총열 둘 / 저격총 = 큰 조준경 / 레일건 = 빛나는 코일 / 화염방사기 = 붉은 연료통 · 불씨 …
+ * 로컬: 손 자리 원점 · 앞 = +z · 위 = +y. 재질은 모두 툰(맵 없음 — 셰이더가 늘지 않는다)
+ */
+export function buildGun(w: WeaponDef, R: number, meat = 0): { group: THREE.Group; tip: THREE.Object3D } {
   const len = (0.26 + w.length / 120) * Math.max(0.8, R / 0.42)
-  const bodyM = mat(w.color)
-  const darkM = mat(0x2b2b2b)
   if (w.melee) {
-    if (w.family === 'violin') return buildViolin(len, w.id === 'cello')
+    if (w.family === 'violin') return buildViolin(len, w.id === 'cello', meat)
     if (w.family === 'rapier') return buildSword(len, w.id === 'katana')
-    return buildPan(len, bodyM, darkM)
+    if (w.id === 'wok') return buildWok(len)
+    return buildPan(len, mat(w.color), mat(0x2b2b2b))
   }
-  g.add(capsuleZ(0.055, len, bodyM))
-  const grip = capsuleDown(0.03, 0.14, darkM)
-  grip.position.set(0, 0.02, 0.08)
-  grip.rotation.x = -0.25
-  g.add(grip)
-  const barrel = capsuleZ(0.024, len * 0.6, darkM)
-  barrel.position.set(0, 0.028, len * 0.45)
-  g.add(barrel)
-  if (w.pellets > 1) {
-    const b2 = capsuleZ(0.024, len * 0.6, darkM)
-    b2.position.set(0.048, 0.028, len * 0.45)
-    g.add(b2)
-  }
+  const g = new THREE.Group()
+  const s = Math.max(0.8, R / 0.42)
+  const M: GunMats = { body: mat(w.color), dark: mat(0x2f3136), metal: mat(0x9aa2ab), wood: mat(0x8a5a32) }
+  const t = (GUNS[w.id] ?? (GUNS.rifle as GunShape))(g, len, s, M)
+  // 권총처럼 쥐는 손잡이 (모든 총)
+  box(g, 0.036 * s, 0.12 * s, 0.05 * s, M.dark, 0, -0.065 * s, t.grip ?? len * 0.06, 0.3)
   const tip = new THREE.Object3D()
-  tip.position.set(0, 0.028, len + 0.03)
+  tip.position.set(0, t.y, t.z)
   g.add(tip)
   return { group: g, tip }
+}
+
+type GunMats = { body: THREE.MeshToonMaterial; dark: THREE.MeshToonMaterial; metal: THREE.MeshToonMaterial; wood: THREE.MeshToonMaterial }
+/** 총 모양 하나: 그룹에 부품을 넣고 총구 자리(y · z)와 손잡이 z 를 돌려준다. L = 길이 · s = 굵기 배율 */
+type GunShape = (g: THREE.Group, L: number, s: number, M: GunMats) => { y: number; z: number; grip?: number }
+
+function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0): THREE.Mesh {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
+  b.position.set(x, y, z)
+  b.rotation.set(rx, ry, 0)
+  b.castShadow = true
+  g.add(b)
+  return b
+}
+/** +z 로 뻗는 원통: 뒤 끝 z0 · 길이 l · 뒤 반지름 r0 · 앞 반지름 r1 */
+function tube(g: THREE.Group, r0: number, l: number, m: THREE.Material, x: number, y: number, z0: number, r1 = r0, seg = 12): THREE.Mesh {
+  const c = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, l, seg), m)
+  c.rotation.x = Math.PI / 2
+  c.position.set(x, y, z0 + l / 2)
+  c.castShadow = true
+  g.add(c)
+  return c
+}
+/** 두 점을 잇는 가는 막대 (시위 · 호스 · 양각대) */
+function rod(g: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, r: number, m: THREE.Material): void {
+  const d = b.clone().sub(a)
+  const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), m)
+  c.position.copy(a).add(b).multiplyScalar(0.5)
+  c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())
+  g.add(c)
+}
+const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
+
+const GUNS: Partial<Record<WeaponDef['id'], GunShape>> = {
+  // 소총: 나무 개머리 · 덮개 · 앞으로 휜 탄창
+  rifle(g, L, s, M) {
+    box(g, 0.065 * s, 0.08 * s, L * 0.42, M.body, 0, 0, L * 0.18)
+    box(g, 0.058 * s, 0.095 * s, L * 0.3, M.wood, 0, -0.012 * s, -L * 0.17)
+    box(g, 0.062 * s, 0.06 * s, L * 0.26, M.wood, 0, -0.005 * s, L * 0.52)
+    tube(g, 0.016 * s, L * 0.36, M.dark, 0, 0.012 * s, L * 0.62)
+    box(g, 0.036 * s, 0.13 * s, 0.05 * s, M.dark, 0, -0.085 * s, L * 0.3, -0.35)
+    box(g, 0.02 * s, 0.03 * s, 0.03 * s, M.dark, 0, 0.055 * s, L * 0.05)
+    box(g, 0.012 * s, 0.035 * s, 0.015 * s, M.dark, 0, 0.05 * s, L * 0.92)
+    return { y: 0.012 * s, z: L * 0.98 + 0.02 }
+  },
+  // 석궁: 나무 몸대 · 뒤로 휜 활대 둘 · 당긴 시위 · 얹힌 화살
+  crossbow(g, L, s, M) {
+    box(g, 0.055 * s, 0.06 * s, L * 0.95, M.wood, 0, 0, L * 0.3)
+    box(g, 0.062 * s, 0.1 * s, L * 0.22, M.body, 0, -0.02 * s, -L * 0.12)
+    const fz = L * 0.72
+    const span = L * 0.5
+    const bend = 0.28
+    const tips: THREE.Vector3[] = []
+    for (const sd of [-1, 1]) {
+      box(g, span, 0.028 * s, 0.04 * s, M.dark, sd * span * 0.5, 0.012 * s, fz, 0, sd * bend)
+      tips.push(V(sd * span * 0.5 * (1 + Math.cos(bend)), 0.012 * s, fz - span * 0.5 * Math.sin(bend)))
+    }
+    const nock = V(0, 0.035 * s, L * 0.42)
+    const string = mat(0xf1e8cc)
+    for (const tp of tips) rod(g, tp, nock, 0.006 * s, string)
+    tube(g, 0.008 * s, L * 0.5, mat(0xd8c49a), 0, 0.042 * s, L * 0.42)
+    tube(g, 0.017 * s, 0.05 * s, M.metal, 0, 0.042 * s, L * 0.92, 0.002)
+    const feather = mat(0xd8452a)
+    box(g, 0.036 * s, 0.004, 0.05 * s, feather, 0, 0.042 * s, L * 0.46)
+    box(g, 0.004, 0.036 * s, 0.05 * s, feather, 0, 0.042 * s, L * 0.46)
+    return { y: 0.042 * s, z: L * 0.92 + 0.05 * s, grip: L * 0.02 }
+  },
+  // SMG: 짧은 몸통 · 앞의 곧은 긴 탄창 · 철사 개머리 · 소염기
+  smg(g, L, s, M) {
+    box(g, 0.068 * s, 0.085 * s, L * 0.55, M.body, 0, 0, L * 0.25)
+    tube(g, 0.02 * s, L * 0.3, M.dark, 0, 0.01 * s, L * 0.5)
+    tube(g, 0.029 * s, 0.05 * s, M.dark, 0, 0.01 * s, L * 0.8)
+    box(g, 0.035 * s, 0.16 * s, 0.045 * s, M.dark, 0, -0.1 * s, L * 0.32)
+    box(g, 0.016 * s, 0.016 * s, L * 0.28, M.dark, 0, 0, -L * 0.14)
+    box(g, 0.05 * s, 0.07 * s, 0.018 * s, M.dark, 0, -0.01 * s, -L * 0.28)
+    box(g, 0.026 * s, 0.03 * s, L * 0.24, M.dark, 0, 0.055 * s, L * 0.22)
+    return { y: 0.01 * s, z: L * 0.8 + 0.05 * s, grip: L * 0.04 }
+  },
+  // 화염방사기: 쇠 몸통 · 옆의 붉은 연료통 · 벌어진 노즐 · 노즐 아래 불씨
+  flamer(g, L, s, M) {
+    tube(g, 0.038 * s, L * 0.6, M.metal, 0, 0, 0)
+    tube(g, 0.062 * s, L * 0.42, M.body, 0.075 * s, -0.03 * s, L * 0.05)
+    tube(g, 0.064 * s, 0.02 * s, M.dark, 0.075 * s, -0.03 * s, L * 0.25)
+    tube(g, 0.03 * s, L * 0.2, M.dark, 0, 0, L * 0.6, 0.056 * s)
+    rod(g, V(0.075 * s, -0.03 * s, L * 0.47), V(0, -0.02 * s, L * 0.55), 0.012 * s, M.dark)
+    const pilot = new THREE.Mesh(new THREE.SphereGeometry(0.018 * s, 10, 8), mat(0xffc060, { emissive: 0xff7a10 }))
+    pilot.position.set(0, -0.048 * s, L * 0.76)
+    g.add(pilot)
+    box(g, 0.03 * s, 0.09 * s, 0.04 * s, M.dark, 0, -0.06 * s, L * 0.42, 0.2)
+    return { y: 0, z: L * 0.8 + 0.02, grip: L * 0.1 }
+  },
+  // 산탄총: 굵은 총열 · 아래 탄창관 · 나무 펌프 · 나무 개머리
+  shotgun(g, L, s, M) {
+    box(g, 0.07 * s, 0.085 * s, L * 0.3, M.dark, 0, 0, L * 0.12)
+    tube(g, 0.027 * s, L * 0.62, M.dark, 0, 0.018 * s, L * 0.27)
+    tube(g, 0.02 * s, L * 0.5, M.dark, 0, -0.025 * s, L * 0.27)
+    tube(g, 0.035 * s, L * 0.2, M.body, 0, -0.025 * s, L * 0.48)
+    box(g, 0.062 * s, 0.1 * s, L * 0.32, M.body, 0, -0.02 * s, -L * 0.17, 0.12)
+    box(g, 0.02 * s, 0.02 * s, 0.02 * s, M.metal, 0, 0.05 * s, L * 0.86)
+    return { y: 0.018 * s, z: L * 0.89 + 0.02 }
+  },
+  // 더블배럴: 나란한 쇠 총열 둘 · 금빛 경첩 · 큰 나무 개머리
+  doublebarrel(g, L, s, M) {
+    for (const sd of [-1, 1]) tube(g, 0.026 * s, L * 0.66, M.metal, sd * 0.027 * s, 0.012 * s, L * 0.26)
+    box(g, 0.09 * s, 0.05 * s, L * 0.3, M.body, 0, -0.03 * s, L * 0.42)
+    box(g, 0.085 * s, 0.08 * s, L * 0.18, mat(0xc9a24a), 0, -0.005 * s, L * 0.14)
+    box(g, 0.07 * s, 0.11 * s, L * 0.36, M.body, 0, -0.03 * s, -L * 0.15, 0.15)
+    return { y: 0.012 * s, z: L * 0.92 + 0.02 }
+  },
+  // 저격총: 긴 총열 · 큰 조준경(빛나는 렌즈) · 볼받침 · 노리쇠 · 접은 양각대
+  sniper(g, L, s, M) {
+    box(g, 0.065 * s, 0.08 * s, L * 0.42, M.body, 0, 0, L * 0.12)
+    box(g, 0.06 * s, 0.1 * s, L * 0.3, M.body, 0, -0.015 * s, -L * 0.2, 0.08)
+    box(g, 0.05 * s, 0.03 * s, L * 0.14, M.body, 0, 0.055 * s, -L * 0.2)
+    tube(g, 0.017 * s, L * 0.62, M.dark, 0, 0.01 * s, L * 0.33)
+    box(g, 0.04 * s, 0.035 * s, 0.06 * s, M.dark, 0, 0.01 * s, L * 0.95 + 0.03 * s)
+    tube(g, 0.03 * s, L * 0.36, M.dark, 0, 0.088 * s, 0)
+    tube(g, 0.043 * s, 0.05 * s, M.dark, 0, 0.088 * s, L * 0.36)
+    tube(g, 0.037 * s, 0.006, mat(0x7ad8ff, { emissive: 0x1a5a7a }), 0, 0.088 * s, L * 0.36 + 0.05 * s)
+    for (const z of [L * 0.08, L * 0.26]) box(g, 0.02 * s, 0.04 * s, 0.02 * s, M.dark, 0, 0.055 * s, z)
+    box(g, 0.05 * s, 0.012 * s, 0.012 * s, M.metal, 0.05 * s, 0.02 * s, L * 0.05)
+    for (const sd of [-1, 1]) box(g, 0.012 * s, 0.012 * s, L * 0.25, M.dark, sd * 0.02 * s, -0.03 * s, L * 0.62)
+    return { y: 0.01 * s, z: L * 0.95 + 0.06 * s }
+  },
+  // 레일건: 짙은 몸통 · 나란한 레일 둘 · 빛나는 코일 셋 · 옆 에너지 칸
+  railgun(g, L, s, M) {
+    const shell = mat(0x2a2f3a)
+    const glow = mat(0x8af6ff, { emissive: 0x2ad0ff })
+    box(g, 0.08 * s, 0.085 * s, L * 0.42, shell, 0, 0, L * 0.1)
+    box(g, 0.06 * s, 0.1 * s, L * 0.24, shell, 0, -0.02 * s, -L * 0.2)
+    for (const sd of [-1, 1]) box(g, 0.022 * s, 0.05 * s, L * 0.62, M.body, sd * 0.036 * s, 0.01 * s, L * 0.62)
+    for (let k = 0; k < 3; k++) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.062 * s, 0.011 * s, 6, 16), glow)
+      coil.position.set(0, 0.01 * s, L * (0.42 + k * 0.16))
+      g.add(coil)
+    }
+    box(g, 0.03 * s, 0.03 * s, L * 0.18, glow, 0.05 * s, 0.02 * s, L * 0.1)
+    return { y: 0.01 * s, z: L * 0.93 }
+  },
+  // 기관총: 굵은 몸통 · 방열 덮개 · 옆 탄통 · 위 손잡이 · 양각대
+  mg(g, L, s, M) {
+    box(g, 0.085 * s, 0.1 * s, L * 0.42, M.body, 0, 0, L * 0.12)
+    tube(g, 0.033 * s, L * 0.42, M.dark, 0, 0.01 * s, L * 0.33)
+    tube(g, 0.016 * s, L * 0.18, M.dark, 0, 0.01 * s, L * 0.75)
+    box(g, 0.1 * s, 0.1 * s, 0.09 * s, M.body, 0.085 * s, -0.05 * s, L * 0.12)
+    box(g, 0.02 * s, 0.04 * s, L * 0.2, M.dark, 0, 0.075 * s, L * 0.12)
+    for (const sd of [-1, 1]) rod(g, V(0, -0.02 * s, L * 0.6), V(sd * 0.05 * s, -0.12 * s, L * 0.72), 0.008 * s, M.dark)
+    box(g, 0.065 * s, 0.1 * s, L * 0.26, M.dark, 0, -0.01 * s, -L * 0.17)
+    return { y: 0.01 * s, z: L * 0.93 + 0.02 }
+  },
+  // 유탄발사기: 굵은 총열(검은 구멍) · 뒤의 회전 탄창 · 앞 손잡이
+  launcher(g, L, s, M) {
+    tube(g, 0.05 * s, L * 0.55, M.body, 0, 0.01 * s, L * 0.3)
+    tube(g, 0.04 * s, 0.008, mat(0x111111), 0, 0.01 * s, L * 0.85)
+    tube(g, 0.075 * s, L * 0.2, M.dark, 0, -0.005 * s, L * 0.08, 0.075 * s, 8)
+    box(g, 0.06 * s, 0.09 * s, L * 0.26, M.dark, 0, -0.01 * s, -L * 0.15)
+    box(g, 0.03 * s, 0.09 * s, 0.04 * s, M.dark, 0, -0.07 * s, L * 0.5, 0.2)
+    return { y: 0.01 * s, z: L * 0.86 }
+  },
+  // 권총 · 리볼버 (지금은 안 쓰는 계열)
+  pistol(g, L, s, M) {
+    box(g, 0.05 * s, 0.06 * s, L * 0.7, M.body, 0, 0.01 * s, L * 0.3)
+    return { y: 0.01 * s, z: L * 0.66 }
+  },
+  revolver(g, L, s, M) {
+    tube(g, 0.045 * s, 0.07 * s, M.dark, 0, 0.005 * s, L * 0.1, 0.045 * s, 6)
+    tube(g, 0.016 * s, L * 0.55, M.body, 0, 0.015 * s, L * 0.18)
+    return { y: 0.015 * s, z: L * 0.74 }
+  },
 }
 
 /**
@@ -314,26 +495,80 @@ function buildPan(len: number, bodyM: THREE.MeshToonMaterial, darkM: THREE.MeshT
   return { group: g, tip }
 }
 
+/** 대형 웍: 깊은 쇠 냄비(반구) · 안쪽 면 · 테 · 나무 손잡이 · 반대편 고리 · 볶음 거리 — 납작한 후라이팬과 한눈에 다르게 */
+function buildWok(len: number): { group: THREE.Group; tip: THREE.Object3D } {
+  const g = new THREE.Group()
+  const iron = mat(0x2e2e33)
+  const handleLen = len * 0.55
+  const grip = capsuleZ(0.03, handleLen * 0.6, mat(0x8a5a32))
+  g.add(grip)
+  const neck = capsuleZ(0.02, handleLen * 0.5, iron)
+  neck.position.z = handleLen * 0.5
+  g.add(neck)
+  const r = len * 0.5
+  const cz = handleLen + r * 0.9
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), iron)
+  bowl.scale.y = 0.55
+  bowl.position.set(0, 0.07, cz)
+  bowl.castShadow = true
+  g.add(bowl)
+  const inner = new THREE.Mesh(new THREE.CircleGeometry(r * 0.94, 24), mat(0x5a5f66))
+  inner.rotation.x = -Math.PI / 2
+  inner.position.set(0, 0.064, cz)
+  g.add(inner)
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.98, 0.02, 8, 28), iron)
+  rim.rotation.x = Math.PI / 2
+  rim.position.set(0, 0.07, cz)
+  g.add(rim)
+  const loop = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 12), iron)
+  loop.rotation.x = Math.PI / 2
+  loop.position.set(0, 0.07, cz + r * 1.05)
+  g.add(loop)
+  for (const [x, z, c] of [[-0.3, -0.1, 0x6fbf4a], [0.25, 0.15, 0xff8a3a], [0.05, 0.35, 0xf2d050], [-0.1, -0.4, 0x6fbf4a]] as const) {
+    const bit = new THREE.Mesh(new THREE.BoxGeometry(r * 0.22, 0.02, r * 0.14), mat(c))
+    bit.position.set(r * x, 0.075, cz + r * z)
+    bit.rotation.y = x * 3
+    g.add(bit)
+  }
+  const tip = new THREE.Object3D()
+  tip.position.set(0, 0.05, cz)
+  g.add(tip)
+  return { group: g, tip }
+}
+
+/** 고기 악기의 고기 (items.ts MEATS 순서): 소고기 · 닭고기 · 오리고기 — 위에서 보면 붉은 살 / 금빛 튀김 / 진갈색 구이 */
+const MEAT_LOOK = [
+  { meat: 0xa8392c, mark: 0xf2d8c8, bone: 0xe8e0cc, bumps: false },
+  { meat: 0xe0a040, mark: 0xb8742a, bone: 0xf6efe0, bumps: true },
+  { meat: 0x8e3e1c, mark: 0xf08a30, bone: 0xe8e0cc, bumps: false },
+]
+
 /**
  * 딱딱한 고기 바이올린 (철면란, 2026-09-19 사용자): 붉은 살코기 몸통 + 흰 지방 줄무늬 + 뼈 목(스크롤). 첼로는 더 크다.
  * 손잡이(목)를 쥐고 몸통으로 후려친다 — 몸통이 앞(+z).
  */
-function buildViolin(len: number, big: boolean): { group: THREE.Group; tip: THREE.Object3D } {
+function buildViolin(len: number, big: boolean, kind = 0): { group: THREE.Group; tip: THREE.Object3D } {
   const g = new THREE.Group()
   // 몸집이 큰 철면란 손에서 스테이크가 아니라 악기로 읽히도록 크게 (2026-09-19 확인)
   const k = (big ? 1.35 : 1) * 1.6
-  const meat = mat(0xa8392c)
-  const fat = mat(0xf2d8c8)
-  const bone = mat(0xe8e0cc)
+  const look = MEAT_LOOK[kind] ?? MEAT_LOOK[0]
+  const meat = mat(look.meat)
+  const fat = mat(look.mark)
+  const bone = mat(look.bone)
   const neckLen = len * 0.7 * k
   const neck = capsuleZ(0.022 * k, neckLen, bone)
   neck.position.set(0, 0.01, neckLen * 0.2)
   g.add(neck)
-  // 스크롤(목 끝 돌돌 말린 부분): 손 쪽
-  const scroll = new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.012 * k, 6, 12), bone)
-  scroll.position.set(0, 0.02, -neckLen * 0.28)
-  scroll.rotation.y = Math.PI / 2
-  g.add(scroll)
+  if (look.bumps) {
+    // 닭고기: 손잡이 끝이 닭다리 뼈 마디 (동그라미 둘)
+    for (const sd of [-1, 1]) g.add(sphere(0.026 * k, bone, sd * 0.02 * k, 0.02, -neckLen * 0.26, 10, 8))
+  } else {
+    // 스크롤(목 끝 돌돌 말린 부분): 손 쪽
+    const scroll = new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.012 * k, 6, 12), bone)
+    scroll.position.set(0, 0.02, -neckLen * 0.28)
+    scroll.rotation.y = Math.PI / 2
+    g.add(scroll)
+  }
   // 몸통: 아래 · 위 두 덩이 (바이올린 허리)
   const cz = neckLen * 0.62 + 0.13 * k
   const lower = new THREE.Mesh(new THREE.SphereGeometry(0.12 * k, 14, 10), meat)
@@ -346,12 +581,21 @@ function buildViolin(len: number, big: boolean): { group: THREE.Group; tip: THRE
   upper.position.set(0, 0.012, cz - 0.08 * k)
   upper.castShadow = true
   g.add(upper)
-  // 흰 지방 줄무늬 (마블링) 셋
-  for (const [dz, w] of [[-0.09, 0.14], [0.02, 0.18], [0.11, 0.17]] as const) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(w * k, 0.012, 0.014 * k), fat)
-    stripe.position.set(0, 0.05 * k, cz + dz * k)
-    stripe.rotation.y = 0.25
-    g.add(stripe)
+  if (look.bumps) {
+    // 닭고기: 바삭한 튀김 알갱이
+    for (const [x, dz] of [[-0.06, -0.1], [0.05, -0.06], [-0.02, 0.0], [0.07, 0.05], [-0.07, 0.08], [0.01, 0.13], [0.04, -0.13]] as const) {
+      const bump = new THREE.Mesh(new THREE.SphereGeometry(0.018 * k, 8, 6), fat)
+      bump.position.set(x * k, 0.04 * k, cz + dz * k)
+      g.add(bump)
+    }
+  } else {
+    // 소고기 = 흰 지방 줄무늬(마블링) · 오리고기 = 주황 소스 줄
+    for (const [dz, w] of [[-0.09, 0.14], [0.02, 0.18], [0.11, 0.17]] as const) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(w * k, 0.012, 0.014 * k), fat)
+      stripe.position.set(0, 0.05 * k, cz + dz * k)
+      stripe.rotation.y = 0.25
+      g.add(stripe)
+    }
   }
   // 줄받침 · 현 (뼈 색 가는 줄)
   const strings = new THREE.Mesh(new THREE.BoxGeometry(0.03 * k, 0.006, neckLen * 0.9 + 0.2 * k), bone)

@@ -370,3 +370,15 @@ describe('희귀 이상은 낮은 레벨일수록 드물다', () => {
     expect(Math.abs(a - b) / 20000).toBeLessThan(0.02)
   })
 })
+
+describe('고기 악기의 고기 (2026-10-24)', () => {
+  it('철면란 바이올린 · 첼로는 아이템마다 소고기 · 닭고기 · 오리고기 — 다른 무기 이름은 그대로', async () => {
+    const { baseName, meatOf, WEAPON_IDS } = await import('../src/core/items')
+    const violin = WEAPON_IDS.indexOf('violin')
+    const names = [0, 1, 2].map((uid) => baseName({ uid, slot: 0, wt: violin, rarity: 0, ilvl: 1, aff: [] } as never))
+    expect(names).toEqual(['소고기 바이올린', '닭고기 바이올린', '오리고기 바이올린'])
+    expect(baseName({ uid: 4, slot: 0, wt: WEAPON_IDS.indexOf('cello'), rarity: 0, ilvl: 1, aff: [] } as never)).toBe('닭고기 첼로')
+    expect(baseName({ uid: 1, slot: 0, wt: WEAPON_IDS.indexOf('crossbow'), rarity: 0, ilvl: 1, aff: [] } as never)).toBe('석궁')
+    expect(meatOf(null)).toBe(0)
+  })
+})
