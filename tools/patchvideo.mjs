@@ -15,10 +15,17 @@ page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 
 await page.addInitScript(() => {
   try {
     localStorage.setItem('brpg.muted', '1')
+    // 첫 10분 안내 풍선은 끈다 (영상에 "WASD 로 움직인다" 가 떴다)
+    localStorage.setItem('brpg.tut', '["off"]')
   } catch {
     /* 저장소 없음 */
   }
 })
+// HTML UI 만 찍는 통로 (패치 플레이 영상 — 캔버스만 합치면 창 단추 · 시점 스위치 · 후원 표 · 채팅이 빠졌다): 배경을 투명하게 두고
+// trailer.js 가 게임 캔버스를 숨긴 채 부른다(UI 가 바뀔 때만 · 초당 최대 15번 — 화면 통째로 장마다 찍으면 장당 0.4초)
+const cdp = await page.context().newCDPSession(page)
+await cdp.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } })
+await page.exposeFunction('__grabUi', async () => (await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true })).data)
 await page.goto('http://localhost:5173/bedorage-rpg/?shot=1')
 await page.waitForFunction(() => !!document.querySelector('#btn-host'), null, { timeout: 60000 })
 await new Promise((r) => setTimeout(r, 2500))

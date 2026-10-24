@@ -538,6 +538,7 @@ export class Renderer3D {
   /** 큰 먼지 구름을 마지막으로 피운 때 (탄이 막힌 자리 — 연사가 화면을 덮지 않게) */
   private lastDust = -99
   private lastMeleeStop = -99
+  private lastCritStop = -99
   /** 반동: 카메라가 조준 반대쪽으로 밀렸다가 돌아온다 (월드 단위 — 2026-10-08 부터 모든 총, 무기마다 세기) */
   private kick = 0
   private kickDir = 0
@@ -1766,7 +1767,10 @@ export class Renderer3D {
           const hidden = this.hiddenM.has(e.m)
           // 숫자는 **내가 맞힌 것만** 띄운다 — 동료·폭발 숫자까지 띄우면 무리 싸움에서 화면이 숫자로 덮였다(2026-09-18 확인)
           const mine = e.by === localPlayer
-          if (mine && head) {
+          // 치명타 역경직 · 화면 당김: 연사 무기(SMG · 기관총 · 화염)는 걸지 않고, 나머지도 0.25초에 한 번 — 초당 12발이 치명타마다 멈칫해
+          // 화면이 뚝뚝 끊겨 보였다 (2026-10-24 패치 영상 · 단군란)
+          if (mine && head && (WEAPONS[state.players[e.by]?.weapon]?.fireInterval ?? 99) >= 8 && this.t - this.lastCritStop > 0.25) {
+            this.lastCritStop = this.t
             this.hitStop = Math.max(this.hitStop, 0.045)
             this.punch = Math.max(this.punch, 0.22)
           }

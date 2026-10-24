@@ -1552,7 +1552,7 @@ export function autoAttr(p: { char: CharacterId; level: number; attr: number[] }
   }
 }
 
-function recalc(p: PlayerState): void {
+export function recalc(p: PlayerState): void {
   const c = CHARACTERS[p.char]
   p.weapon = weaponFor(p.char, p.equip)
   p.st = computeStats(p.level, p.equip, p.attr, p.mst)

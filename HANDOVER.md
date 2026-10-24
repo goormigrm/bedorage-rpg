@@ -10,12 +10,12 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.22 배포)
+## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.23 배포)
 
 - **v1.10.18**: 시점 스위치 글자 오른쪽에 단축키 `<kbd>`(`session.syncViewBtn` · 키 설정이 바뀌면 `refreshKeyLabels` 가 다시 씀 · style.css `.skin-sw .sw-cap kbd`).
 - **v1.10.19 무기 모양**: `character3d buildGun` — 무기 id 마다 `GUNS` 모양 함수(부품 `box` · `tube` · `rod` · 툰 재질만 — 셰이더가 늘지 않는다) · 손에 든 총 `GUN_HOLD` 1.4배(1인칭 손 총은 따로 0.6) · 웍 `buildWok` · 무기를 바꾸면 옛 지오메트리 · 재질을 치운다. 고기 악기 `MEAT_LOOK`(소 · 닭 · 오리) ← `items.ts meatOf`(아이템 uid % 3 · 이름 `baseName` "닭고기 바이올린") ← 렌더러 `updateRig` 가 `p.equip[0]` 으로. 확인 페이지 `.frames/guns*.html` + `.frames/guns.mjs [top|side|char|meat]`(이 PC 에만 — 개발 서버가 .frames 의 html 을 캐시하므로 고치면 이름을 바꿔 연다).
 - **배포는 빌드 · 올리기만(v1.10.21 — 2026-10-24 사용자: "PC 에서 진행하고 깃허브에는 올리는 것만")**: deploy.yml 의 단위 · 화면 시험은 `workflow_dispatch` 의 `check` 를 켤 때만 돈다(`gh workflow run deploy -f check=true`). **그러니 푸시 전 이 PC 에서 시험 · tsc · uicheck · 빌드 · uitest 를 꼭 돌린다** — 빠뜨리면 막아 주는 것이 없다. 이 PC 의 gh 토큰은 같은 날 `workflow` 권한을 받았다(`gh auth refresh -s workflow` — 사용자가 브라우저로 승인) — 워크플로 파일도 푸시된다.
-- **멈춘 자리**: v1.10.22 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
+- **멈춘 자리**: v1.10.23 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
 - **v1.10.17(사용자: "3인칭에서 캐릭터가 혼자 몹 쪽으로 뒤돈다")**: `renderer3d fpsAim` — 괴물 후보는 시선 앞쪽 반평면 + `AIM_CONE`(0.45 rad) 안만 · 하늘을 보면(카메라 방향 y > -0.02) 시선 쪽 멀리 · 땅에 맞은 자리가 2칸 안이면 2칸 앞. 예전에는 어깨 너머 카메라라 캐릭터 옆 · 뒤 괴물이 화면 가운데를 덮으면 그쪽을 겨눴다(169°). `tools/uitest.mjs` 시련 지역에서 곁 · 뒤 괴물로 30° 안인지 본다(예전 코드면 실패함을 확인). 정조준(1인칭) 때 내 총알 꼬리는 눈앞 1.5칸을 비운다(`updateBullets` — 화면 구석에서 띠가 뻗어 보였다).
 - **공지 문체(2026-10-24 사용자: "너무 AI 가 쓴 글 같다 — '상점 UI 를 개선했습니다' 정도로 간단하게")**: 업데이트 공지는 바뀐 것 이름만 한 줄씩 · 묶음 · 부제 · 설명 없이(공지글-모음 "쓰는 법" 맨 위 · 6차가 기준).
 - **v1.10.15(사용자 요청 셋)**: 스위치 줄 `.swcol`(session — 퀘스트 칸 아래 끝 `renderer.hud.d4.trackerBottom` 을 따라 `top` · RenderOptions `belowTracker` 만큼 퀘스트 줄을 덜 쓴다) · 스킬 단축창 판 +10px · 글자 맞춤(d4hud drawBottom) · 경험치 띠 8px.
@@ -23,6 +23,7 @@
 - **이어받는 세션이 알아야 할 것**: ① 요청 하나가 끝나면 검증(시험 · `tsc` · `uicheck` 1920 먼저 → 여섯 크기 0건 · 빌드 · `uitest` — 빌드 → `npx vite preview --port 4173`) 뒤 **묻지 말고** 판 번호(package.json · package-lock 두 곳 · CHANGELOG 맨 위)를 올려 커밋 · 푸시(= 배포). ② 개발 서버는 `npx vite --port 5173 --strictPort` — 이 환경의 백그라운드 명령은 2시간에 꺼지니 오래 걸릴 일(영상) 전에 새로 띄운다. ③ 브라우저 도구는 `tools/gpu.mjs gpuLaunch`(WSL 은 d3d12 GPU — 안 주면 CPU 렌더러라 시간이 몇 배). ④ `pkill -f '…vite preview…'` 는 제 셸 명령줄까지 잡아 셸이 죽는다(종료 코드 144) — `ps … | awk` 로 pid 를 골라 끈다.
 - **패치 플레이 영상(2026-10-24 — 세 번째 · v1.10.20)**: 사용자: "침착란은 공속이 느려 끊겨 보인다 · 30fps 이하 느낌 — 최대 프레임 · hq 는 용량 상관없이 제대로" · "참고 영상(덕코프 출시 트레일러 — https://youtu.be/sSlRUkJx050 · 60fps · 글 없음 · 쉬지 않고 쏘며 움직임 · 10 ~ 15초마다 다른 장소)에 비해 긴장감 · 타격감 · 영상미가 떨어진다" → `tools/trailer.js` `mode: 'patch24'`: `FPS` 60(다른 모드는 30) · 고화질 1080p60 VP9 24 Mbps(`webm.js muxWebM` 의 `codec` — `V_VP9`) · 720p60 은 20 MB 안 · SMG 주펄란 · `P24_AREAS` [1, 11, 22, 29] 장면마다 다른 맵 · `kindsOf`(그 맵 괴물 — sim areaKinds 와 같게) · 쿼터뷰 `qmover`(괴물 반대쪽으로 비켜 걷기) · `tap('Space')` 구르기 · `equipWeapon('flamer')` 바꿔 끼기 · 마지막 Q · E · R. `god` 은 P24 면 체력 45% 아래로만 막는다(맞으면 실제로 줄어듦 · 괴물 공격력 그대로) · `punch` · `kick` 은 남긴다(흔들림 `shake` 는 0). 3인칭 조준 `tppAimer` 의 한 장 회전량은 `30 / FPS` 배. 나오는 것 `docs/img/patch-2026-10-24/patch_1024_play.webm`(720p60 · 16.8 MB) · `_hq.webm`(1080p60 VP9 · 131 MB) — 52.9초 · 4분쯤 걸린다. 확인 `.frames/vidcheck.mjs`(VP9 · 60fps 도 읽는다) · 참고 영상 장면 뽑기 `.frames/refsheet.mjs`(탐색이 안 되는 파일이라 재생하며 뽑는다 — 이 PC 에만).
   - **v1.10.22(사용자: "흐름은 괜찮다 — 캐릭터만 단군란 · 무기 늘어난 것도 따로 편집해서 · 이상한 조준점 · 이동만 하는 루즈한 장면은 빼고")**: 단군란(소음기라 총소리 작음) · 무기 모아 보기 `showcaseSetup` · `drawShowcase`(`SHOWCASE` 일곱 캐릭터 기본 → 변형 · `SC_DUR` 6.4초 · 게임과 같은 three 사본 `.vite/deps/three.js` 로 따로 그려 `drawGame` 대신 · 그동안 효과음 단서는 담지 않음) · `quarterAimer` 는 마우스를 부드럽게(0.3 / 60fps) · 쓰러질 때까지 같은 표적 · 닿을 때만 사격 · 조준선 모양은 기본(예전 crossring 1.5 는 뺐다) · 3인칭은 `mover('hold')`(앞으로 걷기 없음) · 괴물은 5 ~ 10칸에 0.5초마다. 50.1초 · 720p60 19.0 MB · hq 1080p60 VP9 117 MB.
+  - **v1.10.23(사용자: "초반이 루즈 — 봇 넷 · 소환 늘리기 · 기본 UI · 후원 전투 · 레벨 올려 스킬 많이 · 초반 10초 뚝뚝 끊김의 원인 확인")**: 끊김은 게임 · 녹화 시계 탓이 아니었다(진단 `DIAG=9` — 장마다 정확히 1틱 · `hs`(역경직) · 위치 기록). ① 쿼터뷰 자동 걷기가 1초에 2 ~ 6번 거의 반대로 꺾였다 → `qmover` 0.9초마다 무리 가운데에서 비켜 한쪽으로 돈다(막히면 반대로). ② 게임 역경직이 SMG 치명타마다 → 렌더러 `lastCritStop`(연사 무기 fireInterval < 8 은 치명타 역경직 · 당김 없음 · 나머지 0.25초에 한 번 — 게임도 바뀜). 영상: 동료 봇 셋(철면란 · 주펄란 · 침착란 — 봇 채우기 켬) · `levelUpParty`(레벨 30 · 랭크 5 · 변형 · `sim.recalc` 를 내보냄) · `skillStorm`(0.45초마다 재사용 대기 · 집중을 채우고 Q · E · 1 · 2 · R 차례로) · 부르는 괴물 레벨 22 · `botsBehind`(3인칭 · 정조준 · 화염 장면은 동료를 시선 뒤 양옆 3칸에) · **HTML UI 겹** `grabUi`(patchvideo `__grabUi` = CDP 스크린샷 PNG · 배경 투명 `Emulation.setDefaultBackgroundColorOverride` · 그동안 `.game-stage > canvas` 숨김 · html · body · `.game-root` 배경 투명 · `.game-ui` 가 바뀔 때만 · 4장에 한 번까지) — 화면 통째 장마다 찍기는 장당 0.4초라 버렸다 · 첫 판 소개 글(.ending.intro)은 닫는다 · 마지막 장면은 **후원 전투**(`M.stream.donation` 1천 · 3천 · 6천 · 9천 — 막 보스 · 지옥문 · 시야 축소 · 봉인 · 흔들림은 안 씀 · `fakeChat` 채팅 · 후원 표는 stream.live 로 뜬다). 55.7초 · 720p60 17.9 MB · hq 134 MB · 6분쯤.
   - **버벅임 원인 · 고침**: 녹화 루프가 인코더가 밀릴 때(8장)만 쉬어, 그 사이 장들이 같은 그림으로 담겼다(정적인 장면에서 8 ~ 9장마다 한 번만 움직임 · 움직임이 많은 장면은 덜 티 남). 이제 장마다 `setTimeout 0` 으로 한 번 쉰다 — 모든 영상 모드에 해당. 확인은 `.frames/vidcheck.mjs <webm>`(이 PC 에만 — 장마다 앞 장과의 차이 · 초마다 멈춘 장 수 · `DUMP=장번호,…` 사진 · `GRID=시작-끝` 화면 칸별 변화).
   - 짧게 확인: `MODE=patch24 MAXSEC=12 OUTDIR=patch-0000-1 node tools/patchvideo.mjs`(docs/img/patch-0000-1 — 이름은 patch- · release- + 숫자만 받는다) · `DIAG=3`(녹화 없이 장마다 판 틱 · 봇 · 카메라). 녹화 중에는 src 를 고치지 말 것(개발 서버가 다시 불러온다).
 
@@ -196,7 +197,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-24 · v1.10.22 배포)
+## 현재 상태 (2026-10-24 · v1.10.23 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

@@ -128,6 +128,34 @@ function caption(text, sub) {
 const cue = (kind, o = {}) => music.push({ t: vidSec(), kind, town: !!o.town, act: o.act ?? 0 })
 
 // ---------- 그리기 ----------
+/**
+ * HTML UI 겹(패치 플레이 영상): 게임 캔버스를 숨기고 배경을 투명하게 둔 채 화면을 찍는다(tools/patchvideo.mjs __grabUi — PNG 알파).
+ * UI 가 바뀌었을 때만 다시 찍는다(MutationObserver) — 바뀌지 않으면 앞 겹을 그대로 얹는다
+ */
+let uiLayer = null
+let uiDirty = true
+let uiAge = 99
+let uiObs = null
+const UI_HIDE = Object.assign(document.createElement('style'), { textContent: 'html, body, .game-root { background: transparent !important } .game-stage > canvas { visibility: hidden !important }' })
+function watchUi() {
+  uiObs?.disconnect()
+  const root = document.querySelector('.game-ui')
+  if (!root) return
+  uiObs = new MutationObserver(() => (uiDirty = true))
+  uiObs.observe(root, { subtree: true, childList: true, attributes: true, characterData: true })
+}
+async function grabUi() {
+  document.head.append(UI_HIDE)
+  try {
+    const b64 = await window.__grabUi()
+    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+    const bmp = await createImageBitmap(new Blob([bin], { type: 'image/png' }))
+    uiLayer?.close()
+    uiLayer = bmp
+  } finally {
+    UI_HIDE.remove()
+  }
+}
 function drawGame() {
   if (ov.showcase) return drawShowcase()
   const cvs = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)
@@ -150,6 +178,7 @@ function drawGame() {
     const s1 = Math.max(W / c.width, H / c.height)
     g.drawImage(c, (W - c.width * s1) / 2, (H - c.height * s1) / 2, c.width * s1, c.height * s1)
   }
+  if (P24 && uiLayer) g.drawImage(uiLayer, 0, 0, W, H)
 }
 
 /**
@@ -431,7 +460,8 @@ function spawn(kinds, n, r0 = 4, r1 = 11) {
     const tx = Math.floor(x / T)
     const ty = Math.floor(y / T)
     if (tx < 1 || ty < 1 || tx >= map.w - 1 || ty >= map.h - 1 || map.tiles[ty * map.w + tx] !== 0) continue
-    const m = M.dungeon.makeMonster(s, kinds[made % kinds.length], x, y, 1, 1.2, 60, 3)
+    // 패치 플레이 영상은 파티가 레벨 30 — 괴물도 레벨 22 (3 이면 한 발에 쓰러져 화면이 비었다)
+    const m = M.dungeon.makeMonster(s, kinds[made % kinds.length], x, y, 1, 1.2, 60, P24 ? 22 : 3)
     m.st = 1
     m.target = 0
     s.monsters.push(m)
@@ -1029,6 +1059,8 @@ function drawShowcase() {
   g.restore()
 }
 
+/** 후원 전투 장면의 후원자 이름 (게임의 시험 이름과 같은 결) */
+const DON_NICKS = ['배도라지팬', '침착한시청자', '철면수심짱', '지나가던계란', '구울사냥꾼', '고기바이올린']
 /** 패치 플레이 영상의 장소 — 장면마다 다른 맵(☀ 놀이터 · 2막 · 3막 · 4막 들판) */
 const P24_AREAS = [1, 11, 22, 29]
 /** 그 지역 무리에 나오는 괴물 (sim areaKinds 와 같게 — 보스 · 도망치는 것 빼고) */
@@ -1064,6 +1096,7 @@ function patch24Scenes() {
     s.monsters = s.monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 24 * T)
     base = openDir()
     inp().yaw = base
+    gatherBots()
   }
   // 장면 넘김: 지금 장을 붙잡고(hold) 다른 지역으로 — 준비가 끝나면 녹이며 연다
   const goto = (area) => {
@@ -1073,7 +1106,7 @@ function patch24Scenes() {
     mv?.stop()
     inp().mouseDown.clear()
     ov.showcase = false
-    if (st().players[0].area !== area) M.sim.warpPlayer(st(), S().mapOf, 0, area)
+    if (st().players[0].area !== area) warpParty(area)
   }
   const ahead = () => {
     const p = st().players[0]
@@ -1086,14 +1119,17 @@ function patch24Scenes() {
   // ---- 1. 쿼터뷰 난전 + 제목 (☀ 놀이터): 사방에서 몰려오는 떼 · 쏘며 비켜 걷기 · 구르기
   at(0, () => {
     S().autopilot = false
+    // 첫 판 소개 글(HTML)을 닫는다 — UI 겹을 담으면서 영상에 덮여 찍혔다
+    document.querySelector('.ending.intro .ending-go')?.click()
     goto(1)
   })
   at(1.5, () => {
     place()
-    S().renderer.setDebugZoom(0.6)
-    spawn(K(1), 18, 5, 10)
+    levelUpParty()
+    S().renderer.setDebugZoom(0.66)
+    spawn(K(1), 34, 5, 11)
     mv = qmover()
-    perFrame = both(quarterAimer(), mv)
+    perFrame = both(quarterAimer(), mv, skillStorm())
     cue('hot', { act: 0 })
     // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
     ov.title = { text: '배도라지 알PG', sub: '3인칭 업데이트', at: now() - 1300 }
@@ -1101,7 +1137,7 @@ function patch24Scenes() {
   })
   at(2.0, () => (ov.title.out = now()))
   const a0 = tl.t
-  every(a0 + 0.5, a0 + 7.5, 0.5, () => alive() < 22 && spawn(K(1), 7, 6, 11))
+  every(a0 + 0.4, a0 + 7.5, 0.4, () => alive() < 40 && spawn(K(1), 10, 6, 12))
   every(a0 + 2.4, a0 + 7.5, 2.6, () => tap('Space'))
   at(7.5, () => {})
   // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 옆걸음
@@ -1111,12 +1147,12 @@ function patch24Scenes() {
     inp().fps = true
     inp().pitch = -0.1
     mv = mover('hold')
-    perFrame = both(tppAimer(), mv)
+    perFrame = both(tppAimer(), mv, botsBehind())
     spawnAhead(K(11), 12, 5, 9, 0.8, 1.6)
     holding = false
   })
   const b0 = tl.t
-  every(b0 + 0.5, b0 + 8.5, 0.5, () => ahead() < 10 && spawnAhead(K(11), 6, 6, 10, 0.8, 1.6))
+  every(b0 + 0.4, b0 + 8.5, 0.4, () => ahead() < 14 && spawnAhead(K(11), 8, 6, 10, 0.8, 1.6))
   at(2.5, () => mv.strafe('KeyD'))
   at(2.2, () => mv.strafe('KeyA'))
   at(2.2, () => mv.strafe(''))
@@ -1129,7 +1165,7 @@ function patch24Scenes() {
     inp().pitch = -0.05
     inp().mouseDown.add(2)
     mv = mover('back')
-    perFrame = both(tppAimer({ head: true }), mv)
+    perFrame = both(tppAimer({ head: true }), mv, botsBehind())
     spawnAhead(K(11), 9, 7, 11, 0.45, 2)
   })
   at(0.45, () => (holding = false))
@@ -1144,7 +1180,7 @@ function patch24Scenes() {
     inp().pitch = -0.14
     equipWeapon('flamer')
     mv = mover('flame')
-    perFrame = both(tppAimer({ range: 6 }), mv)
+    perFrame = both(tppAimer({ range: 6 }), mv, botsBehind())
     spawnAhead(K(22), 16, 5, 10, 0.6, 1.3)
     holding = false
   })
@@ -1161,7 +1197,9 @@ function patch24Scenes() {
     showcaseStart()
   })
   at(SC_DUR, () => {})
-  // ---- 6. 쿼터뷰 큰 무리 (4막 균열): 다시 SMG · 정예 · 스킬 · 궁극기
+  // ---- 6. 후원 전투 (4막 균열 · 쿼터뷰): 채팅 · 후원 표 · 후원이 연달아 — 좀비 떼 → 정예 무리 → 총잡이 무리 → 괴물 대행진 (2026-10-24 사용자: "도네이션 들어오는 전투 화면도")
+  // 막 보스 · 중간보스 · 지옥문(보스) · 시야 축소 · 봉인 · 흔들림은 쓰지 않는다 (보스 장면은 넣지 않는다 · 화면이 가려진다)
+  const don = (amount, text) => M.stream.donation({ nick: DON_NICKS[amount % DON_NICKS.length], amount, text })
   at(0, () => {
     goto(29)
     inp().fps = false
@@ -1169,19 +1207,22 @@ function patch24Scenes() {
   at(1.2, () => {
     place()
     equipWeapon('smg')
-    S().renderer.setDebugZoom(0.78)
-    spawn(K(29), 46, 5, 12)
-    elites2()
+    S().renderer.setDebugZoom(0.8)
+    spawn(K(29), 30, 5, 12)
     mv = qmover()
-    perFrame = both(quarterAimer(), mv)
+    perFrame = both(quarterAimer(), mv, skillStorm())
+    for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
     holding = false
   })
   const e0 = tl.t
-  every(e0 + 1, e0 + 7, 1, () => alive() < 40 && spawn(K(29), 12, 7, 12))
-  at(1.6, () => tap('KeyQ'))
-  at(1.6, () => tap('KeyE'))
-  at(1.6, () => tap('KeyR'))
-  at(2.6, () => {
+  every(e0 + 0.3, e0 + 15, 0.45, () => M.stream.fakeChat(false))
+  every(e0 + 1, e0 + 15, 0.6, () => alive() < 50 && spawn(K(29), 14, 6, 12))
+  at(0.8, () => don(1000, '좀비 떼 갑니다'))
+  at(2.2, () => don(3000, '정예 한번 보자'))
+  at(2.2, () => don(6000, '총잡이 출동!!'))
+  at(2.6, () => don(9000, '대행진 가즈아'))
+  // 대행진은 3초 예고 뒤에 몰려온다 — 몰려와 싸우는 중에 끝낸다 (더 두면 레벨 30 파티가 다 쓸어 화면이 비었다)
+  at(5.2, () => {
     mv.stop()
     perFrame = null
     inp().mouseDown.clear()
@@ -1197,42 +1238,104 @@ function equipWeapon(id) {
   p.equip[0] = { uid: 990000 + wt, slot: 0, wt, rarity: 3, ilvl: 10, aff: [] }
   p.weapon = id
 }
-/** 쿼터뷰 걷기: 괴물이 가까우면 그 반대쪽으로 · 아니면 좌우로 비켜 걷는다 (화면 기준 WASD — 키를 바뀔 때만 누르고 뗀다) */
+/**
+ * 쿼터뷰 걷기: 둘레 괴물 무리의 가운데에서 비켜서며 한쪽으로 돈다 — 방향은 0.9초마다만 정한다
+ * (2026-10-24 사용자: "초반 10초가 뚝뚝 끊긴다" — 예전에는 가장 가까운 괴물 반대쪽으로 장마다 정해 1초에 2 ~ 6번 거의 반대로 꺾였다)
+ */
 function qmover() {
   let cur = ''
+  let want = ''
   let t = 0
-  const set = (want) => {
-    if (want === cur) return
+  let next = 0
+  let side = 1
+  const set = (w) => {
+    if (w === cur) return
     if (cur) for (const c of cur.split('+')) key(c, false)
-    if (want) for (const c of want.split('+')) key(c, true)
-    cur = want
+    if (w) for (const c of w.split('+')) key(c, true)
+    cur = w
   }
   const f = () => {
-    const s = st()
-    const p = s.players[0]
-    const R = S().renderer
     t += 1 / FPS
-    let near = null
-    let nd = 3.6 * T
-    for (const q of s.monsters) {
-      const d = q.hp > 0 ? Math.hypot(q.x - p.x, q.y - p.y) : Infinity
-      if (d < nd) {
-        nd = d
-        near = q
+    if (t >= next) {
+      next = t + 0.9
+      const s = st()
+      const p = s.players[0]
+      const R = S().renderer
+      let cx = 0
+      let cy = 0
+      let n = 0
+      for (const q of s.monsters) {
+        if (q.hp > 0 && Math.hypot(q.x - p.x, q.y - p.y) < 6 * T) {
+          cx += q.x
+          cy += q.y
+          n++
+        }
       }
+      // 무리 가운데에서 비켜서는 쪽을 60° 돌려 옆으로 · 없으면 좌우로 · 막혔으면 반대로
+      // 한쪽으로 계속 돈다 — 막혔을 때만 반대로 (번갈아 돌면 1초마다 거의 반대로 꺾였다)
+      let a = n ? Math.atan2(p.y - cy / n, p.x - cx / n) + side * 1.05 : side > 0 ? 0 : Math.PI
+      if (!clearRay(p.x, p.y, a, 2.5 * T)) {
+        side = -side
+        a = n ? Math.atan2(p.y - cy / n, p.x - cx / n) + side * 1.05 : side > 0 ? 0 : Math.PI
+        if (!clearRay(p.x, p.y, a, 2.5 * T)) a += Math.PI
+      }
+      const sp = R.worldToScreen(p.x / T, 0, p.y / T)
+      const sq = R.worldToScreen((p.x + Math.cos(a) * T) / T, 0, (p.y + Math.sin(a) * T) / T)
+      const dx = sq.x - sp.x
+      const dy = sq.y - sp.y
+      want = [Math.abs(dx) > Math.abs(dy) * 0.4 ? (dx > 0 ? 'KeyD' : 'KeyA') : '', Math.abs(dy) > Math.abs(dx) * 0.4 ? (dy > 0 ? 'KeyS' : 'KeyW') : ''].filter(Boolean).join('+')
     }
-    if (near) {
-      // 화면에서 괴물 반대쪽으로
-      const a = R.worldToScreen(near.x / T, 0, near.y / T)
-      const b = R.worldToScreen(p.x / T, 0, p.y / T)
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      set([Math.abs(dx) > Math.abs(dy) * 0.4 ? (dx > 0 ? 'KeyD' : 'KeyA') : '', Math.abs(dy) > Math.abs(dx) * 0.4 ? (dy > 0 ? 'KeyS' : 'KeyW') : ''].filter(Boolean).join('+'))
-    } else set(Math.floor(t / 1.3) % 2 ? 'KeyA' : 'KeyD')
+    set(want)
   }
   f.stop = () => set('')
   f.strafe = () => {}
   return f
+}
+/** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
+function botsBehind() {
+  return () => {
+    const s = st()
+    const p = s.players[0]
+    const yaw = S().input.yaw
+    s.players.forEach((q, i) => {
+      if (i === 0 || !q.alive || q.area !== p.area) return
+      const a = yaw + Math.PI + (i - 2) * 0.75
+      const x = p.x + Math.cos(a) * 3 * T
+      const y = p.y + Math.sin(a) * 3 * T
+      const map = window.__bd.map()
+      if (map.tiles[Math.floor(y / T) * map.w + Math.floor(x / T)] !== 0) return
+      q.x = x
+      q.y = y
+    })
+  }
+}
+/** 파티 넷을 레벨 30 · 스킬 랭크 5(변형까지)로 — 스킬 효과가 크고 많이 보이게 (2026-10-24 사용자: "레벨을 올려 놓고 · 스킬도 많이") */
+function levelUpParty() {
+  for (const p of st().players) {
+    p.level = 30
+    p.xp = 0
+    p.build = { r: [5, 5, 5, 5, 5, 5, 2, 2, 2, 2], m3: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0], m5: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0], s: [0, 1, 2, 3] }
+    M.sim.autoAttr(p)
+    M.sim.recalc(p)
+    p.hp = p.maxHp
+  }
+}
+/** 스킬 연타: 0.45초마다 모두의 재사용 대기 · 집중을 채우고 내 스킬을 차례로 (Q · E · 1 · 2 · 가끔 R) — 동료 봇은 스스로 쓴다 */
+function skillStorm() {
+  let t = 0
+  let next = 0
+  let k = 0
+  const keys = ['KeyQ', 'KeyE', 'Digit1', 'Digit2', 'KeyQ', 'KeyE', 'Digit1', 'Digit2', 'KeyR']
+  return () => {
+    t += 1 / FPS
+    if (t < next) return
+    next = t + 0.45
+    for (const p of st().players) {
+      p.cd.fill(0)
+      p.focus = 100
+    }
+    tap(keys[k++ % keys.length])
+  }
 }
 
 /** 시선(3인칭 yaw)에서 가장 멀리 트인 쪽 — 괴물을 그쪽에 부르고 그쪽을 본다 */
@@ -1269,7 +1372,7 @@ function spawnAhead(kinds, n, r0, r1, spread, hp) {
     if (tx < 1 || ty < 1 || tx >= map.w - 1 || ty >= map.h - 1 || map.tiles[ty * map.w + tx] !== 0) continue
     // 울타리(벽) 너머는 안 된다 — 그쪽으로 걸어가다 울타리에 막혀 화면이 가렸다
     if (!clearRay(p.x, p.y, a, d)) continue
-    const m = M.dungeon.makeMonster(s, kinds[made % kinds.length], x, y, 1, hp, 60, 3)
+    const m = M.dungeon.makeMonster(s, kinds[made % kinds.length], x, y, 1, hp, 60, 22)
     m.st = 1
     m.target = 0
     s.monsters.push(m)
@@ -2123,7 +2226,8 @@ async function startGameFromLobby() {
   // 주펄란으로 뜬 뒤 "캐릭터만 단군란으로"). 단군란은 소음기 특성이라 총소리가 작다 — 맞히는 소리 · 처치 소리는 그대로
   window.__lobby?.selectChar?.(P24 ? 'dangun' : 'cheolmyeon')
   // 파티: 나 철면란(탱커) · 딜러 침착란 · 단군란 · 힐러 매직란 (2026-09-24 사용자)
-  if (window.__lobby) window.__lobby.botChars = P24 ? ['cheolmyeon', 'dangun', 'magic'] : BOT_CHARS
+  // 패치 플레이 영상의 동료: 철면란(고기 바이올린) · 주펄란(SMG 힐러) · 침착란(소총) — 2026-10-24 사용자: "봇을 추가해서 4개의 캐릭터가 전투"
+  if (window.__lobby) window.__lobby.botChars = P24 ? ['cheolmyeon', 'jupeol', 'chim'] : BOT_CHARS
   btn('게임 만들기')?.click()
   await sleep(700)
   // 로비는 지난 분위기를 기억한다 — 🌙 판을 뜰 때도 직접 고른다 (2026-10-17 패치 플레이 영상 두 벌)
@@ -2131,9 +2235,9 @@ async function startGameFromLobby() {
   await sleep(200)
   btn('만들기')?.click()
   await sleep(1600)
-  // 봇 채우기 — 패치 플레이 영상은 혼자 (봇이 조준점 앞을 가렸다)
+  // 봇 채우기
   const cb = document.querySelector('input[type=checkbox]')
-  if (cb && !cb.checked && !P24) cb.click()
+  if (cb && !cb.checked) cb.click()
   await sleep(900)
   btn('▶ 게임 시작')?.click()
   for (let k = 0; k < 160 && !(window.__session && window.__bd?.phase?.() === 'playing'); k++) await sleep(250)
@@ -2340,11 +2444,14 @@ export async function start(opts = {}) {
     return shout0.call(this, p, text, ally)
   }
   const hud = sess.renderer.hud
-  // 패치 플레이 영상은 띠 글(업적 · 지역 이름)도 뺀다
-  if (P24) hud.banner = () => {}
+  // 패치 플레이 영상: 업적 띠는 뺀다
+  if (P24) {
+    const banner0 = hud.banner.bind(hud)
+    hud.banner = (title, ...rest) => (String(title).startsWith('업적') ? undefined : banner0(title, ...rest))
+  }
   const notice0 = hud.notice.bind(hud)
   hud.notice = (text, color, life) => {
-    // 패치 플레이 영상은 알림 글을 모두 뺀다 (사용자: "글이 너무 많다")
+    // 패치 플레이 영상은 알림 글을 뺀다 (사용자: "글이 너무 많다") — 후원 알림 띠 · 예고는 renderer.banner · startDonWarn 이라 그대로 뜬다
     if (P24) return
     if (/(^|\s)레벨 \d+/.test(text) && !text.includes('지역 레벨')) return
     notice0(text, color, life)
@@ -2362,7 +2469,10 @@ export async function start(opts = {}) {
   }
   sfx.updateSteps = () => {}
   Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, showcase: false, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
-  if (P24) await showcaseSetup()
+  if (P24) {
+    await showcaseSetup()
+    watchUi()
+  }
 
   diag = []
   const acts = ULT ? ultScenes() : P24 ? patch24Scenes() : NOTES ? notesScenes() : scenes(PART)
@@ -2460,7 +2570,7 @@ export async function start(opts = {}) {
           for (let k = 0; k < d.length; k += 4) sum += d[k] + d[k + 1] + d[k + 2]
           return Math.round((sum / (d.length / 4) / 3) * 10) / 10
         }
-        diag.push({ t: +((vt - t0) / 1000).toFixed(2), tick: st().tick, bots: st().players.slice(1).map((q) => [Math.round(q.x), Math.round(q.y), q.aim]), acc: +sess.acc.toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
+        diag.push({ t: +((vt - t0) / 1000).toFixed(2), tick: st().tick, hs: +R.hitStop.toFixed(3), bots: st().players.slice(1).map((q) => [Math.round(q.x), Math.round(q.y), q.aim]), acc: +sess.acc.toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
         if (opts.diag.shots?.includes(i)) {
           const sc = document.createElement('canvas')
           sc.width = 960
@@ -2486,6 +2596,12 @@ export async function start(opts = {}) {
       if (!holding && !areaFade && settle === 0 && !opts.diag) {
         g.fillStyle = '#000'
         g.fillRect(0, 0, W, H)
+        if (P24 && window.__grabUi && !ov.showcase && uiDirty && uiAge >= 4) {
+          uiDirty = false
+          uiAge = 0
+          await grabUi()
+        }
+        uiAge++
         drawGame()
         drawXfade()
         if (snap) {
