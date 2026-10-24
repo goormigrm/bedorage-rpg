@@ -58,6 +58,8 @@ const SLIDE_FILES = ['01_lobby', '03_bag_expand', '11_skill_window', '04_shop_se
 const SLIDES = {}
 /** 10월 23일 이후 패치 플레이 영상 (start({ mode: 'patch24' })) — 저장 폴더 · 매 장 부르는 것(조준 · 걷기) */
 let P24 = false
+/** 패치 플레이 영상을 🌙 · ☀ 를 장면마다 바꿔 가며 (start({ mode: 'patch24', modes: true }) — 2026-10-24 사용자: "공포 · 철면수심 모드도 바꿔 가면서 한 영상에서") */
+let MODES = false
 const P24_DIR = 'patch-2026-10-24'
 let perFrame = null
 /** 자막 고르기: 어둡게 · 밝게 */
@@ -171,7 +173,9 @@ function drawGame() {
   // 2026-09-24 사용자: "트레일러가 실제로 플레이하는 것보다 어둡다" → 1.35 → 1.6 · 가장자리 어둡게 0.55 → 0.32
   // 2026-10-08: 게임에 빛 번짐 · 색감(후처리)이 들어온 뒤로는 1.6 배면 스킬 빛 · 불빛이 하얗게 날아갔다 → 1.22
   // 마을(밤 · 모닥불 빛만)은 조금 더 밝게 — ov.bright
-  g.filter = BRIGHT ? 'none' : `brightness(${ov.bright ?? 1.22}) contrast(1.03)`
+  const bright = MODES ? !!document.querySelector('.skin-bright') : BRIGHT
+  // 모드 영상의 🌙 3인칭 숲은 1.22 로는 거의 까맸다 — 조금 더 밝게
+  g.filter = bright ? 'none' : `brightness(${ov.bright ?? (MODES ? 1.4 : 1.22)}) contrast(1.03)`
   g.drawImage(cvs[0], (W - dw) / 2, (H - dh) / 2, dw, dh)
   g.filter = 'none'
   for (const c of cvs.slice(1)) {
@@ -1099,14 +1103,19 @@ function patch24Scenes() {
     gatherBots()
   }
   // 장면 넘김: 지금 장을 붙잡고(hold) 다른 지역으로 — 준비가 끝나면 녹이며 연다
-  const goto = (area) => {
+  // skin: 'bright' · 'dark' — MODES 면 장면을 옮기며 모드를 바꾼다(게임의 G · 오른쪽 위 스위치와 같은 길 — session.switchSkin)
+  const goto = (area, skin) => {
     dissolve(260)
     holding = true
     perFrame = null
     mv?.stop()
     inp().mouseDown.clear()
     ov.showcase = false
+    if (MODES && skin && !!document.querySelector('.skin-bright') !== (skin === 'bright')) S().switchSkin()
     if (st().players[0].area !== area) warpParty(area)
+    // 장면이 바뀌면 HTML UI 겹을 새로 찍는다 (로딩 덮개 · 바뀐 모드 색)
+    uiDirty = true
+    uiAge = 99
   }
   const ahead = () => {
     const p = st().players[0]
@@ -1121,7 +1130,7 @@ function patch24Scenes() {
     S().autopilot = false
     // 첫 판 소개 글(HTML)을 닫는다 — UI 겹을 담으면서 영상에 덮여 찍혔다
     document.querySelector('.ending.intro .ending-go')?.click()
-    goto(1)
+    goto(1, 'bright')
   })
   at(1.5, () => {
     place()
@@ -1141,7 +1150,7 @@ function patch24Scenes() {
   at(7.5, () => {})
   // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 옆걸음
   at(0, () => {
-    goto(11)
+    goto(11, 'dark')
     S().autopilot = false
   })
   at(1.2, () => {
@@ -1161,7 +1170,7 @@ function patch24Scenes() {
   at(1.6, () => {})
   // ---- 3. 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커
   at(0, () => {
-    goto(11)
+    goto(11, 'dark')
     place()
     inp().fps = true
     inp().pitch = -0.05
@@ -1175,7 +1184,7 @@ function patch24Scenes() {
   every(c0 + 0.5, c0 + 6, 0.45, () => ahead() < 8 && spawnAhead(K(11), 4, 7, 11, 0.45, 2))
   at(6, () => {})
   // ---- 4. 화염방사기로 바꿔 끼고 3인칭 (3막 시장): 몰려오는 무리를 태운다 — 무기 모양도 바뀐다
-  at(0, () => goto(22))
+  at(0, () => goto(22, 'bright'))
   at(1.2, () => {
     place()
     inp().fps = true
@@ -1203,7 +1212,7 @@ function patch24Scenes() {
   // 막 보스 · 중간보스 · 지옥문(보스) · 시야 축소 · 봉인 · 흔들림은 쓰지 않는다 (보스 장면은 넣지 않는다 · 화면이 가려진다)
   const don = (amount, text) => M.stream.donation({ nick: DON_NICKS[amount % DON_NICKS.length], amount, text })
   at(0, () => {
-    goto(29)
+    goto(29, 'dark')
     inp().fps = false
   })
   at(1.2, () => {
@@ -1217,8 +1226,9 @@ function patch24Scenes() {
     holding = false
   })
   const e0 = tl.t
-  every(e0 + 0.3, e0 + 15, 0.45, () => M.stream.fakeChat(false))
-  every(e0 + 1, e0 + 15, 0.6, () => alive() < 50 && spawn(K(29), 14, 6, 12))
+  every(e0 + 0.3, e0 + 12.6, 0.45, () => M.stream.fakeChat(false))
+  // 괴물이 너무 많으면 후원 소환(대행진)이 자리를 기다리다 다음 장면에서 터졌다 — 34 아래만 보탠다
+  every(e0 + 1, e0 + 12.6, 0.6, () => alive() < 34 && spawn(K(29), 12, 6, 12))
   at(0.8, () => don(1000, '좀비 떼 갑니다'))
   at(2.2, () => don(3000, '정예 한번 보자'))
   at(2.2, () => don(6000, '총잡이 출동!!'))
@@ -1227,6 +1237,47 @@ function patch24Scenes() {
   at(5.2, () => {
     perFrame = null
   })
+  // ---- 7. 1막 보스 예고 (모드 영상만 — 2026-10-24 사용자: "3인칭으로 1막 보스를 보는 장면 — 전투는 하지 말고 예고편처럼 위압감이 들게"):
+  // ☀ 보스 방. 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자). 잠든 괴물은 11칸 안에서 보거나(WAKE_RANGE)
+  // 16칸 안 총소리(NOISE_RANGE)에 깬다 → 12.4칸에 서고 · 아무도 쏘지 않고 · 동료는 7칸 뒤 · 다른 괴물은 뺀다. 시선을 옆에서 천천히 돌려 보스를 드러내며 올려다본다
+  if (MODES) {
+    at(0, () => {
+      // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다
+      const sess = S()
+      sess.donPending.length = 0
+      sess.donSending = null
+      // 예고 장면에는 방송 표시(후원 표 · 말풍선)를 끈다
+      M.stream.tried = false
+      // ☀ — 🌙 보스 방은 13칸 밖에서는 어두워 보스가 안 보였다(깨어나야 어둠이 걷힌다)
+      goto(9, 'bright')
+      sess.autopilot = false
+    })
+    at(1.4, () => {
+      const s = st()
+      const p = s.players[0]
+      const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
+      if (!b) return void (holding = false)
+      s.monsters = s.monsters.filter((m) => m === b)
+      // 보스에게서 입구 쪽(들어선 자리)으로 12.4칸 — 벽이면 조금씩 당긴다
+      const ang = Math.atan2(p.y - b.y, p.x - b.x)
+      for (let d = 12.4; d > 11.4; d -= 0.2) {
+        const x = b.x + Math.cos(ang) * d * T
+        const y = b.y + Math.sin(ang) * d * T
+        if (clearRay(b.x, b.y, ang, d * T)) {
+          p.x = x
+          p.y = y
+          break
+        }
+      }
+      const face = Math.atan2(b.y - p.y, b.x - p.x)
+      inp().fps = true
+      inp().yaw = face + 0.75
+      inp().pitch = -0.12
+      perFrame = both(bossReveal(face), botsBehind(7))
+      holding = false
+    })
+    at(5.6, () => (perFrame = null))
+  }
   endCard(tl, 0, 700)
   return tl.done()
 }
@@ -1308,8 +1359,20 @@ function botCursor() {
     inp.mouse.y += (sc.y - inp.mouse.y) * k
   }
 }
+/** 보스 예고: 시선을 옆(+0.75)에서 보스 쪽으로 천천히 돌리고(먼저 빠르게 · 끝에서 느리게) 고개를 들어 올려다본다 */
+function bossReveal(face) {
+  let t = 0
+  return () => {
+    t += 1 / FPS
+    const inp = S().input
+    const k = ease(Math.min(1, t / 3.2))
+    // 다 돌린 뒤에도 아주 천천히 흔들려 멈춘 장이 되지 않게
+    inp.yaw = face + 0.75 * (1 - k) + 0.05 * Math.sin(t * 0.7) * k
+    inp.pitch = -0.12 + 0.26 * ease(Math.min(1, t / 3.8)) + 0.02 * Math.sin(t * 0.5) * k
+  }
+}
 /** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
-function botsBehind() {
+function botsBehind(dist = 3) {
   return () => {
     const s = st()
     const p = s.players[0]
@@ -1317,8 +1380,8 @@ function botsBehind() {
     s.players.forEach((q, i) => {
       if (i === 0 || !q.alive || q.area !== p.area) return
       const a = yaw + Math.PI + (i - 2) * 0.75
-      const x = p.x + Math.cos(a) * 3 * T
-      const y = p.y + Math.sin(a) * 3 * T
+      const x = p.x + Math.cos(a) * dist * T
+      const y = p.y + Math.sin(a) * dist * T
       const map = window.__bd.map()
       if (map.tiles[Math.floor(y / T) * map.w + Math.floor(x / T)] !== 0) return
       q.x = x
@@ -2318,6 +2381,7 @@ export async function start(opts = {}) {
   ULT = opts.mode === 'ult'
   NOTES = opts.mode === 'notes'
   P24 = opts.mode === 'patch24'
+  MODES = P24 && !!opts.modes
   FPS = opts.fps ?? (P24 ? 60 : 30)
   perFrame = null
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
@@ -2342,10 +2406,12 @@ export async function start(opts = {}) {
   const encs = P24
     ? [
         // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
-        ...[3_000_000, 2_400_000, 1_900_000].map((bitrate) => ({ name: 'patch_1024_play', w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        // 모드 영상은 🌙 장면이 압축이 안 돼 1.9 Mbps 도 23.5 MB 였다 — 더 낮은 후보까지
+        // 모드 영상은 🌙 장면이 압축이 안 돼 VP8 은 비트레이트를 낮춰도 22 MB 였다 → 720 도 VP9
+        ...(MODES ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: MODES ? 'patch_1024_modes' : 'patch_1024_play', ...(MODES ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
         (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
-          ? { name: 'patch_1024_play_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
-          : { name: 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+          ? { name: MODES ? 'patch_1024_modes_hq' : 'patch_1024_play_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
+          : { name: MODES ? 'patch_1024_modes_hq' : 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
       ]
     : NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
