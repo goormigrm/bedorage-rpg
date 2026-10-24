@@ -10,7 +10,7 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.25 배포)
+## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.26 배포)
 
 - **v1.10.18**: 시점 스위치 글자 오른쪽에 단축키 `<kbd>`(`session.syncViewBtn` · 키 설정이 바뀌면 `refreshKeyLabels` 가 다시 씀 · style.css `.skin-sw .sw-cap kbd`).
 - **v1.10.19 무기 모양**: `character3d buildGun` — 무기 id 마다 `GUNS` 모양 함수(부품 `box` · `tube` · `rod` · 툰 재질만 — 셰이더가 늘지 않는다) · 손에 든 총 `GUN_HOLD` 1.4배(1인칭 손 총은 따로 0.6) · 웍 `buildWok` · 무기를 바꾸면 옛 지오메트리 · 재질을 치운다. 고기 악기 `MEAT_LOOK`(소 · 닭 · 오리) ← `items.ts meatOf`(아이템 uid % 3 · 이름 `baseName` "닭고기 바이올린") ← 렌더러 `updateRig` 가 `p.equip[0]` 으로. 확인 페이지 `.frames/guns*.html` + `.frames/guns.mjs [top|side|char|meat]`(이 PC 에만 — 개발 서버가 .frames 의 html 을 캐시하므로 고치면 이름을 바꿔 연다).
@@ -18,7 +18,8 @@
 - **v1.10.24**: 커서 — `session.unlockPointer`(내가 푼 때를 적는다) · `showOverlay` 가 잠금을 푼다 · `onLockChange`(창 모드에서 브라우저가 Esc 로 풀면 메뉴 — 같은 Esc 로 바로 닫지 않게 `menuByUnlockAt`) · `syncUi` 에 퀘스트 창 · `.game-root.ui-open { cursor: default }` + HUD `hideCursor`. 전체 화면 `settings.toggleFullscreen` ← 오른쪽 아래 `#btn-fs` · Alt+Enter. 키 `skin`(G) → `switchSkin`. 설정 정리(`settingsHtml` — 자동 줍기 맨 위 · 소리 전체만(`volume.ts` 는 all 만 읽는다) · `kbOpen` true · 에임 그림 `render/aimShape.ts drawAimShape`(HUD 와 같이 씀) · `realMonstersOn` = 폰 아니면 켬 · `shakeScale` 0 · `gfxMode` 자동(도구만 주소 `gfx=high`) · 색약 없음(palette 상수)). 단축키 칸 `.wbtn small` · `.sysbtns kbd`. 조작 안내 `keysPast`(레벨 > 5). !응원 — session 이 후원 글을 더는 보지 않는다 · 후원 표 · 치지직 창 · 로비 문구 · stream cfg.cheers 를 뺐다(판의 응원 처리 · CHEER_EVENTS 는 닿을 길 없이 남음 — donate.ts `shortcut:`). 후원 표 20px · "채팅에 !참여<br>괴물에 내 이름".
 - **영상 도구(v1.10.24)**: 쿼터뷰 장면(초반 · 후원 전투)은 `S().autopilot = true`(게임 자동 플레이) + `botCursor`(조준점이 봇이 겨누는 곳을 따라감) · `skillStorm` 은 내 일반 스킬만 1.2초마다(전부 채우면 궁극기 빛이 겹쳐 하얗게 날아갔다). **녹화 중 게임 자체 갱신 차단**: `sess.rafFrame` 을 비우고 `sess.frame` 을 가상 시계로 묶는다 · 장마다 `sess.last` 를 한 장 뒤로 — 새어 나온 rAF 가 실제 시각으로 그려 세션 시계가 앞질러 장이 멈추고 `donTableAt` 이 밀려 후원 표가 안 그려졌다(`DIAG` 에 `last`(세션 시계 − 가상 시계) 기록).
 - **v1.10.25 모드 영상**: `MODE=patch24 MODES=1 node tools/patchvideo.mjs` → `patch_1024_modes(_hq).webm`(사용자: "기존 최종본은 그대로 두고 🌙 · ☀ 를 바꿔 가며 한 영상에서" — `patch_1024_play` 는 건드리지 않는다). `goto(area, skin)` 이 `session.switchSkin` 으로 장면마다 모드를 바꾼다(☀ 1 → 🌙 11 · 11 → ☀ 22 → 무기 모아 보기 → 🌙 29 → ☀ 9). 마지막 **1막 보스 예고**(`MODES` 만 · `bossReveal`): 보스 방(지역 9)에서 보스 말고는 다 빼고 12.4칸(깨는 거리 11칸 · 총소리 16칸 밖 — 아무도 안 쏜다 · 동료 `botsBehind(7)`)에 서서 시선을 옆에서 돌려 드러내며 올려다본다 · 밀린 후원 비움 · `M.stream.tried = false`(방송 표시 끔). 🌙 보스 방은 깨기 전에는 어두워 ☀ 로 찍는다. `drawGame` 의 🌙 밝기는 모드 영상에서 1.4 · 720p 는 VP9(`vp09.00.40.08`).
-- **멈춘 자리**: v1.10.25 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
+- **v1.10.26 모드 영상 순서**(사용자: "보스 예고는 어두운 버전 · 정면 · 후원 전투는 밝은 버전"): ☀ 1 → 🌙 11 · 11 → ☀ 22 → 무기 모아 보기 → ☀ 29(후원 전투) → 🌙 9(보스 예고). 보스 예고(`bossTilt`): 정면 6.5칸 · 보스 `aim` 을 나에게 · 발밑(-0.32)에서 얼굴(+0.3)까지 고개 들기. 깨는 거리(11칸) 안이라 그 장면 동안 `input.sample` 을 감싸 판에 `BTN_LOADING`(덮임 — 들어선 뒤 12초 안만 먹는다 · sim `p.cover`)을 싣는다 — 잠든 괴물이 못 알아채고 따라다니는 봇도 입력이 비어 멈춘다. 장면이 끝나면 되돌린다.
+- **멈춘 자리**: v1.10.26 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
 - **v1.10.17(사용자: "3인칭에서 캐릭터가 혼자 몹 쪽으로 뒤돈다")**: `renderer3d fpsAim` — 괴물 후보는 시선 앞쪽 반평면 + `AIM_CONE`(0.45 rad) 안만 · 하늘을 보면(카메라 방향 y > -0.02) 시선 쪽 멀리 · 땅에 맞은 자리가 2칸 안이면 2칸 앞. 예전에는 어깨 너머 카메라라 캐릭터 옆 · 뒤 괴물이 화면 가운데를 덮으면 그쪽을 겨눴다(169°). `tools/uitest.mjs` 시련 지역에서 곁 · 뒤 괴물로 30° 안인지 본다(예전 코드면 실패함을 확인). 정조준(1인칭) 때 내 총알 꼬리는 눈앞 1.5칸을 비운다(`updateBullets` — 화면 구석에서 띠가 뻗어 보였다).
 - **공지 문체(2026-10-24 사용자: "너무 AI 가 쓴 글 같다 — '상점 UI 를 개선했습니다' 정도로 간단하게")**: 업데이트 공지는 바뀐 것 이름만 한 줄씩 · 묶음 · 부제 · 설명 없이(공지글-모음 "쓰는 법" 맨 위 · 6차가 기준).
 - **v1.10.15(사용자 요청 셋)**: 스위치 줄 `.swcol`(session — 퀘스트 칸 아래 끝 `renderer.hud.d4.trackerBottom` 을 따라 `top` · RenderOptions `belowTracker` 만큼 퀘스트 줄을 덜 쓴다) · 스킬 단축창 판 +10px · 글자 맞춤(d4hud drawBottom) · 경험치 띠 8px.
@@ -200,7 +201,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-24 · v1.10.25 배포)
+## 현재 상태 (2026-10-24 · v1.10.26 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 

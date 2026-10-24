@@ -1212,7 +1212,7 @@ function patch24Scenes() {
   // 막 보스 · 중간보스 · 지옥문(보스) · 시야 축소 · 봉인 · 흔들림은 쓰지 않는다 (보스 장면은 넣지 않는다 · 화면이 가려진다)
   const don = (amount, text) => M.stream.donation({ nick: DON_NICKS[amount % DON_NICKS.length], amount, text })
   at(0, () => {
-    goto(29, 'dark')
+    goto(29, 'bright')
     inp().fps = false
   })
   at(1.2, () => {
@@ -1237,20 +1237,23 @@ function patch24Scenes() {
   at(5.2, () => {
     perFrame = null
   })
-  // ---- 7. 1막 보스 예고 (모드 영상만 — 2026-10-24 사용자: "3인칭으로 1막 보스를 보는 장면 — 전투는 하지 말고 예고편처럼 위압감이 들게"):
-  // ☀ 보스 방. 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자). 잠든 괴물은 11칸 안에서 보거나(WAKE_RANGE)
-  // 16칸 안 총소리(NOISE_RANGE)에 깬다 → 12.4칸에 서고 · 아무도 쏘지 않고 · 동료는 7칸 뒤 · 다른 괴물은 뺀다. 시선을 옆에서 천천히 돌려 보스를 드러내며 올려다본다
+  // ---- 7. 1막 보스 예고 (모드 영상만 — 2026-10-24 사용자: "3인칭으로 1막 보스를 보는 장면 — 전투는 하지 말고 예고편처럼 위압감이 들게" →
+  // 같은 날 "어두운 버전으로 · 정면에서"). 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자).
+  // 🌙 보스 방은 깨기 전에는 등불이 닿는 곳만 보인다 → 정면 6.5칸까지 다가가되, 그동안 판에 "화면 덮임"(BTN_LOADING — 들어선 뒤 12초 안)을 실어
+  // 잠든 괴물이 알아채지 못하게 한다(동료 봇도 따라 멈춰 쏘지 않는다). 보스는 나를 보게 돌리고, 발밑에서 얼굴까지 고개를 들어 올려다본다
   if (MODES) {
+    let sample0 = null
     at(0, () => {
-      // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다
+      // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다 · 예고 장면에는 방송 표시(후원 표 · 말풍선)를 끈다
       const sess = S()
       sess.donPending.length = 0
       sess.donSending = null
-      // 예고 장면에는 방송 표시(후원 표 · 말풍선)를 끈다
       M.stream.tried = false
-      // ☀ — 🌙 보스 방은 13칸 밖에서는 어두워 보스가 안 보였다(깨어나야 어둠이 걷힌다)
-      goto(9, 'bright')
+      goto(9, 'dark')
       sess.autopilot = false
+      const inp0 = sess.input
+      sample0 = inp0.sample.bind(inp0)
+      inp0.sample = (...a) => ({ ...sample0(...a), mx: 0, my: 0, buttons: M.input.BTN_LOADING })
     })
     at(1.4, () => {
       const s = st()
@@ -1258,25 +1261,27 @@ function patch24Scenes() {
       const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
       if (!b) return void (holding = false)
       s.monsters = s.monsters.filter((m) => m === b)
-      // 보스에게서 입구 쪽(들어선 자리)으로 12.4칸 — 벽이면 조금씩 당긴다
+      // 보스에게서 입구 쪽(들어선 자리)으로 6.5칸 — 벽이면 조금씩 당긴다
       const ang = Math.atan2(p.y - b.y, p.x - b.x)
-      for (let d = 12.4; d > 11.4; d -= 0.2) {
-        const x = b.x + Math.cos(ang) * d * T
-        const y = b.y + Math.sin(ang) * d * T
-        if (clearRay(b.x, b.y, ang, d * T)) {
-          p.x = x
-          p.y = y
-          break
-        }
+      for (let d = 6.5; d > 4.5; d -= 0.25) {
+        if (!clearRay(b.x, b.y, ang, d * T)) continue
+        p.x = b.x + Math.cos(ang) * d * T
+        p.y = b.y + Math.sin(ang) * d * T
+        break
       }
+      // 보스가 나를 보게 (정면)
+      b.aim = Math.round((Math.atan2(p.y - b.y, p.x - b.x) / (Math.PI * 2)) * 1024) & 1023
       const face = Math.atan2(b.y - p.y, b.x - p.x)
       inp().fps = true
-      inp().yaw = face + 0.75
-      inp().pitch = -0.12
-      perFrame = both(bossReveal(face), botsBehind(7))
+      inp().yaw = face
+      inp().pitch = -0.32
+      perFrame = both(bossTilt(face), botsBehind(4))
       holding = false
     })
-    at(5.6, () => (perFrame = null))
+    at(5.0, () => {
+      perFrame = null
+      if (sample0) S().input.sample = sample0
+    })
   }
   endCard(tl, 0, 700)
   return tl.done()
@@ -1359,16 +1364,15 @@ function botCursor() {
     inp.mouse.y += (sc.y - inp.mouse.y) * k
   }
 }
-/** 보스 예고: 시선을 옆(+0.75)에서 보스 쪽으로 천천히 돌리고(먼저 빠르게 · 끝에서 느리게) 고개를 들어 올려다본다 */
-function bossReveal(face) {
+/** 보스 예고: 정면에서 발밑(-0.32)부터 얼굴(+0.3)까지 천천히 고개를 들고, 다 든 뒤에도 아주 천천히 흔들려 멈춘 장이 되지 않게 */
+function bossTilt(face) {
   let t = 0
   return () => {
     t += 1 / FPS
     const inp = S().input
-    const k = ease(Math.min(1, t / 3.2))
-    // 다 돌린 뒤에도 아주 천천히 흔들려 멈춘 장이 되지 않게
-    inp.yaw = face + 0.75 * (1 - k) + 0.05 * Math.sin(t * 0.7) * k
-    inp.pitch = -0.12 + 0.26 * ease(Math.min(1, t / 3.8)) + 0.02 * Math.sin(t * 0.5) * k
+    const k = ease(Math.min(1, t / 3))
+    inp.yaw = face + 0.04 * Math.sin(t * 0.6)
+    inp.pitch = -0.32 + 0.62 * k + 0.015 * Math.sin(t * 0.5) * k
   }
 }
 /** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
@@ -2358,6 +2362,7 @@ export async function start(opts = {}) {
     m3d: await sameModule('/src/render3d/monsters3d.ts'),
     monsters: await sameModule('/src/core/monsters.ts'),
     weapons: await sameModule('/src/core/weapons.ts'),
+    input: await sameModule('/src/core/input.ts'),
     c3d: await sameModule('/src/render3d/character3d.ts'),
   }
   out = document.createElement('canvas')
