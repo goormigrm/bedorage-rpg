@@ -214,6 +214,15 @@ async function openGame(skin) {
       const p = window.__bd.state().players[window.__bd.me()]
       const m = window.__bd.view().monsters.find((q) => q.hp > 0)
       if (!inp.fps || !m) return `3인칭 ${inp.fps} · 괴물 ${!!m}`
+      const sleep = (ms) => new Promise((res) => setTimeout(res, ms))
+      const frames = (n) => new Promise((res) => { const f = () => (--n <= 0 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f) })
+      // GitHub 서버(SwiftShader)는 한 장이 수백 ms — 3인칭 준비가 끝나고, 렌더러가 새 시선을 받아 몇 장 그린 뒤에 잰다
+      // (250ms 만 기다리면 바뀌기 전 시선으로 겨눈 값을 재 87° 로 실패했다)
+      for (let i = 0; i < 240 && S.renderer.fpsPrep !== 'done'; i++) await sleep(250)
+      const settle = async () => {
+        for (let i = 0; i < 200 && S.renderer.fpsYaw !== inp.yaw; i++) await sleep(50)
+        await frames(3)
+      }
       let worst = 0
       for (let k = 0; k < 4; k++) {
         inp.yaw = k * 1.57
@@ -223,7 +232,7 @@ async function openGame(skin) {
         for (const [f, r] of [[0, 26], [-60, 12]]) {
           m.x = p.x + fx * f - fy * r
           m.y = p.y + fy * f + fx * r
-          await new Promise((res) => setTimeout(res, 250))
+          await settle()
           const a = (inp.sample(S.renderer, p.x, p.y).aim / 1024) * Math.PI * 2
           worst = Math.max(worst, (Math.abs(Math.atan2(Math.sin(a - inp.yaw), Math.cos(a - inp.yaw))) * 180) / Math.PI)
         }
