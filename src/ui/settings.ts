@@ -44,8 +44,6 @@ const AUTOPICK_KEY = 'brpg.autopick'
 const KEYS_KEY = 'brpg.keys'
 const MUTE_KEY = 'brpg.muted'
 const HUD_KEY = 'brpg.hud'
-const DMGNUM_KEY = 'brpg.dmgnum'
-const FPSCAP_KEY = 'brpg.fpscap'
 const AIM_KEY = 'brpg.aim'
 
 const get = (k: string): string | null => {
@@ -114,20 +112,10 @@ export function setAimStyle(v: { shape?: AimShape; size?: number }): void {
   set(AIM_KEY, JSON.stringify(aim))
 }
 
-/** 괴물 위 피해 숫자 보기 (기본 켬) */
-let dmgNum = get(DMGNUM_KEY) !== '0'
-export const dmgNumbersOn = (): boolean => dmgNum
-export const setDmgNumbers = (on: boolean): void => {
-  dmgNum = on
-  set(DMGNUM_KEY, on ? '1' : '0')
-}
-/** 프레임 제한: 고주사율 모니터에서도 1초에 약 60번만 그린다 (기본 켬 — game/ticker.ts shouldDraw) */
-let fpsCap = get(FPSCAP_KEY) !== '0'
-export const fpsCapOn = (): boolean => fpsCap
-export const setFpsCap = (on: boolean): void => {
-  fpsCap = on
-  set(FPSCAP_KEY, on ? '1' : '0')
-}
+/** 괴물 위 피해 숫자 — 늘 보인다 (2026-10-24 사용자: "피해 숫자는 보기로 — 메뉴에서 빼") */
+export const dmgNumbersOn = (): boolean => true
+/** 프레임 제한 — 늘 모니터에 맞춘다 (2026-10-24 사용자: "프레임 제한도 모니터에 맞춤으로") · game/ticker.ts shouldDraw 는 그대로 둔다 */
+export const fpsCapOn = (): boolean => false
 
 /** 조작 안내 띠 */
 export const keysShown = (): boolean => get(KEYS_KEY) !== '0'
@@ -212,9 +200,6 @@ export function settingsHtml(o: SettingsOpts = {}): string {
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
     (isTouchDevice() ? '' : aimRowsHtml()) +
-    onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
-    onoff('프레임 제한', fpsCapOn(), '60fps', '모니터에 맞춤') +
-    `<p class="apn">120 · 144Hz 모니터에서도 1초에 60번만 그립니다(판이 60번 움직인다 — 더 그리면 CPU 만 더 씁니다).</p>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
     `</div>` +
     (kb ? keybindHtml() : '') +
@@ -329,10 +314,6 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       if (name === '소리') {
         setSoundMuted(!on)
         o.onSound?.(!on)
-      } else if (name === '피해 숫자') {
-        setDmgNumbers(on)
-      } else if (name === '프레임 제한') {
-        setFpsCap(on)
       } else {
         setKeysShown(on)
         o.onKeys?.(on)

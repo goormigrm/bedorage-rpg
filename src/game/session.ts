@@ -348,7 +348,7 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-fs"${isTouchDevice() ? ' hidden' : ''}>전체 화면</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-fs"${isTouchDevice() ? ' hidden' : ''}>전체 화면</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로<kbd>${keyLabel('lobby')}</kbd></button></div>
             </div>
             <!-- 시점 · 모드 스위치는 오른쪽 위 퀘스트 칸 바로 아래 (2026-10-24 사용자) — 칸의 아래 끝을 따라간다 (frame — trackerBottom) -->
             <div class="swcol"${this.arena ? ' hidden' : ''}><button class="btn secondary" id="btn-view"${isTouchDevice() ? ' hidden' : ''}></button><button class="btn secondary" id="btn-skin"></button></div>
@@ -1081,6 +1081,10 @@ export class Session {
       this.switchSkin()
       return
     }
+    if (isKey(e, 'lobby') && this.overlay.hidden) {
+      this.confirmExit()
+      return
+    }
     if (isKey(e, 'mute')) {
       this.sfx.toggle()
       this.syncMute()
@@ -1251,6 +1255,8 @@ export class Session {
     if (this.viewBtn) this.syncViewBtn()
     if (this.skinBtn) this.syncSkinBtn()
     this.syncMute()
+    const lob = this.stage.querySelector('#btn-lobby')
+    if (lob) lob.innerHTML = `로비로<kbd>${keyLabel('lobby')}</kbd>`
     const act: Record<string, Parameters<typeof keyLabel>[0]> = { bag: 'bag', skill: 'skills', attr: 'attr', quest: 'quest', map: 'map' }
     this.stage.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
       const a = act[b.dataset.win as string]

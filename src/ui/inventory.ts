@@ -87,7 +87,7 @@ export function cellHtml(it: Item | undefined, attr: string, me?: PlayerState): 
   const cant = !!me && it.slot === SLOT_WEAPON && !canWield(me, it)
   // 잠근 것은 자물쇠 — 팔기 · 버리기 · 재료 · 한꺼번에 보관에서 빠진다
   const tag = cellTag(it)
-  return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}${me ? cmpMark(it, me) : ''}</div>`
+  return `<div class="cell r${it.rarity}${cant ? ' cant' : ''}${it.lk ? ' locked' : ''}${it.set !== undefined ? ' setp' : ''}" ${attr} style="--rc:${col}"><i class="ic" style="background-image:url(${itemIconUrl(it)})"></i><b>${esc(tag)}</b><em class="ilv"><small>Lv</small>${it.ilvl}</em>${it.up ? `<u>+${it.up}</u>` : ''}${it.lk ? '<i class="lk">🔒</i>' : ''}${me ? cmpMark(it, me) : ''}</div>`
 }
 
 /** 아이템 설명 풍선. 가방 창과 보관함 창이 **같은 것**을 쓴다 (2026-09-25) */

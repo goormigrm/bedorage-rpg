@@ -3,8 +3,8 @@
 // - StreamBadge: 로비(제목 아래)와 게임(왼쪽 위 단추 줄 맨 앞)에 늘 떠 있는 상태 단추. 연결 상태만 — 받은 채팅 · 후원의 개수 · 합계는 보이지 않는다(2026-09-23).
 // - openStreamPanel: 단추를 누르면 여는 전용 창 — 로그인 · 연결 · 말풍선 · 표 · 금액 · 시험 · 최근 받은 것.
 
-import { DONATE_EVENTS, DON_CAP_CHOICES, DonateEvent } from '../core/donate'
-import { BUBBLE_FLOW, BubbleAmount, DEFAULT_BANNED, StreamStatus, TEXT_SCALES, cleanBanned, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
+import { DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
+import { BUBBLE_FLOW, BubbleAmount, StreamStatus, TEXT_SCALES, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
 import { isDev, onDevChange } from '../game/devmode'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
@@ -143,47 +143,29 @@ const toggle = (key: string, name: string, on: boolean, yes = '켜기', no = '�
   `<button type="button" data-on="0" class="${on ? '' : 'on'}">${no}</button></div></div>`
 
 /**
- * 가릴 말 목록을 펼쳐 두었나 — 처음에는 접어 둔다: 창을 방송 화면에 띄운 채 열면 욕 목록이 그대로 보인다 (2026-09-25 방송 개선 3)
+ * 방송 설정 한 칸 (2026-10-24 사용자: "말풍선 · 표 · 글자 크기 칸과 방해 효과 · 시청자 참여 칸을 하나로 · 자세한 설명은 간단하게 · 방송 화면 거르기는 빼도 돼 —
+ * 방송 자체에서 거른다"). 거르기(가릴 말 · 링크 · 도배 · 대기실 채팅)는 처음 값 그대로 돈다 (stream.ts loadStreamCfg)
  */
-let banOpen = false
-
-/** 방송 안전 · 참여 (2026-09-25 사용자 고른 방송 개선 3 · 5 · 7) */
-function safetyHtml(c: ReturnType<typeof loadStreamCfg>): string {
+function settingsHtml(c: ReturnType<typeof loadStreamCfg>, dev: boolean): string {
   const caps = DON_CAP_CHOICES.map((s) => `<button type="button" data-cap="${s}" class="${c.stackMax === s ? 'on' : ''}">${s}초</button>`).join('')
-  const ban = banOpen
-    ? `<textarea class="czban" data-banned rows="3" spellcheck="false" placeholder="쉼표나 줄바꿈으로 나눕니다">${esc(c.banned.join(', '))}</textarea>` +
-      `<div class="czh sm"><button type="button" class="lnk" data-cz="banhide">목록 접기</button><button type="button" class="lnk" data-cz="banreset">처음 목록으로</button></div>` +
-      `<p class="czn">⚠ 이 창을 방송 화면에 띄운 채 펼치면 목록이 그대로 보입니다.</p>`
-    : `<div class="cztg"><b>가릴 말 ${c.banned.length}개</b><button type="button" class="lnk" data-cz="banshow">목록 보기 · 고치기</button></div>`
   return (
-    `<div class="czcols czsafe">` +
-    `<div class="czcol">` +
-    `<div class="czh"><b>🛡 방송 화면 거르기</b></div>` +
-    ban +
-    toggle('maskLinks', '주소(링크)는 [링크] 로', c.maskLinks) +
-    toggle('antiSpam', '도배 거르기 (같은 말 · 몰아 쓰기)', c.antiSpam) +
-    toggle('hideLobbyChat', '대기실 전체 채팅 숨기기', c.hideLobbyChat, '숨기기', '보이기') +
-    `<p class="czn">괴물 말풍선 · 후원 글 · 닉네임, 그리고 <b>대기실 · 방 · 게임 채팅</b>(머리 위 말풍선 · 방 목록 이름까지)에서 가릴 말은 <b>○○</b> 로 — 글자 사이에 띄어쓰기 · 숫자 · 기호를 끼워도 걸립니다. 후원은 거르지 않고 글만 가립니다. 대기실 전체 채팅은 방 밖의 누구나 쓸 수 있어 방송 중에는 숨길 수 있습니다.</p>` +
-    `</div>` +
-    `<div class="czcol">` +
-    `<div class="czh"><b>방해 효과 · 시청자 참여</b></div>` +
+    `<div class="czh"><b>방송 설정</b></div>` +
+    toggle('bubbles', '채팅 말풍선', c.bubbles) +
+    seg('bub', '말풍선 양', [['few', '적게'], ['normal', '보통'], ['many', '많이']], c.bubbleAmount) +
+    toggle('bubbleBossLess', '보스전 중에는 말풍선 적게', c.bubbleBossLess) +
+    toggle('table', '후원 이벤트 표 (왼쪽 아래)', c.table, '보이기', '숨기기') +
+    seg('tsc', '방송 글자 크기', TEXT_SCALES.map((k, i) => [String(k), ['보통', '크게', '아주 크게'][i] ?? `${k}배`]), String(c.textScale)) +
     toggle('hold', `방해 이벤트 잠깐 멈춤 (${keyLabel('donHold')})`, stream.hold, '멈춤', '진행') +
     toggle('holdBoss', '보스전 중에는 방해 이벤트 대기', c.holdBoss) +
-    `<p class="czn">멈춘 동안 받은 방해 후원은 버리지 않고 기다렸다가 풀면 차례로 일어납니다. 멈춤은 페이지를 새로 열면 풀립니다.</p>` +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
-    `<p class="czn">${evName('shake')} · ${evName('dark')} · ${evName('invert')} · ${evName('seal')} — 몰려도 한 번에 이 시간을 넘게 걸리지 않습니다 (${evName('shake')}은 15초까지). 넘는 후원은 버리지 않고 기다렸다가 앞 효과가 줄어드는 대로 차례로 일어납니다 — ${evName('rage')}는 끝난 뒤에.</p>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
-    (isDev() ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` : '') +
-    `<p class="czn">채팅에 <b>!참여</b> → 최근 15분 안에 참여한 사람 중 <b>추첨</b>으로 한 명씩, 화면의 정예 · 우두머리 머리 위에 그 시청자 이름이 붙고 그 시청자의 채팅은 그 괴물이 말합니다. 잡으면 "○○ 처치!".</p>` +
-    `</div></div>`
+    `<p class="czn">멈추거나 넘친 방해 후원은 버리지 않고 기다렸다가 차례로 일어납니다 · !참여한 시청자 이름이 정예 · 우두머리 머리 위에 붙습니다 · 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다.</p>` +
+    (dev
+      ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` +
+        `<p class="czn">시험은 던전에서(괴물이 보이는 곳) · 여럿이 하는 판에서는 방장만.</p>`
+      : '')
   )
 }
-
-/**
- * 이벤트 이름 (지금 분위기 것 — ☀ 철면수심전용이면 괴물 떼 · 깜짝 파티 …, game/skinText.ts). 안내 글에 이름을 박아 두면
- * 밝은 판에서도 "지옥문" 이 그대로 보였다 (2026-10-08 방송 검토 9)
- */
-const evName = (k: DonateEvent['key']): string => DONATE_EVENTS.find((e) => e.key === k)?.name ?? ''
 
 function panelHtml(): string {
   const c = loadStreamCfg()
@@ -212,26 +194,12 @@ function panelHtml(): string {
     `<p class="czlead">채팅은 <b>괴물 말풍선</b>으로, 후원은 금액에 따라 <b>판에 이벤트</b>로 들어갑니다. 같은 방 사람들 화면에도 똑같이 일어납니다.</p>` +
     `<div class="czrow">${main}${login ? `<button type="button" class="lnk" data-cz="logout">로그아웃</button>` : ''}<span class="czd">${esc(stream.detail)}</span></div>` +
     `<div class="czcols">` +
-    `<div class="czcol">` +
-    `<p class="czsub">받은 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다 — 방송 화면에 수입이 드러나지 않게.</p>` +
-    toggle('bubbles', '채팅 말풍선', c.bubbles) +
-    seg('bub', '말풍선 양', [['few', '적게'], ['normal', '보통'], ['many', '많이']], c.bubbleAmount) +
-    toggle('bubbleBossLess', '보스전 중에는 말풍선 적게', c.bubbleBossLess) +
-    toggle('table', '후원 이벤트 표 (게임 왼쪽 아래)', c.table, '보이기', '숨기기') +
-    seg('tsc', '방송 글자 크기', TEXT_SCALES.map((k, i) => [String(k), ['보통', '크게', '아주 크게'][i] ?? `${k}배`]), String(c.textScale)) +
-    `<p class="czn">말풍선 양 — 적게 0.9초 · 보통 0.3초 · 많이 0.15초에 하나, 밀린 채팅은 적게 4 · 보통 12 · 많이 20 줄까지 기다립니다. 글자 크기는 말풍선 · 후원 표 · 방송 알림(시청자 이름 괴물 · 후원 결과)에 같이 걸립니다.</p>` +
-    (dev
-      ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button></div>` +
-        `<p class="czn">채팅 시험은 게임 안 <b>괴물 머리 위</b>에 뜹니다 — 괴물이 보이는 곳(던전)에서 누르세요. 창은 닫히지 않으니 여러 번 눌러 보세요. 여럿이 하는 판에서는 방장만 됩니다.</p>`
-      : '') +
-    `</div>` +
+    `<div class="czcol">${settingsHtml(c, dev)}</div>` +
     `<div class="czcol">` +
     `<div class="czh"><b>후원 금액 → 이벤트</b><button type="button" class="lnk" data-cz="reset">금액 처음대로</button></div>` +
     `<div class="czt">${rows}</div>` +
-    `<p class="czn">금액이 넘는 것 중 가장 비싼 이벤트가 일어납니다 · <b>같은 금액이면 그중 하나가 무작위로</b>(게임 속 표에 🎲) · 0 원이면 끔 · 마을에서 받은 후원은 던전에 나가면 일어납니다. 바꾼 금액은 게임 왼쪽 아래 표에 바로 보입니다.</p>` +
-    `<p class="czn">후원으로 부른 <b>막 보스</b>(${evName('boss')} · ${evName('hell')})는 <b>체력 절반 · 즉사기 없음</b> — 다른 패턴은 그대로이고, 잡아도 막 보스 처치 · 퀘스트로 치지 않습니다. 한 번에 하나만 나오고 나머지는 기다립니다.</p>` +
+    `<p class="czn">넘는 금액 중 가장 비싼 이벤트 · 같은 금액은 그중 하나가 무작위로(🎲) · 0 원은 끔 · 후원으로 부른 막 보스는 체력 절반 · 즉사기 없음.</p>` +
     `</div></div>` +
-    safetyHtml(c) +
     (st === 'error' || !login ? `<p class="czn">로그인이 안 되면 치지직 개발자센터 앱의 로그인 리디렉션 URL 이 <code>${esc(redirectUri())}</code> 인지 확인하세요.</p>` : '')
   )
 }
@@ -305,12 +273,6 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         stream.fakeJoin()
         flashBtn(b, '참여 보냄 ✓')
         return
-      } else if (a === 'banshow') banOpen = true
-      else if (a === 'banhide') banOpen = false
-      else if (a === 'banreset') {
-        const c = loadStreamCfg()
-        c.banned = [...DEFAULT_BANNED]
-        saveStreamCfg(c)
       } else if (a === 'reset') {
         const c = loadStreamCfg()
         c.amounts = DONATE_EVENTS.map((e) => e.amount)
@@ -331,9 +293,6 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       }
       if (tg === 'bubbles') c.bubbles = on
       else if (tg === 'holdBoss') c.holdBoss = on
-      else if (tg === 'hideLobbyChat') c.hideLobbyChat = on
-      else if (tg === 'maskLinks') c.maskLinks = on
-      else if (tg === 'antiSpam') c.antiSpam = on
       else if (tg === 'named') c.named = on
       else if (tg === 'bubbleBossLess') c.bubbleBossLess = on
       else c.table = on
@@ -360,14 +319,6 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       redraw()
     }
   })
-  const ban = box.querySelector<HTMLTextAreaElement>('textarea[data-banned]')
-  if (ban) {
-    ban.onchange = () => {
-      const c = loadStreamCfg()
-      c.banned = cleanBanned(ban.value.split(/[,\n]/))
-      saveStreamCfg(c)
-    }
-  }
   box.querySelectorAll<HTMLInputElement>('input[data-amt]').forEach((inp) => {
     inp.onchange = () => {
       const c = loadStreamCfg()

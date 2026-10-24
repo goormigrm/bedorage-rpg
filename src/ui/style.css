@@ -1625,3 +1625,11 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 /* 설정 — 에임 모양 · 크기를 그림으로 (2026-10-24 사용자: "실제 모양이 어떤 건지 그림으로") */
 .settings .aimrow .seg button { padding: 3px; line-height: 0; }
 .settings .aimico { width: 40px; height: 40px; border-radius: 3px; background: radial-gradient(circle, #6f7f60, #4c5a42); }
+
+/* 오른쪽 아래 단추는 모두 같은 너비 — 이름은 왼쪽 · 단축키 칸은 오른쪽 (2026-10-24 사용자: "메뉴 단추의 가로 너비를 맞춰 줘") */
+.rbcol .wbtn, .rbcol .sysbtns .btn { width: 136px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.rbcol .sysbtns kbd { margin-left: 0; }
+/* 가방 칸의 아이템 레벨 — 마우스를 올리지 않아도 (2026-10-24 사용자) · 오른쪽 위 (잠금은 그 아래로) */
+.cell .ilv { position: absolute; right: 3px; top: 2px; font: 800 11px/1 "IBM Plex Sans KR", sans-serif; font-style: normal; color: #f1e6c8; text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; }
+.cell .ilv small { font-size: 9px; margin-right: 1px; opacity: .8; }
+.cell .lk { top: 16px; }

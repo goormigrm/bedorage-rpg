@@ -114,19 +114,19 @@ export function loadStreamCfg(): StreamCfg {
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
     })
     const stackMax = DON_CAP_CHOICES.includes(Number(v.stackMax)) ? Number(v.stackMax) : d.stackMax
-    const banned = Array.isArray(v.banned) ? cleanBanned(v.banned) : d.banned
+    // 거르기(가릴 말 · 링크 · 도배 · 대기실 채팅 숨김)는 치지직 창에서 뺐다 (2026-10-24 사용자: "방송 자체에서 거른다") — 처음 값 그대로 돈다
     return {
       bubbles: v.bubbles ?? d.bubbles,
       table: v.table ?? d.table,
       amounts,
       auto: v.auto ?? d.auto,
       stackMax,
-      banned,
-      maskLinks: v.maskLinks ?? d.maskLinks,
-      antiSpam: v.antiSpam ?? d.antiSpam,
+      banned: d.banned,
+      maskLinks: d.maskLinks,
+      antiSpam: d.antiSpam,
       named: v.named ?? d.named,
       holdBoss: v.holdBoss ?? d.holdBoss,
-      hideLobbyChat: v.hideLobbyChat ?? d.hideLobbyChat,
+      hideLobbyChat: d.hideLobbyChat,
       bubbleAmount: typeof v.bubbleAmount === 'string' && Object.hasOwn(BUBBLE_FLOW, v.bubbleAmount) ? v.bubbleAmount : d.bubbleAmount,
       bubbleBossLess: v.bubbleBossLess ?? d.bubbleBossLess,
       textScale: TEXT_SCALES.includes(Number(v.textScale)) ? Number(v.textScale) : d.textScale,
