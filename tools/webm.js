@@ -1,6 +1,6 @@
 // 아주 작은 WebM 묶개 (2026-09-23 — 소개 영상). WebCodecs 로 인코딩한 VP8 영상 조각 · Opus 소리 조각을 한 파일로.
 // 외부 라이브러리 없이: EBML 머리 · Segment(SeekHead · Info · Tracks · Cluster… · Cues). 크기는 모두 8바이트 vint 로 적는다(규격 안).
-// muxWebM({ width, height, video: [{data, ts(µs), key}], audio: [{data, ts(µs)}], opusHead?, durationMs }) → Uint8Array
+// muxWebM({ width, height, video: [{data, ts(µs), key}], audio: [{data, ts(µs)}], opusHead?, durationMs, codec? = 'V_VP8' | 'V_VP9' }) → Uint8Array
 
 const enc = new TextEncoder()
 
@@ -77,13 +77,13 @@ export function opusHead(channels = 2, preSkip = 312, rate = 48000) {
   return b
 }
 
-export function muxWebM({ width, height, video, audio = [], opusHead: head, channels = 2, rate = 48000, durationMs }) {
+export function muxWebM({ width, height, video, audio = [], opusHead: head, channels = 2, rate = 48000, durationMs, codec = 'V_VP8' }) {
   const ebml = el(0x1a45dfa3, [
     uint(0x4286, 1), uint(0x42f7, 1), uint(0x42f2, 4), uint(0x42f3, 8), str(0x4282, 'webm'), uint(0x4287, 2), uint(0x4285, 2),
   ])
   const info = el(0x1549a966, [uint(0x2ad7b1, 1000000), float(0x4489, durationMs), str(0x4d80, 'bedorage-rpg tools/webm.js'), str(0x5741, 'bedorage-rpg trailer')])
   const vTrack = el(0xae, [
-    uint(0xd7, 1), uint(0x73c5, 1), uint(0x83, 1), uint(0x9c, 0), str(0x86, 'V_VP8'),
+    uint(0xd7, 1), uint(0x73c5, 1), uint(0x83, 1), uint(0x9c, 0), str(0x86, codec),
     el(0xe0, [uint(0xb0, width), uint(0xba, height)]),
   ])
   const tracks = [vTrack]

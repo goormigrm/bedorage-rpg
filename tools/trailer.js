@@ -26,7 +26,8 @@ import { muxWebM, opusHead } from './webm.js'
 
 const W = 1920
 const H = 1080
-const FPS = 30
+/** 초당 장 수 — 패치 플레이 영상은 60 (2026-10-24 사용자: "30fps 이하로 이어 붙인 느낌 · 최대 프레임으로") · 나머지는 30 */
+let FPS = 30
 const T = 32
 
 const S = () => window.__session
@@ -312,27 +313,6 @@ function drawOverlay() {
     }
   }
 
-  if (ov.tag) {
-    const k = (t - ov.tag.at) / 1000
-    const a = k < 0.3 ? ease(k / 0.3) : 1 - ease((k - 1.9) / 0.4)
-    if (a <= 0 && k > 1) ov.tag = null
-    else if (a > 0) {
-      g.save()
-      g.globalAlpha = a
-      g.font = '800 54px "IBM Plex Sans KR", sans-serif'
-      const w = g.measureText(ov.tag.text).width + 72
-      g.fillStyle = 'rgba(10,8,6,0.55)'
-      g.beginPath()
-      g.roundRect(W / 2 - w / 2, 70, w, 88, 44)
-      g.fill()
-      g.fillStyle = '#ffe9a8'
-      g.textAlign = 'center'
-      g.textBaseline = 'middle'
-      g.fillText(ov.tag.text, W / 2, 116)
-      g.restore()
-    }
-  }
-
   if (ov.end) {
     const a = ease((t - ov.end.at) / 900)
     g.save()
@@ -393,7 +373,8 @@ let M = {}
 function god() {
   const s = st()
   for (const p of s.players) {
-    p.hp = p.maxHp
+    // 패치 플레이 영상은 맞으면 체력이 실제로 줄어든다(체력 구슬 잔상 · 긴장감) — 반 아래로는 안 내려간다
+    p.hp = P24 ? Math.max(p.hp, Math.round(p.maxHp * 0.45)) : p.maxHp
     p.downed = false
     // 보스 공격은 ‰ 라 괴물 공격력 0 으로는 못 막는다 — 맞으면 갈고리에 끌려가거나 돌진에 밀려 카메라가 튄다(2026-09-24 "버벅거리는 장면").
     // 보스 공격 쿨다운을 늘 걸어 두면 예고 · 폭발은 그대로 보이고 사람만 안 맞는다 (무적은 황금 보호막이 떠서 안 쓴다)
@@ -401,7 +382,7 @@ function god() {
     // 옮길 때마다 서는 보호막(황금 빛)은 영상에서 끈다 — 빛 번짐과 겹쳐 캐릭터가 하얀 덩어리로 보였다
     p.invuln = 0
   }
-  for (const m of s.monsters) m.pow = 0
+  if (!P24) for (const m of s.monsters) m.pow = 0
 }
 /** 1편: 철면란 격정 연주를 장면 내내 — 휘두르기 2배 · 탄 무한(격정 연주의 표시) · 집중 가득 (캐논 선율 · 음표가 끊기지 않게) */
 function forceCanon() {
@@ -943,10 +924,21 @@ function notesScenes() {
   return tl.done()
 }
 
+/** 패치 플레이 영상의 장소 — 장면마다 다른 맵(☀ 놀이터 · 2막 · 3막 · 4막 들판) */
+const P24_AREAS = [1, 11, 22, 29]
+/** 그 지역 무리에 나오는 괴물 (sim areaKinds 와 같게 — 보스 · 도망치는 것 빼고) */
+function kindsOf(area) {
+  const def = M.world.areaDef(area)
+  const set = new Set()
+  for (const p of def.packs ?? M.world.ACTS[def.act]?.packs ?? []) for (const g of p.groups) set.add(g[0])
+  return [...set].filter((k) => !M.monsters.MONSTER_LIST[k].boss && M.monsters.MONSTER_LIST[k].attack !== 'flee')
+}
+
 /**
- * 10월 23일 이후 패치 영상 — 플레이 영상 (2026-10-24 사용자: "글이 너무 많다 · 템 팔기 단추 같은 건 안 넣어도 된다 —
- * 3인칭 플레이 · 타격감 · 에임 효과가 잘 보이는, 패치로 달라진 플레이 영상"): 쿼터뷰(제목) → 3인칭 전투 → 정조준(1인칭 · 머리) → 큰 무리 → 끝 카드.
- * 글은 제목 · 짧은 이름표(tag) 셋 · 끝 카드뿐. 혼자(봇 없이 — 조준점을 가리지 않게) · ☀ 판만 · 보스 장면은 넣지 않는다(스포일러)
+ * 10월 23일 이후 패치 플레이 영상 (2026-10-24 사용자 세 번째: "덕코프 영상에 비해 긴장감도, 타격감도, 영상미도 떨어진다 · 침착란은 공속이 느려
+ * 끊겨 보인다 · 30fps 이하로 이어 붙인 느낌 — 최대 프레임으로"): 60fps · SMG 주펄란 · 글은 제목 · 끝 카드뿐 · 장면마다 다른 맵.
+ * 쿼터뷰 난전(제목) → 3인칭 → 정조준(1인칭 · 머리) → 화염방사기로 바꿔 3인칭 → 쿼터뷰 큰 무리 · 궁극기 → 끝 카드.
+ * 괴물에게 실제로 맞는다(체력 반 아래로는 안 내려감 — god) · 맞힐 때 화면 반동은 남긴다. 혼자 · ☀ · 보스 장면 없음(스포일러)
  */
 function patch24Scenes() {
   const tl = timeline()
@@ -955,7 +947,7 @@ function patch24Scenes() {
   const both = (...fs) => () => fs.forEach((f) => f())
   let base = 0
   let mv = null
-  // 트인 자리로 옮겨 가장 멀리 트인 쪽을 본다 (장면마다 — 울타리 앞에 붙은 채 정조준하면 화면이 막혔다)
+  // 트인 자리로 옮겨 가장 멀리 트인 쪽을 본다 · 곁의 원래 떼는 뺀다(부른 괴물만 상대한다 — 조준점이 묻히지 않게)
   const place = () => {
     const s = st()
     const p = s.players[0]
@@ -964,8 +956,18 @@ function patch24Scenes() {
       p.x = spot.x
       p.y = spot.y
     }
+    s.monsters = s.monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 24 * T)
     base = openDir()
     inp().yaw = base
+  }
+  // 장면 넘김: 지금 장을 붙잡고(hold) 다른 지역으로 — 준비가 끝나면 녹이며 연다
+  const goto = (area) => {
+    dissolve(260)
+    holding = true
+    perFrame = null
+    mv?.stop()
+    inp().mouseDown.clear()
+    if (st().players[0].area !== area) M.sim.warpPlayer(st(), S().mapOf, 0, area)
   }
   const ahead = () => {
     const p = st().players[0]
@@ -973,92 +975,153 @@ function patch24Scenes() {
     const fy = Math.sin(inp().yaw)
     return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0).length
   }
-  // ---- 쿼터뷰 + 제목: 지금까지의 시점
+  const K = (a) => kindsOf(a)
+  // ---- 1. 쿼터뷰 난전 + 제목 (☀ 놀이터): 사방에서 몰려오는 떼 · 쏘며 비켜 걷기 · 구르기
   at(0, () => {
     S().autopilot = false
-    holding = true
-    M.sim.warpPlayer(st(), S().mapOf, 0, 1)
-    // 조준선을 크게 · 십자 + 원 (영상에서 히트마커가 작아 묻혔다)
     M.settings.setAimStyle({ shape: 'crossring', size: 1.5 })
+    goto(1)
   })
   at(1.5, () => {
     place()
-    // 지역의 원래 떼는 뺀다 — 부른 괴물만 상대한다(조준점이 묻히지 않게)
-    const s = st()
-    const p = s.players[0]
-    s.monsters = s.monsters.filter((m) => Math.hypot(m.x - p.x, m.y - p.y) > 22 * T)
-    inp().pitch = -0.12
-    S().renderer.setDebugZoom(0.68)
-    spawnAhead([0, 1, 2], 7, 5, 9, 0.9, 2.5)
-    perFrame = quarterAimer()
+    S().renderer.setDebugZoom(0.6)
+    spawn(K(1), 16, 6, 11)
+    mv = qmover()
+    perFrame = both(quarterAimer(), mv)
     cue('hot', { act: 0 })
     // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
     ov.title = { text: '배도라지 알PG', sub: '3인칭 업데이트', at: now() - 1300 }
     holding = false
   })
-  at(2.3, () => (ov.title.out = now()))
-  at(1.4, () => {})
-  // ---- 3인칭: 화면 가운데 조준점으로 겨누며 앞으로
-  at(0, () => {
-    dissolve()
-    ov.title = null
-    inp().mouseDown.delete(0)
-    inp().fps = true
+  at(2.0, () => (ov.title.out = now()))
+  const a0 = tl.t
+  every(a0 + 0.6, a0 + 9, 0.6, () => alive() < 20 && spawn(K(1), 7, 8, 12))
+  every(a0 + 2.4, a0 + 9, 2.6, () => tap('Space'))
+  at(9, () => {})
+  // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 앞으로 · 옆걸음
+  at(0, () => goto(11))
+  at(1.2, () => {
     place()
+    inp().fps = true
     inp().pitch = -0.1
     mv = mover('adv')
     perFrame = both(tppAimer(), mv)
-    for (const m of st().monsters) m.hp = 0
-    spawnAhead([0, 1, 2], 6, 7, 11, 0.7, 3)
-    tag('3인칭')
+    spawnAhead(K(11), 10, 6, 10, 0.8, 1.6)
+    holding = false
   })
-  const a0 = tl.t
-  every(a0 + 1, a0 + 15, 0.8, () => ahead() < 5 && spawnAhead([0, 1, 2], 5, 8, 12, 0.8, 3))
-  at(5, () => mv.strafe('KeyD'))
-  at(2.5, () => mv.strafe(''))
-  at(3.5, () => mv.strafe('KeyA'))
-  at(2.5, () => mv.strafe(''))
-  at(2.5, () => {})
-  // ---- 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커
+  const b0 = tl.t
+  every(b0 + 0.6, b0 + 11, 0.5, () => ahead() < 9 && spawnAhead(K(11), 6, 6, 10, 0.8, 1.6))
+  at(3.5, () => mv.strafe('KeyD'))
+  at(2.2, () => mv.strafe(''))
+  at(2.4, () => mv.strafe('KeyA'))
+  at(2.2, () => mv.strafe(''))
+  at(1.2, () => {})
+  // ---- 3. 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커
   at(0, () => {
-    dissolve()
-    mv.stop()
-    for (const m of st().monsters) m.hp = 0
+    goto(11)
     place()
+    inp().fps = true
     inp().pitch = -0.05
     inp().mouseDown.add(2)
     mv = mover('back')
     perFrame = both(tppAimer({ head: true }), mv)
-    spawnAhead([0, 1, 2], 5, 11, 15, 0.4, 2.5)
-    tag('정조준')
+    spawnAhead(K(11), 8, 8, 12, 0.45, 2)
   })
-  const b0 = tl.t
-  every(b0 + 1, b0 + 10, 0.8, () => ahead() < 4 && spawnAhead([0, 1, 2], 4, 11, 15, 0.4, 2.5))
-  at(10.5, () => {})
-  // ---- 큰 무리: 물러서며 쏜다
-  at(0, () => {
-    dissolve()
-    mv.stop()
-    inp().mouseDown.delete(2)
-    for (const m of st().monsters) m.hp = 0
-    place()
-    inp().pitch = -0.08
-    mv = mover('hold')
-    perFrame = both(tppAimer(), mv)
-    spawnAhead([0, 1, 2, 0, 1], 40, 13, 20, 0.6, 1)
-    tag('타격감')
-  })
+  at(0.45, () => (holding = false))
   const c0 = tl.t
-  every(c0 + 2, c0 + 8, 1, () => ahead() < 25 && spawnAhead([0, 1, 2, 0, 1], 12, 15, 20, 0.6, 1))
-  at(3.5, () => tap('KeyQ'))
-  at(3.0, () => tap('KeyE'))
-  at(3.0, () => {
+  every(c0 + 0.6, c0 + 7.5, 0.5, () => ahead() < 7 && spawnAhead(K(11), 4, 8, 12, 0.45, 2))
+  // 정조준 중에도 옆으로 천천히 — 화면이 멈춘 듯 보이지 않게
+  at(1.5, () => mv.strafe('KeyD'))
+  at(2.5, () => mv.strafe('KeyA'))
+  at(2.5, () => mv.strafe(''))
+  at(1.0, () => {})
+  // ---- 4. 화염방사기로 바꿔 끼고 3인칭 (3막 시장): 몰려오는 무리를 태운다 — 무기 모양도 바뀐다
+  at(0, () => goto(22))
+  at(1.2, () => {
+    place()
+    inp().fps = true
+    inp().pitch = -0.14
+    equipWeapon('flamer')
+    mv = mover('flame')
+    perFrame = both(tppAimer({ range: 6 }), mv)
+    spawnAhead(K(22), 16, 7, 12, 0.6, 1.3)
+    holding = false
+  })
+  const d0 = tl.t
+  every(d0 + 1, d0 + 9, 0.8, () => ahead() < 14 && spawnAhead(K(22), 7, 8, 12, 0.6, 1.3))
+  at(9.5, () => {})
+  // ---- 5. 쿼터뷰 큰 무리 (4막 균열): 다시 SMG · 정예 · 스킬 · 궁극기
+  at(0, () => {
+    goto(29)
+    inp().fps = false
+  })
+  at(1.2, () => {
+    place()
+    equipWeapon('smg')
+    S().renderer.setDebugZoom(0.78)
+    spawn(K(29), 46, 6, 13)
+    elites2()
+    mv = qmover()
+    perFrame = both(quarterAimer(), mv)
+    holding = false
+  })
+  const e0 = tl.t
+  every(e0 + 1, e0 + 8, 1, () => alive() < 40 && spawn(K(29), 12, 9, 13))
+  at(1.8, () => tap('KeyQ'))
+  at(1.6, () => tap('KeyE'))
+  at(1.8, () => tap('KeyR'))
+  at(3.4, () => {
     mv.stop()
     perFrame = null
     inp().mouseDown.clear()
   })
   endCard(tl, 0, 700)
   return tl.done()
+}
+
+/** 무기 칸에 그 무기(같은 계열 변형)를 끼운다 — 손에 든 모양 · 쏘는 총이 바로 바뀐다 */
+function equipWeapon(id) {
+  const p = st().players[0]
+  const wt = M.items.WEAPON_IDS.indexOf(id)
+  p.equip[0] = { uid: 990000 + wt, slot: 0, wt, rarity: 3, ilvl: 10, aff: [] }
+  p.weapon = id
+}
+/** 쿼터뷰 걷기: 괴물이 가까우면 그 반대쪽으로 · 아니면 좌우로 비켜 걷는다 (화면 기준 WASD — 키를 바뀔 때만 누르고 뗀다) */
+function qmover() {
+  let cur = ''
+  let t = 0
+  const set = (want) => {
+    if (want === cur) return
+    if (cur) for (const c of cur.split('+')) key(c, false)
+    if (want) for (const c of want.split('+')) key(c, true)
+    cur = want
+  }
+  const f = () => {
+    const s = st()
+    const p = s.players[0]
+    const R = S().renderer
+    t += 1 / FPS
+    let near = null
+    let nd = 3.6 * T
+    for (const q of s.monsters) {
+      const d = q.hp > 0 ? Math.hypot(q.x - p.x, q.y - p.y) : Infinity
+      if (d < nd) {
+        nd = d
+        near = q
+      }
+    }
+    if (near) {
+      // 화면에서 괴물 반대쪽으로
+      const a = R.worldToScreen(near.x / T, 0, near.y / T)
+      const b = R.worldToScreen(p.x / T, 0, p.y / T)
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      set([Math.abs(dx) > Math.abs(dy) * 0.4 ? (dx > 0 ? 'KeyD' : 'KeyA') : '', Math.abs(dy) > Math.abs(dx) * 0.4 ? (dy > 0 ? 'KeyS' : 'KeyW') : ''].filter(Boolean).join('+'))
+    } else set(Math.floor(t / 1.3) % 2 ? 'KeyA' : 'KeyD')
+  }
+  f.stop = () => set('')
+  f.strafe = () => {}
+  return f
 }
 
 /** 시선(3인칭 yaw)에서 가장 멀리 트인 쪽 — 괴물을 그쪽에 부르고 그쪽을 본다 */
@@ -1130,7 +1193,7 @@ function tppAimer(o = {}) {
     const ok = (m) => {
       if (!m || m.hp <= 0 || !R.monsterView.shown.has(m.id)) return false
       const d = Math.hypot(m.x - p.x, m.y - p.y)
-      return d < 14 * T && (m.x - p.x) * fx + (m.y - p.y) * fy > 0.3 * d
+      return d < (o.range ?? 14) * T && (m.x - p.x) * fx + (m.y - p.y) * fy > 0.3 * d
     }
     let m = s.monsters.find((q) => q.id === id)
     if (!ok(m)) {
@@ -1155,8 +1218,10 @@ function tppAimer(o = {}) {
     const aim = R.worldToScreen(at.x, top * (o.head ? 0.86 : 0.5), at.z)
     const foot = R.worldToScreen(at.x, 0, at.z)
     const hd = R.worldToScreen(at.x, top, at.z)
-    inp.yaw += Math.max(-0.05, Math.min(0.05, ((aim.x - vw / 2) / vw) * 0.45))
-    inp.pitch = Math.max(-0.6, Math.min(0.4, inp.pitch - Math.max(-0.03, Math.min(0.03, ((aim.y - vh / 2) / vh) * 0.4))))
+    // 한 장에 도는 양은 초당 장 수에 맞춘다 (30fps 기준 값)
+    const k = 30 / FPS
+    inp.yaw += Math.max(-0.05 * k, Math.min(0.05 * k, ((aim.x - vw / 2) / vw) * 0.45 * k))
+    inp.pitch = Math.max(-0.6, Math.min(0.4, inp.pitch - Math.max(-0.03 * k, Math.min(0.03 * k, ((aim.y - vh / 2) / vh) * 0.4 * k))))
     const h = foot.y - hd.y
     if (Math.abs(aim.x - vw / 2) < h * 0.3 && vh / 2 > hd.y && vh / 2 < foot.y) inp.mouseDown.add(0)
     else inp.mouseDown.delete(0)
@@ -1192,7 +1257,7 @@ function quarterAimer() {
     inp.mouseDown.add(0)
   }
 }
-/** 걷기: adv = 괴물이 멀면 앞으로 · back = 가까우면 뒤로 · hold = 가까울 때만 뒤로. strafe 로 옆걸음을 얹는다 (키를 바뀔 때만 누르고 뗀다) */
+/** 3인칭 걷기: adv = 괴물이 멀면 앞으로 · back = 6칸 안이면 뒤로 · hold = 4칸 · flame = 3.4칸(화염방사기는 가까이 — 더 붙으면 무리가 카메라를 덮었다). strafe 로 옆걸음을 얹는다 (키를 바뀔 때만 누르고 뗀다) */
 function mover(mode) {
   let cur = ''
   let side = ''
@@ -1208,7 +1273,7 @@ function mover(mode) {
     let near = Infinity
     for (const q of s.monsters) if (q.hp > 0) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y))
     const yaw = S().input.yaw
-    const fb = near < (mode === 'back' ? 6 : 4) * T ? 'KeyS' : mode === 'adv' && near > 8 * T && clearRay(p.x, p.y, yaw, 2.5 * T) ? 'KeyW' : ''
+    const fb = near < (mode === 'back' ? 6 : mode === 'flame' ? 3.4 : 4) * T ? 'KeyS' : mode === 'adv' && near > 8 * T && clearRay(p.x, p.y, yaw, 2.5 * T) ? 'KeyW' : ''
     // 옆걸음도 그쪽이 트였을 때만 (울타리에 붙으면 카메라가 코앞으로 당겨졌다)
     const sd = side && clearRay(p.x, p.y, yaw + (side === 'KeyD' ? 1 : -1) * Math.PI * 0.5, 2.5 * T) ? side : ''
     set([fb, sd].filter(Boolean).join('+'))
@@ -1223,10 +1288,6 @@ function mover(mode) {
 function tap(code) {
   key(code, true)
   setTimeout(() => key(code, false), 0)
-}
-/** 짧은 이름표 (화면 위 가운데 · 2초) */
-function tag(text) {
-  ov.tag = { text, at: now() }
 }
 
 /** 1편 마을 (약 4초 — 2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도"): 고르는 화면이 녹아 사라지며 파티가 마을을 걷는다 */
@@ -1932,8 +1993,9 @@ async function lobbyPhase(ve) {
 async function startGameFromLobby() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   const btn = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
-  // 10월 23일 이후 패치 영상은 총 캐릭터(침착란)로 — 조준선 · 히트마커를 보인다
-  window.__lobby?.selectChar?.(P24 ? 'chim' : 'cheolmyeon')
+  // 패치 플레이 영상은 SMG 주펄란 — 초당 12발(소총의 두 배)이라 히트마커가 쉬지 않는다 · 소음기 없음(단군란 · 우원란은 총소리가 작다)
+  // (2026-10-24 사용자: "침착란으로 하니까 공속이 느리고 멈추거나 끊겨 보인다")
+  window.__lobby?.selectChar?.(P24 ? 'jupeol' : 'cheolmyeon')
   // 파티: 나 철면란(탱커) · 딜러 침착란 · 단군란 · 힐러 매직란 (2026-09-24 사용자)
   if (window.__lobby) window.__lobby.botChars = P24 ? ['cheolmyeon', 'dangun', 'magic'] : BOT_CHARS
   btn('게임 만들기')?.click()
@@ -1985,6 +2047,7 @@ export async function start(opts = {}) {
     skills: await sameModule('/src/core/skills.ts'),
     settings: await sameModule('/src/ui/settings.ts'),
     m3d: await sameModule('/src/render3d/monsters3d.ts'),
+    monsters: await sameModule('/src/core/monsters.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -2007,6 +2070,7 @@ export async function start(opts = {}) {
   ULT = opts.mode === 'ult'
   NOTES = opts.mode === 'notes'
   P24 = opts.mode === 'patch24'
+  FPS = opts.fps ?? (P24 ? 60 : 30)
   perFrame = null
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
   // 2026-10-08 사용자: "트레일러는 이제 철면수심전용 버전에서만 만들어" — 기본이 밝은 분위기 (공포스러움은 skin: 'dark' 일 때만)
@@ -2029,8 +2093,11 @@ export async function start(opts = {}) {
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
   const encs = P24
     ? [
-        ...[2_000_000, 1_650_000, 1_350_000].map((bitrate) => ({ name: 'patch_1024_play', w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
-        { name: 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 12_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+        // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
+        ...[3_000_000, 2_400_000, 1_900_000].map((bitrate) => ({ name: 'patch_1024_play', w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
+          ? { name: 'patch_1024_play_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
+          : { name: 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
       ]
     : NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
@@ -2051,7 +2118,7 @@ export async function start(opts = {}) {
       },
       error: (err) => log.push(`영상 인코더(${e.name}) ` + err),
     })
-    e.enc.configure({ codec: 'vp8', width: e.w, height: e.h, bitrate: e.bitrate, bitrateMode: e.mode, framerate: FPS })
+    e.enc.configure({ codec: e.codec ?? 'vp8', width: e.w, height: e.h, bitrate: e.bitrate, bitrateMode: e.mode, framerate: FPS })
     e.n = 0
   }
   // 인코더 하나처럼 쓴다 (로비 장면 · 게임 장면이 같은 것을 부른다). 키 프레임은 인코더마다 제 간격으로
@@ -2116,7 +2183,7 @@ export async function start(opts = {}) {
   log.push('캔버스 ' + glc0.map((c) => `${c.width}×${c.height}`).join(' · '))
   // 영상에 나오는 괴물의 실사 모델을 먼저 받아 굽는다 — 녹화 도중 처음 나오면 도형 모습에서 실사로 한순간 바뀌어 튀어 보였다
   // 들판 떼 · 막 보스 넷과 그 부하(새끼 거미 · 방패병 · 그림자) · 포격 악마 · 총잡이 넷(v1.6.7 — 막마다 무리에 섞인다)
-  const kinds = [0, 1, 2, 3, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+  const kinds = [...new Set([0, 1, 2, 3, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, ...(P24 ? P24_AREAS.flatMap(kindsOf) : [])])]
   sess.renderer.monsterView.prefetch(kinds)
   for (let k = 0; k < 120; k++) {
     const r = window.__bd.models()
@@ -2214,8 +2281,11 @@ export async function start(opts = {}) {
       god()
       // 영상에서는 화면 흔들림 · 당김을 끈다 (2026-09-23 사용자: "치지직 장면의 화면 흔들림 — 너무 정신없다")
       sess.renderer.shake = 0
-      sess.renderer.punch = 0
-      sess.renderer.kick = 0
+      // 패치 플레이 영상은 맞힐 때 화면 반동 · 조준점 반동을 남긴다 (타격감 — 2026-10-24 사용자: "덕코프 영상에 비해 타격감이 떨어진다")
+      if (!P24) {
+        sess.renderer.punch = 0
+        sess.renderer.kick = 0
+      }
       sess.frame(vt)
       // 준비가 덜 된 장은 담지 않는다 (2026-10-09 사용자: "2편 3막 보스 처음이 그냥 검은 화면 · 파티 드래곤이 큰 크기가 아니라 작은 크기"):
       // 새 지역 셰이더(areaCompiling — 그동안 3D 를 그리지 않고 어둡다)와 괴물 모델(비동기 컴파일 — 그동안 작은 도형 괴물)은 **진짜 시간**으로
@@ -2340,7 +2410,7 @@ export async function start(opts = {}) {
   const au = await encodeAudio(abuf)
   // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
   const saveDir = opts.outDir ?? (P24 ? P24_DIR : NOTES ? NOTES_DIR : opts.dir)
-  const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
+  const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000, codec: e.codec?.startsWith('vp09') ? 'V_VP9' : 'V_VP8' })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
   const fit = lows.filter((x) => x.size <= LOW_MAX).sort((a, b) => b.size - a.size)[0] ?? lows.sort((a, b) => a.size - b.size)[0]
