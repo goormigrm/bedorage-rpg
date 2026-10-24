@@ -1,5 +1,6 @@
-// 배포 전 화면 시험 (2026-10-08 퀄리티 7단계 — 품질 지키기). GitHub Actions(deploy.yml)가 빌드 뒤에 돌린다 — 실패하면 배포하지 않는다.
-// 이 노트북에서는 돌리지 않는다(사용자: 노트북에서 localhost 금지 — 시험은 GitHub 서버에서).
+// 배포 전 화면 시험 (2026-10-08 퀄리티 7단계 — 품질 지키기). **원격 개발 PC 에서 푸시 전에** 돌린다 — 실패하면 올리지 않는다.
+// 2026-10-24 부터 GitHub Actions(deploy.yml)는 빌드 · 배포만 한다(사용자: "PC 에서 진행하고 깃허브에는 올리는 것만") — 손으로 돌릴 때 check 를 켜면 거기서도 돈다.
+// 노트북에서는 돌리지 않는다(사용자: 노트북에서 localhost 금지 — 노트북에서 올렸으면 Actions 를 check 로 돌린다: gh workflow run deploy -f check=true).
 //
 //   npx vite preview --port 4173 --strictPort &   (빌드한 dist 를 띄운다)
 //   node tools/uitest.mjs                          (헤드리스 크로미움 · 1366×768)
