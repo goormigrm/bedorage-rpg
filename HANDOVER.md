@@ -10,12 +10,12 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
-## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.20 배포)
+## 🔖 타격감 · 아이템 · 대장장이 모루 · 스위치 · 후원 표 · 3인칭 · 최적화 · 패치 플레이 영상 (2026-10-24 · 원격 개발 PC — v1.10.8 ~ v1.10.21 배포)
 
 - **v1.10.18**: 시점 스위치 글자 오른쪽에 단축키 `<kbd>`(`session.syncViewBtn` · 키 설정이 바뀌면 `refreshKeyLabels` 가 다시 씀 · style.css `.skin-sw .sw-cap kbd`).
 - **v1.10.19 무기 모양**: `character3d buildGun` — 무기 id 마다 `GUNS` 모양 함수(부품 `box` · `tube` · `rod` · 툰 재질만 — 셰이더가 늘지 않는다) · 손에 든 총 `GUN_HOLD` 1.4배(1인칭 손 총은 따로 0.6) · 웍 `buildWok` · 무기를 바꾸면 옛 지오메트리 · 재질을 치운다. 고기 악기 `MEAT_LOOK`(소 · 닭 · 오리) ← `items.ts meatOf`(아이템 uid % 3 · 이름 `baseName` "닭고기 바이올린") ← 렌더러 `updateRig` 가 `p.equip[0]` 으로. 확인 페이지 `.frames/guns*.html` + `.frames/guns.mjs [top|side|char|meat]`(이 PC 에만 — 개발 서버가 .frames 의 html 을 캐시하므로 고치면 이름을 바꿔 연다).
-- **배포를 빌드 · 올리기만으로(2026-10-24 사용자: "PC 에서 진행하고 깃허브에는 올리는 것만") — 아직 못 올림**: 바꾼 deploy.yml(단위 · 화면 시험은 `workflow_dispatch` 의 `check` 를 켤 때만)은 로컬 가지 `ci-fast` 에 있다. 이 PC 의 gh 토큰에 `workflow` 권한이 없어 워크플로 파일을 푸시하면 거절된다 — 사용자가 `gh auth refresh -h github.com -s workflow`(브라우저 로그인)로 권한을 주면 `git cherry-pick ci-fast` 후 푸시. 그 뒤로는 푸시 전 이 PC 시험이 유일한 관문이다.
-- **멈춘 자리**: v1.10.19 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
+- **배포는 빌드 · 올리기만(v1.10.21 — 2026-10-24 사용자: "PC 에서 진행하고 깃허브에는 올리는 것만")**: deploy.yml 의 단위 · 화면 시험은 `workflow_dispatch` 의 `check` 를 켤 때만 돈다(`gh workflow run deploy -f check=true`). **그러니 푸시 전 이 PC 에서 시험 · tsc · uicheck · 빌드 · uitest 를 꼭 돌린다** — 빠뜨리면 막아 주는 것이 없다. 이 PC 의 gh 토큰은 같은 날 `workflow` 권한을 받았다(`gh auth refresh -s workflow` — 사용자가 브라우저로 승인) — 워크플로 파일도 푸시된다.
+- **멈춘 자리**: v1.10.21 까지 main 에 올렸다(`gh run list -L 3`). 패치 플레이 영상(다시 뜬 것)은 `docs/img/patch-2026-10-24/patch_1024_play(_hq).webm` · 공지는 `docs/공지글-모음.md` 맨 위 6차(짧게). 다음 세션은 사용자의 새 요청을 받는다.
 - **v1.10.17(사용자: "3인칭에서 캐릭터가 혼자 몹 쪽으로 뒤돈다")**: `renderer3d fpsAim` — 괴물 후보는 시선 앞쪽 반평면 + `AIM_CONE`(0.45 rad) 안만 · 하늘을 보면(카메라 방향 y > -0.02) 시선 쪽 멀리 · 땅에 맞은 자리가 2칸 안이면 2칸 앞. 예전에는 어깨 너머 카메라라 캐릭터 옆 · 뒤 괴물이 화면 가운데를 덮으면 그쪽을 겨눴다(169°). `tools/uitest.mjs` 시련 지역에서 곁 · 뒤 괴물로 30° 안인지 본다(예전 코드면 실패함을 확인). 정조준(1인칭) 때 내 총알 꼬리는 눈앞 1.5칸을 비운다(`updateBullets` — 화면 구석에서 띠가 뻗어 보였다).
 - **공지 문체(2026-10-24 사용자: "너무 AI 가 쓴 글 같다 — '상점 UI 를 개선했습니다' 정도로 간단하게")**: 업데이트 공지는 바뀐 것 이름만 한 줄씩 · 묶음 · 부제 · 설명 없이(공지글-모음 "쓰는 법" 맨 위 · 6차가 기준).
 - **v1.10.15(사용자 요청 셋)**: 스위치 줄 `.swcol`(session — 퀘스트 칸 아래 끝 `renderer.hud.d4.trackerBottom` 을 따라 `top` · RenderOptions `belowTracker` 만큼 퀘스트 줄을 덜 쓴다) · 스킬 단축창 판 +10px · 글자 맞춤(d4hud drawBottom) · 경험치 띠 8px.
@@ -195,7 +195,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-24 · v1.10.19 배포)
+## 현재 상태 (2026-10-24 · v1.10.21 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 
@@ -204,7 +204,7 @@ npm run build      # tsc --noEmit + vite build → dist/
 - **방송**: 치지직 채팅 → 괴물 말풍선 · 후원 이벤트 · 응원 · 시청자 이름 괴물 · 방장 강퇴 · 금칙어. 수입이 드러나는 수치는 어디에도 안 보인다(아래 "방송").
 - **분위기 둘**: 🌙 공포스러움(실사 괴물 · 어두운 던전 — 처음 그대로) · ☀ 철면수심전용(파스텔 · 귀여운 괴물 · 맵마다 다른 바닥 · 벽 · 랜드마크 · 진한 이펙트). 방장이 방에서 고르고, 게임 중에는 퀘스트 칸 아래 스위치로 내 화면만 바꾼다(`game/skin.ts` · `SessionConfig.skin` · `session.switchSkin`).
 - **화면 · 손맛**: 툰 그림체 · 후처리(빛 번짐 · 막마다 색감 · ☀ Neutral / 🌙 ACES) · 스킬 이펙트 37(`skillfx.ts`) + quarks 입자(`quarksfx.ts`) · 자동 화질 · 소리(합성 + Kenney CC0 녹음 45).
-- **배포**: GitHub Pages(`main` 푸시 → Actions — 시험 · 빌드 · 화면 시험 `tools/uitest.mjs` 가 통과해야 배포 · 약 3분). 판 번호가 다른 사람끼리는 같은 방에 못 들어간다(새 판 알림 띠 → F5).
+- **배포**: GitHub Pages(`main` 푸시 → Actions 가 빌드 · 배포만 — 약 1분. 시험 · 화면 시험 `tools/uitest.mjs` 는 이 PC 에서 푸시 전에). 판 번호가 다른 사람끼리는 같은 방에 못 들어간다(새 판 알림 띠 → F5).
 
 ## 주의 — 지금도 유효한 규칙
 
