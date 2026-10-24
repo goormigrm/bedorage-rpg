@@ -1237,8 +1237,8 @@ function patch24Scenes() {
   at(5.2, () => {
     perFrame = null
   })
-  // ---- 7. 1막 보스 예고 (모드 영상만 — 2026-10-24 사용자: "3인칭으로 1막 보스를 보는 장면 — 전투는 하지 말고 예고편처럼 위압감이 들게" →
-  // 같은 날 "어두운 버전으로 · 정면에서"). 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자).
+  // ---- 7. 보스 예고 (모드 영상만 — 2026-10-24 사용자: "3인칭으로 1막 보스를 보는 장면 — 전투는 하지 말고 예고편처럼 위압감이 들게" →
+  // 같은 날 "어두운 버전으로 · 정면에서" → 2026-10-25 "4막 공포 버전 보스로" — 심연의 옥좌(지역 34)). 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자).
   // 🌙 보스 방은 깨기 전에는 등불이 닿는 곳만 보인다 → 정면 6.5칸까지 다가가되, 그동안 판에 "화면 덮임"(BTN_LOADING — 들어선 뒤 12초 안)을 실어
   // 잠든 괴물이 알아채지 못하게 한다(동료 봇도 따라 멈춰 쏘지 않는다). 보스는 나를 보게 돌리고, 발밑에서 얼굴까지 고개를 들어 올려다본다
   if (MODES) {
@@ -1249,7 +1249,7 @@ function patch24Scenes() {
       sess.donPending.length = 0
       sess.donSending = null
       M.stream.tried = false
-      goto(9, 'dark')
+      goto(34, 'dark')
       sess.autopilot = false
       const inp0 = sess.input
       sample0 = inp0.sample.bind(inp0)
@@ -1261,9 +1261,9 @@ function patch24Scenes() {
       const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
       if (!b) return void (holding = false)
       s.monsters = s.monsters.filter((m) => m === b)
-      // 보스에게서 입구 쪽(들어선 자리)으로 6.5칸 — 벽이면 조금씩 당긴다
+      // 보스에게서 입구 쪽(들어선 자리)으로 7.5칸(4막 보스는 더 크다) — 벽이면 조금씩 당긴다
       const ang = Math.atan2(p.y - b.y, p.x - b.x)
-      for (let d = 6.5; d > 4.5; d -= 0.25) {
+      for (let d = 7.5; d > 5; d -= 0.25) {
         if (!clearRay(b.x, b.y, ang, d * T)) continue
         p.x = b.x + Math.cos(ang) * d * T
         p.y = b.y + Math.sin(ang) * d * T
@@ -1372,7 +1372,7 @@ function bossTilt(face) {
     const inp = S().input
     const k = ease(Math.min(1, t / 3))
     inp.yaw = face + 0.04 * Math.sin(t * 0.6)
-    inp.pitch = -0.32 + 0.62 * k + 0.015 * Math.sin(t * 0.5) * k
+    inp.pitch = -0.32 + 0.66 * k + 0.015 * Math.sin(t * 0.5) * k
   }
 }
 /** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
@@ -1393,12 +1393,15 @@ function botsBehind(dist = 3) {
     })
   }
 }
-/** 파티 넷을 레벨 30 · 스킬 랭크 5(변형까지)로 — 스킬 효과가 크고 많이 보이게 (2026-10-24 사용자: "레벨을 올려 놓고 · 스킬도 많이") */
+/**
+ * 파티 넷을 레벨 20 · 스킬 랭크 4(3랭크 변형)로 — 스킬 효과가 많이 보이게 (2026-10-24 사용자: "레벨을 올려 놓고 · 스킬도 많이" →
+ * 2026-10-25 "레벨은 조금 낮춰서 몬스터가 너무 빨리 없어지지 않게" — 30 이면 레벨 22 괴물이 한두 발에 쓰러졌다)
+ */
 function levelUpParty() {
   for (const p of st().players) {
-    p.level = 30
+    p.level = 20
     p.xp = 0
-    p.build = { r: [5, 5, 5, 5, 5, 5, 2, 2, 2, 2], m3: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0], m5: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0], s: [0, 1, 2, 3] }
+    p.build = { r: [4, 4, 4, 4, 4, 4, 1, 1, 1, 1], m3: [1, 1, 1, 1, 1, 1, 0, 0, 0, 0], m5: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], s: [0, 1, 2, 3] }
     M.sim.autoAttr(p)
     M.sim.recalc(p)
     p.hp = p.maxHp
