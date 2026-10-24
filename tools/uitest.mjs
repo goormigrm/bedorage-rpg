@@ -204,6 +204,34 @@ async function openGame(skin) {
     await page.waitForTimeout(2500)
     const area = await page.evaluate(() => window.__bd.state().players[window.__bd.me()].area)
     check(area >= 100, `열고 들어가기 — 시련 지역으로 간다 (지역 ${area})`)
+
+    // 3인칭 조준 (2026-10-24 v1.10.17): 곁 · 뒤(카메라와 나 사이)에 붙은 괴물이 조준을 끌어가 캐릭터가 혼자 돌던 결함 — 시선과 30° 안
+    await page.keyboard.press('KeyB')
+    await page.waitForTimeout(1500)
+    const turn = await page.evaluate(async () => {
+      const S = window.__session
+      const inp = S.input
+      const p = window.__bd.state().players[window.__bd.me()]
+      const m = window.__bd.view().monsters.find((q) => q.hp > 0)
+      if (!inp.fps || !m) return `3인칭 ${inp.fps} · 괴물 ${!!m}`
+      let worst = 0
+      for (let k = 0; k < 4; k++) {
+        inp.yaw = k * 1.57
+        inp.pitch = k === 3 ? 0.45 : -0.2
+        const fx = Math.cos(inp.yaw)
+        const fy = Math.sin(inp.yaw)
+        for (const [f, r] of [[0, 26], [-60, 12]]) {
+          m.x = p.x + fx * f - fy * r
+          m.y = p.y + fy * f + fx * r
+          await new Promise((res) => setTimeout(res, 250))
+          const a = (inp.sample(S.renderer, p.x, p.y).aim / 1024) * Math.PI * 2
+          worst = Math.max(worst, (Math.abs(Math.atan2(Math.sin(a - inp.yaw), Math.cos(a - inp.yaw))) * 180) / Math.PI)
+        }
+      }
+      return Math.round(worst)
+    })
+    check(typeof turn === 'number' && turn < 30, `3인칭: 곁 · 뒤의 괴물이 조준을 끌어가지 않는다 (시선과 최대 ${turn}°)`)
+    await page.keyboard.press('KeyB')
   }
 
   // 녹음 효과음 (2026-10-08 S4 — Kenney CC0 · public/sfx): 판에 들어오면 받아서 푼다 (묶음 19)

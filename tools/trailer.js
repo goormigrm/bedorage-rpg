@@ -6,8 +6,8 @@
 //   ⚠ 2026-10-17 사용자: "첫 장면이 썸네일이 돼서 적절치 않아 · 캐릭터 선택 및 마을 장면도 · 2개의 영상 길이를 적절히 분배" → 1편 = 고르는 화면(제목이 박힌 첫 장) → 마을 → 전투 → 1 · 2막 보스 · 2편 = 3막 보스 → 최종 보스 → 방송 연동 → 저주받은 상자 → 끝 카드
 //   ⚠ 2026-10-22 사용자: "새로 배포할 사이트는 webm 한 개당 20MB 이하 — 밝은 거 · 어두운 거 2개" → t.start({ part: 3, skin, dir }) = 한 편(고르는 화면 → 마을 → 전투 → 1 · 2막 보스 → 방송 연동 → 저주받은 상자 → 끝 카드) · intro_{bright,dark}.webm 19.5 MB 안
 //   ⚠ 2026-10-24 사용자: "트레일러 영상처럼 webm 2분 이내 — 10월 23일 수정 이후의 패치 내용을 강조" → t.start({ mode: 'patch24' }) = ☀ 판 ·
-//     사진 넷(docs/img/patch-2026-10-24 — SHOT_DIR=patch-2026-10-24 node tools/patchshots.mjs smith bagscore shop switches) + 실제 플레이
-//     → docs/img/patch-2026-10-24/patch_1023_bright.webm(720 · 20 MB 안) · _hq.webm(1080) — MODE=patch24 node tools/patchvideo.mjs
+//     같은 날 다시(사용자: "글이 너무 많다 · 템 팔기 단추 같은 건 빼고 3인칭 플레이 · 타격감 · 에임 효과가 잘 보이는 플레이 영상") → 사진 · 자막을 빼고 플레이만
+//     → docs/img/patch-2026-10-24/patch_1024_play.webm(720 · 20 MB 안) · _hq.webm(1080) — MODE=patch24 node tools/patchvideo.mjs
 //   const t = await import('/bedorage-rpg/tools/trailer.js'); await t.start()   → docs/img/trailer.webm (게시판용 40 MB 안) · trailer_hq.webm (고화질) (POST /__save)
 //   확인만 (저장 없이 소리 그리기 시간 · 괴물 소리 계측): t.start({ noSave: true })
 //   보스 목소리 영상: tools/bossvoice.ps1 로 대사 WAV 를 만든 뒤 t.start({ mode: 'ult' })   → boss_voice.webm · boss_voice_hq.webm (로비에서 불러도 된다)
@@ -55,10 +55,9 @@ let NOTES = false
 const NOTES_DIR = 'patch-2026-10-22'
 const SLIDE_FILES = ['01_lobby', '03_bag_expand', '11_skill_window', '04_shop_sell', '05_elder_all', '06_captain_mercs']
 const SLIDES = {}
-/** 10월 23일 이후 패치 영상 (start({ mode: 'patch24' })) — 사진 폴더 · 사진 · 매 장 부르는 것(1인칭 시선 따라가기) */
+/** 10월 23일 이후 패치 플레이 영상 (start({ mode: 'patch24' })) — 저장 폴더 · 매 장 부르는 것(조준 · 걷기) */
 let P24 = false
 const P24_DIR = 'patch-2026-10-24'
-const P24_SLIDES = ['01_smith_anvil', '02_bag_score', '04_shop_sell', '05_switches']
 let perFrame = null
 /** 자막 고르기: 어둡게 · 밝게 */
 const L = (dark, bright) => (BRIGHT ? bright : dark)
@@ -313,6 +312,27 @@ function drawOverlay() {
     }
   }
 
+  if (ov.tag) {
+    const k = (t - ov.tag.at) / 1000
+    const a = k < 0.3 ? ease(k / 0.3) : 1 - ease((k - 1.9) / 0.4)
+    if (a <= 0 && k > 1) ov.tag = null
+    else if (a > 0) {
+      g.save()
+      g.globalAlpha = a
+      g.font = '800 54px "IBM Plex Sans KR", sans-serif'
+      const w = g.measureText(ov.tag.text).width + 72
+      g.fillStyle = 'rgba(10,8,6,0.55)'
+      g.beginPath()
+      g.roundRect(W / 2 - w / 2, 70, w, 88, 44)
+      g.fill()
+      g.fillStyle = '#ffe9a8'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      g.fillText(ov.tag.text, W / 2, 116)
+      g.restore()
+    }
+  }
+
   if (ov.end) {
     const a = ease((t - ov.end.at) / 900)
     g.save()
@@ -327,8 +347,16 @@ function drawOverlay() {
     g.shadowBlur = 36
     g.fillStyle = '#f1d58a'
     g.font = '800 132px "Nanum Myeongjo", serif'
-    drawName(g, '배도라지 알PG', W / 2, H / 2 - 110)
+    drawName(g, '배도라지 알PG', W / 2, H / 2 - (P24 ? 40 : 110))
     g.shadowBlur = 0
+    if (P24) {
+      // 패치 플레이 영상은 이름 · 주소만 (2026-10-24 사용자: "쓸데없이 글이 너무 많다")
+      g.font = '700 46px "IBM Plex Sans KR", sans-serif'
+      g.fillStyle = '#ffd86a'
+      g.fillText('goormigrm.github.io/bedorage-rpg', W / 2, H / 2 + 80)
+      g.restore()
+      return finishOverlay(t)
+    }
     g.font = '600 40px "IBM Plex Sans KR", sans-serif'
     g.fillStyle = '#e8dcc0'
     g.fillText('설치 없이 브라우저에서 · 최대 4인 협동 · 무료', W / 2, H / 2 + 10)
@@ -341,6 +369,10 @@ function drawOverlay() {
     g.restore()
   }
 
+  finishOverlay(t)
+}
+/** 섬광 · 검게 닫기 (덧그림의 맨 위) */
+function finishOverlay(t) {
   // 섬광은 시간으로 옅어진다
   const fl = ov.flash.a * Math.exp(-(t - ov.flash.at) / 170)
   if (fl > 0.01) {
@@ -912,201 +944,289 @@ function notesScenes() {
 }
 
 /**
- * 10월 23일 이후 패치 영상 (2026-10-24 사용자: "트레일러 영상처럼 webm 2분 이내 — 패치 내용을 강조하는 10월 23일 수정 이후의 내용"):
- * 제목 → 마을(벼리기 장인 · 들판 문) → 사진(대장장이 모루 · 가방 ▲ · 상점) → 들판(타격감 · 큰 괴물) → 1인칭 → 사진(스위치 둘) → 후원 표 → 떼(최적화) → 끝 카드.
- * ☀ 판만(사용자: 소개 영상은 철면수심전용으로) · 보스 등장 · 경직 · 즉사기는 넣지 않는다(스포일러)
+ * 10월 23일 이후 패치 영상 — 플레이 영상 (2026-10-24 사용자: "글이 너무 많다 · 템 팔기 단추 같은 건 안 넣어도 된다 —
+ * 3인칭 플레이 · 타격감 · 에임 효과가 잘 보이는, 패치로 달라진 플레이 영상"): 쿼터뷰(제목) → 3인칭 전투 → 정조준(1인칭 · 머리) → 큰 무리 → 끝 카드.
+ * 글은 제목 · 짧은 이름표(tag) 셋 · 끝 카드뿐. 혼자(봇 없이 — 조준점을 가리지 않게) · ☀ 판만 · 보스 장면은 넣지 않는다(스포일러)
  */
 function patch24Scenes() {
   const tl = timeline()
   const { at, every } = tl
-  const slide = (file, cap, sub, sec, fx, fy, z0 = 1, z1 = 1.06) => {
-    at(0, () => {
-      dissolve(500)
-      perFrame = null
-      ov.slide = { file, at: now(), dur: sec, fx, fy, z0, z1 }
-      caption(cap, sub)
-    })
-    at(sec, () => {})
-  }
-  const npc = (id) => M.world.townNpcs(st().curArea).find((q) => q.id === id)
-  // ---- 제목 + 마을: 대장장이 곁 벼리기 장인
-  at(0, () => {
-    S().autopilot = false
-    cue('calm', { town: true })
-    const a = npc('smith')
-    const b = npc('forger')
-    st().players.forEach((q, i) => {
-      q.x = (a.x + b.x) / 2 - 50 + i * 34
-      q.y = a.y + 120 + (i % 2) * 26
-      q.aim = 768
-    })
-    S().renderer.setDebugZoom(0.6)
-    // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
-    ov.title = { text: '배도라지 알PG', sub: '10월 23일 이후 새로 바뀐 것 — v1.10.7 ~ v1.10.12', at: now() - 1300 }
-  })
-  at(3.2, () => (ov.title.out = now()))
-  at(0.8, () => {
-    ov.title = null
-    caption('대장장이 곁에 벼리기 장인', '강화는 대장장이 · 벼리기는 벼리기 장인 — 한 사람에 한 가지')
-  })
-  // ---- 들판 문 → 웨이포인트를 연 가장 먼 곳
-  at(4.2, () => {
-    dissolve()
-    const p = st().players[0]
-    for (const ar of M.world.AREAS) if (ar.act === 0 && ar.kind !== 'town' && ar.level <= 5) p.wps |= M.world.wpBit(ar.id)
-    const gate = M.world.areaLayout(st().curArea, window.__bd.map()).exits.find((e) => e.gate)
-    st().players.forEach((q, i) => {
-      q.x = gate.x - 70 + i * 30
-      q.y = gate.y + 90 + (i % 2) * 24
-      q.aim = 768
-    })
-    S().renderer.setDebugZoom(0.62)
-    caption('들판 문 — 웨이포인트를 연 가장 먼 곳으로', '다음 지역 웨이포인트를 열면 지난 타운 포털은 닫힌다')
-  })
-  at(4.4, () => {})
-  // ---- 사진: 대장장이 모루 · 가방 ▲ · 상점
-  slide('01_smith_anvil', '대장장이 — 아이템 하나를 올려놓고', '가방 · 장비 칸에서 끌어다 놓기 · 강화된 재료는 그 단계를 이어받는다 · 아이템 레벨 올리기', 5.6, 0.0, 0.25)
-  slide('02_bag_score', '신화는 이제 제값으로', '▲ · 좋은 장비 끼기가 실제 옵션 값으로 견준다 — 옛 신화는 레벨을 올려 다시', 5.0, 1.0, 0.2)
-  slide('04_shop_sell', '잡템만 팔기도 크게', '도박은 덜 후하게 — 희귀 17% · 전설 2.8% (천장 30번은 그대로)', 4.6, 0.0, 0.3)
-  // ---- 들판: 타격감 · 큰 괴물
-  at(0, () => {
-    dissolve()
-    holding = true
-    ov.slide = null
-    ov.cap = null
-    warpParty(1)
-  })
-  at(1.6, () => {
-    gatherBots()
-    // 지역 1 의 원래 떼가 몰려와 조준점이 묻혔다 — 곁(18칸)의 것은 판에서 뺀다(쓰러뜨리면 시체가 24초 남는다). 부른 괴물만 상대한다
+  const inp = () => S().input
+  const both = (...fs) => () => fs.forEach((f) => f())
+  let base = 0
+  let mv = null
+  // 트인 자리로 옮겨 가장 멀리 트인 쪽을 본다 (장면마다 — 울타리 앞에 붙은 채 정조준하면 화면이 막혔다)
+  const place = () => {
     const s = st()
     const p = s.players[0]
-    s.monsters = s.monsters.filter((m) => Math.hypot(m.x - p.x, m.y - p.y) > 18 * T)
-  })
-  at(0.4, () => {
-    holding = false
-    // 손으로 쏘는 것처럼: 봇에게 맡기면 스킬 · 궁극기 섬광이 화면을 덮어 조준점이 안 보였다 — 가장 가까운 괴물에 조준점을 두고 왼쪽 버튼만.
-    // 표적마다 머리(가운데 — 금빛 · 치명타)와 몸(앞쪽 — 주황)을 번갈아 겨눈다
-    S().autopilot = false
-    // 조준선을 아주 크게 · 십자 + 원 (영상에서 히트마커가 작아 묻혔다 — 이 장면만)
-    M.settings.setAimStyle({ shape: 'crossring', size: 1.8 })
-    const inp = S().input
-    inp.padActive = false
-    inp['mouseDown'].add(0)
-    perFrame = () => {
-      const s = st()
-      const p = s.players[0]
-      const R = S().renderer
-      // 화면 안(자막 위)에 보이는 것 중 가장 가까운 것 — 가까운 것이 다 쓰러지면 화면 밖을 겨눠 조준점이 사라졌다
-      const vw = R.hud.canvas.width / R.hud.dpr
-      const vh = R.hud.canvas.height / R.hud.dpr
-      let best = null
-      let bd = 1e9
-      let bsc = null
-      for (const m of s.monsters) {
-        if (m.hp <= 0) continue
-        const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2
-        if (d >= bd || d > (11 * T) ** 2) continue
-        const at = R.monsterView.shown.get(m.id)
-        if (!at) continue
-        const sc = R.worldToScreen(at.x, 0.95, at.z)
-        if (sc.x < vw * 0.08 || sc.x > vw * 0.92 || sc.y < vh * 0.1 || sc.y > vh * 0.72) continue
-        bd = d
-        best = m
-        bsc = at
-      }
-      if (!best) return
-      const head = best.id % 2 === 0
-      const d = Math.sqrt(bd) || 1
-      const k = head ? 0 : (0.7 * 14) / 32
-      const sc = R.worldToScreen(bsc.x + ((p.x - best.x) / d) * k, 0.95, bsc.z + ((p.y - best.y) / d) * k)
-      inp.mouse.x = sc.x
-      inp.mouse.y = sc.y
-    }
-    spawn([0, 1, 2, 0], 14, 5, 9)
-    cue('hot', { act: 0 })
-    S().renderer.setDebugZoom(0.58)
-    caption('맞히면 조준점에 두 줄 — 처치하면 붉은 X', '약점(머리)은 금빛 · 쓰러진 자리에 X 가 잠깐 남는다')
-  })
-  const e0 = tl.t
-  const near = () => st().monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - st().players[0].x, m.y - st().players[0].y) < 10 * T).length
-  every(e0 + 0.5, e0 + 12.5, 0.5, () => near() < 6 && spawn([0, 1, 2, 0], 6, 4, 8))
-  at(4.4, () => caption('깎인 체력은 희게 남았다가 줄어든다', '괴물 · 보스 · 내 체력 구슬까지 — 명중마다 "틱" · 처치는 "크랙"'))
-  at(4.4, () => {
-    S().renderer.setDebugZoom(0.62)
-    caption('괴물 1.3배 · 상자 1.45배', '작아서 위압감이 없다던 것 — 맞는 크기는 그대로')
-  })
-  // ---- 1인칭
-  at(3.8, () => {
-    dissolve()
-    perFrame = null
-    S().input['mouseDown'].delete(0)
-    M.settings.setAimStyle({ shape: 'cross', size: 1.4 })
-    S().autopilot = true
-    const me = st().players[0]
-    const inp = S().input
-    inp.fps = true
-    inp.yaw = (me.aim / 1024) * Math.PI * 2
-    inp.pitch = -0.07
-    // 시선은 봇이 겨누는 쪽을 부드럽게 따라간다
-    perFrame = () => {
-      const a = (st().players[0].aim / 1024) * Math.PI * 2
-      let d = a - inp.yaw
-      while (d > Math.PI) d -= Math.PI * 2
-      while (d < -Math.PI) d += Math.PI * 2
-      inp.yaw += d * 0.1
-    }
-    spawn([0, 1, 2, 0], 26, 6, 11)
-    caption('B 한 번 — 1인칭', '마우스로 둘러보고 · W 앞 · A · D 옆걸음 · 괴물의 머리를 겨누면 약점')
-  })
-  const f0 = tl.t
-  every(f0 + 1, f0 + 13, 1, () => alive() < 20 && spawn([0, 1, 2, 0], 10, 6, 11))
-  at(6.4, () => caption('내 화면만 바뀐다', '같이 하는 사람은 쿼터뷰 그대로 · 시선 쪽으로 자유롭게 걷는다'))
-  at(6.2, () => {})
-  // ---- 사진: 스위치 둘
-  at(0, () => {
-    perFrame = null
-    S().input.fps = false
-  })
-  slide('05_switches', '누가 봐도 바꾸는 스위치', '오른쪽 아래 — 시점(쿼터뷰 ↔ 1인칭) · 모드(🌙 무서운 ↔ ☀ 철면수심)', 5.0, 0.95, 0.75, 1.0, 1.1)
-  // ---- 후원 표
-  at(0, () => {
-    dissolve()
-    holding = true
-    ov.slide = null
-    ov.cap = null
-    for (const m of st().monsters) m.hp = 0
     const spot = openSpot()
     if (spot) {
-      st().players[0].x = spot.x
-      st().players[0].y = spot.y
+      p.x = spot.x
+      p.y = spot.y
     }
-    gatherBots()
-    S().renderer.setDebugZoom(0.8)
+    base = openDir()
+    inp().yaw = base
+  }
+  const ahead = () => {
+    const p = st().players[0]
+    const fx = Math.cos(inp().yaw)
+    const fy = Math.sin(inp().yaw)
+    return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0).length
+  }
+  // ---- 쿼터뷰 + 제목: 지금까지의 시점
+  at(0, () => {
+    S().autopilot = false
+    holding = true
+    M.sim.warpPlayer(st(), S().mapOf, 0, 1)
+    // 조준선을 크게 · 십자 + 원 (영상에서 히트마커가 작아 묻혔다)
+    M.settings.setAimStyle({ shape: 'crossring', size: 1.5 })
   })
-  at(0.6, () => {
-    holding = false
-    ov.don = true
+  at(1.5, () => {
+    place()
+    // 지역의 원래 떼는 뺀다 — 부른 괴물만 상대한다(조준점이 묻히지 않게)
+    const s = st()
+    const p = s.players[0]
+    s.monsters = s.monsters.filter((m) => Math.hypot(m.x - p.x, m.y - p.y) > 22 * T)
+    inp().pitch = -0.12
+    S().renderer.setDebugZoom(0.68)
+    spawnAhead([0, 1, 2], 7, 5, 9, 0.9, 2.5)
+    perFrame = quarterAimer()
     cue('hot', { act: 0 })
-    caption('후원 표 — 폰으로 봐도 읽히게', '글씨를 키우고 금액은 촘촘히 · 방송 화질에서도 번지지 않게 테두리')
-    for (let i = 0; i < 4; i++) M.stream.fakeChat(false)
-    M.stream.fakeDonation(6000)
+    // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
+    ov.title = { text: '배도라지 알PG', sub: '3인칭 업데이트', at: now() - 1300 }
+    holding = false
   })
-  const d0 = tl.t
-  every(d0 + 0.3, d0 + 8, 0.5, () => M.stream.fakeChat(false))
-  at(3.4, () => M.stream.fakeDonation(9000))
-  at(4.2, () => {})
-  // ---- 떼: 최적화
+  at(2.3, () => (ov.title.out = now()))
+  at(1.4, () => {})
+  // ---- 3인칭: 화면 가운데 조준점으로 겨누며 앞으로
   at(0, () => {
     dissolve()
-    ov.don = false
-    S().renderer.setDebugZoom(1.12)
-    spawn([0, 1, 2, 0, 1], 110, 5, 16)
-    caption('수백 마리가 몰려도 가볍게', '화면 밖 괴물은 그리지 않는다 — ☀ 판 삼각형 3분의 1 · 지역에 들어서는 덮개도 짧게')
+    ov.title = null
+    inp().mouseDown.delete(0)
+    inp().fps = true
+    place()
+    inp().pitch = -0.1
+    mv = mover('adv')
+    perFrame = both(tppAimer(), mv)
+    for (const m of st().monsters) m.hp = 0
+    spawnAhead([0, 1, 2], 6, 7, 11, 0.7, 3)
+    tag('3인칭')
   })
-  at(6.0, () => {})
-  endCard(tl)
+  const a0 = tl.t
+  every(a0 + 1, a0 + 15, 0.8, () => ahead() < 5 && spawnAhead([0, 1, 2], 5, 8, 12, 0.8, 3))
+  at(5, () => mv.strafe('KeyD'))
+  at(2.5, () => mv.strafe(''))
+  at(3.5, () => mv.strafe('KeyA'))
+  at(2.5, () => mv.strafe(''))
+  at(2.5, () => {})
+  // ---- 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커
+  at(0, () => {
+    dissolve()
+    mv.stop()
+    for (const m of st().monsters) m.hp = 0
+    place()
+    inp().pitch = -0.05
+    inp().mouseDown.add(2)
+    mv = mover('back')
+    perFrame = both(tppAimer({ head: true }), mv)
+    spawnAhead([0, 1, 2], 5, 11, 15, 0.4, 2.5)
+    tag('정조준')
+  })
+  const b0 = tl.t
+  every(b0 + 1, b0 + 10, 0.8, () => ahead() < 4 && spawnAhead([0, 1, 2], 4, 11, 15, 0.4, 2.5))
+  at(10.5, () => {})
+  // ---- 큰 무리: 물러서며 쏜다
+  at(0, () => {
+    dissolve()
+    mv.stop()
+    inp().mouseDown.delete(2)
+    for (const m of st().monsters) m.hp = 0
+    place()
+    inp().pitch = -0.08
+    mv = mover('hold')
+    perFrame = both(tppAimer(), mv)
+    spawnAhead([0, 1, 2, 0, 1], 40, 13, 20, 0.6, 1)
+    tag('타격감')
+  })
+  const c0 = tl.t
+  every(c0 + 2, c0 + 8, 1, () => ahead() < 25 && spawnAhead([0, 1, 2, 0, 1], 12, 15, 20, 0.6, 1))
+  at(3.5, () => tap('KeyQ'))
+  at(3.0, () => tap('KeyE'))
+  at(3.0, () => {
+    mv.stop()
+    perFrame = null
+    inp().mouseDown.clear()
+  })
+  endCard(tl, 0, 700)
   return tl.done()
+}
+
+/** 시선(3인칭 yaw)에서 가장 멀리 트인 쪽 — 괴물을 그쪽에 부르고 그쪽을 본다 */
+function openDir() {
+  const map = window.__bd.map()
+  const p = st().players[0]
+  let best = 0
+  let bl = -1
+  for (let k = 0; k < 24; k++) {
+    const a = (k / 24) * Math.PI * 2
+    let l = 0
+    while (l < 18 * T && map.tiles[Math.floor((p.y + Math.sin(a) * l) / T) * map.w + Math.floor((p.x + Math.cos(a) * l) / T)] === 0) l += 8
+    if (l > bl) {
+      bl = l
+      best = a
+    }
+  }
+  return best
+}
+/** 시선 앞쪽 부채꼴(±spread)에 괴물을 부른다 — 체력 배율 hp (맞을 때마다 히트마커 · 체력 잔상이 보이게 몇 번은 맞고 쓰러진다) */
+function spawnAhead(kinds, n, r0, r1, spread, hp) {
+  const s = st()
+  const map = window.__bd.map()
+  const p = s.players[0]
+  const yaw = S().input.yaw
+  let made = 0
+  for (let i = 0; made < n && i < n * 60; i++) {
+    const a = yaw + (Math.random() * 2 - 1) * spread
+    const d = (r0 + Math.random() * (r1 - r0)) * T
+    const x = p.x + Math.cos(a) * d
+    const y = p.y + Math.sin(a) * d
+    const tx = Math.floor(x / T)
+    const ty = Math.floor(y / T)
+    if (tx < 1 || ty < 1 || tx >= map.w - 1 || ty >= map.h - 1 || map.tiles[ty * map.w + tx] !== 0) continue
+    // 울타리(벽) 너머는 안 된다 — 그쪽으로 걸어가다 울타리에 막혀 화면이 가렸다
+    if (!clearRay(p.x, p.y, a, d)) continue
+    const m = M.dungeon.makeMonster(s, kinds[made % kinds.length], x, y, 1, hp, 60, 3)
+    m.st = 1
+    m.target = 0
+    s.monsters.push(m)
+    made++
+  }
+}
+/** (x, y) 에서 a 쪽으로 len 까지 벽이 없나 */
+function clearRay(x, y, a, len) {
+  const map = window.__bd.map()
+  for (let l = 0; l < len; l += 8) if (map.tiles[Math.floor((y + Math.sin(a) * l) / T) * map.w + Math.floor((x + Math.cos(a) * l) / T)] !== 0) return false
+  return true
+}
+const angD = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
+/**
+ * 3인칭 조준 — 손으로 하는 것처럼: 표적을 화면 가운데(조준점)로 끌어온다. 시선(yaw · pitch)을 화면에서 비낀 만큼 부드럽게 돌리고
+ * 조준점이 몸에 걸리면 쏜다. 표적은 시선 앞쪽(±72°) 14칸 안에서 가깝고 덜 돌아도 되는 것 — 쓰러지면 다음. head: 머리를 겨눈다
+ */
+function tppAimer(o = {}) {
+  let id = -1
+  return () => {
+    const s = st()
+    const p = s.players[0]
+    const R = S().renderer
+    const inp = S().input
+    const vw = R.hud.canvas.width / R.hud.dpr
+    const vh = R.hud.canvas.height / R.hud.dpr
+    // 헤드리스는 포인터를 가두지 못해 조준점이 마지막 마우스 자리에 그려졌다 — 가둔 것처럼 가운데
+    inp.mouse.x = vw / 2
+    inp.mouse.y = vh / 2
+    const fx = Math.cos(inp.yaw)
+    const fy = Math.sin(inp.yaw)
+    const ok = (m) => {
+      if (!m || m.hp <= 0 || !R.monsterView.shown.has(m.id)) return false
+      const d = Math.hypot(m.x - p.x, m.y - p.y)
+      return d < 14 * T && (m.x - p.x) * fx + (m.y - p.y) * fy > 0.3 * d
+    }
+    let m = s.monsters.find((q) => q.id === id)
+    if (!ok(m)) {
+      m = null
+      let bd = Infinity
+      for (const q of s.monsters) {
+        if (!ok(q)) continue
+        const sc = Math.hypot(q.x - p.x, q.y - p.y) + Math.abs(angD(Math.atan2(q.y - p.y, q.x - p.x), inp.yaw)) * 6 * T
+        if (sc < bd) {
+          bd = sc
+          m = q
+        }
+      }
+      id = m ? m.id : -1
+    }
+    if (!m) {
+      inp.mouseDown.delete(0)
+      return
+    }
+    const at = R.monsterView.shown.get(m.id)
+    const top = M.m3d.monsterTop(m)
+    const aim = R.worldToScreen(at.x, top * (o.head ? 0.86 : 0.5), at.z)
+    const foot = R.worldToScreen(at.x, 0, at.z)
+    const hd = R.worldToScreen(at.x, top, at.z)
+    inp.yaw += Math.max(-0.05, Math.min(0.05, ((aim.x - vw / 2) / vw) * 0.45))
+    inp.pitch = Math.max(-0.6, Math.min(0.4, inp.pitch - Math.max(-0.03, Math.min(0.03, ((aim.y - vh / 2) / vh) * 0.4))))
+    const h = foot.y - hd.y
+    if (Math.abs(aim.x - vw / 2) < h * 0.3 && vh / 2 > hd.y && vh / 2 < foot.y) inp.mouseDown.add(0)
+    else inp.mouseDown.delete(0)
+  }
+}
+/** 쿼터뷰 조준: 화면 안의 가장 가까운 괴물에 마우스를 두고 쏜다 */
+function quarterAimer() {
+  return () => {
+    const s = st()
+    const p = s.players[0]
+    const R = S().renderer
+    const inp = S().input
+    const vw = R.hud.canvas.width / R.hud.dpr
+    const vh = R.hud.canvas.height / R.hud.dpr
+    let best = null
+    let bd = 1e9
+    for (const m of s.monsters) {
+      if (m.hp <= 0) continue
+      const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2
+      const at = R.monsterView.shown.get(m.id)
+      if (d >= bd || !at) continue
+      const sc = R.worldToScreen(at.x, 0.95, at.z)
+      if (sc.x < vw * 0.08 || sc.x > vw * 0.92 || sc.y < vh * 0.1 || sc.y > vh * 0.8) continue
+      bd = d
+      best = sc
+    }
+    if (!best) {
+      inp.mouseDown.delete(0)
+      return
+    }
+    inp.mouse.x = best.x
+    inp.mouse.y = best.y
+    inp.mouseDown.add(0)
+  }
+}
+/** 걷기: adv = 괴물이 멀면 앞으로 · back = 가까우면 뒤로 · hold = 가까울 때만 뒤로. strafe 로 옆걸음을 얹는다 (키를 바뀔 때만 누르고 뗀다) */
+function mover(mode) {
+  let cur = ''
+  let side = ''
+  const set = (want) => {
+    if (want === cur) return
+    if (cur) for (const c of cur.split('+')) key(c, false)
+    if (want) for (const c of want.split('+')) key(c, true)
+    cur = want
+  }
+  const f = () => {
+    const s = st()
+    const p = s.players[0]
+    let near = Infinity
+    for (const q of s.monsters) if (q.hp > 0) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y))
+    const yaw = S().input.yaw
+    const fb = near < (mode === 'back' ? 6 : 4) * T ? 'KeyS' : mode === 'adv' && near > 8 * T && clearRay(p.x, p.y, yaw, 2.5 * T) ? 'KeyW' : ''
+    // 옆걸음도 그쪽이 트였을 때만 (울타리에 붙으면 카메라가 코앞으로 당겨졌다)
+    const sd = side && clearRay(p.x, p.y, yaw + (side === 'KeyD' ? 1 : -1) * Math.PI * 0.5, 2.5 * T) ? side : ''
+    set([fb, sd].filter(Boolean).join('+'))
+  }
+  f.strafe = (k) => (side = k)
+  f.stop = () => {
+    side = ''
+    set('')
+  }
+  return f
+}
+function tap(code) {
+  key(code, true)
+  setTimeout(() => key(code, false), 0)
+}
+/** 짧은 이름표 (화면 위 가운데 · 2초) */
+function tag(text) {
+  ov.tag = { text, at: now() }
 }
 
 /** 1편 마을 (약 4초 — 2026-10-17 사용자: "영상 앞부분에 캐릭터 선택 및 마을 장면도"): 고르는 화면이 녹아 사라지며 파티가 마을을 걷는다 */
@@ -1823,8 +1943,9 @@ async function startGameFromLobby() {
   await sleep(200)
   btn('만들기')?.click()
   await sleep(1600)
+  // 봇 채우기 — 패치 플레이 영상은 혼자 (봇이 조준점 앞을 가렸다)
   const cb = document.querySelector('input[type=checkbox]')
-  if (cb && !cb.checked) cb.click()
+  if (cb && !cb.checked && !P24) cb.click()
   await sleep(900)
   btn('▶ 게임 시작')?.click()
   for (let k = 0; k < 160 && !(window.__session && window.__bd?.phase?.() === 'playing'); k++) await sleep(250)
@@ -1863,6 +1984,7 @@ export async function start(opts = {}) {
     chars: await sameModule('/src/core/characters.ts'),
     skills: await sameModule('/src/core/skills.ts'),
     settings: await sameModule('/src/ui/settings.ts'),
+    m3d: await sameModule('/src/render3d/monsters3d.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -1907,8 +2029,8 @@ export async function start(opts = {}) {
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
   const encs = P24
     ? [
-        ...[2_000_000, 1_650_000, 1_350_000].map((bitrate) => ({ name: 'patch_1023_bright', w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
-        { name: 'patch_1023_bright_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 12_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+        ...[2_000_000, 1_650_000, 1_350_000].map((bitrate) => ({ name: 'patch_1024_play', w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        { name: 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 12_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
       ]
     : NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
@@ -1964,12 +2086,6 @@ export async function start(opts = {}) {
   Object.defineProperty(window, 'devicePixelRatio', { get: () => 1, configurable: true })
   // 패치 영상은 게임 그대로의 HUD 크기 (보통) — 소개 영상은 작게
   localStorage.setItem('brpg.hud', NOTES || P24 ? 'normal' : 'tiny')
-  if (P24)
-    for (const f of P24_SLIDES) {
-      const img = new Image()
-      img.src = `/bedorage-rpg/docs/img/${P24_DIR}/${f}.png`
-      await img.decode().then(() => (SLIDES[f] = img), () => log.push('사진 없음 ' + f))
-    }
   if (NOTES)
     for (const f of SLIDE_FILES) {
       const img = new Image()
@@ -2029,8 +2145,12 @@ export async function start(opts = {}) {
     return shout0.call(this, p, text, ally)
   }
   const hud = sess.renderer.hud
+  // 패치 플레이 영상은 띠 글(업적 · 지역 이름)도 뺀다
+  if (P24) hud.banner = () => {}
   const notice0 = hud.notice.bind(hud)
   hud.notice = (text, color, life) => {
+    // 패치 플레이 영상은 알림 글을 모두 뺀다 (사용자: "글이 너무 많다")
+    if (P24) return
     if (/(^|\s)레벨 \d+/.test(text) && !text.includes('지역 레벨')) return
     notice0(text, color, life)
   }
@@ -2125,7 +2245,7 @@ export async function start(opts = {}) {
       }
       // 지역에 들어설 때의 어둠(페이드)도 담지 않는다 — 게임은 흐르고 영상만 멈춘다
       const areaFade = (R.fade?.t ?? 0) > 0.01
-      if (opts.diag && i % 10 === 0) {
+      if (opts.diag && i % (opts.diag.every ?? 10) === 0) {
         const me = st().players[0]
         const R = sess.renderer
         let pl = 0
@@ -2141,7 +2261,7 @@ export async function start(opts = {}) {
           for (let k = 0; k < d.length; k += 4) sum += d[k] + d[k + 1] + d[k + 2]
           return Math.round((sum / (d.length / 4) / 3) * 10) / 10
         }
-        diag.push({ t: +((vt - t0) / 1000).toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
+        diag.push({ t: +((vt - t0) / 1000).toFixed(2), tick: st().tick, bots: st().players.slice(1).map((q) => [Math.round(q.x), Math.round(q.y), q.aim]), acc: +sess.acc.toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
         if (opts.diag.shots?.includes(i)) {
           const sc = document.createElement('canvas')
           sc.width = 960
@@ -2152,6 +2272,8 @@ export async function start(opts = {}) {
         }
       }
       if (opts.diag && (vt - t0) / 1000 > opts.diag.sec) break
+      // 짧게 떠 볼 때 (영상 maxSec 초에서 멈춤)
+      if (opts.maxSec && vidSec() > opts.maxSec) break
       cancelAnimationFrame(sess.raf)
       clearTimeout(sess.raf)
       if (settle > 0) settle--
@@ -2180,7 +2302,10 @@ export async function start(opts = {}) {
         vid++
       }
       // 인코더가 따라오게 가끔 기다린다 (창이 가려져 있으면 한 번에 1초쯤 걸린다)
+      // 장마다 한 번은 쉰다 (2026-10-24 사용자: "패치 영상이 시작 부분에서 특히 버벅거린다"): 예전에는 인코더가 밀릴 때(8장)만 쉬어 그 사이
+      // 장들이 같은 그림으로 담겼다 — 움직임이 적은 장면에서 8 ~ 9장마다 한 번만 움직였다. 쉬지 않는 동안 화면 갱신이 다음 장에 닿지 않는다
       if (ve.encodeQueueSize > 8) await ve.flush()
+      else await new Promise((r) => setTimeout(r, 0))
     }
     await ve.flush()
     log.push(`영상 ${vid}장 (${vidSec().toFixed(1)}초) · 조각 ${chunks.length} · 준비 기다림 ${prepWait.n}번 ${(prepWait.ms / 1000).toFixed(1)}초`)
@@ -2196,6 +2321,7 @@ export async function start(opts = {}) {
     sess.last = realNow()
     sess.renderer.setDebugZoom(1)
     delete sess.renderer.showShout
+    delete sess.renderer.hud.banner
     sess.ticker.start()
   }
   ve.close()
@@ -2213,7 +2339,7 @@ export async function start(opts = {}) {
   }
   const au = await encodeAudio(abuf)
   // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
-  const saveDir = P24 ? P24_DIR : NOTES ? NOTES_DIR : opts.dir
+  const saveDir = opts.outDir ?? (P24 ? P24_DIR : NOTES ? NOTES_DIR : opts.dir)
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000 })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })

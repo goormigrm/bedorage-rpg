@@ -11,6 +11,8 @@ const args = process.argv.slice(2)
 const PROF = args.includes('prof=1')
 // why=1: 지역마다 프레임마다 셰이더를 다시 고르는(getProgram) 재질을 센다 — customProgramCacheKey 가 그때만 불린다
 const WHY = args.includes('why=1')
+// view=tpp: 3인칭(B)으로 잰다 — 재는 동안 시선을 천천히 한 바퀴 돌린다 (2026-10-24 v1.10.17)
+const TPP = args.includes('view=tpp')
 const skin = args[0] === 'dark' ? 'dark' : 'bright'
 const areas = args.slice(1).filter((a) => !a.includes('=')).map(Number).filter((n) => n >= 0)
 const AREAS = areas.length ? areas : [0, 1, 9, 17]
@@ -100,7 +102,11 @@ const gpuName = await page.evaluate(async () => {
   const e = gl.getExtension('WEBGL_debug_renderer_info')
   return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : '?'
 })
-console.log('GPU:', gpuName, '· 분위기:', skin)
+console.log('GPU:', gpuName, '· 분위기:', skin, TPP ? '· 3인칭' : '')
+if (TPP) {
+  await page.keyboard.press('KeyB')
+  await page.waitForFunction(() => window.__session.input.fps, null, { timeout: 10000 })
+}
 
 // exp=1: 첫 지역에서 하나씩 꺼 보며(후처리 · 그림자 · HUD 캔버스) 화면 간격이 어떻게 바뀌나
 const EXP = args.includes('exp=1')
@@ -113,7 +119,7 @@ for (const area of AREAS) {
     if (s.players[0].area !== area) for (let i = 0; i < s.players.length; i++) window.__perfSim.warpPlayer(s, window.__session.mapOf, i, area)
   }, area)
   await sleep(1500)
-  await page.waitForFunction(() => !window.__session.renderer.areaCompiling && !window.__session.renderer.areaHold, null, { timeout: 90000 }).catch(() => {})
+  await page.waitForFunction(() => !window.__session.renderer.areaCompiling && !window.__session.renderer.areaHold && window.__session.renderer.fpsPrep !== 'busy', null, { timeout: 90000 }).catch(() => {})
   await sleep(5000)
   let cdp = null
   if (PROF) {
@@ -133,9 +139,11 @@ for (const area of AREAS) {
     P.on = true
     await new Promise((res) => {
       const t0 = last
+      const inp = window.__session.input
       const step = (t) => {
         iv.push(t - last)
         last = t
+        if (inp.fps) inp.yaw += 0.018
         if (t - t0 < 6000) requestAnimationFrame(step)
         else res()
       }

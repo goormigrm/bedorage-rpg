@@ -94,6 +94,9 @@ const NPC_DOT: Record<string, string> = {
  * 준비가 끝날 때까지 쥔다 — 처음 한 번만 길다. 판의 덮임 보호 상한(sim LOADING_MAX)이 이보다 길어야 한다
  */
 const HOLD_MAX = 9000
+/** 3인칭 · 1인칭 조준이 시선에서 비낄 수 있는 각 (라디안 ≈ 26°) — 그보다 비낀 괴물 · 땅은 겨누지 않는다 (fpsAim) */
+const AIM_CONE = 0.45
+const angDiff = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
 /** 3인칭 카메라: 머리 뒤 거리 · 오른쪽 어깨 (2026-10-24 — 배틀그라운드처럼) */
 const TPP_DIST = 3.2
 const TPP_SIDE = 0.6
@@ -1286,11 +1289,16 @@ export class Renderer3D {
     const cx = VIEW_W / 2
     const cy = VIEW_H / 2
     const st = this.lastCurr
+    const fx = Math.cos(this.fpsYaw)
+    const fy = Math.sin(this.fpsYaw)
     let best: { x: number; y: number } | null = null
     let bd = Infinity
     if (st)
       for (const m of st.monsters) {
         if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
+        // 시선 앞쪽의 것만 (2026-10-24 사용자: "3인칭에서 캐릭터가 보는 방향이 아니라 혼자 몹 쪽으로 뒤돈다") — 3인칭은 카메라가 캐릭터 뒤라
+        // 캐릭터와 카메라 사이(등 뒤)의 괴물이 화면 가운데를 크게 덮으면 그것을 겨누어 뒤로 돌았다
+        if ((m.x - me.x) * fx + (m.y - me.y) * fy <= 0) continue
         const at = this.monsterView.shown.get(m.id)
         if (!at) continue
         const foot = this.worldToScreen(at.x, 0, at.z)
@@ -1301,6 +1309,8 @@ export class Renderer3D {
         const dy = me.y - m.y
         const d = Math.hypot(dx, dy) || 1
         if (d >= bd) continue
+        // 시선에서 크게 비낀 것은 겨누지 않는다 — 어깨 너머 카메라라 캐릭터 바로 옆의 괴물이 화면 가운데에 걸리면 몸이 그쪽으로 돌았다
+        if (Math.abs(angDiff(Math.atan2(-dy, -dx), this.fpsYaw)) > AIM_CONE) continue
         bd = d
         if (cy < top.y + h * 0.3) best = { x: m.x, y: m.y }
         else {
@@ -1309,13 +1319,16 @@ export class Renderer3D {
         }
       }
     if (best) return best
+    const far = { x: me.x + fx * 1000, y: me.y + fy * 1000 }
+    // 하늘 쪽을 보면 가운데가 땅에 닿지 않는다(맞은 자리가 맵 모서리가 되어 엉뚱한 쪽을 겨눴다) — 시선 쪽 멀리
+    if (this.camera.getWorldDirection(this.tmpV3).y > -0.02) return far
     const w = this.screenToWorld(cx, cy)
-    const fx = Math.cos(this.fpsYaw)
-    const fy = Math.sin(this.fpsYaw)
     const dx = w.x - me.x
     const dy = w.y - me.y
     const d = Math.hypot(dx, dy)
-    if (!(d > 0) || dx * fx + dy * fy <= 0 || d > 1000) return { x: me.x + fx * 1000, y: me.y + fy * 1000 }
+    if (!(d > 0) || dx * fx + dy * fy <= 0 || d > 1000 || Math.abs(angDiff(Math.atan2(dy, dx), this.fpsYaw)) > AIM_CONE) return far
+    // 발치(2칸 안)에 닿으면 각이 조금만 움직여도 크게 흔들린다 — 시선 쪽 2칸 자리로
+    if (d < 2 * TILE) return { x: me.x + fx * 2 * TILE, y: me.y + fy * 2 * TILE }
     return w
   }
 
@@ -5620,7 +5633,13 @@ export class Renderer3D {
         this.tracerPool[n] = tr
         this.scene.add(tr)
       }
-      const tl = Math.min(Math.hypot(x - b.ox * U, z - b.oy * U), sn ? 9 : w.pellets > 1 ? 1.2 : 4.5)
+      const flown = Math.hypot(x - b.ox * U, z - b.oy * U)
+      let tl = Math.min(flown, sn ? 9 : w.pellets > 1 ? 1.2 : 4.5)
+      // 1인칭(정조준): 내 총알의 눈앞 1.5칸은 비운다 — 눈 바로 아래 높이의 띠가 화면 구석에서 길게 뻗어 보였다 (2026-10-24 패치 영상)
+      if (this.fpsFirst && b.owner === this.fpsPlayer) {
+        tl = Math.min(tl, flown - 1.5)
+        streak.visible = flown > 1.5
+      }
       tr.visible = tl > len
       tr.position.set(x - dx * tl * 0.5, GUN_H - 0.01, z - dz * tl * 0.5)
       tr.rotation.set(-Math.PI / 2, -Math.atan2(dz, dx), 0)
