@@ -23,14 +23,13 @@ page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 
 await page.addInitScript(() => {
   try {
     localStorage.setItem('brpg.muted', '1')
-    localStorage.setItem('brpg.gfx', 'high')
     localStorage.setItem('brpg.hud', 'normal')
   } catch {
     /* 저장소 없음 */
   }
 })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-await page.goto('http://localhost:5173/bedorage-rpg/?shot=1')
+await page.goto('http://localhost:5173/bedorage-rpg/?shot=1&gfx=high')
 await page.waitForFunction(() => !!document.querySelector('#btn-host'), null, { timeout: 60000 })
 await sleep(2000)
 await page.evaluate(async (skin) => {

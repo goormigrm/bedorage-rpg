@@ -1127,9 +1127,9 @@ function patch24Scenes() {
     place()
     levelUpParty()
     S().renderer.setDebugZoom(0.66)
-    spawn(K(1), 34, 5, 11)
-    mv = qmover()
-    perFrame = both(quarterAimer(), mv, skillStorm())
+    spawn(K(1), 50, 5, 12)
+    S().autopilot = true
+    perFrame = both(botCursor(), skillStorm())
     cue('hot', { act: 0 })
     // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
     ov.title = { text: '배도라지 알PG', sub: '3인칭 업데이트', at: now() - 1300 }
@@ -1137,11 +1137,13 @@ function patch24Scenes() {
   })
   at(2.0, () => (ov.title.out = now()))
   const a0 = tl.t
-  every(a0 + 0.4, a0 + 7.5, 0.4, () => alive() < 40 && spawn(K(1), 10, 6, 12))
-  every(a0 + 2.4, a0 + 7.5, 2.6, () => tap('Space'))
+  every(a0 + 0.4, a0 + 7.5, 0.4, () => alive() < 60 && spawn(K(1), 14, 6, 12))
   at(7.5, () => {})
   // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 옆걸음
-  at(0, () => goto(11))
+  at(0, () => {
+    goto(11)
+    S().autopilot = false
+  })
   at(1.2, () => {
     place()
     inp().fps = true
@@ -1208,9 +1210,9 @@ function patch24Scenes() {
     place()
     equipWeapon('smg')
     S().renderer.setDebugZoom(0.8)
-    spawn(K(29), 30, 5, 12)
-    mv = qmover()
-    perFrame = both(quarterAimer(), mv, skillStorm())
+    spawn(K(29), 40, 5, 12)
+    S().autopilot = true
+    perFrame = both(botCursor(), skillStorm())
     for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
     holding = false
   })
@@ -1223,9 +1225,7 @@ function patch24Scenes() {
   at(2.6, () => don(9000, '대행진 가즈아'))
   // 대행진은 3초 예고 뒤에 몰려온다 — 몰려와 싸우는 중에 끝낸다 (더 두면 레벨 30 파티가 다 쓸어 화면이 비었다)
   at(5.2, () => {
-    mv.stop()
     perFrame = null
-    inp().mouseDown.clear()
   })
   endCard(tl, 0, 700)
   return tl.done()
@@ -1291,6 +1291,23 @@ function qmover() {
   f.strafe = () => {}
   return f
 }
+/**
+ * 쿼터뷰 장면은 단군란도 게임의 자동 플레이(봇 조종 — S().autopilot)로 싸운다 (2026-10-24 사용자: "초반에 몬스터도 많지 않은데 단군란 혼자 움직이는 게
+ * 빨리 감기 한 것 같고 실제 플레이 영상 같지가 않다 — 정상적으로 플레이한 영상만"). 조준점은 봇이 겨누는 자리를 부드럽게 따라간다
+ */
+function botCursor() {
+  return () => {
+    const p = st().players[0]
+    const R = S().renderer
+    const inp = S().input
+    const a = (p.aim / 1024) * Math.PI * 2
+    const d = Math.max(3 * T, Math.min(9 * T, p.aimDist || 5 * T))
+    const sc = R.worldToScreen((p.x + Math.cos(a) * d) / T, 0.8, (p.y + Math.sin(a) * d) / T)
+    const k = Math.min(1, (0.35 * 60) / FPS)
+    inp.mouse.x += (sc.x - inp.mouse.x) * k
+    inp.mouse.y += (sc.y - inp.mouse.y) * k
+  }
+}
 /** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
 function botsBehind() {
   return () => {
@@ -1320,21 +1337,20 @@ function levelUpParty() {
     p.hp = p.maxHp
   }
 }
-/** 스킬 연타: 0.45초마다 모두의 재사용 대기 · 집중을 채우고 내 스킬을 차례로 (Q · E · 1 · 2 · 가끔 R) — 동료 봇은 스스로 쓴다 */
+/**
+ * 스킬 자주: 1.2초마다 내 일반 스킬(Q · E · 1 · 2)의 재사용 대기 · 집중만 채운다 — 자동 플레이가 스스로 쓴다.
+ * 궁극기 · 동료 봇은 원래 대기시간대로 (모두 늘 채우면 궁극기 빛이 겹쳐 화면 가운데가 하얗게 날아갔다)
+ */
 function skillStorm() {
   let t = 0
   let next = 0
-  let k = 0
-  const keys = ['KeyQ', 'KeyE', 'Digit1', 'Digit2', 'KeyQ', 'KeyE', 'Digit1', 'Digit2', 'KeyR']
   return () => {
     t += 1 / FPS
     if (t < next) return
-    next = t + 0.45
-    for (const p of st().players) {
-      p.cd.fill(0)
-      p.focus = 100
-    }
-    tap(keys[k++ % keys.length])
+    next = t + 1.2
+    const p = st().players[0]
+    for (const k of [0, 1, 3, 4]) p.cd[k] = 0
+    p.focus = 100
   }
 }
 
@@ -2431,6 +2447,13 @@ export async function start(opts = {}) {
   sess.ticker.stop()
   sess.lastTick = vt
   sess.last = vt
+  // 게임 자체의 화면 갱신(rAF)을 막는다 — 녹화 중에 새어 나온 갱신이 **실제 시각**(rAF 타임스탬프 · 가상 시계보다 앞)으로 그려
+  // 세션 시계(last)가 앞질러 다음 장들이 시간 0 으로 그려지고(멈춘 장) 후원 표 갱신 시각도 밀렸다(2026-10-24 — 표가 안 보였다).
+  // 아직 걸려 있는 옛 갱신이 부르더라도 가상 시계를 넘지 않게 한다
+  const rafFrame0 = sess.rafFrame
+  const frame0 = sess.frame
+  sess.rafFrame = () => {}
+  sess.frame = (t) => frame0(Math.min(t, vt))
   // 자동 줍기를 끈다 — 가방이 찬 캐릭터로 뜨면 "가방이 가득 찼습니다" 가 영상 내내 떴다 · 전리품 기둥도 바닥에 남는다
   for (const q of st().players) q.autoPick = 0
   // 영상용: 카메라를 가깝게 (캐릭터가 크게 보이게)
@@ -2519,6 +2542,8 @@ export async function start(opts = {}) {
       sess.tick()
       god()
       // 영상에서는 화면 흔들림 · 당김을 끈다 (2026-09-23 사용자: "치지직 장면의 화면 흔들림 — 너무 정신없다")
+      // 세션 시계가 가상 시계를 앞서 있으면(새어 나온 갱신) 되돌린다 — 장마다 dt 가 늘 한 장 몫이 되게
+      if (sess.last > vt - 1000 / FPS) sess.last = vt - 1000 / FPS
       sess.renderer.shake = 0
       // 패치 플레이 영상은 맞힐 때 화면 반동 · 조준점 반동을 남긴다 (타격감 — 2026-10-24 사용자: "덕코프 영상에 비해 타격감이 떨어진다")
       if (!P24) {
@@ -2570,7 +2595,7 @@ export async function start(opts = {}) {
           for (let k = 0; k < d.length; k += 4) sum += d[k] + d[k + 1] + d[k + 2]
           return Math.round((sum / (d.length / 4) / 3) * 10) / 10
         }
-        diag.push({ t: +((vt - t0) / 1000).toFixed(2), tick: st().tick, hs: +R.hitStop.toFixed(3), bots: st().players.slice(1).map((q) => [Math.round(q.x), Math.round(q.y), q.aim]), acc: +sess.acc.toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
+        diag.push({ t: +((vt - t0) / 1000).toFixed(2), tick: st().tick, hs: +R.hitStop.toFixed(3), last: Math.round(sess.last - vt), bots: st().players.slice(1).map((q) => [Math.round(q.x), Math.round(q.y), q.aim]), acc: +sess.acc.toFixed(1), area: st().curArea, alive: me.alive, x: Math.round(me.x), y: Math.round(me.y), cam: R.camera.position.toArray().map((v) => +v.toFixed(1)), pl, gl: b(c[0]), hud: b(c[1]), progs: R.gl.info.programs.length, calls: R.gl.info.render.calls, mapOpen: R.mapOpen, lost: R.gl.getContext().isContextLost() })
         if (opts.diag.shots?.includes(i)) {
           const sc = document.createElement('canvas')
           sc.width = 960
@@ -2632,6 +2657,8 @@ export async function start(opts = {}) {
     delete sfx.donate
     delete sfx.countTick
     delete sfx.updateSteps
+    sess.rafFrame = rafFrame0
+    sess.frame = frame0
     sess.lastTick = realNow()
     sess.last = realNow()
     sess.renderer.setDebugZoom(1)

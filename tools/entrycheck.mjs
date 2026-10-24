@@ -13,10 +13,9 @@ const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, de
 page.on('pageerror', (e) => console.log('페이지 오류:', String(e).slice(0, 200)))
 await page.addInitScript(() => {
   localStorage.setItem('brpg.muted', '1')
-  localStorage.setItem('brpg.gfx', 'high')
 })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-await page.goto('http://localhost:5173/bedorage-rpg/?shot=1')
+await page.goto('http://localhost:5173/bedorage-rpg/?shot=1&gfx=high')
 await page.waitForFunction(() => !!document.querySelector('#btn-host'), null, { timeout: 60000 })
 await sleep(2000)
 await page.evaluate(async (skin) => {

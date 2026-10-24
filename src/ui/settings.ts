@@ -7,7 +7,7 @@ import { AUTOPICK_ALL, AUTOPICK_DEFAULT, RARITY_COLORS, RARITY_NAMES } from '../
 import { isTouchDevice } from '../game/touch'
 import { ACTIONS, Action, RESERVED, bind, codeOf, keyLabel, label, resetKeys } from '../game/keymap'
 import { VOL_KEYS, VOL_NAMES, VolKey, setVolume, volumes } from '../audio/volume'
-import { palette } from '../core/palette'
+import { drawAimShape } from '../render/aimShape'
 
 /**
  * 전체 화면 (2026-10-09 사용자: "전체 화면에서 Tab 이나 Esc 를 누르면 바로 창 모드가 된다 — 설정으로만 바꾸게 하고 싶다").
@@ -29,24 +29,23 @@ export function leaveFullscreen(): void {
   kbLock()?.unlock?.()
   if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
 }
+/** 전체 화면 ↔ 창 (오른쪽 아래 단추 · Alt+Enter — 2026-10-24 사용자: "Esc 가 설정 창과 겹친다 — 오른쪽 아래 단추로 쉽게") */
+export function toggleFullscreen(): void {
+  if (document.fullscreenElement) leaveFullscreen()
+  else void enterFullscreen()
+}
 // Esc 를 길게 눌러 나갔을 때도 잠금을 푼다 (창 모드에서 Esc 가 묶여 있지 않게)
 if (typeof document !== 'undefined')
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement) kbLock()?.unlock?.()
   })
-/** Esc 를 길게 눌러야 나가는 브라우저인가 (크롬 · 엣지) */
-const holdEsc = (): boolean => typeof kbLock()?.lock === 'function'
 
 const AUTOPICK_KEY = 'brpg.autopick'
-const REAL_KEY = 'brpg.real'
 const KEYS_KEY = 'brpg.keys'
 const MUTE_KEY = 'brpg.muted'
 const HUD_KEY = 'brpg.hud'
-const SHAKE_KEY = 'brpg.shake'
 const DMGNUM_KEY = 'brpg.dmgnum'
 const FPSCAP_KEY = 'brpg.fpscap'
-const CB_KEY = 'brpg.colorblind'
-const GFX_KEY = 'brpg.gfx'
 const AIM_KEY = 'brpg.aim'
 
 const get = (k: string): string | null => {
@@ -73,29 +72,14 @@ export function loadAutoPick(): number {
 }
 export const saveAutoPick = (v: number): void => set(AUTOPICK_KEY, String(v))
 
-/** 실사 괴물을 쓸지 — 저장한 값이 없으면 폰은 끔 · 컴퓨터는 켬 */
-export function realMonstersOn(): boolean {
-  const v = get(REAL_KEY)
-  return v !== null ? v === '1' : !isTouchDevice()
-}
-export const setRealMonsters = (on: boolean): void => set(REAL_KEY, on ? '1' : '0')
+// 2026-10-24 사용자: "실사 괴물 · 보스 목소리는 끌 일 없으니까 빼고 · 화면 흔들림도 빼고 · 화질도 무조건 자동 · 색약 모드도 빼고" → 설정 창에서 뺐다.
+// 예전에 저장한 값(brpg.real · bossvoice · shake · gfx · colorblind)은 더 읽지 않는다 — 꺼 둔 채로 남지 않게
 
-/** 보스 즉사기 대사를 목소리로(브라우저 음성 합성 — audio/sfx.ts speak). 저장한 값이 없으면 켬 */
-const BOSSVOICE_KEY = 'brpg.bossvoice'
-export const bossVoiceOn = (): boolean => get(BOSSVOICE_KEY) !== '0'
-export const setBossVoice = (on: boolean): void => set(BOSSVOICE_KEY, on ? '1' : '0')
+/** 실사 괴물 — 컴퓨터는 늘 켬 · 폰은 끔(받는 데이터 · 느린 기기) */
+export const realMonstersOn = (): boolean => !isTouchDevice()
 
-/**
- * 화면 흔들림 세기 (2026-10-08 퀄리티 2차 5단계 — 멀미 · 방송 화면): 0 끔 · 0.5 약하게 · 1 보통. 후원 "화면 흔들림" 이벤트는 그대로다
- */
-// 처음 값은 끔 (2026-10-08 사용자: "화면 흔들림은 기본값이 끔으로") — 고른 적이 있으면 그 값
-let shakeK = Number(get(SHAKE_KEY) ?? '0')
-if (![0, 0.5, 1].includes(shakeK)) shakeK = 0
-export const shakeScale = (): number => shakeK
-export const setShakeScale = (k: number): void => {
-  shakeK = k
-  set(SHAKE_KEY, String(k))
-}
+/** 화면 흔들림 세기 — 늘 끔(2026-10-08 사용자: 멀미 · 기본값 끔). 후원 "화면 흔들림" 이벤트는 따로 그대로다 */
+export const shakeScale = (): number => 0
 /**
  * 조준선(에임) 모양 · 크기 (2026-10-08 사용자: "설정에 에임 모양 및 크기 설정을 추가해줘"). 금색(약점 위) · 히트마커는 모양과 상관없이 그대로.
  * 모두 어두운 테두리를 둘러 ☀ 밝은 바닥에서도 보인다
@@ -144,12 +128,6 @@ export const setFpsCap = (on: boolean): void => {
   fpsCap = on
   set(FPSCAP_KEY, on ? '1' : '0')
 }
-/** 색약 모드: 우리 편 초록 → 파랑 · 세트 초록 → 하늘색 (core/palette.ts) */
-palette.colorblind = get(CB_KEY) === '1'
-export const setColorblind = (on: boolean): void => {
-  palette.colorblind = on
-  set(CB_KEY, on ? '1' : '0')
-}
 
 /** 조작 안내 띠 */
 export const keysShown = (): boolean => get(KEYS_KEY) !== '0'
@@ -188,19 +166,11 @@ export function applyUiZoom(): void {
 
 /**
  * 화질 (2026-09-23 최적화 — "서버 없는 게임이니 4명이 해도 렉이 없게"). 락스텝이라 한 사람이 느리면 모두가 기다린다.
- * 자동: 프레임이 느리면 3D 해상도를 한 단계씩 낮추고(가장 낮으면 그림자도 끈다), 넉넉해지면 다시 올린다 (session.autoQuality).
+ * 늘 자동(2026-10-24 사용자: "화질도 무조건 자동으로"): 프레임이 느리면 3D 해상도를 한 단계씩 낮추고(가장 낮으면 그림자도 끈다), 넉넉해지면 다시 올린다 (session.autoQuality).
+ * 계측 도구(tools/perf.mjs · entrycheck.mjs)만 주소에 gfx=high 를 붙여 높게 고정한다
  */
-export const GFX_MODES = [
-  { id: 'auto', name: '자동' },
-  { id: 'high', name: '높게' },
-  { id: 'low', name: '낮게' },
-] as const
-export type GfxMode = (typeof GFX_MODES)[number]['id']
-export function gfxMode(): GfxMode {
-  const v = get(GFX_KEY)
-  return GFX_MODES.some((g) => g.id === v) ? (v as GfxMode) : 'auto'
-}
-export const setGfxMode = (id: string): void => set(GFX_KEY, id)
+export type GfxMode = 'auto' | 'high' | 'low'
+export const gfxMode = (): GfxMode => (typeof location !== 'undefined' && location.search.includes('gfx=high') ? 'high' : 'auto')
 
 /** 소리 (audio/sfx.ts 와 같은 열쇠) */
 export const soundMuted = (): boolean => get(MUTE_KEY) === '1'
@@ -211,11 +181,8 @@ export type SettingsOpts = {
   keys?: boolean
   /** 바뀐 값을 지금 판에도 알린다 (대기실에서는 없다 — 다음 판부터 반영) */
   onSound?: (muted: boolean) => void
-  onReal?: (on: boolean) => void
   /** HUD 크기가 바뀌었다 (게임 안이면 화면 크기를 다시 맞춘다) */
   onHud?: () => void
-  /** 화질이 바뀌었다 */
-  onGfx?: (mode: GfxMode) => void
   onKeys?: (on: boolean) => void
   onAutoPick?: (v: number) => void
 }
@@ -235,27 +202,19 @@ export function settingsHtml(o: SettingsOpts = {}): string {
   const state = ap === AUTOPICK_ALL ? '모두 줍기' : ap === 0 ? `꺼짐 — ${keyLabel('use')} 로만` : '켠 등급만'
   // 키 설정을 펴면 게임 안(Esc 메뉴)에서는 오른쪽 칸으로 편다 — 아래로 늘어나 화면을 넘던 것(2026-09-23 사용자) 고침
   const kb = !isTouchDevice()
+  // 2026-10-24 사용자: "설정 메뉴가 쓸데없이 길다 — 1920 에서 한 화면에" → 자동 줍기를 맨 위로 · 소리는 전체 크기만 · 설명 줄은 짧게 · 전체 화면은 게임 화면 오른쪽 아래 단추로
   return (
     `<div class="settings${kb && kbOpen ? ' kbwide' : ''}"><div class="sg-main">` +
+    `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
+    `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 ${keyLabel('use')} 로 줍습니다.</p></div>` +
     onoff('소리', !soundMuted()) +
     volRowsHtml() +
-    onoff('실사 괴물', realMonstersOn()) +
-    `<p class="apn">실사 괴물은 처음 만날 때 모델을 받습니다. 느린 기기·데이터가 아까우면 끄세요.</p>` +
-    onoff('보스 목소리', bossVoiceOn()) +
-    `<p class="apn">보스가 즉사기를 쓸 때 대사를 낮게 울리는 목소리로 외칩니다. 크기는 위의 "보스 목소리" 밀대로.</p>` +
     (o.keys === false ? '' : onoff('조작 안내', keysShown(), '보기', '숨기기')) +
     (isTouchDevice() ? '' : hudRowHtml()) +
-    gfxRowHtml() +
-    shakeRowHtml() +
     (isTouchDevice() ? '' : aimRowsHtml()) +
     onoff('피해 숫자', dmgNumbersOn(), '보기', '숨기기') +
     onoff('프레임 제한', fpsCapOn(), '60fps', '모니터에 맞춤') +
-    `<p class="apn">판은 1초에 60번 움직입니다. 120 · 144Hz 모니터에서 그보다 자주 그리면 CPU 만 더 쓰고, 같이 하는 사람이 기다릴 수 있습니다.</p>` +
-    onoff('색약 모드', palette.colorblind) +
-    `<p class="apn">색약 모드: 우리 편 좋은 효과(초록)를 파랑으로, 세트 아이템(초록)을 하늘색으로 — 적의 범위(빨강)와 헷갈리지 않게.</p>` +
-    (isTouchDevice() ? '' : `<div class="srow"><b>전체 화면</b><div class="seg small"><button type="button" data-fs>${document.fullscreenElement ? '창으로' : '전체 화면으로'}</button></div></div>` + `<p class="apn">${holdEsc() ? '전체 화면에서 나가기: 이 단추 · 또는 Esc 를 길게(약 2초) — Esc 를 짧게 누르면 게임 메뉴입니다.' : '이 브라우저는 Esc 를 누르면 바로 창으로 돌아갑니다(크롬 · 엣지는 Esc 를 길게 눌러야 나갑니다).'}</p>`) +
-    `<div class="autopick"><div class="aph"><b>자동 줍기</b><span>${state}</span></div><div class="apr">${btns}</div>` +
-    `<p class="apn">밟으면 내 아이템을 줍습니다. 끈 등급 · 남이 버린 아이템은 ${keyLabel('use')} 로 줍습니다.</p></div>` +
+    `<p class="apn">120 · 144Hz 모니터에서도 1초에 60번만 그립니다(판이 60번 움직인다 — 더 그리면 CPU 만 더 씁니다).</p>` +
     `<p class="apn">치지직 방송 연동은 화면 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>` +
     `</div>` +
     (kb ? keybindHtml() : '') +
@@ -263,12 +222,12 @@ export function settingsHtml(o: SettingsOpts = {}): string {
   )
 }
 
-/** 소리 크기 밀대 다섯 (2026-09-25 — 켜고 끄기뿐이던 것) */
+/** 소리 크기 밀대 — 전체 하나만 (2026-10-24 사용자: "소리 크기는 전체 크기 조절만 남겨" — 배경음 · 효과음 · 괴물 · 보스 목소리 밀대는 뺐다) */
 function volRowsHtml(): string {
   const v = volumes()
   return (
     `<div class="vols">` +
-    VOL_KEYS.map((k) => {
+    VOL_KEYS.filter((k) => k === 'all').map((k) => {
       const pct = Math.round(v[k] * 100)
       return `<label class="vrow"><span>${VOL_NAMES[k]}</span><input type="range" min="0" max="100" step="5" value="${pct}" data-vol="${k}"><em>${pct}%</em></label>`
     }).join('') +
@@ -276,22 +235,12 @@ function volRowsHtml(): string {
   )
 }
 
+/** 에임 모양 · 크기 — 단추마다 실제 조준선 그림 (2026-10-24 사용자: "실제 모양이 어떤 건지 그림으로") · 크기 단추는 고른 모양을 그 크기로 */
 function aimRowsHtml(): string {
-  const shapes = AIM_SHAPES.map((a) => `<button type="button" data-aimshape="${a.id}" class="${a.id === aim.shape ? 'on' : ''}">${a.name}</button>`).join('')
-  const sizes = AIM_SIZES.map((a) => `<button type="button" data-aimsize="${a.k}" class="${a.k === aim.size ? 'on' : ''}">${a.name}</button>`).join('')
-  return `<div class="srow"><b>에임 모양</b><div class="seg small hudseg">${shapes}</div></div><div class="srow"><b>에임 크기</b><div class="seg small hudseg">${sizes}</div></div>`
-}
-
-function shakeRowHtml(): string {
-  const opts: [number, string][] = [[0, '끔'], [0.5, '약하게'], [1, '보통']]
-  const btns = opts.map(([k, n]) => `<button type="button" data-shake="${k}" class="${k === shakeK ? 'on' : ''}">${n}</button>`).join('')
-  return `<div class="srow"><b>화면 흔들림</b><div class="seg small hudseg">${btns}</div></div>`
-}
-
-function gfxRowHtml(): string {
-  const cur = gfxMode()
-  const btns = GFX_MODES.map((g) => `<button type="button" data-gfx="${g.id}" class="${g.id === cur ? 'on' : ''}">${g.name}</button>`).join('')
-  return `<div class="srow"><b>화질</b><div class="seg small hudseg">${btns}</div></div><p class="apn">자동은 느리면 3D 해상도를 낮추고 넉넉하면 다시 올립니다. 낮게 = 해상도 60% · 그림자 끔.</p>`
+  const icon = (shape: AimShape, k: number) => `<canvas class="aimico" width="56" height="56" data-shape="${shape}" data-k="${k}"></canvas>`
+  const shapes = AIM_SHAPES.map((a) => `<button type="button" data-aimshape="${a.id}" class="${a.id === aim.shape ? 'on' : ''}" title="${a.name}">${icon(a.id, 1)}</button>`).join('')
+  const sizes = AIM_SIZES.map((a) => `<button type="button" data-aimsize="${a.k}" class="${a.k === aim.size ? 'on' : ''}" title="${a.name}">${icon(aim.shape, a.k)}</button>`).join('')
+  return `<div class="srow aimrow"><b>에임 모양</b><div class="seg small hudseg">${shapes}</div></div><div class="srow aimrow"><b>에임 크기</b><div class="seg small hudseg">${sizes}</div></div>`
 }
 
 function hudRowHtml(): string {
@@ -304,7 +253,8 @@ function hudRowHtml(): string {
  * 키 설정 (2026-09-23 — "RPG 에 보통 있는데 없는 것" 의 키 재설정). 접었다 펴는 칸 — 펴면 21 줄이라 Esc 메뉴가 길어진다.
  * 단추를 누르고 새 키를 누르면 바뀐다. 이미 다른 행동에 걸린 키면 **서로 바뀐다**.
  */
-let kbOpen = false
+// 처음부터 펴 둔다 (2026-10-24 사용자: "키 설정은 기본값이 열림으로")
+let kbOpen = true
 let listening: Action | null = null
 let kbNote = ''
 function keybindHtml(): string {
@@ -379,17 +329,10 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       if (name === '소리') {
         setSoundMuted(!on)
         o.onSound?.(!on)
-      } else if (name === '실사 괴물') {
-        setRealMonsters(on)
-        o.onReal?.(on)
-      } else if (name === '보스 목소리') {
-        setBossVoice(on)
       } else if (name === '피해 숫자') {
         setDmgNumbers(on)
       } else if (name === '프레임 제한') {
         setFpsCap(on)
-      } else if (name === '색약 모드') {
-        setColorblind(on)
       } else {
         setKeysShown(on)
         o.onKeys?.(on)
@@ -418,25 +361,12 @@ export function bindSettings(box: HTMLElement, o: SettingsOpts = {}): void {
       redraw()
     }
   })
-  box.querySelectorAll<HTMLButtonElement>('[data-shake]').forEach((b) => {
-    b.onclick = () => {
-      setShakeScale(Number(b.dataset.shake))
-      redraw()
-    }
-  })
-  const fs = box.querySelector<HTMLButtonElement>('[data-fs]')
-  if (fs)
-    fs.onclick = () => {
-      if (document.fullscreenElement) leaveFullscreen()
-      else void enterFullscreen()
-      setTimeout(redraw, 300)
-    }
-  box.querySelectorAll<HTMLButtonElement>('[data-gfx]').forEach((b) => {
-    b.onclick = () => {
-      setGfxMode(b.dataset.gfx as string)
-      o.onGfx?.(gfxMode())
-      redraw()
-    }
+  // 조준선 그림: 크기 배율 k 를 그대로 (HUD 와 같은 함수 — render/aimShape.ts)
+  box.querySelectorAll<HTMLCanvasElement>('canvas.aimico').forEach((c) => {
+    const g = c.getContext('2d')
+    if (!g) return
+    const k = Number(c.dataset.k)
+    drawAimShape(g, c.width / 2, c.height / 2, c.dataset.shape as AimShape, k, 12 * k * 0.8, false)
   })
   box.querySelectorAll<HTMLButtonElement>('[data-hud]').forEach((b) => {
     b.onclick = () => {

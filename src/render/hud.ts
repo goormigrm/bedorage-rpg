@@ -1,6 +1,7 @@
 // HUD 오버레이 (2D 캔버스). 3D 씬 위에 투명하게 겹친다. sim 을 바꾸지 않는다.
 // 협동: 위 가운데 층 목표(남은 몬스터), 왼쪽 아래 내 카드, 오른쪽 아래 파티(동료 체력은 늘 보인다), 가운데 알림.
 
+import { drawAimShape } from './aimShape'
 import { keyLabel } from '../game/keymap'
 import { bt } from '../game/skin'
 import { aimStyle } from '../ui/settings'
@@ -90,6 +91,8 @@ export interface RenderOptions {
   cursor?: { x: number; y: number }
   /** 커서가 적 위에 올라가 있다 (헤드샷이 날 수 있는 상태) → 조준선이 금색 */
   cursorOn?: boolean
+  /** 조준선을 그리지 않는다 (3인칭에서 창 · 메뉴가 열려 진짜 커서가 보일 때) */
+  hideCursor?: boolean
   timeScale?: number
   /** 시야 제한 (기본 true, 관전이면 무시) */
   fog?: boolean
@@ -378,7 +381,7 @@ export class Hud {
     if (opts.spectateLabel) this.drawSpectate(opts.spectateLabel)
     this.drawBanner(s, opts)
     const lp = opts.localPlayer
-    if (opts.cursor && lp !== -1) this.drawCursor(opts.cursor, s.players[lp], opts.cursorOn === true)
+    if (opts.cursor && lp !== -1 && !opts.hideCursor) this.drawCursor(opts.cursor, s.players[lp], opts.cursorOn === true)
     this.drawCombo()
   }
 
@@ -558,46 +561,7 @@ export class Hud {
     const k = st.size
     // 맞히면 조준점이 잠깐 벌어진다 (반동 — 2026-10-24 손맛)
     const r = (me.ads ? 6 : 12 + me.recoil * 0.4) * k + (this.hitMarkT > 0 ? (this.hitMarkHead ? 5 : 3) * (this.hitMarkT / this.hitMarkMax) * k : 0)
-    const tick = 6 * k
-    const col = on ? 'rgba(255,216,74,0.95)' : 'rgba(255,255,255,0.92)'
-    const path = () => {
-      ctx.beginPath()
-      if (st.shape === 'cross' || st.shape === 'crossring') {
-        ctx.moveTo(cur.x - r - tick, cur.y)
-        ctx.lineTo(cur.x - r, cur.y)
-        ctx.moveTo(cur.x + r, cur.y)
-        ctx.lineTo(cur.x + r + tick, cur.y)
-        ctx.moveTo(cur.x, cur.y - r - tick)
-        ctx.lineTo(cur.x, cur.y - r)
-        ctx.moveTo(cur.x, cur.y + r)
-        ctx.lineTo(cur.x, cur.y + r + tick)
-      }
-      if (st.shape === 'crossring' || st.shape === 'ring') {
-        ctx.moveTo(cur.x + r + (st.shape === 'ring' ? 2 * k : 0), cur.y)
-        ctx.arc(cur.x, cur.y, r + (st.shape === 'ring' ? 2 * k : 0), 0, Math.PI * 2)
-      }
-    }
-    // 어두운 테두리 먼저 (☀ 밝은 바닥에서 흰 조준선이 묻혔다) → 그 위에 색
-    const lw = (on ? 2.5 : 2) * Math.max(1, k * 0.85)
-    if (st.shape !== 'dot') {
-      ctx.strokeStyle = 'rgba(20,14,30,0.55)'
-      ctx.lineWidth = lw + 2.2
-      path()
-      ctx.stroke()
-      ctx.strokeStyle = col
-      ctx.lineWidth = lw
-      path()
-      ctx.stroke()
-    }
-    const dr = (st.shape === 'dot' ? 3.2 : on ? 2.2 : 1.5) * k * (st.shape === 'dot' && on ? 1.25 : 1)
-    ctx.fillStyle = 'rgba(20,14,30,0.55)'
-    ctx.beginPath()
-    ctx.arc(cur.x, cur.y, dr + 1.2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = col
-    ctx.beginPath()
-    ctx.arc(cur.x, cur.y, dr, 0, Math.PI * 2)
-    ctx.fill()
+    drawAimShape(ctx, cur.x, cur.y, st.shape, k, r, on)
     // 히트마커 (2026-10-24 사용자: 덕코프처럼 — 영상 참고): 네 대각선마다 **두 줄(//)** 이 빛나며 크게 튀어나왔다가 벌어지며 사라진다.
     // 몸통은 주황빛 · 머리는 금빛으로 크고 오래(+ 링) · 처치는 붉게 굵게
     if (this.hitMarkT > 0) {

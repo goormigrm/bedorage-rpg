@@ -33,7 +33,7 @@ const t0 = Date.now()
 const log = await page.evaluate(async (opts) => {
   const t = await import('/bedorage-rpg/tools/trailer.js')
   return t.start(opts)
-}, { mode: process.env.MODE === 'trailer' ? undefined : process.env.MODE === 'patch24' ? 'patch24' : 'notes', part: Number(process.env.PART ?? 1), dir: process.env.DIR, skin: process.env.SKIN ?? 'bright', why: !!process.env.WHY, noSave: !!process.env.NOSAVE, maxSec: Number(process.env.MAXSEC ?? 0), outDir: process.env.OUTDIR, diag: process.env.DIAG ? { sec: Number(process.env.DIAG), every: 1 } : undefined })
+}, { mode: process.env.MODE === 'trailer' ? undefined : process.env.MODE === 'patch24' ? 'patch24' : 'notes', part: Number(process.env.PART ?? 1), dir: process.env.DIR, skin: process.env.SKIN ?? 'bright', why: !!process.env.WHY, noSave: !!process.env.NOSAVE, maxSec: Number(process.env.MAXSEC ?? 0), outDir: process.env.OUTDIR, diag: process.env.DIAG ? { sec: Number(process.env.DIAG), every: Number(process.env.EVERY ?? 1) } : undefined })
 console.log((Array.isArray(log) ? log : [log]).map((l) => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n'))
 console.log(`걸린 시간 ${Math.round((Date.now() - t0) / 1000)}초`)
 await browser.close()

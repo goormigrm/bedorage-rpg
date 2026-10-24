@@ -6,8 +6,8 @@ import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../c
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
-import { CHEER_RE, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, cheerEvent, donateEvent, effectFits } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, cheerForAmount, cheerRows, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -32,7 +32,7 @@ import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, sanitizeSheet } from '../core/items'
-import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml } from '../ui/settings'
+import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml, toggleFullscreen } from '../ui/settings'
 
 import { activeSlot, commitSheet } from './save'
 import { Inventory } from '../ui/inventory'
@@ -348,7 +348,7 @@ export class Session {
               <button class="wbtn" data-win="quest" title="퀘스트 (${keyLabel('quest')})">퀘스트<small>${keyLabel('quest')}</small></button>
               <button class="wbtn" data-win="map" title="지도 (${keyLabel('map')})">지도<small>${keyLabel('map')}</small></button>
             </div>
-            <div class="sysbtns"><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
+            <div class="sysbtns"><button class="btn secondary" id="btn-fs"${isTouchDevice() ? ' hidden' : ''}>전체 화면</button><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-lobby">로비로</button></div>
             </div>
             <!-- 시점 · 모드 스위치는 오른쪽 위 퀘스트 칸 바로 아래 (2026-10-24 사용자) — 칸의 아래 끝을 따라간다 (frame — trackerBottom) -->
             <div class="swcol"${this.arena ? ' hidden' : ''}><button class="btn secondary" id="btn-view"${isTouchDevice() ? ' hidden' : ''}></button><button class="btn secondary" id="btn-skin"></button></div>
@@ -426,7 +426,11 @@ export class Session {
       },
     )
     if (!this.arena) this.tutor = new Tutor(this.stage.querySelector('.game-ui') as HTMLElement)
-    this.quests = new QuestLog(this.stage.querySelector('.game-ui') as HTMLElement, () => this.state.players[this.cfg.localPlayer], (open) => this.sfx.ui(open))
+    // 퀘스트 창도 열리면 마우스를 풀고 커서를 보인다 (전에는 창 열림에서 빠져 3인칭에서 커서가 안 보였다 — 2026-10-24)
+    this.quests = new QuestLog(this.stage.querySelector('.game-ui') as HTMLElement, () => this.state.players[this.cfg.localPlayer], (open) => {
+      this.syncUi()
+      this.sfx.ui(open)
+    })
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
@@ -493,11 +497,22 @@ export class Session {
     this.input.fps = !this.arena && !isTouchDevice() && loadViewPref() === 'fps'
     this.syncViewBtn()
     const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
-    const syncMute = () => (muteBtn.textContent = this.sfx.muted ? '소리 꺼짐' : '소리 켜짐')
+    const syncMute = () => (muteBtn.innerHTML = `${this.sfx.muted ? '소리 꺼짐' : '소리 켜짐'}<kbd>${keyLabel('mute')}</kbd>`)
     muteBtn.onclick = () => {
       this.sfx.toggle()
       syncMute()
     }
+    // 전체 화면 ↔ 창 (2026-10-24 사용자: "전체 화면 해제가 Esc 인데 설정 창도 Esc 라 겹친다 — 오른쪽 아래 단추로 쉽게") — Alt+Enter 도 같다.
+    // 브라우저가 정한 Esc(전체 화면 나가기)는 바꿀 수 없다 — 크롬 · 엣지는 키보드 잠금으로 짧은 Esc = 메뉴 · 길게 = 창 (settings.ts enterFullscreen)
+    const fsBtn = host.querySelector('#btn-fs') as HTMLButtonElement
+    this.syncFs = () => {
+      const on = !!document.fullscreenElement
+      fsBtn.innerHTML = `${on ? '창으로' : '전체 화면'}<kbd>Alt+↵</kbd>`
+      fsBtn.title = `${on ? '창 모드로' : '전체 화면으로'} (Alt+Enter)`
+    }
+    fsBtn.onclick = () => toggleFullscreen()
+    document.addEventListener('fullscreenchange', this.syncFs)
+    this.syncFs()
     // 자동 조종 탭(방 지키기)은 소리를 안 낸다 — 크롬을 여러 개 띄우니 배경음이 겹친다
     if (this.autopilot) this.sfx.setMuted(true)
     syncMute()
@@ -530,6 +545,7 @@ export class Session {
     }
 
     window.addEventListener('keydown', this.onKey)
+    document.addEventListener('pointerlockchange', this.onLockChange)
     window.addEventListener('resize', this.fit)
     this.fit()
     this.applyGfx(gfxMode())
@@ -677,7 +693,7 @@ export class Session {
    */
   private syncSkinBtn(): void {
     const b = isBright()
-    this.syncSwitch(this.skinBtn, b, '모드 바꾸기 ↔', ['🌙', '☀️'], b ? '철면수심 모드' : '무서운 모드', b ? '눌러서 🌙 무서운 모드로 바꾸기' : '눌러서 ☀ 철면수심 모드로 바꾸기')
+    this.syncSwitch(this.skinBtn, b, `모드 바꾸기 <kbd>${keyLabel('skin')}</kbd>`, ['🌙', '☀️'], b ? '철면수심 모드' : '무서운 모드', `${b ? '눌러서 🌙 무서운 모드로 바꾸기' : '눌러서 ☀ 철면수심 모드로 바꾸기'} (${keyLabel('skin')})`)
   }
 
   private viewBtn!: HTMLButtonElement
@@ -703,7 +719,7 @@ export class Session {
       this.input.pitch = -0.2
       this.input.lockPointer()
       this.renderer.notice(`🎯 3인칭 — 마우스로 둘러보기 · 오른쪽 버튼을 누르는 동안 1인칭 조준 · W 앞 · A · D 옆걸음 · ${keyLabel('view')} 로 쿼터뷰 · Esc 로 마우스 풀기`, '#9ad8ff', 5)
-    } else if (document.pointerLockElement) document.exitPointerLock()
+    } else if (document.pointerLockElement) this.unlockPointer()
     this.syncViewBtn()
   }
 
@@ -1041,6 +1057,11 @@ export class Session {
   }
 
   private onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter' && e.altKey && !this.touch) {
+      toggleFullscreen()
+      e.preventDefault()
+      return
+    }
     if (e.key === 'Enter' && this.chat && !e.isComposing) {
       this.chat.show()
       e.preventDefault()
@@ -1054,6 +1075,10 @@ export class Session {
     }
     if (isKey(e, 'view') && !this.arena && !this.touch) {
       this.toggleView()
+      return
+    }
+    if (isKey(e, 'skin') && !this.arena) {
+      this.switchSkin()
       return
     }
     if (isKey(e, 'mute')) {
@@ -1188,10 +1213,35 @@ export class Session {
         e.preventDefault()
         return
       }
+      // 방금 마우스가 풀리며 메뉴가 열렸으면(창 모드 3인칭 — onLockChange) 그 Esc 로 다시 닫지 않는다
+      if (performance.now() - this.menuByUnlockAt < 400) {
+        e.preventDefault()
+        return
+      }
       if (this.overlay.hidden) this.showMenu()
       else this.hideOverlay()
       e.preventDefault()
     }
+  }
+
+  /** 전체 화면 단추 글자 (fullscreenchange) */
+  private syncFs: () => void = () => {}
+  /** 내가 마우스를 푼 때 · 마우스가 풀려 메뉴를 연 때 */
+  private selfUnlockAt = -1e9
+  private menuByUnlockAt = -1e9
+  private unlockPointer(): void {
+    this.selfUnlockAt = performance.now()
+    document.exitPointerLock()
+  }
+  /**
+   * 3인칭에서 마우스가 내 뜻이 아니게 풀렸다 — 창 모드에서는 브라우저가 Esc 로 마우스를 풀고 그 Esc 가 페이지로 안 올 때가 있다 → 메뉴를 연다
+   * (2026-10-24 사용자: "3인칭에서 Esc 를 눌렀을 때 커서가 안 보인다")
+   */
+  private onLockChange = (): void => {
+    if (document.pointerLockElement || !this.input.fps || this.disposed) return
+    if (performance.now() - this.selfUnlockAt < 300 || this.input.uiOpen || !this.overlay.hidden || this.state.phase === 'over') return
+    this.menuByUnlockAt = performance.now()
+    this.showMenu()
   }
 
   /** 키 설정이 바뀌면 조작 안내 띠 · 창 단추 글자를 다시 쓴다 (2026-09-23 키 재설정) */
@@ -1199,6 +1249,8 @@ export class Session {
     const bar = this.stage.querySelector('.keys') as HTMLElement | null
     if (bar) bar.innerHTML = keysHintHtml()
     if (this.viewBtn) this.syncViewBtn()
+    if (this.skinBtn) this.syncSkinBtn()
+    this.syncMute()
     const act: Record<string, Parameters<typeof keyLabel>[0]> = { bag: 'bag', skill: 'skills', attr: 'attr', quest: 'quest', map: 'map' }
     this.stage.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
       const a = act[b.dataset.win as string]
@@ -1211,9 +1263,11 @@ export class Session {
 
   private applyKeys(): void {
     const el = this.stage.querySelector('.keys') as HTMLElement | null
-    // 전체 지도가 열려 있으면 띠를 감춘다 — 지도 위에 겹쳐 글자가 섞인다 (2026-09-20)
-    if (el) el.hidden = !this.keysShown || this.renderer?.mapOpen === true
+    // 전체 지도가 열려 있으면 띠를 감춘다 — 지도 위에 겹쳐 글자가 섞인다 (2026-09-20) · 레벨 5 가 넘으면 저절로 감춘다 (2026-10-24 사용자)
+    if (el) el.hidden = !this.keysShown || this.renderer?.mapOpen === true || this.keysPast
   }
+  /** 조작 안내 띠: 내 캐릭터가 레벨 5 를 넘었다 — 그 뒤로는 키를 익혔다고 본다 */
+  private keysPast = false
 
   /**
    * 오른쪽 아래 창 단추 (2026-09-20 사용자: "가방 · 스킬 · 능력치 · 퀘스트는 단축키 안 써도 클릭으로 열 수 있게").
@@ -1301,9 +1355,7 @@ export class Session {
           if (this.sfx.muted !== m) this.sfx.toggle()
           this.syncMute()
         },
-        onReal: (on) => this.renderer.setRealMonsters(on),
         onHud: () => this.fit(),
-        onGfx: (m) => this.applyGfx(m),
         onKeys: (on) => {
           this.keysShown = on
           this.applyKeys()
@@ -1331,6 +1383,8 @@ export class Session {
     }
     this.overlay.hidden = false
     this.touch?.setVisible(false)
+    // 메뉴 · 알림 창을 누를 수 있게 마우스를 푼다 (전체 화면의 키보드 잠금 중에는 브라우저가 Esc 로 풀어 주지 않는다)
+    if (this.input.pointerLocked) this.unlockPointer()
   }
 
   private hideOverlay(): void {
@@ -2048,6 +2102,14 @@ export class Session {
       else this.town.refresh()
     }
     // 1인칭: 살아서 내 시점일 때만 (죽어서 남을 보면 쿼터뷰)
+    const past = (me?.level ?? 1) > 5
+    if (past !== this.keysPast) {
+      this.keysPast = past
+      this.applyKeys()
+    }
+    // 창 · 메뉴가 열려 있으면 어디서나 진짜 커서 (3인칭은 조준점을 숨긴다 — 둘이 따로 보이지 않게)
+    const uiShown = this.input.uiOpen || !this.overlay.hidden
+    this.stage.parentElement?.classList.toggle('ui-open', uiShown)
     this.renderer.fpsPlayer = this.input.fps && spec < 0 ? lp : -1
     this.renderer.fpsYaw = this.input.yaw
     this.renderer.fpsPitch = this.input.pitch
@@ -2067,6 +2129,7 @@ export class Session {
       ping: this.cfg.link ? this.cfg.link.rtt : undefined,
       message,
       cursor: this.aimCursor(),
+      hideCursor: uiShown && this.input.fps,
       touch: this.touch !== null,
       floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
       // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
@@ -2267,10 +2330,10 @@ export class Session {
     const nick = maskText(cleanChat(d.nick).slice(0, 20), fc) || '익명의 후원자'
     const raw = squeezeRepeats(cleanChat(d.text))
     const text = maskText(raw, fc)
-    // 후원 글에 "!응원" — 괴롭히는 대신 돕는다. 금액마다 단계가 다르다 (응원 금액표 — 넘는 것 중 가장 비싼 단계)
-    const e = (CHEER_RE.test(raw) ? cheerForAmount(d.amount) : undefined) ?? eventForAmount(d.amount)
+    // 후원 글의 "!응원"(돕는 후원 — 회복 구슬 · 아군 괴물)은 뺐다 (2026-10-24 사용자: "아무도 안 쓴다 — 그냥 빼") — 금액대로 방해 이벤트
+    const e = eventForAmount(d.amount)
     // 후원이 한꺼번에 몰려도 소리는 0.25초에 하나 (큰 것은 늘)
-    const big = !!e && e.id >= 6 && !cheerEvent(e.id)
+    const big = !!e && e.id >= 6
     const now = performance.now()
     if (big || now - this.lastDonSfx > 250) {
       this.lastDonSfx = now
@@ -2392,7 +2455,7 @@ export class Session {
    */
   private canRunDonation(ev: number): boolean {
     const e = donateEvent(ev)
-    if (!e || cheerEvent(ev)) return true
+    if (!e) return true
     let summoned = 0
     let boss = false
     let rage = 0
@@ -2480,10 +2543,10 @@ export class Session {
 
   private syncUi(): void {
     const was = this.input.uiOpen
-    this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.waypoints?.open || this.town?.open || this.czClose)
+    this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.quests?.open || this.waypoints?.open || this.town?.open || this.czClose)
     // 3인칭 · 1인칭: 창이 열리면 마우스를 풀어 창을 누를 수 있게 · 닫으면 바로 다시 가둔다 (2026-10-24 사용자: "창을 닫았을 때 에임이 커서를 바로
     // 따라오지 않아 마우스가 어디 있는지 찾기 어렵다" — 전에는 화면을 한 번 더 눌러야 했다). 닫는 누름 · 키가 사용자 동작이라 바로 된다
-    if (this.input.uiOpen && this.input.pointerLocked) document.exitPointerLock()
+    if (this.input.uiOpen && this.input.pointerLocked) this.unlockPointer()
     else if (was && !this.input.uiOpen && this.overlay.hidden) this.input.lockPointer()
   }
 
@@ -2599,14 +2662,12 @@ export class Session {
     const here = this.state.players[e.p]?.area === this.viewArea
     if (here) {
       // 색 · 소리의 세기는 **이벤트**로 정한다 (금액은 적지도 들고 있지도 않는다)
-      const cheer = !!cheerEvent(ev.id)
-      const color = cheer ? '#7aff9a' : ev.id >= 7 ? '#ff6a4a' : ev.id >= 6 ? '#ffae4a' : '#f1d58a'
-      // 응원은 "○○님의 응원!" + 효과 (이름이 곧 효과라 겹치지 않게)
-      this.renderer.banner(cheer ? `${nick}님의 응원!` : `${nick}님 · ${ev.name}!`, ev.desc, color)
-      if (e.p !== this.cfg.localPlayer) this.sfx.donate(ev.id >= 6 && !cheer)
+      const color = ev.id >= 7 ? '#ff6a4a' : ev.id >= 6 ? '#ffae4a' : '#f1d58a'
+      this.renderer.banner(`${nick}님 · ${ev.name}!`, ev.desc, color)
+      if (e.p !== this.cfg.localPlayer) this.sfx.donate(ev.id >= 6)
       if (e.m >= 0) this.renderer.monsterSay(e.m, nick, info?.text || `${nick}님이 보냈다!`, true)
     }
-    this.chat?.add(nick, cheerEvent(ev.id) ? `응원: ${ev.desc}` : `${ev.name}: ${ev.desc}`, 'don')
+    this.chat?.add(nick, `${ev.name}: ${ev.desc}`, 'don')
     // 후원으로 부른 무리를 지켜본다 (다 쓰러지면 결과 알림)
     if (SUMMON_KEYS.has(ev.key) && e.m >= 0) {
       const area = this.state.players[e.p]?.area ?? -1
@@ -2734,7 +2795,6 @@ export class Session {
     }
     // 같은 금액이 둘 이상이면 🎲 — 그중 하나가 무작위로 일어난다 (2026-09-27)
     const tieE = tiedAmounts(cfg.amounts)
-    const tieC = tiedAmounts(cfg.cheers)
     const rows = eventRows(cfg)
       .map(({ e, amount }) => {
         const t = left[e.key] ?? 0
@@ -2749,15 +2809,10 @@ export class Session {
       : this.donPending.length > 0
         ? `<div class="dw">대기 ${this.donPending.length} — ${this.canDonateNow() ? '차례로 일어납니다' : '던전에서 일어납니다'}</div>`
         : ''
-    // 후원 글에 "!응원" — 돕는 후원도 있다는 것을 시청자에게 알린다. 금액마다 단계가 다르다 (2026-09-23)
-    const cr = cheerRows(cfg)
-    const cheer = cr.length
-      ? `<div class="dh cheer">💚 후원 글에 !응원 입력</div>` + cr.map(({ e, amount }) => `<div class="dr cheer"><span class="da">${won(amount)}</span><span class="dn">${tieC.has(amount) ? '🎲 ' : ''}${e.name}</span><span class="dt"></span></div>`).join('')
-      : ''
-    const tie = tieE.size > 0 || (cr.length > 0 && tieC.size > 0) ? `<div class="dw tie">🎲 같은 금액은 그중 하나가 무작위로</div>` : ''
-    // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7)
-    const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름</div>` : ''
-    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${cheer}${tie}${join}${wait}`
+    const tie = tieE.size > 0 ? `<div class="dw tie">🎲 같은 금액은 그중 하나가 무작위로</div>` : ''
+    // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7 · 2026-10-24 사용자: "채팅에 !참여 / 괴물에 내 이름 — 간단하게")
+    const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여<br>괴물에 내 이름</div>` : ''
+    const html = `<div class="dh">💰 후원 이벤트</div>${rows}${tie}${join}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
     if (el.dataset.h !== html) {
       el.dataset.h = html
@@ -3101,6 +3156,8 @@ export class Session {
     this.touch?.dispose()
     this.sfx.dispose()
     window.removeEventListener('keydown', this.onKey)
+    document.removeEventListener('pointerlockchange', this.onLockChange)
+    document.removeEventListener('fullscreenchange', this.syncFs)
     window.removeEventListener('resize', this.fit)
     this.renderer.dispose()
     this.root.remove()

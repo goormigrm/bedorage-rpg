@@ -60,6 +60,8 @@ export interface CheerDef extends DonateEvent {
   allyBoss: boolean
 }
 // 이름 = 효과 (2026-09-24 사용자: "힘내라 · 함성 · 기적 이런 건 직관적이지 않다 — 무슨 효과인지 간단하게")
+// shortcut: "!응원"은 2026-10-24 뺐다(사용자: "아무도 안 쓴다") — 후원 글에서 알아보는 곳(session)과 표 · 치지직 창만 끊었고, 판의 응원 처리(회복 구슬 · 아군 괴물 · 공격 강화)와 이 표는
+// 닿을 길 없이 남아 있다. 다시 쓰지 않기로 굳으면 sim(cheer · allies) · renderer(아군 그리기) · state.allies 까지 지운다
 export const CHEER_EVENTS: CheerDef[] = [
   { id: 11, key: 'cheer', name: '회복 구슬 3개', desc: '둘레에 회복 구슬 셋 (밟으면 체력 25%)', amount: 1000, globes: 3, rate: 1, pow: 1, ticks: 0, allies: 0, allyTicks: 0, allyBoss: false },
   { id: 12, key: 'cheer', name: '회복 구슬 5개 + 공격 속도', desc: '회복 구슬 다섯 · 우리 편 20초 공격 속도 +30%', amount: 2000, globes: 5, rate: 1.3, pow: 1, ticks: 20 * TICK_RATE, allies: 0, allyTicks: 0, allyBoss: false },

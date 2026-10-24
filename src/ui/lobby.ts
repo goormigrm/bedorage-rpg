@@ -316,7 +316,7 @@ export class Lobby {
             <ul class="czask">
               <li>시청자 채팅 → 괴물 머리 위 말풍선</li>
               <li><b>!참여</b> → 괴물에 시청자 이름</li>
-              <li>후원 금액마다 이벤트 · <b>!응원</b> 으로 돕기</li>
+              <li>후원 금액마다 이벤트</li>
             </ul>
             <p class="cardp">나중에는 왼쪽 위 <b>치지직</b> 단추에서 합니다.</p>
             <div class="dacts"><button class="btn secondary" data-close>방송 안 함</button><button class="btn main" id="btn-cz-go">연동하기</button></div>

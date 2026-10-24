@@ -1645,14 +1645,6 @@ export class Sfx {
     this.noiseBurst(bus, t0, dur, 'lowpass', 500, 180, peak * 0.4, 0.8)
   }
 
-  /** 설정 "보스 목소리" (ui/settings.ts — 저장한 값이 없으면 켬) */
-  private bossVoiceOn(): boolean {
-    try {
-      return localStorage.getItem('brpg.bossvoice') !== '0'
-    } catch {
-      return true
-    }
-  }
 
   /** 대사 소리 칸 번호: 밝은 분위기는 다른 파일(boss_<번호>_b.wav — 밝은 대사)이라 1000 을 더한다 */
   /** 대사 소리 열쇠: 종류 + 밝은 분위기 1000 + 등장 대사 2000 */
@@ -1764,7 +1756,7 @@ export class Sfx {
    * 소리 파일이 아직 없으면 false (부른 쪽이 음성 합성으로 대신한다)
    */
   bossLine(kind: number, intro = false): boolean {
-    if (this.mutedFlag || !this.bossVoiceOn() || !this.ctx) return false
+    if (this.mutedFlag || !this.ctx) return false
     const buf = this.lineBufs.get(this.lineKey(kind, intro))
     if (!buf) return false
     const ctx = this.ctx
@@ -1897,15 +1889,10 @@ export class Sfx {
 
   /**
    * 보스 대사를 목소리로 (브라우저 음성 합성 — 무료 · 기기 안에서, 서버 없음). 한국어 목소리가 없으면 소리 효과만.
-   * 보스마다 높낮이 · 빠르기 (군주 · 관리인은 아주 낮게, 여왕은 높게). 소리 끔 · 설정 "보스 목소리" 끔 · 영상(오프라인)에서는 없다
+   * 보스마다 높낮이 · 빠르기 (군주 · 관리인은 아주 낮게, 여왕은 높게). 소리 끔 · 영상(오프라인)에서는 없다 (보스 목소리 끄기 설정은 2026-10-24 뺐다)
    */
   private speak(text: string | undefined, kind: number): void {
     if (!text || this.mutedFlag || typeof speechSynthesis === 'undefined') return
-    try {
-      if (localStorage.getItem('brpg.bossvoice') === '0') return
-    } catch {
-      /* 저장소 없음 — 켠 것으로 */
-    }
     if (typeof (this.ctx as unknown as { startRendering?: unknown } | null)?.startRendering === 'function') return
     const ko = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith('ko'))
     if (!ko) return

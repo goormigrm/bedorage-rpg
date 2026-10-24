@@ -10,7 +10,7 @@ export type Action =
   | 'dash' | 'sprint' | 'use' | 'portal'
   | 'skill1' | 'skill2' | 'ult' | 'skill3' | 'skill4'
   | 'bag' | 'skills' | 'attr' | 'quest' | 'map'
-  | 'mark' | 'mute' | 'donHold' | 'items' | 'view'
+  | 'mark' | 'mute' | 'donHold' | 'items' | 'view' | 'skin'
 
 export const ACTIONS: { id: Action; label: string; def: string; group: string }[] = [
   { id: 'up', label: '위로', def: 'KeyW', group: '이동' },
@@ -39,6 +39,8 @@ export const ACTIONS: { id: Action; label: string; def: string; group: string }[
   { id: 'donHold', label: '후원 방해 이벤트 멈춤', def: 'KeyP', group: '기타' },
   // 1인칭은 마우스를 가둬 스위치를 바로 못 누른다 — 키로도 (2026-10-24)
   { id: 'view', label: '시점 바꾸기 (쿼터뷰 ↔ 3인칭)', def: 'KeyB', group: '기타' },
+  // 모드도 시점처럼 키로 (2026-10-24 사용자: "공포 모드 · 철면수심 모드도 B 단축키처럼")
+  { id: 'skin', label: '모드 바꾸기 (🌙 ↔ ☀)', def: 'KeyG', group: '기타' },
 ]
 
 /** 걸 수 없는 키 (정해진 뜻이 있다) */

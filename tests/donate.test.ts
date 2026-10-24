@@ -9,7 +9,7 @@ import { HORDE_SIZE, SUMMON_CAP, areaView, createState, hashState, step } from '
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
 import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
-import { cheerForAmount, defaultStreamCfg, eventForAmount, isBigDonation, nextDonation, tiedAmounts } from '../src/game/stream'
+import { defaultStreamCfg, eventForAmount, isBigDonation, nextDonation, tiedAmounts } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
 const TOWN = ACTS[0].town
@@ -83,7 +83,7 @@ describe('후원 이벤트 — 소환', () => {
   // 2026-10-22 사용자: "방송 중 최대 금액이 2만 원이었다 — 천 원 ~ 5천 원 사이에 몬스터가 다양하게 · 지옥문이 3만 원 · 응원도 낮게"
   // 2026-10-22 같은 날 사용자: "500원 단위 후원 이벤트는 없애고 10000원 이하에 천 원 단위를 더 다양한 이벤트로"
   it('금액표: 1만 원까지 천 원마다 다른 이벤트 (1 ~ 5천은 괴물) · 지옥문 3만 · 넘는 것 중 가장 비싼 이벤트', () => {
-    const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
+    const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount) }
     expect(eventForAmount(999, cfg)).toBeUndefined()
     expect([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000].map((a) => eventForAmount(a, cfg)?.key)).toEqual(['horde', 'shake', 'elite', 'invert', 'boss', 'gun', 'unique', 'dark', 'march', 'seal'])
     expect(eventForAmount(1500, cfg)?.key).toBe('horde')
@@ -263,7 +263,7 @@ describe('후원 이벤트 — 효과', () => {
 
 // 응원 (2026-09-23 — 치지직 "!응원" 후원, 금액마다 단계가 다르다): 괴롭히는 대신 돕는다
 describe('후원 이벤트 — 응원', () => {
-  const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) }
+  const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount) }
 
   it('응원은 금액표 밖의 네 단계(번호 11~14 — 명령 네 비트 안) · 후원 글 "!응원" 을 알아본다', () => {
     expect(DONATE_EVENTS.some((e) => e.key === 'cheer')).toBe(false)
@@ -275,13 +275,9 @@ describe('후원 이벤트 — 응원', () => {
     expect(CHEER_RE.test('응원합니다')).toBe(false)
   })
 
-  it('금액이 넘는 단계 중 가장 비싼 것 · 끈 단계는 건너뛴다', () => {
-    expect(cheerForAmount(999, cfg)).toBeUndefined()
-    expect(cheerForAmount(1000, cfg)?.name).toBe('회복 구슬 3개')
-    expect(cheerForAmount(2500, cfg)?.name).toBe('회복 구슬 5개 + 공격 속도')
-    expect(cheerForAmount(3000, cfg)?.name).toBe('아군 괴물 넷 + 공격 강화')
-    expect(cheerForAmount(500000, cfg)?.name).toBe('아군 보스 + 공격 강화')
-    expect(cheerForAmount(500000, { ...cfg, cheers: cfg.cheers.map((a, i) => (i === 3 ? 0 : a)) })?.name).toBe('아군 괴물 넷 + 공격 강화')
+  // 2026-10-24 사용자: "!응원 기능 그냥 빼" — 후원 글의 !응원은 더 알아보지 않는다(session) · 치지직 설정에 응원 금액이 없다
+  it('!응원 금액 설정은 없다 — 판의 응원 처리만 남아 있다', () => {
+    expect('cheers' in cfg).toBe(false)
   })
 
   // 2026-09-24 사용자: 즉시 회복 · 부활 대신 회복 구슬 · 공격 강화 · 아군 괴물
@@ -475,10 +471,9 @@ describe('응원 아군은 마을로는 안 따라간다', () => {
 
 // 2026-09-26 방송 개선 1 · 2 · 3
 describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
-  it('멈춤 중에는 방해 이벤트는 기다리고 응원은 간다 · 풀면 먼저 온 것부터', () => {
-    const pending = [{ ev: ev('dark') }, { ev: CHEER_EVENTS[0].id }, { ev: ev('horde') }]
-    expect(nextDonation(pending, true, () => true)).toBe(1)
-    expect(nextDonation([{ ev: ev('dark') }], true, () => true)).toBe(-1)
+  it('멈춤 중에는 모두 기다린다 · 풀면 먼저 온 것부터', () => {
+    const pending = [{ ev: ev('dark') }, { ev: ev('elite') }, { ev: ev('horde') }]
+    expect(nextDonation(pending, true, () => true)).toBe(-1)
     expect(nextDonation(pending, false, () => true)).toBe(0)
     // 판 조건(소환 상한)에 걸린 것은 건너뛴다
     expect(nextDonation(pending, false, (e) => e !== ev('dark'))).toBe(1)
@@ -581,7 +576,7 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
 
 // 2026-09-27 사용자: "같은 금액이면 둘 다 발동해? 하나만 랜덤으로 발동하는 게 좋을 것 같다"
 describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', () => {
-  const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount), cheers: CHEER_EVENTS.map((e) => e.amount) })
+  const base = () => ({ ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount) })
   it('시야 축소 · 거꾸로 걷기를 둘 다 8천 원으로 — 하나만, 둘 다 나올 수 있다 · 더 비싼 금액이 넘으면 그것', () => {
     const cfg = base()
     const dark = DONATE_EVENTS.findIndex((e) => e.key === 'dark')
@@ -597,16 +592,13 @@ describe('같은 금액의 후원 이벤트는 그중 하나가 무작위로', (
     // 더 비싼 칸(괴물 대행진 9천)이 넘으면 무작위 없이 그것
     expect(eventForAmount(9000, cfg, () => 0)?.key).toBe('march')
   })
-  it('겹치지 않으면 예전과 같다 · 끈 칸(0 원)은 겹쳐도 세지 않는다 · 응원도 같다', () => {
+  it('겹치지 않으면 예전과 같다 · 끈 칸(0 원)은 겹쳐도 세지 않는다', () => {
     const cfg = base()
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
     expect(eventForAmount(8500, cfg, () => 0.999)?.key).toBe('dark')
     cfg.amounts[0] = 0
     cfg.amounts[1] = 0
     expect(tiedAmounts(cfg.amounts).size).toBe(0)
-    cfg.cheers[1] = cfg.cheers[0]
-    expect(cheerForAmount(1000, cfg, () => 0)?.id).toBe(CHEER_EVENTS[0].id)
-    expect(cheerForAmount(1000, cfg, () => 0.999)?.id).toBe(CHEER_EVENTS[1].id)
   })
 })
 
@@ -623,7 +615,6 @@ describe('예전 처음 금액표 이어받기', () => {
       ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000], cheers: [1000, 5000, 10000, 30000] }))
       let c = loadStreamCfg()
       expect(c.amounts).toEqual(DONATE_EVENTS.map((e) => e.amount))
-      expect(c.cheers).toEqual(CHEER_EVENTS.map((e) => e.amount))
       // v1.9.0 처음 값(500원 단위 · 열 가지)도 새 표로 — 뒤에 붙은 두 이벤트까지
       ls.setItem('brpg.chzzk.cfg', JSON.stringify({ amounts: [1000, 1500, 2500, 2000, 4000, 3000, 10000, 20000, 5000, 30000] }))
       c = loadStreamCfg()

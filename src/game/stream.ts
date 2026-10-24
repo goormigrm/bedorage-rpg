@@ -3,7 +3,7 @@
 // 세션이 없을 때(로비) 온 후원은 버리지 않고 들고 있다가 다음 판이 가져간다 — 돈을 낸 후원이 사라지면 안 된다.
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
-import { CHEER_EVENTS, CheerDef, DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent, cheerEvent } from '../core/donate'
+import { DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent } from '../core/donate'
 import { maskText } from './chatfilter'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
@@ -29,8 +29,6 @@ export interface StreamCfg {
   amounts: number[]
   /** 페이지를 열면 저절로 다시 연결 (한 번 연결에 성공하면 켜진다) */
   auto: boolean
-  /** 응원 단계마다 금액(원) — CHEER_EVENTS 순서. 0 = 끔 (2026-09-23 사용자: "응원도 가격에 따라서 효과를 다르게") */
-  cheers: number[]
   /** 같은 방해 효과가 이어 붙는 한도(초 — DON_CAP_CHOICES). 2026-09-25 방송 개선 5 */
   stackMax: number
   /** 말풍선 · 후원 글 · 닉네임에서 가릴 말 (방송인이 정한다 — game/chatfilter.ts). 2026-09-25 방송 개선 3 */
@@ -84,7 +82,6 @@ const OLD_DEFAULTS = [
   [1000, 2000, 3000, 5000, 7000, 10000, 20000, 30000, 50000, 100000],
   [1000, 1500, 2500, 2000, 4000, 3000, 10000, 20000, 5000, 30000],
 ]
-const OLD_CHEERS = [[1000, 5000, 10000, 30000]]
 const sameList = (v: unknown, list: number[]): boolean => Array.isArray(v) && v.length === list.length && v.every((a, i) => Number(a) === list[i])
 
 export function defaultStreamCfg(): StreamCfg {
@@ -93,7 +90,6 @@ export function defaultStreamCfg(): StreamCfg {
     table: true,
     amounts: DONATE_EVENTS.map((e) => e.amount),
     auto: false,
-    cheers: CHEER_EVENTS.map((e) => e.amount),
     stackMax: DON_CAP_DEFAULT,
     banned: [...DEFAULT_BANNED],
     maskLinks: true,
@@ -113,13 +109,8 @@ export function loadStreamCfg(): StreamCfg {
     const v = JSON.parse(localStorage.getItem(CFG_KEY) ?? 'null') as Partial<StreamCfg> | null
     if (!v) return d
     if (OLD_DEFAULTS.some((o) => sameList(v.amounts, o))) v.amounts = d.amounts
-    if (OLD_CHEERS.some((o) => sameList(v.cheers, o))) v.cheers = d.cheers
     const amounts = DONATE_EVENTS.map((e, i) => {
       const a = Number(v.amounts?.[i])
-      return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
-    })
-    const cheers = CHEER_EVENTS.map((e, i) => {
-      const a = Number(v.cheers?.[i])
       return Number.isFinite(a) && a >= 0 ? Math.round(a) : e.amount
     })
     const stackMax = DON_CAP_CHOICES.includes(Number(v.stackMax)) ? Number(v.stackMax) : d.stackMax
@@ -129,7 +120,6 @@ export function loadStreamCfg(): StreamCfg {
       table: v.table ?? d.table,
       amounts,
       auto: v.auto ?? d.auto,
-      cheers,
       stackMax,
       banned,
       maskLinks: v.maskLinks ?? d.maskLinks,
@@ -200,11 +190,6 @@ export function eventForAmount(amount: number, cfg = loadStreamCfg(), rnd: () =>
   return pickByAmount(DONATE_EVENTS, cfg.amounts, amount, rnd)
 }
 
-/** "!응원" 후원이면 어떤 응원인가 (pickByAmount — 같은 금액이면 무작위로 하나). 없으면 undefined */
-export function cheerForAmount(amount: number, cfg = loadStreamCfg(), rnd: () => number = Math.random): CheerDef | undefined {
-  return pickByAmount(CHEER_EVENTS, cfg.cheers, amount, rnd)
-}
-
 /** 켠 칸 중 금액이 겹치는 금액들 (표에 🎲 — 그중 하나가 무작위로 일어난다) */
 export function tiedAmounts(amounts: readonly number[]): Set<number> {
   const seen = new Set<number>()
@@ -215,13 +200,6 @@ export function tiedAmounts(amounts: readonly number[]): Set<number> {
     seen.add(a)
   }
   return tied
-}
-
-/** 표에 보일 응원 줄: 켠 단계를 금액 순으로 */
-export function cheerRows(cfg = loadStreamCfg()): { e: CheerDef; amount: number }[] {
-  return CHEER_EVENTS.map((e, i) => ({ e, amount: cfg.cheers[i] }))
-    .filter((r) => r.amount > 0)
-    .sort((a, b) => a.amount - b.amount)
 }
 
 /** 표에 보일 줄: 켠 이벤트를 금액 순으로 */
@@ -242,7 +220,7 @@ export const isBigDonation = (ev: number): boolean => (ev >= 6 && ev <= 10) || e
  * canRun 은 소환 상한 · 막 보스 하나 같은 판 조건. 없으면 -1
  */
 export function nextDonation(pending: { ev: number }[], hold: boolean, canRun: (ev: number) => boolean): number {
-  return pending.findIndex((d) => (!hold || cheerEvent(d.ev) !== undefined) && canRun(d.ev))
+  return pending.findIndex((d) => !hold && canRun(d.ev))
 }
 
 /** 채팅 "!참여" — 시청자 이름 괴물 추첨 후보가 된다 (말풍선으로는 띄우지 않는다) */
@@ -421,12 +399,6 @@ class StreamHub {
     this.chat({ nick: `${r(this.nicks)}${Math.floor(Math.random() * 90) + 10}`, text: '!참여', test: true })
   }
 
-  /** 응원 시험: 그 단계 금액 + "!응원" */
-  fakeCheer(amount: number): void {
-    this.tried = true
-    const r = (a: string[]) => a[Math.floor(Math.random() * a.length)]
-    this.donation({ nick: r(this.nicks), amount, text: '힘내세요 !응원' })
-  }
 
   fakeDonation(amount: number): void {
     this.tried = true

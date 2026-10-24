@@ -12,10 +12,9 @@ function load(): Record<VolKey, number> {
   const out = { ...DEFAULT }
   try {
     const o = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<VolKey, unknown>>
-    for (const k of VOL_KEYS) {
-      const v = Number(o[k])
-      if (Number.isFinite(v)) out[k] = Math.max(0, Math.min(1, v))
-    }
+    // 전체 크기만 남긴다 (2026-10-24 사용자: "소리 크기는 전체 크기 조절만") — 예전에 줄여 둔 배경음 · 효과음 · 괴물 · 보스 목소리는 다시 100%
+    const v = Number(o.all)
+    if (Number.isFinite(v)) out.all = Math.max(0, Math.min(1, v))
   } catch {
     /* 기본값 */
   }
