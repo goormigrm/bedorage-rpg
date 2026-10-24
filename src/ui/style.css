@@ -986,6 +986,7 @@ body { background: var(--bg); }
 .swcol .btn.skin-sw { min-width: 98px; width: 98px; }
 .touching .swcol { display: none; }
 .skin-sw .sw-cap { font-size: 11.5px; font-weight: 700; color: #e8c46a; }
+.skin-sw .sw-cap kbd { display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 3px; border: 1px solid #c9a24a; border-radius: 3px; background: rgba(0,0,0,.45); color: #fff3c4; font: 700 11.5px/15px "IBM Plex Mono", monospace; text-align: center; }
 .skin-sw .sw-track { position: relative; display: flex; justify-content: space-between; align-items: center; width: 78px; height: 26px; padding: 0 7px; box-sizing: border-box; border-radius: 13px; background: #1a2036; border: 1px solid #56608a; transition: background .25s, border-color .25s; }
 .skin-sw.on .sw-track { background: #ffd6ea; border-color: #ff8fc4; }
 .skin-sw .sw-track b { position: relative; z-index: 1; font-size: 14px; line-height: 1; opacity: .4; transition: opacity .25s; }

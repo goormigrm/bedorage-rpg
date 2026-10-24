@@ -666,6 +666,7 @@ export class Session {
     }
     el.classList.toggle('on', on)
     el.setAttribute('aria-checked', String(on))
+    ;(el.querySelector('.sw-cap') as HTMLElement).innerHTML = cap
     ;(el.querySelector('.sw-name') as HTMLElement).textContent = name
     el.title = title
   }
@@ -682,7 +683,8 @@ export class Session {
   private viewBtn!: HTMLButtonElement
   private syncViewBtn(): void {
     const f = this.input.fps
-    this.syncSwitch(this.viewBtn, f, '시점 바꾸기 ↔', ['🗺️', '🎯'], f ? '3인칭' : '쿼터뷰', f ? `눌러서 쿼터뷰로 바꾸기 (${keyLabel('view')})` : `눌러서 3인칭으로 바꾸기 — 마우스로 둘러보기 · 오른쪽 버튼 = 1인칭 조준 (${keyLabel('view')})`)
+    // 단축키를 글자 오른쪽에 (2026-10-24 사용자: "시점 바꾸기 오른쪽 칸에 단축키라는 것도 보이게") — 키 설정을 따라간다
+    this.syncSwitch(this.viewBtn, f, `시점 바꾸기 <kbd>${keyLabel('view')}</kbd>`, ['🗺️', '🎯'], f ? '3인칭' : '쿼터뷰', f ? `눌러서 쿼터뷰로 바꾸기 (${keyLabel('view')})` : `눌러서 3인칭으로 바꾸기 — 마우스로 둘러보기 · 오른쪽 버튼 = 1인칭 조준 (${keyLabel('view')})`)
     this.viewBtn.classList.add('view-sw')
   }
 
@@ -1196,6 +1198,7 @@ export class Session {
   private refreshKeyLabels(): void {
     const bar = this.stage.querySelector('.keys') as HTMLElement | null
     if (bar) bar.innerHTML = keysHintHtml()
+    if (this.viewBtn) this.syncViewBtn()
     const act: Record<string, Parameters<typeof keyLabel>[0]> = { bag: 'bag', skill: 'skills', attr: 'attr', quest: 'quest', map: 'map' }
     this.stage.querySelectorAll<HTMLButtonElement>('.wbtn').forEach((b) => {
       const a = act[b.dataset.win as string]
