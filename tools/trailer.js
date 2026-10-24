@@ -129,6 +129,7 @@ const cue = (kind, o = {}) => music.push({ t: vidSec(), kind, town: !!o.town, ac
 
 // ---------- 그리기 ----------
 function drawGame() {
+  if (ov.showcase) return drawShowcase()
   const cvs = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)
   if (!cvs.length) return
   const z = ov.zoom
@@ -924,6 +925,110 @@ function notesScenes() {
   return tl.done()
 }
 
+/**
+ * 무기 모아 보기 (2026-10-24 사용자: "캐릭터들의 다양한 무기가 늘어난 것도 — 게임 내 플레이 화면은 아니더라도 따로 편집해서 보여 줘"):
+ * 게임 화면 대신 따로 그린 3D 장면 — 일곱 캐릭터가 두 줄로 서서 기본 무기 → 변형 무기로 바꿔 든다(철면란은 고기도 소 → 닭 → 오리).
+ * 게임과 같은 three 사본(.vite/deps)으로 그려야 캐릭터 모델(character3d)을 그대로 쓴다. 이름표는 무기 이름 한 줄뿐
+ */
+const SHOWCASE = [
+  ['chim', 'rifle', 'crossbow'], ['dangun', 'smg', 'flamer'], ['magic', 'shotgun', 'doublebarrel'], ['oknyang', 'sniper', 'railgun'],
+  ['cheolmyeon', 'violin', 'cello'], ['juwoojae', 'rapier', 'katana'], ['seungwoo', 'pan', 'wok'],
+]
+const SC_DUR = 6.4
+let sc = null
+async function showcaseSetup() {
+  const url = performance.getEntriesByType('resource').map((e) => e.name).find((n) => /\/\.vite\/deps\/three\.js/.test(n))
+  const THREE = await import(url ?? 'three')
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
+  r.setSize(W, H, false)
+  r.setClearColor(0x000000, 0)
+  const scene = new THREE.Scene()
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc8b8d8, 1.7))
+  const sun = new THREE.DirectionalLight(0xffffff, 2.3)
+  sun.position.set(2, 6, 6)
+  scene.add(sun)
+  const cam = new THREE.PerspectiveCamera(26, W / H, 0.1, 100)
+  // 뒷줄 넷 · 앞줄 셋을 엇갈리게
+  const rigs = SHOWCASE.map(([id], i) => {
+    const rig = M.c3d.buildCharacter(M.chars.CHARACTERS[id])
+    const back = i < 4
+    rig.root.position.set(back ? (i - 1.5) * 2.3 : (i - 5) * 2.3, 0, back ? -1.7 : 1.2)
+    scene.add(rig.root)
+    return rig
+  })
+  sc = { THREE, r, scene, cam, rigs, canvas, at: 0, phase: -1, swapAt: 0, v: new THREE.Vector3() }
+}
+function showcaseStart() {
+  sc.at = now()
+  sc.phase = -1
+  ov.showcase = true
+}
+function drawShowcase() {
+  const t = (now() - sc.at) / 1000
+  const phase = t < 2.1 ? 0 : t < 4.2 ? 1 : 2
+  if (phase !== sc.phase) {
+    sc.phase = phase
+    sc.swapAt = now()
+    SHOWCASE.forEach(([id, a, b], i) => sc.rigs[i].setWeapon(M.weapons.WEAPONS[phase === 0 ? a : b], id === 'cheolmyeon' ? phase : 0))
+  }
+  // 카메라는 천천히 다가가며 옆으로 · 캐릭터는 총이 보이게 비스듬히 서서 살짝씩 돈다
+  const k = ease(Math.min(1, t / SC_DUR))
+  sc.cam.position.set(-0.8 + 1.6 * k, 4.2, 11.2 - 1.4 * k)
+  sc.cam.lookAt(0, 0.5, -0.2)
+  sc.rigs.forEach((rig, i) => (rig.root.rotation.y = 0.85 + Math.sin(t * 1.4 + i * 0.9) * 0.3))
+  sc.r.render(sc.scene, sc.cam)
+  const bg = g.createLinearGradient(0, 0, 0, H)
+  bg.addColorStop(0, '#ffe6f2')
+  bg.addColorStop(1, '#d9e9ff')
+  g.fillStyle = bg
+  g.fillRect(0, 0, W, H)
+  const at = (rig, y) => {
+    sc.v.set(rig.root.position.x, y, rig.root.position.z).project(sc.cam)
+    return { x: ((sc.v.x + 1) / 2) * W, y: ((1 - sc.v.y) / 2) * H }
+  }
+  g.fillStyle = 'rgba(90,60,120,0.16)'
+  for (const rig of sc.rigs) {
+    const p = at(rig, 0)
+    g.beginPath()
+    g.ellipse(p.x, p.y, 78, 20, 0, 0, Math.PI * 2)
+    g.fill()
+  }
+  g.drawImage(sc.canvas, 0, 0)
+  // 바꿔 들 때 반짝
+  const fa = 1 - (now() - sc.swapAt) / 320
+  if (sc.phase > 0 && fa > 0)
+    for (const rig of sc.rigs) {
+      const p = at(rig, rig.height * 0.45)
+      const gl = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, 150)
+      gl.addColorStop(0, `rgba(255,255,240,${(0.85 * fa).toFixed(3)})`)
+      gl.addColorStop(1, 'rgba(255,255,240,0)')
+      g.fillStyle = gl
+      g.fillRect(p.x - 150, p.y - 150, 300, 300)
+    }
+  // 무기 이름 (뒷줄은 머리 위 · 앞줄은 발 아래)
+  g.save()
+  g.font = '700 34px "IBM Plex Sans KR", sans-serif'
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.lineJoin = 'round'
+  SHOWCASE.forEach(([id, a, b], i) => {
+    const rig = sc.rigs[i]
+    const w = phase === 0 ? a : b
+    const name = id === 'cheolmyeon' ? `${M.items.MEATS[phase]} ${w === 'cello' ? '첼로' : '바이올린'}` : M.weapons.WEAPONS[w].name
+    const p = i < 4 ? at(rig, rig.height + 0.32) : at(rig, 0)
+    const y = i < 4 ? p.y : p.y + 48
+    g.lineWidth = 8
+    g.strokeStyle = 'rgba(60,30,80,0.85)'
+    g.strokeText(name, p.x, y)
+    g.fillStyle = phase === 0 ? '#ffffff' : '#ffe27a'
+    g.fillText(name, p.x, y)
+  })
+  g.restore()
+}
+
 /** 패치 플레이 영상의 장소 — 장면마다 다른 맵(☀ 놀이터 · 2막 · 3막 · 4막 들판) */
 const P24_AREAS = [1, 11, 22, 29]
 /** 그 지역 무리에 나오는 괴물 (sim areaKinds 와 같게 — 보스 · 도망치는 것 빼고) */
@@ -967,25 +1072,26 @@ function patch24Scenes() {
     perFrame = null
     mv?.stop()
     inp().mouseDown.clear()
+    ov.showcase = false
     if (st().players[0].area !== area) M.sim.warpPlayer(st(), S().mapOf, 0, area)
   }
   const ahead = () => {
     const p = st().players[0]
     const fx = Math.cos(inp().yaw)
     const fy = Math.sin(inp().yaw)
-    return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0).length
+    return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0 && Math.hypot(m.x - p.x, m.y - p.y) < 12 * T).length
   }
   const K = (a) => kindsOf(a)
+  // 걷기만 하는 장면은 없게 (2026-10-24 사용자: "이동만 하는 장면이 길어서 루즈해지는 것은 빼고") — 괴물은 늘 가까이 · 앞으로 걸어가는 이동은 없앴다
   // ---- 1. 쿼터뷰 난전 + 제목 (☀ 놀이터): 사방에서 몰려오는 떼 · 쏘며 비켜 걷기 · 구르기
   at(0, () => {
     S().autopilot = false
-    M.settings.setAimStyle({ shape: 'crossring', size: 1.5 })
     goto(1)
   })
   at(1.5, () => {
     place()
     S().renderer.setDebugZoom(0.6)
-    spawn(K(1), 16, 6, 11)
+    spawn(K(1), 18, 5, 10)
     mv = qmover()
     perFrame = both(quarterAimer(), mv)
     cue('hot', { act: 0 })
@@ -995,27 +1101,26 @@ function patch24Scenes() {
   })
   at(2.0, () => (ov.title.out = now()))
   const a0 = tl.t
-  every(a0 + 0.6, a0 + 9, 0.6, () => alive() < 20 && spawn(K(1), 7, 8, 12))
-  every(a0 + 2.4, a0 + 9, 2.6, () => tap('Space'))
-  at(9, () => {})
-  // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 앞으로 · 옆걸음
+  every(a0 + 0.5, a0 + 7.5, 0.5, () => alive() < 22 && spawn(K(1), 7, 6, 11))
+  every(a0 + 2.4, a0 + 7.5, 2.6, () => tap('Space'))
+  at(7.5, () => {})
+  // ---- 2. 3인칭 (2막 숲): 화면 가운데 조준점으로 겨누며 옆걸음
   at(0, () => goto(11))
   at(1.2, () => {
     place()
     inp().fps = true
     inp().pitch = -0.1
-    mv = mover('adv')
+    mv = mover('hold')
     perFrame = both(tppAimer(), mv)
-    spawnAhead(K(11), 10, 6, 10, 0.8, 1.6)
+    spawnAhead(K(11), 12, 5, 9, 0.8, 1.6)
     holding = false
   })
   const b0 = tl.t
-  every(b0 + 0.6, b0 + 11, 0.5, () => ahead() < 9 && spawnAhead(K(11), 6, 6, 10, 0.8, 1.6))
-  at(3.5, () => mv.strafe('KeyD'))
+  every(b0 + 0.5, b0 + 8.5, 0.5, () => ahead() < 10 && spawnAhead(K(11), 6, 6, 10, 0.8, 1.6))
+  at(2.5, () => mv.strafe('KeyD'))
+  at(2.2, () => mv.strafe('KeyA'))
   at(2.2, () => mv.strafe(''))
-  at(2.4, () => mv.strafe('KeyA'))
-  at(2.2, () => mv.strafe(''))
-  at(1.2, () => {})
+  at(1.6, () => {})
   // ---- 3. 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커
   at(0, () => {
     goto(11)
@@ -1025,16 +1130,12 @@ function patch24Scenes() {
     inp().mouseDown.add(2)
     mv = mover('back')
     perFrame = both(tppAimer({ head: true }), mv)
-    spawnAhead(K(11), 8, 8, 12, 0.45, 2)
+    spawnAhead(K(11), 9, 7, 11, 0.45, 2)
   })
   at(0.45, () => (holding = false))
   const c0 = tl.t
-  every(c0 + 0.6, c0 + 7.5, 0.5, () => ahead() < 7 && spawnAhead(K(11), 4, 8, 12, 0.45, 2))
-  // 정조준 중에도 옆으로 천천히 — 화면이 멈춘 듯 보이지 않게
-  at(1.5, () => mv.strafe('KeyD'))
-  at(2.5, () => mv.strafe('KeyA'))
-  at(2.5, () => mv.strafe(''))
-  at(1.0, () => {})
+  every(c0 + 0.5, c0 + 6, 0.45, () => ahead() < 8 && spawnAhead(K(11), 4, 7, 11, 0.45, 2))
+  at(6, () => {})
   // ---- 4. 화염방사기로 바꿔 끼고 3인칭 (3막 시장): 몰려오는 무리를 태운다 — 무기 모양도 바뀐다
   at(0, () => goto(22))
   at(1.2, () => {
@@ -1044,13 +1145,23 @@ function patch24Scenes() {
     equipWeapon('flamer')
     mv = mover('flame')
     perFrame = both(tppAimer({ range: 6 }), mv)
-    spawnAhead(K(22), 16, 7, 12, 0.6, 1.3)
+    spawnAhead(K(22), 16, 5, 10, 0.6, 1.3)
     holding = false
   })
   const d0 = tl.t
-  every(d0 + 1, d0 + 9, 0.8, () => ahead() < 14 && spawnAhead(K(22), 7, 8, 12, 0.6, 1.3))
-  at(9.5, () => {})
-  // ---- 5. 쿼터뷰 큰 무리 (4막 균열): 다시 SMG · 정예 · 스킬 · 궁극기
+  every(d0 + 0.8, d0 + 7.5, 0.7, () => ahead() < 14 && spawnAhead(K(22), 7, 6, 10, 0.6, 1.3))
+  at(7.5, () => {})
+  // ---- 5. 무기 모아 보기 (따로 그린 3D — 게임 화면 아님)
+  at(0, () => {
+    dissolve(260)
+    perFrame = null
+    mv.stop()
+    inp().mouseDown.clear()
+    for (const m of st().monsters) m.hp = 0
+    showcaseStart()
+  })
+  at(SC_DUR, () => {})
+  // ---- 6. 쿼터뷰 큰 무리 (4막 균열): 다시 SMG · 정예 · 스킬 · 궁극기
   at(0, () => {
     goto(29)
     inp().fps = false
@@ -1059,18 +1170,18 @@ function patch24Scenes() {
     place()
     equipWeapon('smg')
     S().renderer.setDebugZoom(0.78)
-    spawn(K(29), 46, 6, 13)
+    spawn(K(29), 46, 5, 12)
     elites2()
     mv = qmover()
     perFrame = both(quarterAimer(), mv)
     holding = false
   })
   const e0 = tl.t
-  every(e0 + 1, e0 + 8, 1, () => alive() < 40 && spawn(K(29), 12, 9, 13))
-  at(1.8, () => tap('KeyQ'))
+  every(e0 + 1, e0 + 7, 1, () => alive() < 40 && spawn(K(29), 12, 7, 12))
+  at(1.6, () => tap('KeyQ'))
   at(1.6, () => tap('KeyE'))
-  at(1.8, () => tap('KeyR'))
-  at(3.4, () => {
+  at(1.6, () => tap('KeyR'))
+  at(2.6, () => {
     mv.stop()
     perFrame = null
     inp().mouseDown.clear()
@@ -1227,8 +1338,12 @@ function tppAimer(o = {}) {
     else inp.mouseDown.delete(0)
   }
 }
-/** 쿼터뷰 조준: 화면 안의 가장 가까운 괴물에 마우스를 두고 쏜다 */
+/**
+ * 쿼터뷰 조준: 화면 안의 가까운 괴물로 마우스를 **부드럽게** 옮기고 조준점이 닿았을 때만 쏜다. 표적은 쓰러질 때까지 바꾸지 않는다
+ * (2026-10-24 사용자: "이상한 조준점을 대고 총을 쏘는 것은 빼고" — 예전에는 매 장 가장 가까운 괴물로 마우스를 순간이동시켜 조준점이 튀며 쐈다)
+ */
 function quarterAimer() {
+  let id = -1
   return () => {
     const s = st()
     const p = s.players[0]
@@ -1236,25 +1351,36 @@ function quarterAimer() {
     const inp = S().input
     const vw = R.hud.canvas.width / R.hud.dpr
     const vh = R.hud.canvas.height / R.hud.dpr
-    let best = null
-    let bd = 1e9
-    for (const m of s.monsters) {
-      if (m.hp <= 0) continue
-      const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2
-      const at = R.monsterView.shown.get(m.id)
-      if (d >= bd || !at) continue
-      const sc = R.worldToScreen(at.x, 0.95, at.z)
-      if (sc.x < vw * 0.08 || sc.x > vw * 0.92 || sc.y < vh * 0.1 || sc.y > vh * 0.8) continue
-      bd = d
-      best = sc
+    const onScreen = (m) => {
+      const at = m && m.hp > 0 ? R.monsterView.shown.get(m.id) : null
+      if (!at) return null
+      const sc = R.worldToScreen(at.x, 0.8, at.z)
+      return sc.x > vw * 0.06 && sc.x < vw * 0.94 && sc.y > vh * 0.08 && sc.y < vh * 0.8 ? sc : null
     }
-    if (!best) {
+    let m = s.monsters.find((q) => q.id === id)
+    let sc = onScreen(m)
+    if (!sc) {
+      let bd = 1e18
+      for (const q of s.monsters) {
+        const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2
+        if (d >= bd) continue
+        const c = onScreen(q)
+        if (!c) continue
+        bd = d
+        m = q
+        sc = c
+      }
+      id = sc ? m.id : -1
+    }
+    if (!sc) {
       inp.mouseDown.delete(0)
       return
     }
-    inp.mouse.x = best.x
-    inp.mouse.y = best.y
-    inp.mouseDown.add(0)
+    const k = Math.min(1, (0.3 * 60) / FPS)
+    inp.mouse.x += (sc.x - inp.mouse.x) * k
+    inp.mouse.y += (sc.y - inp.mouse.y) * k
+    if (Math.hypot(sc.x - inp.mouse.x, sc.y - inp.mouse.y) < 36) inp.mouseDown.add(0)
+    else inp.mouseDown.delete(0)
   }
 }
 /** 3인칭 걷기: adv = 괴물이 멀면 앞으로 · back = 6칸 안이면 뒤로 · hold = 4칸 · flame = 3.4칸(화염방사기는 가까이 — 더 붙으면 무리가 카메라를 덮었다). strafe 로 옆걸음을 얹는다 (키를 바뀔 때만 누르고 뗀다) */
@@ -1993,9 +2119,9 @@ async function lobbyPhase(ve) {
 async function startGameFromLobby() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   const btn = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t)
-  // 패치 플레이 영상은 SMG 주펄란 — 초당 12발(소총의 두 배)이라 히트마커가 쉬지 않는다 · 소음기 없음(단군란 · 우원란은 총소리가 작다)
-  // (2026-10-24 사용자: "침착란으로 하니까 공속이 느리고 멈추거나 끊겨 보인다")
-  window.__lobby?.selectChar?.(P24 ? 'jupeol' : 'cheolmyeon')
+  // 패치 플레이 영상은 SMG 단군란 — 초당 12발(소총의 두 배)이라 히트마커가 쉬지 않는다 (2026-10-24 사용자: "침착란은 공속이 느려 끊겨 보인다" →
+  // 주펄란으로 뜬 뒤 "캐릭터만 단군란으로"). 단군란은 소음기 특성이라 총소리가 작다 — 맞히는 소리 · 처치 소리는 그대로
+  window.__lobby?.selectChar?.(P24 ? 'dangun' : 'cheolmyeon')
   // 파티: 나 철면란(탱커) · 딜러 침착란 · 단군란 · 힐러 매직란 (2026-09-24 사용자)
   if (window.__lobby) window.__lobby.botChars = P24 ? ['cheolmyeon', 'dangun', 'magic'] : BOT_CHARS
   btn('게임 만들기')?.click()
@@ -2048,6 +2174,8 @@ export async function start(opts = {}) {
     settings: await sameModule('/src/ui/settings.ts'),
     m3d: await sameModule('/src/render3d/monsters3d.ts'),
     monsters: await sameModule('/src/core/monsters.ts'),
+    weapons: await sameModule('/src/core/weapons.ts'),
+    c3d: await sameModule('/src/render3d/character3d.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -2224,7 +2352,7 @@ export async function start(opts = {}) {
   // 소리는 모아 두었다가 따로 그린다 (라이브 소리는 내지 않는다)
   const sfx = sess.sfx
   sfx.onEvents = (ev, s, lp) => {
-    if (!holding && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
+    if (!holding && !ov.showcase && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
   }
   sfx.donate = (big) => {
     if (!holding) sfxCues.push({ t: vidSec(), donate: big })
@@ -2233,7 +2361,8 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), count: sec })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, showcase: false, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  if (P24) await showcaseSetup()
 
   diag = []
   const acts = ULT ? ultScenes() : P24 ? patch24Scenes() : NOTES ? notesScenes() : scenes(PART)
