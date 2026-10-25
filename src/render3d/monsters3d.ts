@@ -981,9 +981,11 @@ export class MonsterView {
   private root = new THREE.Matrix4()
   private tmp = new THREE.Matrix4()
   private col = new THREE.Color()
-  private prevPos = new Map<number, { x: number; y: number }>()
+  private prevPos = new Map<number, { x: number; y: number; f: number }>()
+  /** 프레임 번호 — 자리 맵의 객체를 다시 쓰고, 이번 프레임에 안 나온 것(f 가 다름)만 가끔 지운다 */
+  private posStamp = 0
   /** 그린 위치 (체력 바·조준선이 쓴다) */
-  readonly shown = new Map<number, { x: number; z: number }>()
+  readonly shown = new Map<number, { x: number; z: number; f: number }>()
   /** 시야 끝 어둡게 (🌙 3인칭만 — renderer): 자리 → 밝기 배율 0 ~ 1. 바닥은 반경 74% 부터 어두워지는데 괴물만 밝은 채로 툭 나타났다 */
   edgeShade: ((x: number, z: number) => number) | null = null
   /** 실사 모델 (종류 번호 → 받는 중 · 실패 · 준비됨). 2026-09-19 */
@@ -1295,14 +1297,22 @@ export class MonsterView {
    */
   /** inView(x, z, 반지름): 카메라 시야에 드나 — 밖이면 그리지 않는다(위치 shown 은 그대로 — 이름표 · 조준이 쓴다) */
   update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean, inView: (x: number, z: number, r: number) => boolean = () => true): void {
-    this.prevPos.clear()
-    for (const m of prev.monsters) this.prevPos.set(m.id, { x: m.x, y: m.y })
+    // 자리 맵은 비우지 않고 객체를 다시 쓴다 — 프레임마다 괴물 수만큼 객체를 새로 만들어 쓰레기 수거가 잦았다 (2026-10-25 계측: 12초에 40 ~ 64MB)
+    const stamp = ++this.posStamp
+    for (const m of prev.monsters) {
+      const o = this.prevPos.get(m.id)
+      if (o) {
+        o.x = m.x
+        o.y = m.y
+        o.f = stamp
+      } else this.prevPos.set(m.id, { x: m.x, y: m.y, f: stamp })
+    }
+    for (const [id, o] of this.prevPos) if (o.f !== stamp) this.prevPos.delete(id)
     const counts = this.kinds.map(() => 0)
     this.mcounts.fill(0)
     this.blobN = 0
     this.clock += dt
     const live = new Set<number>()
-    this.shown.clear()
     for (const m of curr.monsters) {
       if (m.hp <= 0) continue
       live.add(m.id)
@@ -1321,7 +1331,12 @@ export class MonsterView {
       }
       const x = (p.x + (m.x - p.x) * alpha) * U + (v?.kx ?? 0)
       const z = (p.y + (m.y - p.y) * alpha) * U + (v?.kz ?? 0)
-      this.shown.set(m.id, { x, z })
+      const sh = this.shown.get(m.id)
+      if (sh) {
+        sh.x = x
+        sh.z = z
+        sh.f = stamp
+      } else this.shown.set(m.id, { x, z, f: stamp })
       // 움직임 상태
       const def = MONSTER_LIST[m.kind]
       v.move += ((m.moving ? 1 : 0) - v.move) * Math.min(1, dt * 10)
@@ -1347,6 +1362,8 @@ export class MonsterView {
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
     for (const id of this.vis.keys()) if (!live.has(id)) this.vis.delete(id)
+    // 이번 프레임에 안 나온 괴물(쓰러짐 · 지역 옮김)의 자리는 지운다 — 예전처럼 산 괴물만 남는다
+    for (const [id, o] of this.shown) if (o.f !== stamp) this.shown.delete(id)
     // 시체: 뒤로 넘어져 한동안 누워 있다가 가라앉는다
     const still: Corpse[] = []
     const dead: Anim = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }

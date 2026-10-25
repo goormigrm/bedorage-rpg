@@ -4,7 +4,6 @@
 // Client Secret 은 프록시 워커의 환경 변수에만 있다 — 여기(공개 저장소)에는 없다.
 // 치지직 세션 서버는 Socket.IO 클라이언트 2.0.3 까지만 받는다 → socket.io-client 2.5.0 으로 고정.
 
-import io from 'socket.io-client'
 import type { ChzzkSocket } from 'socket.io-client'
 import { stream } from '../game/stream'
 
@@ -28,6 +27,7 @@ interface TokenSet {
 }
 
 let socket: ChzzkSocket | null = null
+let ioP: Promise<(typeof import('socket.io-client'))['default']> | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectDelay = 5000
 let manualOff = true
@@ -231,7 +231,11 @@ export async function connect(): Promise<void> {
     if (gen !== connectGen) return
     const url = auth.content?.url
     if (!url) throw new Error('세션 주소를 받지 못했습니다')
-    openSocket(url)
+    // socket.io(65KB)는 처음 연결할 때 한 번 받는다 — 방송하지 않는 사람은 받을 일이 없다 (2026-10-25 검토)
+    ioP ??= import('socket.io-client').then((m) => m.default)
+    const io = await ioP
+    if (gen !== connectGen) return
+    openSocket(io, url)
   } catch (e) {
     if (gen !== connectGen) return
     handleFailure(e)
@@ -260,7 +264,7 @@ function dupe(key: string): boolean {
   return last !== undefined && now - last < DEDUPE_MS
 }
 
-function openSocket(url: string): void {
+function openSocket(io: (typeof import('socket.io-client'))['default'], url: string): void {
   stream.setStatus('connecting', '웹소켓 연결 중…')
   subscribed.clear()
   subFail = ''

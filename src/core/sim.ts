@@ -5058,13 +5058,26 @@ function stepGlobes(state: GameState): void {
  * 전에는 매 틱 판 전체를 structuredClone 했는데(덕 그대로), 몬스터·가방이 생기자 틱마다 0.33ms 가 들었다(2026-09-18 실측).
  * 모양만 GameState 이고 나머지는 비어 있다 — 렌더러 말고는 쓰지 말 것. 리싱크·난입 전송은 snapshot() 을 쓴다.
  */
-export function interpSnapshot(state: GameState): GameState {
-  return {
-    players: state.players.map((p) => ({ x: p.x, y: p.y })),
-    bullets: state.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y })),
-    monsters: state.monsters.map((m) => ({ id: m.id, x: m.x, y: m.y })),
-    mshots: state.mshots.map((m) => ({ id: m.id, x: m.x, y: m.y })),
-  } as unknown as GameState
+export function interpSnapshot(state: GameState, into?: GameState): GameState {
+  // into = 다시 쓸 사본(세션이 둘을 번갈아 준다) — 틱마다 괴물 수만큼 객체를 새로 만들어 쓰레기 수거가 잦았다 (2026-10-25 계측 · 화면 전용이라 판 결과와 상관없다)
+  const o = (into ?? { players: [], bullets: [], monsters: [], mshots: [] }) as unknown as Record<'players' | 'bullets' | 'monsters' | 'mshots', { id?: number; x: number; y: number }[]>
+  fillXY(o.players, state.players, false)
+  fillXY(o.bullets, state.bullets, true)
+  fillXY(o.monsters, state.monsters, true)
+  fillXY(o.mshots, state.mshots, true)
+  return o as unknown as GameState
+}
+
+function fillXY(out: { id?: number; x: number; y: number }[], src: readonly { id?: number; x: number; y: number }[], id: boolean): void {
+  out.length = src.length
+  for (let i = 0; i < src.length; i++) {
+    const s = src[i]
+    let d = out[i]
+    if (!d) out[i] = d = { x: 0, y: 0 }
+    if (id) d.id = s.id
+    d.x = s.x
+    d.y = s.y
+  }
 }
 
 /** 스냅샷 (events 제외) */

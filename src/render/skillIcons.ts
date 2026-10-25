@@ -541,14 +541,38 @@ function wind(c: CanvasRenderingContext2D, s: number, n: number): void {
   }
 }
 
+/**
+ * 그려 둔 아이콘 (스킬 · 크기 · 어둡게 · 화면 배율마다). 아이콘은 빛 번짐(shadowBlur)으로 그려 비싸다 — HUD 가 프레임마다 다섯 개를 새로 그렸다
+ * (2026-10-25 검토 · v1.2.1 실측 HUD 1.7ms 중 패널 0.9ms). 한 번 그려 두고 붙인다
+ */
+const iconCache = new Map<string, HTMLCanvasElement>()
+
 /** 스킬 아이콘 (dim = 대기 중이라 어둡게) */
 export function drawSkillIcon(c: CanvasRenderingContext2D, id: SkillId, cx: number, cy: number, s: number, dim = false): void {
+  // 트리 스킬은 바탕 스킬의 그림 (이름만 캐릭터마다 다르다)
+  const b = baseSkill(id)
+  const k = c.getTransform().a || 1
+  // 그림(반지름 s/2) + 번짐 여유
+  const pad = s * 0.8
+  const key = `${b}|${Math.round(s * 4)}|${dim ? 1 : 0}|${k}`
+  let img = iconCache.get(key)
+  if (!img) {
+    img = document.createElement('canvas')
+    img.width = img.height = Math.ceil(pad * 2 * k)
+    const g = img.getContext('2d')!
+    g.scale(k, k)
+    paintSkillIcon(g, b, pad, pad, s, dim)
+    if (iconCache.size > 200) iconCache.clear()
+    iconCache.set(key, img)
+  }
+  c.drawImage(img, cx - pad, cy - pad, pad * 2, pad * 2)
+}
+
+function paintSkillIcon(c: CanvasRenderingContext2D, b: BaseSkillId, cx: number, cy: number, s: number, dim: boolean): void {
   c.save()
   c.translate(cx, cy)
   c.lineCap = 'round'
   c.lineJoin = 'round'
-  // 트리 스킬은 바탕 스킬의 그림 (이름만 캐릭터마다 다르다)
-  const b = baseSkill(id)
   const col = TONE[b]
   c.fillStyle = col
   c.strokeStyle = col

@@ -660,11 +660,13 @@ export class D4Hud {
       c.fillText(`외 ${more}개`, x + W - 12, y + 17)
       c.textAlign = 'left'
     }
+    // 남은 괴물은 한 번만 센다 — 줄마다 괴물 전체를 거르는 배열을 프레임마다 새로 만들었다 (2026-10-25 계측)
+    let left = 0
+    for (const m of s.monsters) if (MONSTER_LIST[m.kind].attack !== 'flee') left++
     list.forEach(({ d, i }, k) => {
       const st = q[i] ?? 0
       const ly = y + 37 + k * QL_ROW
       const here = d.area === s.curArea
-      const left = s.monsters.filter((m) => MONSTER_LIST[m.kind].attack !== 'flee').length
       const [mark, color, right, rc] =
         st >= 3
           ? ['✓', '#7f9a78', '끝', '#6a8a64']
@@ -700,7 +702,8 @@ export class D4Hud {
     c.textBaseline = 'alphabetic'
     if (s.mode === 'dungeon') {
       // 남은 괴물: 보물 고블린은 세지 않는다 (퀘스트 "비워라" 와 같게)
-      const left = s.monsters.filter((m) => m.hp > 0 && MONSTER_LIST[m.kind].attack !== 'flee').length
+      let left = 0
+      for (const m of s.monsters) if (m.hp > 0 && MONSTER_LIST[m.kind].attack !== 'flee') left++
       const total = Math.max(1, s.monstersTotal)
       const inner = W - 24
       const me = opts.localPlayer >= 0 ? s.players[opts.localPlayer] : null

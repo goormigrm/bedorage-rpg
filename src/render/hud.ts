@@ -358,12 +358,18 @@ export class Hud {
   }
 
   /** low = 체력이 낮은 정도 (0~1) — 가장자리가 붉게 숨 쉰다 (2026-10-08 손맛) */
+  /** 가장자리 어둡게 그러데이션 (화면 크기가 바뀔 때만 새로) */
+  private vig: { key: string; g: CanvasGradient } | null = null
   drawVignette(low = 0): void {
     const ctx = this.ctx
-    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.5, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.78)
-    g.addColorStop(0, 'rgba(0,0,0,0)')
-    g.addColorStop(1, 'rgba(0,0,0,0.35)')
-    ctx.fillStyle = g
+    const key = `${VIEW_W}x${VIEW_H}`
+    if (this.vig?.key !== key) {
+      const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.5, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.78)
+      g.addColorStop(0, 'rgba(0,0,0,0)')
+      g.addColorStop(1, 'rgba(0,0,0,0.35)')
+      this.vig = { key, g }
+    }
+    ctx.fillStyle = this.vig.g
     ctx.fillRect(0, 0, VIEW_W, VIEW_H)
     if (low > 0) {
       const beat = 0.55 + 0.45 * Math.max(0, Math.sin(this.t * (5 + low * 3)))

@@ -234,6 +234,8 @@ const SAY_FONT = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif'
 const LIGHT_STEP = 4
 /** 미리 컴파일하는 가장 큰 빛 수 = 빛 상한(LIGHT_BUDGET). 24 → 16 (2026-09-23 — 넘치면 먼 빛을 끄므로 새 컴파일이 없다) */
 const LIGHT_MAX = 16
+/** 크기 1 (금화 인스턴스 행렬) */
+const ONE3 = new THREE.Vector3(1, 1, 1)
 /** 미리 컴파일하는 빛 수 차례 — 던전에서 흔한 것부터 (등불만 4 · 드랍 빛 8 …, 0 은 모두 쓰러졌을 때뿐) */
 const WARM_ORDER = [4, 8, 12, 16, 0]
 /** 덮개 동안 끝내야 하는 빛 수 — 던전 싸움에서 나오는 것 (등불 넷 + 횃불 · 섬광). 이 차례로 먼저 한다 */
@@ -319,7 +321,36 @@ export class Renderer3D {
   private bossSeen = new Set<number>()
   private seenM = new Map<number, number>()
   /** 몬스터 투사체 (빛나는 구슬) */
-  private shotPool: THREE.Sprite[] = []
+  /**
+   * 몬스터 투사체: 점 하나(Points)에 자리 · 색 · 크기를 싣는다 (2026-10-25 검토 — 탄마다 스프라이트 하나라 재의 들판에서 그리기 호출이 79번까지).
+   * 크기는 월드 칸(스프라이트와 같다 — uScale 이 화면 높이 / 2tan(fov/2)) · 더하기 빛 · 안개 없음(총성처럼 멀리서도 보이게)
+   */
+  private readonly shotCap = 256
+  private readonly shotPos = new Float32Array(256 * 3)
+  private readonly shotCol = new Float32Array(256 * 3)
+  private readonly shotSize = new Float32Array(256)
+  private readonly shotPts: THREE.Points = (() => {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(this.shotPos, 3).setUsage(THREE.DynamicDrawUsage))
+    g.setAttribute('aColor', new THREE.BufferAttribute(this.shotCol, 3).setUsage(THREE.DynamicDrawUsage))
+    g.setAttribute('aSize', new THREE.BufferAttribute(this.shotSize, 1).setUsage(THREE.DynamicDrawUsage))
+    g.setDrawRange(0, 0)
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: null }, uScale: { value: 500 } },
+      vertexShader:
+        'attribute float aSize; attribute vec3 aColor; varying vec3 vColor; uniform float uScale;' +
+        'void main() { vColor = aColor; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }',
+      fragmentShader:
+        'uniform sampler2D uMap; varying vec3 vColor;' +
+        'void main() { vec4 t = texture2D(uMap, gl_PointCoord); gl_FragColor = vec4(vColor * t.rgb, t.a); }',
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    const pts = new THREE.Points(g, m)
+    pts.frustumCulled = false
+    return pts
+  })()
   /** 던전: 플레이어마다 드는 등불 — 디아블로의 빛 반경. 어둠과 시야 제한이 겹쳐 분위기를 만든다 */
   private lanterns: THREE.PointLight[] = []
   /** 거대한 막 보스를 카메라 쪽에서 비추는 빛 (등불 반경 밖으로 몸이 나가 검은 덩어리로 보였다 — 2026-09-24) */
@@ -414,6 +445,11 @@ export class Renderer3D {
   private renderScale = 1
   private readonly tmpColor = new THREE.Color()
   private readonly tmpV3 = new THREE.Vector3()
+  private readonly tmpM4 = new THREE.Matrix4()
+  private readonly tmpCol = new THREE.Color()
+  private readonly tmpV2 = new THREE.Vector2()
+  private readonly tmpQ = new THREE.Quaternion()
+  private readonly tmpE = new THREE.Euler()
   private texts: WorldText[] = []
   /** 이번 프레임에 놓인 바닥 이름표 (지역 · 아이템 — 겹치면 비킨다) · 그 밑에 그리지 않을 반투명 DOM 자리 */
   private labelRects: UiRect[] = []
@@ -1343,18 +1379,19 @@ export class Renderer3D {
         // 시선 앞쪽의 것만 (2026-10-24 사용자: "3인칭에서 캐릭터가 보는 방향이 아니라 혼자 몹 쪽으로 뒤돈다") — 3인칭은 카메라가 캐릭터 뒤라
         // 캐릭터와 카메라 사이(등 뒤)의 괴물이 화면 가운데를 크게 덮으면 그것을 겨누어 뒤로 돌았다
         if ((m.x - me.x) * fx + (m.y - me.y) * fy <= 0) continue
-        const at = this.monsterView.shown.get(m.id)
-        if (!at) continue
-        const foot = this.worldToScreen(at.x, 0, at.z)
-        const top = this.worldToScreen(at.x, monsterTop(m), at.z)
-        const h = foot.y - top.y
-        if (h <= 0 || cy < top.y || cy > foot.y || Math.abs(cx - foot.x) > h * (isQuadruped(m.kind) ? 0.62 : 0.35)) continue
+        // 값싼 거리 · 각도 검사를 화면 좌표(괴물마다 두 번)보다 먼저 — 결과는 같고 프레임 · 틱마다 괴물 수백 번 비추던 것이 시선 부채꼴 안만 남는다
         const dx = me.x - m.x
         const dy = me.y - m.y
         const d = Math.hypot(dx, dy) || 1
         if (d >= bd) continue
         // 시선에서 크게 비낀 것은 겨누지 않는다 — 어깨 너머 카메라라 캐릭터 바로 옆의 괴물이 화면 가운데에 걸리면 몸이 그쪽으로 돌았다
         if (Math.abs(angDiff(Math.atan2(-dy, -dx), this.fpsYaw)) > AIM_CONE) continue
+        const at = this.monsterView.shown.get(m.id)
+        if (!at) continue
+        const foot = this.worldToScreen(at.x, 0, at.z)
+        const top = this.worldToScreen(at.x, monsterTop(m), at.z)
+        const h = foot.y - top.y
+        if (h <= 0 || cy < top.y || cy > foot.y || Math.abs(cx - foot.x) > h * (isQuadruped(m.kind) ? 0.62 : 0.35)) continue
         bd = d
         if (cy < top.y + h * 0.3) best = { x: m.x, y: m.y }
         else {
@@ -2961,7 +2998,17 @@ export class Renderer3D {
     ctx.fillRect(0, 0, map.w, map.h)
     ctx.globalAlpha = 1
     const rp = 1 / MINIMAP_PX_PER_TILE // 타일 좌표계에서 1px
-    // 보이는 몬스터: 작은 빨간 점 (잠든 것은 어둡게)
+    // 보이는 몬스터: 작은 빨간 점 (잠든 것은 어둡게). 색마다 한 경로로 모아 한 번에 칠한다 — 점마다 색 · 칠하기를 하면 괴물 수백에 수백 번이었다 (2026-10-25)
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.beginPath()
+      for (const m of curr.monsters) {
+        if (m.hp <= 0 || (this.hiddenM.has(m.id) && lp >= 0) || MONSTER_LIST[m.kind].attack === 'flee') continue
+        if ((m.st === 0) !== (pass === 0)) continue
+        ctx.rect(m.x / TILE - 1.6 * rp, m.y / TILE - 1.6 * rp, 3.2 * rp, 3.2 * rp)
+      }
+      ctx.fillStyle = pass === 0 ? '#7a3a34' : '#ff5a4a'
+      ctx.fill()
+    }
     for (const m of curr.monsters) {
       if (m.hp <= 0 || (this.hiddenM.has(m.id) && lp >= 0)) continue
       if (MONSTER_LIST[m.kind].attack === 'flee') {
@@ -2975,10 +3022,7 @@ export class Renderer3D {
         ctx.beginPath()
         ctx.arc(m.x / TILE, m.y / TILE, (6 + Math.sin(this.t * 6) * 1.5) * rp, 0, Math.PI * 2)
         ctx.stroke()
-        continue
       }
-      ctx.fillStyle = m.st === 0 ? '#7a3a34' : '#ff5a4a'
-      ctx.fillRect(m.x / TILE - 1.6 * rp, m.y / TILE - 1.6 * rp, 3.2 * rp, 3.2 * rp)
     }
     for (let i = 0; i < curr.players.length; i++) {
       const p = curr.players[i]
@@ -4456,36 +4500,61 @@ export class Renderer3D {
 
   // ---------- 전리품 ----------
   /** 바닥 전리품: 등급 색 빛기둥 + 작은 상자. 내 것·버려진 것만 (디아블로 개인 전리품) */
+  /** 바닥 금화 (인스턴스 하나 — updateDrops 가 프레임마다 다시 채운다 · 자석에 끌려 움직인다) */
+  private coins: THREE.InstancedMesh | null = null
+  private coinN = 0
+  private putCoin(x: number, y: number, z: number, rz: number): void {
+    let m = this.coins!
+    if (this.coinN >= m.instanceMatrix.count) {
+      // 모자라면 두 배로 (재질 · 도형은 같이 쓰니 셰이더는 그대로)
+      const bigger = new THREE.InstancedMesh(this.dropRes.coin, this.dropRes.coinMat, m.instanceMatrix.count * 2)
+      bigger.frustumCulled = false
+      for (let i = 0; i < this.coinN; i++) {
+        m.getMatrixAt(i, this.tmpM4)
+        bigger.setMatrixAt(i, this.tmpM4)
+      }
+      this.scene.remove(m)
+      m.dispose()
+      this.scene.add(bigger)
+      this.coins = m = bigger
+    }
+    this.tmpQ.setFromEuler(this.tmpE.set(0, 0, rz))
+    this.tmpM4.compose(this.tmpV3.set(x, y, z), this.tmpQ, ONE3)
+    m.setMatrixAt(this.coinN++, this.tmpM4)
+  }
+
   private updateDrops(curr: GameState, lp: number): void {
     if (lp !== this.localForDrops) {
       for (const g of this.dropMeshes.values()) this.scene.remove(g)
       this.dropMeshes.clear()
       this.localForDrops = lp
     }
+    if (!this.coins) {
+      this.coins = new THREE.InstancedMesh(this.dropRes.coin, this.dropRes.coinMat, 512)
+      this.coins.frustumCulled = false
+      this.scene.add(this.coins)
+    }
+    this.coinN = 0
     const live = new Set<number>()
     for (const d of curr.drops) {
       if (d.owner !== lp && d.owner !== -1) continue
       live.add(d.id)
+      if (!d.item && d.gold > 0) {
+        // 골드 더미(금화 몇 닢)는 인스턴스 하나에 모은다 — 더미마다 메시 2 ~ 6개라 후원 괴물 떼를 잡은 뒤 그리기 호출이 수백 번이었다 (2026-10-25 검토)
+        const n = Math.min(6, 2 + Math.floor(d.gold / 15))
+        for (let k = 0; k < n; k++) this.putCoin(d.x * U + ((k * 37) % 7) / 25 - 0.12, 0.02 + (k % 3) * 0.028, d.y * U + ((k * 53) % 5) / 20 - 0.1, (k % 2) * 0.3)
+        continue
+      }
       let g = this.dropMeshes.get(d.id)
       if (!g && !d.item) {
-        // 골드 더미(금화 몇 닢) · 물약(붉은 병)
+        // 물약(붉은 병)
         g = new THREE.Group()
         const R = this.dropRes
-        if (d.gold > 0) {
-          const n = Math.min(6, 2 + Math.floor(d.gold / 15))
-          for (let k = 0; k < n; k++) {
-            const coin = new THREE.Mesh(R.coin, R.coinMat)
-            coin.position.set(((k * 37) % 7) / 25 - 0.12, 0.02 + (k % 3) * 0.028, ((k * 53) % 5) / 20 - 0.1)
-            coin.rotation.z = (k % 2) * 0.3
-            g.add(coin)
-          }
-        } else {
-          const flask = new THREE.Mesh(R.flask, R.flaskMat)
-          flask.position.y = 0.12
-          const neck = new THREE.Mesh(R.neck, R.neckMat)
-          neck.position.y = 0.26
-          g.add(flask, neck)
-        }
+        const flask = new THREE.Mesh(R.flask, R.flaskMat)
+        flask.position.y = 0.12
+        const neck = new THREE.Mesh(R.neck, R.neckMat)
+        neck.position.y = 0.26
+        g.add(flask, neck)
         this.scene.add(g)
         this.dropMeshes.set(d.id, g)
       }
@@ -4515,6 +4584,10 @@ export class Renderer3D {
       g.position.set(d.x * U, 0, d.y * U)
       ;(g.children[1] as THREE.Mesh).rotation.y = this.t * 1.5 + d.id
     }
+    const cm = this.coins!
+    cm.count = this.coinN
+    cm.visible = this.coinN > 0
+    if (this.coinN > 0) cm.instanceMatrix.needsUpdate = true
     for (let r = 0; r < this.dropRes.beamMats.length; r++) {
       const m = this.dropRes.beamMats[r]
       if (m) m.opacity = 0.35 + 0.15 * Math.sin(this.t * 3 + r * 1.7)
@@ -4684,10 +4757,14 @@ export class Renderer3D {
         const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
-        // 무대(스포트라이트) 빛 10 → 6: 빛 번짐(후처리)이 들어온 뒤로 무대 바닥이 하얗게 날아갔다 (2026-10-08 영상 확인)
-        const beam = new THREE.PointLight(acid ? 0xff4a2a : fuse ? 0xff4a20 : vortex ? 0x80d0ff : trap ? 0xd0a060 : 0xfff0c0, acid || trap ? 3 : fuse ? 6 : 6, zn.r * U * 2.5, 1.4)
-        beam.position.y = 3
-        g.add(beam)
+        // 무대(스포트라이트) 빛 10 → 6: 빛 번짐(후처리)이 들어온 뒤로 무대 바닥이 하얗게 날아갔다 (2026-10-08 영상 확인).
+        // 산성 웅덩이 · 덫은 빛 없이 원만 (2026-10-25 검토 — 재의 들판에서 웅덩이 마흔 남짓이 저마다 점광원이라 빛 받는 재질이 늘 16빛 셰이더로 돌았다).
+        // 폭발 예고는 붉은 빛이 피할 신호라 그대로
+        if (!acid && !trap) {
+          const beam = new THREE.PointLight(fuse ? 0xff4a20 : vortex ? 0x80d0ff : 0xfff0c0, 6, zn.r * U * 2.5, 1.4)
+          beam.position.y = 3
+          g.add(beam)
+        }
         this.scene.add(g)
         this.zoneMeshes.set(zn.id, g)
       }
@@ -5007,27 +5084,46 @@ export class Renderer3D {
     for (const s0 of prev.mshots) prevById.set(s0.id, s0)
     const trail = this.t - this.shotTrailT >= 1 / 60
     if (trail) this.shotTrailT = this.t
+    const pts = this.shotPts
+    if (!pts.parent) {
+      ;(pts.material as THREE.ShaderMaterial).uniforms.uMap.value = this.glowTex
+      this.scene.add(pts)
+    }
+    const col = this.tmpCol
     let n = 0
     for (const s0 of curr.mshots) {
-      let sp = this.shotPool[n]
-      if (!sp) {
-        sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff5a2a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }))
-        this.shotPool[n] = sp
-        this.scene.add(sp)
-      }
+      if (n >= this.shotCap) break
       const p = prevById.get(s0.id) ?? s0
       const sd = MONSTER_LIST[s0.kind]
       // 총잡이 탄은 작고 밝게 (☀ 물방울 하늘색)
       const color = sd?.gun && isBright() ? 0x3fc8ff : (sd?.shotColor ?? 0xff5a2a)
-      sp.material.color.setHex(color)
-      sp.visible = true
-      sp.position.set((p.x + (s0.x - p.x) * alpha) * U, 0.9, (p.y + (s0.y - p.y) * alpha) * U)
-      sp.scale.setScalar((sd?.gun ? 0.36 : 0.55) + Math.sin(this.t * 20 + s0.id) * 0.06)
+      col.setHex(color)
+      const x = (p.x + (s0.x - p.x) * alpha) * U
+      const z = (p.y + (s0.y - p.y) * alpha) * U
+      this.shotPos[n * 3] = x
+      this.shotPos[n * 3 + 1] = 0.9
+      this.shotPos[n * 3 + 2] = z
+      this.shotCol[n * 3] = col.r
+      this.shotCol[n * 3 + 1] = col.g
+      this.shotCol[n * 3 + 2] = col.b
+      this.shotSize[n] = (sd?.gun ? 0.36 : 0.55) + Math.sin(this.t * 20 + s0.id) * 0.06
       // 궤적: 탄이 지나간 자리에 빛점 하나 (60분의 1초마다 — 화면 주사율이 높아도 같은 길이 · 탄 종류는 가리지 않는다)
-      if (trail) this.quarks.burst('trail', sp.position.x, 0.9, sp.position.z, 1, { color })
+      if (trail) this.quarks.burst('trail', x, 0.9, z, 1, { color })
       n++
     }
-    for (let i = n; i < this.shotPool.length; i++) this.shotPool[i].visible = false
+    const g = pts.geometry
+    g.setDrawRange(0, n)
+    pts.visible = n > 0
+    if (n > 0) {
+      for (const k of ['position', 'aColor', 'aSize']) {
+        const a = g.getAttribute(k) as THREE.BufferAttribute
+        a.clearUpdateRanges()
+        a.addUpdateRange(0, n * a.itemSize)
+        a.needsUpdate = true
+      }
+      // 크기 = 월드 칸 → 화면 px: 그리기 버퍼 높이 / (2 tan(fov/2))
+      ;(pts.material as THREE.ShaderMaterial).uniforms.uScale.value = this.gl.getDrawingBufferSize(this.tmpV2).y / (2 * Math.tan((this.camera.fov * Math.PI) / 360))
+    }
   }
 
   /** 거대한 막 보스 빛: 보이는 가장 가까운 거대한 보스의 앞(카메라 쪽) 위에서 비춘다 (어두운 곳만) */
@@ -6204,6 +6300,7 @@ export class Renderer3D {
     this.quarks.dispose()
     this.ambient.dispose()
     this.sky?.dispose()
+    this.coins?.dispose()
     this.post.dispose()
     this.glow.dispose()
     this.puff.dispose()

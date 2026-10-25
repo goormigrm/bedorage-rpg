@@ -53,10 +53,13 @@ function eggRadiusAt(r: number, y: number): number {
   return r * Math.sqrt(Math.max(0, 1 - t * t)) * k
 }
 
+/** 이보다 작은 부품(눈 · 단추 · 코 · 총의 작은 장식)은 그림자를 드리우지 않는다 — 넷이면 그림자 패스에 백 번 가까이 그렸다 (2026-10-25 검토 · 그림자에서 안 보인다) */
+const SHADOW_MIN = 0.06
+
 function sphere(r: number, m: THREE.Material, x = 0, y = 0, z = 0, ws = 16, hs = 12): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), m)
   mesh.position.set(x, y, z)
-  mesh.castShadow = true
+  mesh.castShadow = r >= SHADOW_MIN
   return mesh
 }
 
@@ -291,7 +294,7 @@ function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material,
   const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
   b.position.set(x, y, z)
   b.rotation.set(rx, ry, 0)
-  b.castShadow = true
+  b.castShadow = Math.max(w, h, d) >= SHADOW_MIN * 2
   g.add(b)
   return b
 }
@@ -300,7 +303,7 @@ function tube(g: THREE.Group, r0: number, l: number, m: THREE.Material, x: numbe
   const c = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, l, seg), m)
   c.rotation.x = Math.PI / 2
   c.position.set(x, y, z0 + l / 2)
-  c.castShadow = true
+  c.castShadow = l >= SHADOW_MIN * 2
   g.add(c)
   return c
 }

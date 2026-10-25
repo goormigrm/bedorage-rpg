@@ -1,6 +1,6 @@
 // 게임 본편 진입점. 로비 ↔ 게임 세션 전환.
 
-import { Session, SessionConfig } from './game/session'
+import type { Session, SessionConfig } from './game/session'
 import { setFavicon } from './ui/favicon'
 import { restoreFromMirror } from './game/save'
 import { openLobby } from './net/room'
@@ -22,6 +22,12 @@ watchUpdates()
 // 창 글자 배율 (2026-10-22 — 창 높이 · 글자 크기 설정에 맞춰 HTML 창을 통째로 키운다)
 applyUiZoom()
 window.addEventListener('resize', applyUiZoom)
+
+/**
+ * 게임 세션 코드(렌더러 · 판 · HUD — JS 의 절반 남짓)는 따로 받는다 (2026-10-25 검토 — 로비 전에 1.8MB 를 다 받았다).
+ * 기다리지 않고 지금 받기 시작해 두므로 로비가 먼저 뜨고, 게임을 시작할 때쯤이면 이미 받아 있다
+ */
+const sessionMod = import('./game/session')
 
 const app = document.getElementById('app')!
 // 개발자 모드 (Ctrl + Shift + D — 치지직 창의 시험 단추)
@@ -60,9 +66,11 @@ function showLobby(): void {
 function startSession(cfg: Omit<SessionConfig, 'onExit' | 'onRestart'>): void {
   app.innerHTML = ''
   setInLobby(false)
-  session = new Session(app, { ...cfg, onExit: showLobby, onRestart: startSession })
-  // 스크린샷·GIF 를 뜰 때(?shot=1)만 세션을 밖에 내놓는다 — 장면 연출용(자리 옮기기, 조준점 계산). 평소엔 없다
-  if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session
+  void sessionMod.then(({ Session }) => {
+    session = new Session(app, { ...cfg, onExit: showLobby, onRestart: startSession })
+    // 스크린샷·GIF 를 뜰 때(?shot=1)만 세션을 밖에 내놓는다 — 장면 연출용(자리 옮기기, 조준점 계산). 평소엔 없다
+    if (location.search.includes('shot=1')) (window as unknown as { __session: Session }).__session = session
+  })
 }
 
 /**

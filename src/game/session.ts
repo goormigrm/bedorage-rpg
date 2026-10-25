@@ -292,6 +292,26 @@ export class Session {
   private played: number[] = [0, 0, 0, 0]
   private playedAt = performance.now()
   private ticker: Ticker
+  /** 오른쪽 단추 줄 · 스위치 줄의 자리 (0.2초마다 — colRects) */
+  private colCache: { at: number; rightColTop?: number; belowTracker?: number } = { at: -1e9 }
+  /**
+   * 오른쪽 단추 줄 위끝 · 스위치 줄 높이 — HUD 가 그 자리를 피한다. 프레임마다 offsetTop 을 읽으면 그 프레임에 바뀐 DOM 이 있을 때마다
+   * 배치를 다시 계산했다(2026-10-25 검토) → 0.2초마다만 (uiRects 처럼). .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y · 터치(단추 숨김)면 0 높이라 무시
+   */
+  private colRects(now: number): { rightColTop?: number; belowTracker?: number } {
+    const c = this.colCache
+    if (now - c.at > 200) {
+      c.at = now
+      c.rightColTop = this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined
+      c.belowTracker = this.swcol && !this.swcol.hidden && this.swcol.offsetHeight > 0 ? this.swcol.offsetHeight + 8 : undefined
+    }
+    return { rightColTop: c.rightColTop, belowTracker: c.belowTracker }
+  }
+  /** 후원 표를 마지막으로 맞춘 글자 배율 · 창 크기 (drawDonTable — 그대로면 다시 재지 않는다) */
+  private donFitKey = ''
+  /** 틱마다 쓰는 보간 사본 둘 (interpSnapshot 의 into) */
+  private readonly prevBufs = [{ players: [], bullets: [], monsters: [], mshots: [] }, { players: [], bullets: [], monsters: [], mshots: [] }] as unknown as GameState[]
+  private prevK = 0
   private lastTick = performance.now()
   private lobbyBeacon = 0
   /** 키 설정 알림 끊기 */
@@ -1925,7 +1945,9 @@ export class Session {
           inputs[i] = i === lp ? localIn : this.botFor(i, this.cfg.difficulty ?? 'normal')
         }
       }
-      this.prev = interpSnapshot(this.view())
+      // 보간 사본은 둘을 번갈아 다시 쓴다 (렌더러는 마지막 것만 읽는다)
+      this.prevK ^= 1
+      this.prev = interpSnapshot(this.view(), this.prevBufs[this.prevK])
       step(this.state, this.mapOf, inputs)
       this.applyDrops()
       // 지역을 건너갔으면 3D 세계를 바꾼 뒤에 이벤트를 그 지역 것만 보여 준다
@@ -2139,9 +2161,7 @@ export class Session {
       hideCursor: uiShown && this.input.fps,
       touch: this.touch !== null,
       floorName: this.arena ? `투기장 · ${this.map.name}` : areaDef(this.viewArea).name,
-      // .game-ui 는 무대(논리 좌표) 전체라 offsetTop 이 곧 논리 y. 터치(단추 숨김)면 0 높이라 무시
-      rightColTop: this.rbcol && this.rbcol.offsetHeight > 0 ? this.rbcol.offsetTop : undefined,
-      belowTracker: this.swcol && !this.swcol.hidden && this.swcol.offsetHeight > 0 ? this.swcol.offsetHeight + 8 : undefined,
+      ...this.colRects(now),
       uiRects: this.uiRects(),
       itemsHeld: this.input.itemsHeld && !this.arena,
     })
@@ -2789,10 +2809,10 @@ export class Session {
     const cfg = loadStreamCfg()
     // 방송 글자 크기(방송 개선 ⑤): 말풍선 · 방송 알림은 렌더러가, 후원 표는 CSS 변수로 곱한다
     this.renderer.sayScale = cfg.textScale
-    el.style.setProperty('--dk', String(cfg.textScale))
     const show = stream.live && cfg.table && !this.arena
     if (el.hidden !== !show) el.hidden = !show
     if (!show) {
+      this.donFitKey = ''
       this.chat?.setBottom(null)
       return
     }
@@ -2828,10 +2848,17 @@ export class Session {
     const join = cfg.named ? `<div class="dh join">🙋 채팅에 !참여<br>괴물에 내 이름</div>` : ''
     const html = `<div class="dh">💰 후원 이벤트</div>${rows}${tie}${join}${wait}`
     // 0.25초마다 부르므로 innerHTML 을 읽어 비교하지 않고 마지막에 쓴 것과 비교한다
+    const fitKey = `${cfg.textScale}|${this.stage.clientWidth}x${this.stage.clientHeight}`
+    const changed = el.dataset.h !== html || this.donFitKey !== fitKey
     if (el.dataset.h !== html) {
       el.dataset.h = html
       el.innerHTML = html
     }
+    // 내용 · 창 크기 · 글자 배율이 그대로면 다시 재지 않는다 — 0.25초마다 스타일을 쓰고 곧바로 크기를 읽어(강제 배치 계산) 작은 창에서는
+    // 두 값을 오가며 1초 네 번 다시 계산했다 (2026-10-25 검토 — 방송 중인 그 상황)
+    if (!changed) return
+    this.donFitKey = fitKey
+    el.style.setProperty('--dk', String(cfg.textScale))
     // 작은 창에서 표가 체력 오브(왼쪽 끝 = 가운데 − 366, d4hud drawBottom)를 가리거나 위쪽 파티 칸까지 올라가면 그 안으로 줄인다.
     // 2026-10-24 글씨를 16px 로 키운 뒤로는 1배에서도 1280 창에서 넘쳤다 — 예전 글씨 크기(0.75배)까지만 줄인다
     const room = ((VIEW_W / 2 - 366) * this.stage.clientWidth) / VIEW_W - 20
