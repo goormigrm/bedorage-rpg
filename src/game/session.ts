@@ -1077,6 +1077,7 @@ export class Session {
   }
 
   private onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this.escAt = performance.now()
     if (e.key === 'Enter' && e.altKey && !this.touch) {
       toggleFullscreen()
       e.preventDefault()
@@ -1253,6 +1254,12 @@ export class Session {
   /** 내가 마우스를 푼 때 · 마우스가 풀려 메뉴를 연 때 */
   private selfUnlockAt = -1e9
   private menuByUnlockAt = -1e9
+  /**
+   * 마지막 Esc · 창이 닫힌 시각. Esc 로 창(가방 · 스킬 · 능력치 …)을 닫으면 3인칭 마우스를 다시 가두는데, 크롬은 Esc 바로 뒤의 잠금을
+   * 사용자가 푼 것으로 끊어 onLockChange 가 메뉴를 열었다 (2026-10-25 사용자: "창에서 Esc 를 누르면 메뉴가 아니라 창이 닫히게")
+   */
+  private escAt = -1e9
+  private uiClosedAt = -1e9
   private unlockPointer(): void {
     this.selfUnlockAt = performance.now()
     document.exitPointerLock()
@@ -1264,6 +1271,8 @@ export class Session {
   private onLockChange = (): void => {
     if (document.pointerLockElement || !this.input.fps || this.disposed) return
     if (performance.now() - this.selfUnlockAt < 300 || this.input.uiOpen || !this.overlay.hidden || this.state.phase === 'over') return
+    // Esc 로 창을 막 닫은 참이면 메뉴를 열지 않는다 (그 Esc 는 창 닫기로 이미 썼다)
+    if (performance.now() - this.escAt < 500 && performance.now() - this.uiClosedAt < 500) return
     this.menuByUnlockAt = performance.now()
     this.showMenu()
   }
@@ -2577,6 +2586,7 @@ export class Session {
     // 따라오지 않아 마우스가 어디 있는지 찾기 어렵다" — 전에는 화면을 한 번 더 눌러야 했다). 닫는 누름 · 키가 사용자 동작이라 바로 된다
     if (this.input.uiOpen && this.input.pointerLocked) this.unlockPointer()
     else if (was && !this.input.uiOpen && this.overlay.hidden) this.input.lockPointer()
+    if (was && !this.input.uiOpen) this.uiClosedAt = performance.now()
   }
 
   /** 가운데 창(스킬 · 능력치 · 퀘스트 · 마을 사람 · 웨이포인트)은 같은 자리에 뜬다 — 하나만 남기고 닫는다 (2026-10-08 — K 가 대장장이 창을 덮었다) */

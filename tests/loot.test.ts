@@ -6,7 +6,8 @@ import { createState, step } from '../src/core/sim'
 import { OBJ_CHEST, OBJ_GOLDCHEST, OBJ_SHRINE, OBJ_URN, SHRINE_TICKS } from '../src/core/state'
 import { buildAreaMap, townNpcs } from '../src/core/world'
 import { CMD_BUY, CMD_GAMBLE, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UPGRADE } from '../src/core/input'
-import { Item, LEG_FOCUS, LEG_GOLD, LEG_UNDYING, buyPrice, emptySheet, itemValue } from '../src/core/items'
+import { Item, LEG_FOCUS, LEG_GOLD, LEG_UNDYING, SLOT_WEAPON, buyPrice, emptySheet, itemValue, rollItem } from '../src/core/items'
+import { makeRng } from '../src/core/rng'
 import { CMD_EQUIP } from '../src/core/input'
 import { makeMonster } from '../src/core/dungeon'
 import { EA_FAST, EA_UNIQUE, GOBLIN, GOBLIN_KIND } from '../src/core/monsters'
@@ -29,6 +30,14 @@ function field(seed = 61) {
 }
 
 describe('전리품 · 경제', () => {
+  it('떨어지는 부위: 무기가 1/3 · 나머지 넷은 1/6 씩 (2026-10-25 "1막 끝나 가는데 무기가 안 나온다")', () => {
+    const rng = makeRng(7)
+    const n = [0, 0, 0, 0, 0]
+    for (let i = 0; i < 6000; i++) n[rollItem(rng, i, 5, 'shotgun', 'normal').slot]++
+    expect(n[SLOT_WEAPON] / 6000).toBeGreaterThan(0.3)
+    expect(n[SLOT_WEAPON] / 6000).toBeLessThan(0.37)
+    for (let k = 1; k < 5; k++) expect(n[k] / 6000).toBeGreaterThan(0.14)
+  })
   it('물약(3)은 없다 — 회복은 체력 구슬: 정예는 하나 확정 · 우두머리는 체력 25% 가 줄 때마다 큰 구슬 (2026-09-19)', () => {
     const { s, map, run } = field()
     const p = s.players[0]

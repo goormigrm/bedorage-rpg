@@ -331,7 +331,10 @@ export function pickRarity(rng: Rng, src: LootSource, up = 0, ilvl = 99): number
  * legOk = 주운 사람이 쓸 수 있는 전설 효과만 (sim legFor — 근접의 관통 탄띠 · 회복 스킬 없는 은총 같은 꽝을 빼려고). 난수는 그대로 한 번 뽑는다
  */
 export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1, legOk?: (leg: number) => boolean): Item {
-  const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
+  // 부위: 무기 두 몫 · 나머지 한 몫씩 (무기 1/3). 전에는 다섯 부위 20% 씩이라 1막 한 바퀴 희귀 이상 13개쯤에 무기가 0 ~ 1개였다
+  // (2026-10-25 사용자: "1막 끝나 가는데 무기가 하나도 안 나온다" — 피해를 가장 크게 바꾸는 칸)
+  const sr = randInt(rng, 0, SLOT_COUNT + 1)
+  const slot = forceSlot >= 0 ? forceSlot : sr <= 1 ? SLOT_WEAPON : sr - 1
   let rarity = Math.max(minRarity, pickRarity(rng, src, up, ilvl))
   // 보스(막 보스 · 퀘스트 전설 보상)의 전설은 무기 칸이 아니면 BOSS_SET_CHANCE 로 세트 조각(신화)이 된다 — 세트가 신화에만 있어
   // 보통 한 바퀴(4인 · 4막)에 0개였다 (2026-10-25 검토). 세트는 신화에만(2026-10-08 사용자) — 그래서 등급을 신화로 올린다
