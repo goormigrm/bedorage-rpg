@@ -355,8 +355,8 @@ export class Renderer3D {
   private lanterns: THREE.PointLight[] = []
   /** 거대한 막 보스를 카메라 쪽에서 비추는 빛 (등불 반경 밖으로 몸이 나가 검은 덩어리로 보였다 — 2026-09-24) */
   private giantLight = new THREE.PointLight(0xffb48c, 0, 30, 1.1)
-  /** ☀ 3인칭 하늘 (🌙 는 없다 — 검정 그대로) */
-  private readonly sky: Sky | null = isBright() ? new Sky() : null
+  /** 3인칭 하늘 — ☀ 낮 하늘 · 🌙 달 · 달빛 구름 (2026-10-25 사용자: "아예 검은 하늘보다는 달과 달에 비친 구름") */
+  private readonly sky: Sky | null = new Sky(!isBright())
   /** 스킬 연출: 땅의 무대(스포트라이트) · 던진 수류탄 · 버프 고리 */
   private zoneMeshes = new Map<number, THREE.Group>()
   private throwMeshes = new Map<number, THREE.Mesh>()
