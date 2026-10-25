@@ -209,9 +209,10 @@ export const MONSTER_LIST: MonsterDef[] = [
     // 최종 보스 — 심연의 군주: 휘두르기. 패턴 불꽃 고리 · 불비 · 심연 광선 → 그림자 · 지옥불 — BOSS_PLANS.
     // 체력 2/3 · 1/3 에서 분노 — 그림자를 부르고, 마지막 단계는 빨라지고 더 자주 쓴다
     id: 'lord', idx: 15, name: '심연의 군주',
-    // 체력 24000 → 16800 (2026-09-24 사용자: "마지막 보스 피통은 지금의 70% 정도면 된다")
-    hp: 16800, speed: 2.1, r: 30,
-    attack: 'melee', dmg: 55, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
+    // 체력 24000 → 16800 (2026-09-24 사용자: "마지막 보스 피통은 지금의 70% 정도면 된다") → 13000 · 평타 55 → 42
+    // (2026-10-25 사용자: "4막 보스는 아예 못 깨겠다" — 받은 피해의 46% 가 평타 · 불꽃 탄이었다. 싸움이 짧아지면 즉사기도 덜 나온다)
+    hp: 13000, speed: 2.1, r: 30,
+    attack: 'melee', dmg: 42, range: 22, windup: 24, recover: 30, cooldown: 50, arc: deg(100),
     shotSpeed: 4.2, shotLife: 110, shotR: 9, shotColor: 0xff6a2a,
     knockRes: 0.97, globe: 1, xp: 500, loot: 1, boss: true, special: 'lord',
   },
@@ -422,17 +423,19 @@ export const BP = {
   slam: { r: 190, pm: 340 },
   cross: { len: 560, w: 30, second: 44, pm: 300 },
   quake: { ring: 170, n: 3, gap: 30, pm: 260 },
-  // 4막 심연의 군주
-  nova: { pm: 200 },
-  meteor: { r: 70, pm: 400 },
-  spokes: { n: 6, len: 600, w: 28, second: 50, pm: 450 },
-  hellfire: { r: 190, outer: 520, second: 50, pm: 500 },
+  // 4막 심연의 군주 — 패턴 피해 약 25% 낮춤 (2026-10-25 사용자: "4막 보스는 아예 못 깨겠다 — 보통 수준의 봇이 50% 정도는 클리어하도록")
+  nova: { pm: 150 },
+  meteor: { r: 70, pm: 300 },
+  spokes: { n: 6, len: 600, w: 28, second: 50, pm: 340 },
+  hellfire: { r: 190, outer: 520, second: 50, pm: 370 },
   // 즉사기: 도살자 둘레 원 · 여왕 곁만 안전한 고리 · 관리인 앞 210° 부채 · 군주에게서 떨어진 빛 원 하나만 안전 (고리의 가운데)
   slaughter: { r: 330 },
   webdoom: { r2: 165, r: 1600 },
   // 처형: 앞 210° → 176° (arc 는 반각) — 등 뒤 안전한 자리가 150° → 184° (거대한 몸을 돌아 들어가기 어려웠다)
   execute: { r: 1100, arc: 250 },
-  abyss: { r2: 150, r: 1800, dist: 250 },
+  // 군주: 빛 원 반지름 150 → 210 · 군주에게서 250 → 220 (2026-10-25 사용자: "4막 보스는 아예 못 깨겠다" — 원 하나만 안전해
+  // 예고를 놓치면 그대로 탈락이라, 사람 수준(넷에 하나 놓침)이면 시전마다 한 명꼴로 빠져 남은 파티가 무너졌다)
+  abyss: { r2: 210, r: 1800, dist: 220 },
 }
 
 /** 막 보스마다 즉사기 */
@@ -440,6 +443,8 @@ export const BOSS_ULT: Partial<Record<MonsterKindId, BossPatId>> = { butcher: 's
 /** 즉사기 간격 (틱): 깬 뒤 처음 · 그다음 (단계마다 — 분노하면 더 자주). 다른 패턴 차례와 따로 센다 */
 // 20초 · 40 / 30 / 25초 → 12초 · 28 / 22 / 18초 (2026-10-22 사용자: "즉사기를 최소한 2번은 쓸 수 있게")
 export const BOSS_ULT_CD = { first: 12 * 60, every: [32 * 60, 26 * 60, 22 * 60] }
+/** 보스마다 즉사기 간격을 달리 (없으면 BOSS_ULT_CD) — 군주는 15초 · 38 / 32 / 28초 (2026-10-25 — 한 판 두 번 남짓은 그대로) */
+export const BOSS_ULT_CD_OF: Partial<Record<MonsterKindId, { first: number; every: number[] }>> = { lord: { first: 15 * 60, every: [38 * 60, 32 * 60, 28 * 60] } }
 
 export interface BossPlan {
   /** 단계마다 패턴 차례 (stage 0 · 1 · 2) */
@@ -478,7 +483,7 @@ export const BOSS_PLANS: Partial<Record<MonsterKindId, BossPlan>> = {
   // 심연의 군주: 불꽃 고리 · 불비 · 심연 광선 → (2/3) 그림자 · 지옥불(안 → 밖) → (1/3) 광선 두 번 · 더 자주 · 더 빨리
   lord: {
     order: [['nova', 'meteor', 'spokes'], ['nova', 'meteor', 'shades', 'hellfire', 'spokes'], ['spokes', 'meteor', 'hellfire', 'nova', 'shades']],
-    every: [300, 240, 190],
+    every: [330, 270, 215],
     stages: [2 / 3, 1 / 3],
     speed: [1, 1.1, 1.3],
   },

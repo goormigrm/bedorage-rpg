@@ -22,7 +22,7 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MonsterDef, gunBurst, gunCooldown, UNIQUE, isBossLike, xpFor, xpGapMul,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_ULT_CD_OF, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MonsterDef, gunBurst, gunCooldown, UNIQUE, isBossLike, xpFor, xpGapMul,
   bodyR, GIANT_HP, fromBehind, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
@@ -4599,9 +4599,10 @@ function bossThink(state: GameState, map: GameMap, m: Monster, def: MonsterDef, 
   // 들판에서 다른 괴물과 섞여 피하기 어려워, 후원이 분당 2.5건이면 4막 심연의 군주 소환에 파티가 거듭 쓰러졌다)
   const ult = m.sum === undefined && !m.rg ? BOSS_ULT[def.id] : undefined
   if (ult) {
-    if (m.kcd === undefined) m.kcd = BOSS_ULT_CD.first
+    const cd = BOSS_ULT_CD_OF[def.id] ?? BOSS_ULT_CD
+    if (m.kcd === undefined) m.kcd = cd.first
     else if (m.kcd <= 0 && bossStart(state, map, m, def, ult, tp)) {
-      m.kcd = BOSS_ULT_CD.every[Math.min(m.stage, BOSS_ULT_CD.every.length - 1)]
+      m.kcd = cd.every[Math.min(m.stage, cd.every.length - 1)]
       return true
     }
   }
