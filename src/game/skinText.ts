@@ -224,7 +224,7 @@ for (const a of ACHIEVEMENTS) {
 }
 registerText(LEGENDS[0], 'name', '달콤한 갈증')
 registerText(LEGENDS[1], 'name', '풍선 폭탄')
-registerText(LEGENDS[1], 'desc', '처치하면 25% 확률로 그 자리가 퐁 터진다 (주위 적에게 그 적 최대 체력의 30%)')
+registerText(LEGENDS[1], 'desc', '던전: 처치하면 25% 확률로 그 자리가 퐁 터진다 (주위 적에게 그 적 최대 체력의 30%)')
 const SET_TEXT: [string, string][] = [
   ['참가자의 다짐', '참가자'],
   ['버섯왕의 잠자리채', '버섯왕'],

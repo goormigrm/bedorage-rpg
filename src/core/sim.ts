@@ -1370,12 +1370,10 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
   const attr = (sh.attr ?? [0, 0, 0, 0]).slice(0, 4)
   const mst = (sh.mst ?? [0, 0, 0, 0]).slice(0, 4)
   const st = computeStats(sh.level, equip, attr, mst)
-  // 탱커: 최대 체력 +30% (던전 — recalc 과 같은 식)
-  if (roleOn && c.role === 'tank') st[ST_HP] += Math.round(c.maxHp * 0.3)
   const maxHp = c.maxHp + st[ST_HP]
   const weapon = weaponFor(char, equip)
   const magSize = 0
-  return {
+  const p: PlayerState = {
     id,
     team,
     char,
@@ -1477,6 +1475,9 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     quests: Array.from({ length: QUESTS.length }, (_, i) => Math.max(0, Math.min(3, sh.quests?.[i] ?? 0))),
     merc: -1,
   }
+  // 트리 패시브 · 전설 집중 · 탱커 체력까지 판 시작부터 (전에는 computeStats 만 해 장비 · 레벨이 바뀔 때까지 빠져 있었다 — 2026-10-25 검토)
+  recalc(p)
+  return p
 }
 
 /** 장비·레벨이 바뀌면 능력치를 다시 낸다. 최대 체력이 늘면 그만큼 체력도 는다 */
@@ -1722,7 +1723,7 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   if (state.mode === 'dungeon') {
     stepDowned(state, inputs)
     stepInteract(state, map, inputs)
-  }
+  } else for (const p of state.players) if (p.legCd > 0) p.legCd-- // 투기장 불굴 (던전은 stepInteract 가 센다)
   if (state.phase === 'playing' && state.monsters.length > 0) {
     rushLeft(state)
     stepMonsters(state, map)
@@ -2314,10 +2315,20 @@ function hurtPvp(state: GameState, shooter: PlayerState, victim: PlayerState, dm
   victim.hp -= dmg
   victim.lastHitTick = state.tick
   if (part === PART_LEGS) victim.legInjury = 180
+  // 전설은 투기장에서도 던전과 같은 값으로 (전에는 괴물을 칠 때만 들었다 — 2026-10-25 검토)
+  if (hasLeg(shooter, LEG_BLOOD) && isActive(shooter)) shooter.hp = Math.min(shooter.maxHp, shooter.hp + dmg * 0.03)
+  if (hasLeg(shooter, LEG_FROST) && rand(state.rng) < 0.2) victim.legInjury = Math.max(victim.legInjury, 90)
+  if (hasLeg(victim, LEG_UNDYING) && victim.legCd === 0 && victim.hp < victim.maxHp * 0.3) {
+    victim.hp = Math.max(1, victim.hp)
+    victim.invuln = Math.max(victim.invuln, 120)
+    victim.legCd = 60 * 40
+  }
   state.events.push({ type: 'hit', p: victim.id, by: shooter.id, x: hx, y: hy, part, dmg })
   if (victim.hp > 0) return
   victim.hp = 0
   die(state, victim, shooter.id)
+  if (hasLeg(shooter, LEG_FRENZY)) buffRate(shooter, 180, 1.25)
+  if (hasLeg(shooter, LEG_AMMO)) shooter.pierceShots = Math.min(6, shooter.pierceShots + 3)
   shooter.kills++
   shooter.killStreak++
   if (shooter.killStreak > shooter.bestStreak) shooter.bestStreak = shooter.killStreak
@@ -2567,7 +2578,9 @@ function fire(state: GameState, map: GameMap, p: PlayerState): void {
   const spread = Math.round((p.ads || snipe ? w.spreadAds : w.spreadHip) * (p.char === 'chim' ? CHIM.spreadMul : 1)) + p.recoil
   const { x: mx, y: my } = muzzle(map, p)
   const rate = (p.fx[FX_RATE] > 0 ? p.rateMul : 1) * (1 + p.st[ST_RATE] / 100)
-  const interval = Math.max(1, Math.ceil(w.fireInterval / rate))
+  const exact = w.fireInterval / rate + (p.fireFrac ?? 0)
+  const interval = Math.max(1, Math.floor(exact))
+  p.fireFrac = Math.max(0, exact - interval)
   if (w.melee) {
     p.fireCooldown = interval
     p.shots++
@@ -3156,11 +3169,14 @@ function stepZones(state: GameState, map: GameMap): void {
       }
       if (owner && z.t % 30 === 0) aoe(state, map, owner, z.x, z.y, z.r, z.dmg, { id: 'typhoon', quiet: true })
     } else if (z.kind === ZONE_TRAP) {
-      // 덫: 처음 밟은 괴물 둘레를 치고 사라진다
+      // 덫: 처음 밟은 괴물(투기장은 적 플레이어) 둘레를 치고 사라진다
       const owner = state.players[z.owner]
-      if (owner && state.monsters.some((m) => m.hp > 0 && m.st !== MS_SLEEP && len(m.x - z.x, m.y - z.y) <= z.r)) {
+      const stepOn = (x: number, y: number) => len(x - z.x, y - z.y) <= z.r
+      if (owner && (state.monsters.some((m) => m.hp > 0 && m.st !== MS_SLEEP && stepOn(m.x, m.y)) || state.players.some((q) => isEnemy(owner, q) && q.alive && !q.left && stepOn(q.x, q.y)))) {
         const tr = (state.mode === 'dungeon' ? 3 : 2) * TILE
-        aoe(state, map, owner, z.x, z.y, tr, z.dmg, { stun: 180, id: 'trap' })
+        // 투기장은 기절 대신 다리 부상 0.75초 · 피해 25% (던전 그대로면 통천란 1:1 승률이 77 ~ 94% — 2026-10-25 계측)
+        const dun = state.mode === 'dungeon'
+        aoe(state, map, owner, z.x, z.y, tr, dun ? z.dmg : Math.round(z.dmg * 0.25), { stun: dun ? 180 : 45, id: 'trap' })
         if (z.v5) blastVariant(state, owner, { x: z.x, y: z.y, r: tr, dmg: z.dmg }, z.v5)
         continue
       }

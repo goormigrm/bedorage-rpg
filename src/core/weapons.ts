@@ -137,7 +137,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
   },
   // 화염방사기: 약 4칸만 닿지만 불길이 셋을 꿰뚫는다. 한 마리 DPS 2.5 · 무리에 강하다. 가까이 붙어야 해서 위험하다
   flamer: {
-    ...INF, pvp: 1.1, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
+    ...INF, pvp: 1.75, id: 'flamer', family: 'smg', name: '화염방사기', desc: '가까운 부채꼴을 태운다(약 4칸). 불길이 셋을 꿰뚫는다.',
     knock: 0.3, damage: 5, pellets: 2, fireInterval: 4, pierce: 2,
     spreadHip: deg(10), spreadAds: deg(7), recoil: 0, recoilRecover: 0,
     speed: 9, life: 17, moveMul: 0.95, length: 20, color: 0xff7a2a, falloffStart: 9999, falloffEnd: 9999, falloffMin: 1,

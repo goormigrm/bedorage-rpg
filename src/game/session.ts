@@ -34,7 +34,7 @@ import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
 import { Sheet, sanitizeSheet } from '../core/items'
 import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml, toggleFullscreen } from '../ui/settings'
 
-import { activeSlot, commitSheet } from './save'
+import { activeSlot, commitSheet, playerSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
@@ -1846,7 +1846,8 @@ export class Session {
   private restart(seed: number): void {
     // 다시 하기: 이번 판에서 키운 것을 들고 간다 (내 것은 세이브에도 적는다)
     this.saveMine(true)
-    this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag }))
+    // 판 상태에서 통째로 (모두가 같은 답) — 전에는 레벨 · 돈 · 장비 · 가방만 넘겨 스킬 · 능력치 · 숙련 · 퀘스트 · 창고가 비었고 그대로 세이브에 적혔다 (2026-10-25 검토)
+    this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : playerSheet(p)))
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.cfg.seed = seed
     this.maps.clear()

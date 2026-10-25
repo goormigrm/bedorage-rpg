@@ -60,6 +60,8 @@ const SLIDES = {}
 let P24 = false
 /** 패치 플레이 영상을 🌙 · ☀ 를 장면마다 바꿔 가며 (start({ mode: 'patch24', modes: true }) — 2026-10-24 사용자: "공포 · 철면수심 모드도 바꿔 가면서 한 영상에서") */
 let MODES = false
+/** 3인칭 하늘 영상 (2026-10-25 사용자: "하늘이 추가된 모습으로 3인칭 플레이 영상 · 보스 장면에서도 뒷배경에 달") — 모든 장면 3인칭 · 🌙 · ☀ 를 오간다 */
+let TPPV = false
 const P24_DIR = 'patch-2026-10-24'
 let perFrame = null
 /** 자막 고르기: 어둡게 · 밝게 */
@@ -173,9 +175,9 @@ function drawGame() {
   // 2026-09-24 사용자: "트레일러가 실제로 플레이하는 것보다 어둡다" → 1.35 → 1.6 · 가장자리 어둡게 0.55 → 0.32
   // 2026-10-08: 게임에 빛 번짐 · 색감(후처리)이 들어온 뒤로는 1.6 배면 스킬 빛 · 불빛이 하얗게 날아갔다 → 1.22
   // 마을(밤 · 모닥불 빛만)은 조금 더 밝게 — ov.bright
-  const bright = MODES ? !!document.querySelector('.skin-bright') : BRIGHT
+  const bright = MODES || TPPV ? !!document.querySelector('.skin-bright') : BRIGHT
   // 모드 영상의 🌙 3인칭 숲은 1.22 로는 거의 까맸다 — 조금 더 밝게
-  g.filter = bright ? 'none' : `brightness(${ov.bright ?? (MODES ? 1.4 : 1.22)}) contrast(1.03)`
+  g.filter = bright ? 'none' : `brightness(${ov.bright ?? (MODES || TPPV ? 1.4 : 1.22)}) contrast(1.03)`
   g.drawImage(cvs[0], (W - dw) / 2, (H - dh) / 2, dw, dh)
   g.filter = 'none'
   for (const c of cvs.slice(1)) {
@@ -1105,7 +1107,7 @@ function patch24Scenes() {
     mv?.stop()
     inp().mouseDown.clear()
     ov.showcase = false
-    if (MODES && skin && !!document.querySelector('.skin-bright') !== (skin === 'bright')) S().switchSkin()
+    if ((MODES || TPPV) && skin && !!document.querySelector('.skin-bright') !== (skin === 'bright')) S().switchSkin()
     if (st().players[0].area !== area) warpParty(area)
     // 장면이 바뀌면 HTML UI 겹을 새로 찍는다 (로딩 덮개 · 바뀐 모드 색)
     uiDirty = true
@@ -1118,6 +1120,124 @@ function patch24Scenes() {
     return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0 && Math.hypot(m.x - p.x, m.y - p.y) < 12 * T).length
   }
   const K = (a) => kindsOf(a)
+  // ==== 3인칭 하늘 영상 (TPPV — 2026-10-25 사용자: "하늘이 추가된 모습으로 3인칭 플레이 영상 · 보스 장면에서도 뒷배경에 달이 떠 있게").
+  // 모든 장면 3인칭 · ☀ 파란 하늘 · 구름 / 🌙 달 · 달빛 구름 · 별. 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자)
+  if (TPPV) {
+    // 3인칭 시선(input.yaw)에서 달 쪽 = π - MOON_AZ (sky.ts — 세계 방향 (-cos az, sin az) 의 각)
+    const moonYaw = Math.PI - M.sky.MOON_AZ
+    const don = (amount, text) => M.stream.donation({ nick: DON_NICKS[amount % DON_NICKS.length], amount, text })
+    // 3인칭 전투 한 장면: 트인 자리(moon 이면 달 쪽이 트였을 때 달 쪽을 본다) · 앞에 괴물 · 비켜 걸으며 쏜다.
+    // 시선이 땅으로 처지지 않게(minPitch) — 하늘이 화면 위쪽에 늘 보이게 괴물은 6칸 너머에 부른다
+    const fight = (area, o = {}) => {
+      place()
+      if (o.moon) {
+        const p = st().players[0]
+        if (clearRay(p.x, p.y, moonYaw, 9 * T)) {
+          base = moonYaw
+          inp().yaw = moonYaw
+        }
+      }
+      inp().fps = true
+      inp().pitch = o.pitch ?? 0.02
+      if (o.weapon) equipWeapon(o.weapon)
+      mv = mover(o.mode ?? 'hold')
+      perFrame = both(tppAimer({ minPitch: o.minPitch ?? -0.07, range: o.range }), mv, botsBehind(), ...(o.storm ? [skillStorm()] : []))
+      spawnAhead(K(area), o.n ?? 12, o.r0 ?? 6, o.r1 ?? 11, o.spread ?? 0.7, o.hp ?? 1.5)
+      holding = false
+    }
+    // ---- 1. ☀ 운동장: 파란 하늘 · 구름 + 제목
+    at(0, () => {
+      S().autopilot = false
+      document.querySelector('.ending.intro .ending-go')?.click()
+      goto(1, 'bright')
+    })
+    at(1.5, () => {
+      levelUpParty()
+      fight(1, { storm: true, n: 14 })
+      cue('hot', { act: 0 })
+      // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
+      ov.title = { text: '배도라지 알PG', sub: '3인칭 · 낮과 밤의 하늘', at: now() - 1300 }
+    })
+    at(2.0, () => (ov.title.out = now()))
+    const s1 = tl.t
+    every(s1 + 0.4, s1 + 7, 0.45, () => ahead() < 14 && spawnAhead(K(1), 8, 6, 11, 0.7, 1.5))
+    at(2.2, () => mv.strafe('KeyD'))
+    at(2.4, () => mv.strafe('KeyA'))
+    at(2.4, () => {})
+    // ---- 2. 🌙 안개 숲: 달 쪽을 보며 싸운다 — 달 · 달빛 구름 · 별
+    at(0, () => goto(11, 'dark'))
+    at(1.2, () => fight(11, { moon: true, n: 12, hp: 1.6, pitch: 0.08, minPitch: -0.03, spread: 0.55 }))
+    const s2 = tl.t
+    every(s2 + 0.4, s2 + 8.5, 0.45, () => ahead() < 13 && spawnAhead(K(11), 7, 7, 11, 0.55, 1.6))
+    at(2.6, () => mv.strafe('KeyA'))
+    at(2.8, () => mv.strafe('KeyD'))
+    at(3.1, () => {})
+    // ---- 3. ☀ 무너진 시장: 화염방사기 — 하늘 아래 불길
+    at(0, () => goto(22, 'bright'))
+    at(1.2, () => fight(22, { weapon: 'flamer', mode: 'flame', range: 6, n: 16, r0: 5, r1: 10, hp: 1.3, pitch: -0.02, minPitch: -0.12, spread: 0.6 }))
+    const s3 = tl.t
+    every(s3 + 0.8, s3 + 7, 0.7, () => ahead() < 14 && spawnAhead(K(22), 7, 6, 10, 0.6, 1.3))
+    at(7, () => {})
+    // ---- 4. ☀ 후원 전투 (4막 균열 · 3인칭): 채팅 · 후원 표 · 좀비 떼 → 정예 무리 → 총잡이 무리 → 괴물 대행진
+    at(0, () => goto(29, 'bright'))
+    at(1.2, () => {
+      fight(29, { weapon: 'smg', storm: true, n: 16, hp: 1.4, spread: 0.8 })
+      for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
+    })
+    const s4 = tl.t
+    every(s4 + 0.3, s4 + 10.5, 0.45, () => M.stream.fakeChat(false))
+    every(s4 + 1, s4 + 10.5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(29), 8, 6, 11, 0.8, 1.4))
+    at(0.8, () => don(1000, '좀비 떼 갑니다'))
+    at(2.0, () => don(3000, '정예 한번 보자'))
+    at(2.0, () => don(6000, '총잡이 출동!!'))
+    at(2.4, () => don(9000, '대행진 가즈아'))
+    at(3.6, () => {})
+    // ---- 5. 🌙 4막 보스 예고: 심연의 옥좌 — 정면에서 올려다보면 달이 보스 오른쪽 하늘에 떠 있다 (보스는 깨우지 않는다)
+    let sample0 = null
+    at(0, () => {
+      const sess = S()
+      // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다 · 예고 장면에는 방송 표시를 끈다
+      sess.donPending.length = 0
+      sess.donSending = null
+      M.stream.tried = false
+      goto(34, 'dark')
+      sess.autopilot = false
+      // 화면 덮임(BTN_LOADING — 들어선 뒤 12초 안)을 실어 잠든 보스가 알아채지 못하게 · 동료도 멈춘다
+      const inp0 = sess.input
+      sample0 = inp0.sample.bind(inp0)
+      inp0.sample = (...a) => ({ ...sample0(...a), mx: 0, my: 0, buttons: M.input.BTN_LOADING })
+    })
+    at(1.4, () => {
+      const s = st()
+      const p = s.players[0]
+      const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
+      if (!b) return void (holding = false)
+      s.monsters = s.monsters.filter((m) => m === b)
+      // 카메라가 볼 쪽 = 달에서 off 만큼 왼쪽(달은 화면 오른쪽 위) — 거대한 몸이 달을 가리지 않게 30° 남짓 비킨다.
+      // 내 자리는 보스에서 시선 반대쪽 7.5칸 — 벽이면 다른 비킴을 고른다
+      let face = Math.atan2(b.y - p.y, b.x - p.x)
+      for (const off of [0.55, -0.55, 0.45, -0.45, 0.65, -0.65, 0.35, -0.35]) {
+        if (!clearRay(b.x, b.y, moonYaw - off + Math.PI, 7.5 * T)) continue
+        face = moonYaw - off
+        break
+      }
+      p.x = b.x - Math.cos(face) * 7.5 * T
+      p.y = b.y - Math.sin(face) * 7.5 * T
+      // 보스가 나를 보게 (정면)
+      b.aim = Math.round((Math.atan2(p.y - b.y, p.x - b.x) / (Math.PI * 2)) * 1024) & 1023
+      inp().fps = true
+      inp().yaw = face
+      inp().pitch = -0.32
+      perFrame = both(bossTilt(face), botsBehind(4))
+      holding = false
+    })
+    at(5.0, () => {
+      perFrame = null
+      if (sample0) S().input.sample = sample0
+    })
+    endCard(tl, 0, 700)
+    return tl.done()
+  }
   // 걷기만 하는 장면은 없게 (2026-10-24 사용자: "이동만 하는 장면이 길어서 루즈해지는 것은 빼고") — 괴물은 늘 가까이 · 앞으로 걸어가는 이동은 없앴다
   // ---- 1. 쿼터뷰 난전 + 제목 (☀ 놀이터): 사방에서 몰려오는 떼 · 쏘며 비켜 걷기 · 구르기
   at(0, () => {
@@ -1515,7 +1635,7 @@ function tppAimer(o = {}) {
     // 한 장에 도는 양은 초당 장 수에 맞춘다 (30fps 기준 값)
     const k = 30 / FPS
     inp.yaw += Math.max(-0.05 * k, Math.min(0.05 * k, ((aim.x - vw / 2) / vw) * 0.45 * k))
-    inp.pitch = Math.max(-0.6, Math.min(0.4, inp.pitch - Math.max(-0.03 * k, Math.min(0.03 * k, ((aim.y - vh / 2) / vh) * 0.4 * k))))
+    inp.pitch = Math.max(o.minPitch ?? -0.6, Math.min(0.4, inp.pitch - Math.max(-0.03 * k, Math.min(0.03 * k, ((aim.y - vh / 2) / vh) * 0.4 * k))))
     const h = foot.y - hd.y
     if (Math.abs(aim.x - vw / 2) < h * 0.3 && vh / 2 > hd.y && vh / 2 < foot.y) inp.mouseDown.add(0)
     else inp.mouseDown.delete(0)
@@ -1582,7 +1702,8 @@ function mover(mode) {
     let near = Infinity
     for (const q of s.monsters) if (q.hp > 0) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y))
     const yaw = S().input.yaw
-    const fb = near < (mode === 'back' ? 6 : mode === 'flame' ? 3.4 : 4) * T ? 'KeyS' : mode === 'adv' && near > 8 * T && clearRay(p.x, p.y, yaw, 2.5 * T) ? 'KeyW' : ''
+    // 물러서기도 뒤가 트였을 때만 (3인칭은 벽에 등을 대면 카메라가 벽 속으로 들어가 화면 반이 벽이 됐다)
+    const fb = near < (mode === 'back' ? 6 : mode === 'flame' ? 3.4 : 4) * T && clearRay(p.x, p.y, yaw + Math.PI, 2.5 * T) ? 'KeyS' : mode === 'adv' && near > 8 * T && clearRay(p.x, p.y, yaw, 2.5 * T) ? 'KeyW' : ''
     // 옆걸음도 그쪽이 트였을 때만 (울타리에 붙으면 카메라가 코앞으로 당겨졌다)
     const sd = side && clearRay(p.x, p.y, yaw + (side === 'KeyD' ? 1 : -1) * Math.PI * 0.5, 2.5 * T) ? side : ''
     set([fb, sd].filter(Boolean).join('+'))
@@ -2355,6 +2476,7 @@ export async function start(opts = {}) {
     weapons: await sameModule('/src/core/weapons.ts'),
     input: await sameModule('/src/core/input.ts'),
     c3d: await sameModule('/src/render3d/character3d.ts'),
+    sky: await sameModule('/src/render3d/sky.ts'),
   }
   out = document.createElement('canvas')
   out.width = W
@@ -2378,6 +2500,7 @@ export async function start(opts = {}) {
   NOTES = opts.mode === 'notes'
   P24 = opts.mode === 'patch24'
   MODES = P24 && !!opts.modes
+  TPPV = P24 && !!opts.tppv
   FPS = opts.fps ?? (P24 ? 60 : 30)
   perFrame = null
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
@@ -2399,15 +2522,16 @@ export async function start(opts = {}) {
   // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
   // 10월 23일 이후 패치 영상: 공지용 720(20 MB 안 — 셋 중 가장 큰 것) + 고화질 1080
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
+  const P24NAME = TPPV ? 'patch_1025_tpp' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
   const encs = P24
     ? [
         // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
         // 모드 영상은 🌙 장면이 압축이 안 돼 1.9 Mbps 도 23.5 MB 였다 — 더 낮은 후보까지
         // 모드 영상은 🌙 장면이 압축이 안 돼 VP8 은 비트레이트를 낮춰도 22 MB 였다 → 720 도 VP9
-        ...(MODES ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: MODES ? 'patch_1024_modes' : 'patch_1024_play', ...(MODES ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        ...(MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
         (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
-          ? { name: MODES ? 'patch_1024_modes_hq' : 'patch_1024_play_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
-          : { name: MODES ? 'patch_1024_modes_hq' : 'patch_1024_play_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
+          ? { name: P24NAME + '_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
+          : { name: P24NAME + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
       ]
     : NOTES ? [{ name: BRIGHT ? 'patchnote' : 'patchnote_dark', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }] : [
     // 2026-09-24 계측(1분 37초): 1080 2.2 Mbps → 42.5 MB(넘침) · 720 2.2 → 28.6 · 720 1.5 → 22.9 — 1080 은 게시판에 못 맞춘다 → 720 셋
@@ -2743,7 +2867,7 @@ export async function start(opts = {}) {
   }
   const au = await encodeAudio(abuf)
   // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
-  const saveDir = opts.outDir ?? (P24 ? P24_DIR : NOTES ? NOTES_DIR : opts.dir)
+  const saveDir = opts.outDir ?? (P24 ? (TPPV ? 'patch-2026-10-25' : P24_DIR) : NOTES ? NOTES_DIR : opts.dir)
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000, codec: e.codec?.startsWith('vp09') ? 'V_VP9' : 'V_VP8' })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })

@@ -208,9 +208,9 @@ export type Member = {
  * 투기장 시작을 막는 까닭 (없으면 null) — 호스트의 시작과 대기실 안내가 같은 규칙을 쓴다.
  * 빈 자리를 봇으로 채우면 혼자여도 시작한다 (2026-10-17 사용자: 혼자 방 · 봇 채우기 · 준비 → "모두 준비. 시작합니다…" 에서 멈춤)
  */
-export function arenaStartBlock(members: Member[], size: number, mode: RoomMode, fillBots: boolean): string | null {
-  const bots = fillBots && members.length < size
-  if (members.length < 2 && !bots) return '상대가 있어야 시작합니다 — 기다리거나 "빈 자리는 봇으로 채우기" 를 켜세요.'
+export function arenaStartBlock(members: Member[], size: number, mode: RoomMode, botCount: number): string | null {
+  const bots = Math.min(botCount, size - members.length) > 0
+  if (members.length < 2 && !bots) return '상대가 있어야 시작합니다 — 기다리거나 빈 자리에 봇을 넣으세요.'
   if (mode === 'teams' && !bots && !(members.some((m) => m.team === 0) && members.some((m) => m.team === 1))) return '두 팀에 한 명씩은 있어야 시작합니다 — "팀 바꾸기" 를 누르세요.'
   return null
 }
@@ -225,7 +225,7 @@ export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet; ver?: string }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; fillBots?: boolean; deathRule?: number; tier?: number; kind?: string; skin?: string; ver?: string }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; bots?: number; deathRule?: number; tier?: number; kind?: string; skin?: string; ver?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */

@@ -5,9 +5,9 @@
 
 import * as THREE from 'three'
 
-/** 달의 방향 (세계 — 높이 22° · 고정): 3인칭으로 그쪽을 보면 화면 위쪽에 걸린다 */
-const MOON_EL = (22 * Math.PI) / 180
-const MOON_AZ = 0.62 * Math.PI * 2
+/** 달의 방향 (세계 — 높이 22° · 고정): 3인칭으로 그쪽을 보면 화면 위쪽에 걸린다. 3인칭 시선(input.yaw)으로는 π - MOON_AZ (tools/trailer.js 3인칭 영상) */
+export const MOON_EL = (22 * Math.PI) / 180
+export const MOON_AZ = 0.62 * Math.PI * 2
 
 export class Sky {
   readonly mesh: THREE.Mesh

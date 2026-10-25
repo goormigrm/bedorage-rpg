@@ -767,11 +767,14 @@ export class D4Hud {
         c.fillText(t, x + 12, y + 74 + ex)
         used = c.measureText(t).width + 10
       }
-      c.font = `600 12px ${SANS}`
-      c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#b3a58c'
-      c.textAlign = town ? 'left' : 'right'
-      c.fillText(fitText(c, `죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, inner - used), town ? x + 12 : x + W - 12, y + 74 + ex)
-      c.textAlign = 'left'
+      // 죽음 규칙은 방 만들기에서 뺐다 (2026-10-25 — 늘 "없음") · 규칙이 걸린 판만 적는다
+      if (s.deathRule) {
+        c.font = `600 12px ${SANS}`
+        c.fillStyle = s.deathRule === 2 ? '#ff7a6a' : '#b3a58c'
+        c.textAlign = town ? 'left' : 'right'
+        c.fillText(fitText(c, `죽음 규칙 · ${DEATH_RULE_LABEL[s.deathRule]}`, inner - used), town ? x + 12 : x + W - 12, y + 74 + ex)
+        c.textAlign = 'left'
+      }
       if (showList) this.drawQuestList(c, s, q, actQuests, x, y + 84 + ex, W, more)
     } else {
       const teams = isTeamMatch(s)

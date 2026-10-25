@@ -1633,3 +1633,26 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .cell .ilv { position: absolute; right: 3px; top: 2px; font: 800 11px/1 "IBM Plex Sans KR", sans-serif; font-style: normal; color: #f1e6c8; text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; }
 .cell .ilv small { font-size: 9px; margin-right: 1px; opacity: .8; }
 .cell .lk { top: 16px; }
+
+/* 게임 만들기 · 대기실: 고르는 단추와 글을 크게 (2026-10-25 사용자: "버튼과 글씨를 크게 해서 눈에 잘 들어오게") */
+.dlg .hostdlg .row { margin-top: 14px; }
+.dlg .hostdlg .row label { font: 700 16px "IBM Plex Sans KR", sans-serif; letter-spacing: .02em; color: #d8c8a0; text-transform: none; }
+.dlg .hostdlg .seg button { padding: 11px 20px; font-size: 17px; font-weight: 600; }
+.dlg .hostdlg .hintline { font-size: 14px; margin: 8px 0 0; }
+.dlg .hostdlg .warn { font-size: 14px; }
+.dlg .hostdlg .dacts .btn { font-size: 17px; padding: 11px 26px; }
+.setrow.botrow { margin-top: 14px; gap: 10px 14px; }
+.setrow.botrow .botall { padding: 9px 16px; border: 1px solid var(--line); border-radius: 4px; font-size: 16px; font-weight: 600; background: #0e0c0a; }
+.setrow.botrow .botall:has(input:checked) { border-color: #c9a24a; color: #ffe6a8; background: linear-gradient(180deg, #5a4420, #3a2c14); }
+.setrow.botrow .botall:has(input:disabled) { opacity: .5; cursor: default; }
+.setrow.botrow .botall input { width: 18px; height: 18px; }
+.setrow.botrow .botdifflabel { font-size: 15px; }
+.setrow.botrow #seg-botdiff button { padding: 8px 16px; font-size: 15px; }
+.slot.empty.canbot { opacity: 1; }
+.slot.empty.canbot .who, .slot.empty.canbot .cname { opacity: .5; }
+.slot .botadd { padding: 6px 18px; font-size: 15px; font-weight: 700; color: #ffe6a8; border-color: #c9a24a88; }
+.slot.bot { border-style: dashed; }
+.slot.bot .cname { color: #cfc2a4; }
+.lobby.d2 .status .setrow span { font-size: 16px; padding: 6px 12px; }
+.lobby.d2 .status .setrow b { font-size: 13px; }
+.status .room-actions .btn.main { font-size: 18px; padding: 12px 30px; }

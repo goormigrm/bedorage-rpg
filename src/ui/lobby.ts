@@ -1,4 +1,4 @@
-// 로비: 캐릭터 선택(1차 6명) · 혼자 하기(동료 봇) · 방 만들기(정원·죽음 규칙) · 방 목록/참가 · 준비 → 자동 시작
+// 로비: 캐릭터 선택(1차 6명) · 혼자 하기(동료 봇) · 방 만들기(종류·정원·난이도) · 방 목록/참가 · 준비 → 자동 시작
 // 방은 정원 4명(호스트 + 게스트 3). 멤버 순서·준비는 호스트가 'room' 메시지로 방송하는 것이 정본.
 // 덕에서 물려받은 팀전·목표 킬·맵 고르기는 협동에서 쓰지 않는다 — 방 메시지에는 호환용으로 남아 있다.
 // **투기장(PvP)**: 배도라지 덕의 대전 방식(개인전·팀전·목표 킬·맵)을 이 게임 안에 이식했다 — RPG 에서 키운 캐릭터끼리 싸운다
@@ -10,7 +10,7 @@ import { gearScore } from '../core/items'
 import { CHARACTERS, CharacterId, PLAYABLE, isPlayable, ROLE_INFO } from '../core/characters'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MAP_LIST, MapId, isMapId, isMapScale, scaleForPlayers } from '../core/maps'
-import { DEATH_RULE_LABEL, DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
+import { DeathRule, GameMode, MAX_PLAYERS, MIN_PLAYERS } from '../core/state'
 import { TIER_LABEL } from '../core/monsters'
 import { tierOpen } from '../core/world'
 
@@ -34,7 +34,7 @@ import { BonfireScene, SceneFrame } from './bonfire'
 import { drawMapPreview } from '../render/minimap'
 import { isTouchDevice } from '../game/touch'
 import { ChatBox, cleanChat } from './chat'
-import { SKIN_DESC, SKIN_ICON, SKIN_LABEL, Skin, asSkin, bt, loadSkinPref, saveSkinPref, setSkin } from '../game/skin'
+import { Skin, asSkin, bt, loadSkinPref, saveSkinPref, setSkin } from '../game/skin'
 import '../game/skinText'
 import '../game/skinThemes'
 import { StreamBadge, openStreamPanel } from './streamPanel'
@@ -55,18 +55,11 @@ const PREVIEW_SEED = 20260904
 const KILL_OPTIONS = [5, 10, 15, 20, 30]
 /** 투기장 맵: 덕의 셋 (던전 층은 빼고) */
 const ARENA_MAPS = MAP_LIST.filter((m) => !m.fixedScale)
-/** 죽음 규칙 설명 (방 만들기·혼자 하기 창) */
 /**
  * 한글 설명 줄바꿈 (2026-09-24 사용자: "캐릭터 스킬 설명에 한글 줄바꿈을 제대로"): 낱말 단위로 접되(keep-all — CSS),
  * 숫자는 앞말에 붙이고("연사 1.5배" · "피해 +30%") 가운뎃점은 앞 낱말에 붙인다 — 줄 머리 · 끝에 홀로 떨어지지 않게
  */
 const krWrap = (t: string): string => t.replace(/ (?=[+\-−]?\d)/g, '\u00a0').replace(/ · /g, '\u00a0· ')
-
-const DEATH_RULE_DESC = [
-  '쓰러져도 잃는 것이 없습니다. 죽으면 그 막의 마을에서 다시 일어납니다.',
-  '죽으면 골드 20% · 지금 레벨 경험치 10% 를 잃습니다 (레벨은 떨어지지 않음).',
-  '한 번 죽으면 그 게임은 끝 — 관전만 합니다. 캐릭터는 마을에 들어설 때만 저장됩니다.',
-]
 
 /** 닉네임 등 사용자 입력을 HTML 에 넣기 전에 */
 function esc(t: string): string {
@@ -82,7 +75,7 @@ export class Lobby {
   private kind: GameMode = 'dungeon'
   /** 투기장 맵 (덕의 맵 셋 중) */
   private arenaMap: MapId = 'studio'
-  /** 죽음 규칙 (혼자 하기·방 만들기 공용, 게스트는 방 정보로 받는다) */
+  /** 죽음 규칙 — 방 만들기에서 뺐다 (2026-10-25 사용자: "하드코어 따로 안 할 것 같다") · 늘 0, 게스트는 방 정보로 받는다 */
   private deathRule: DeathRule = 0
   /** 난이도 (0 보통 · 1 악몽 · 2 지옥) — 방장 캐릭터가 연 것만 */
   private tier = 0
@@ -106,12 +99,12 @@ export class Lobby {
   private role: 'host' | 'guest' | null = null
   /** 방 멤버 (순서 = 플레이어 인덱스, 호스트가 0) */
   private members: Member[] = []
-  /** 호스트: 빈 자리를 봇으로 채운다 (2026-09-05). 게스트는 방 정보로 받아 안내만 본다 */
-  private fillBots = false
+  /** 호스트: 봇을 앉힐 자리 수 — 빈 자리 앞에서부터, 사람이 들어오면 사람이 먼저 (2026-10-25 사용자: "자리마다 하나 또는 전체"). 게스트는 방 정보로 받는다 */
+  private botCount = 0
   /** 봇 캐릭터를 정해 둔다 (영상용 — 비어 있으면 모자란 역할부터 무작위) */
   botChars?: CharacterId[]
   private botDiff: Difficulty = 'normal'
-  private fillBotsRemote = false
+  private botsRemote = 0
   private hostId: string | null = null
   private myReady = false
   private myTeam = 0
@@ -257,24 +250,15 @@ export class Lobby {
         <div class="chars" id="chars" hidden></div>
 
         <div class="dlg" id="dlg-host" hidden>
-          <div class="dbox">
+          <div class="dbox hostdlg">
             <h3>게임 만들기</h3>
-            <p class="cardp"><b>던전</b>: 방장이 연 가장 뒤 막의 마을에서 시작합니다. 혼자 시작해도 되고, 남은 자리는 친구가 <b>게임 중에도</b> 들어와 채웁니다.<br><b>투기장</b>: 키운 캐릭터끼리 겨루는 대전(PvP). 둘 이상이면 되고, 빈 자리는 봇으로 채울 수 있습니다.</p>
+            <div class="row"><label>종류</label><div class="seg" id="seg-kind">
+              <button data-v="dungeon" class="on">던전 (협동)</button><button data-v="arena">투기장 (PvP)</button>
+            </div></div>
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>
-<div class="row"><label>분위기</label><div class="seg" id="seg-skin">
-              ${(['dark', 'bright'] as Skin[]).map((k) => `<button data-v="${k}" class="${k === this.skin ? 'on' : ''}" title="${SKIN_DESC[k]}">${SKIN_ICON[k]} ${SKIN_LABEL[k]}</button>`).join('')}
-            </div></div>
-            <p class="hintline" id="skin-desc">${SKIN_DESC[this.skin]}</p>
-<div class="row"><label>종류</label><div class="seg" id="seg-kind">
-              <button data-v="dungeon" class="on">던전 (협동)</button><button data-v="arena">투기장 (PvP)</button>
-            </div></div>
             <div class="dungeon-only">
-              <div class="row"><label>죽음 규칙</label><div class="seg" id="seg-death">
-                ${DEATH_RULE_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
-              </div></div>
-              <p class="hintline" id="death-desc">${DEATH_RULE_DESC[0]}</p>
               <div class="row" id="row-tier"><label>난이도</label><div class="seg" id="seg-tier">
                 ${TIER_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
               </div></div>
@@ -295,7 +279,9 @@ export class Lobby {
               <p class="hintline" id="map-desc">${MAPS[this.mapId].name} — ${MAPS[this.mapId].desc} 판마다 새로 만들어집니다.</p>
               <canvas id="map-preview" class="mappv"></canvas>
             </div>
-            <div class="warn">방장의 연결이 곧 방입니다.<br>와이파이나 폰 회선이면 중간에 방이 터질 수 있어요.<br>랜선을 꽂은 PC가 가장 안전합니다.</div>
+            <!-- shortcut: 분위기 고르기는 2026-10-25 사용자 요청으로 화면에서 뺐다(게임 안 G 키 · 오른쪽 위 스위치로 바꾼다). 영상 · 점검 도구가 이 단추를 눌러 분위기를 정해서 숨긴 채 남긴다 -->
+            <div class="seg" id="seg-skin" hidden>${(['dark', 'bright'] as Skin[]).map((k) => `<button data-v="${k}">${k}</button>`).join('')}</div>
+            <div class="warn">방장의 연결이 곧 방입니다 — 랜선을 꽂은 PC 가 가장 안전합니다.</div>
             <div class="dacts"><button class="btn secondary" data-close>취소</button><button class="btn main" id="btn-host-go">만들기</button></div>
           </div>
         </div>
@@ -367,20 +353,6 @@ export class Lobby {
       requestAnimationFrame(() => drawPortrait(cv, c))
     }
 
-    // 죽음 규칙: 두 창(방 만들기·혼자 하기)이 같은 값을 쓴다
-    const onDeath = (v: string) => {
-      const r = Number(v)
-      this.deathRule = (r === 1 || r === 2 ? r : 0) as DeathRule
-      for (const id of ['#death-desc', '#death-desc2']) {
-        const el = h.querySelector(id) as HTMLElement | null
-        if (el) el.textContent = DEATH_RULE_DESC[this.deathRule]
-      }
-      for (const sel of ['#seg-death', '#seg-death2']) {
-        h.querySelectorAll<HTMLButtonElement>(`${sel} button`).forEach((b) => b.classList.toggle('on', b.dataset.v === String(this.deathRule)))
-      }
-      this.hostChanged()
-    }
-    this.seg('#seg-death', onDeath)
     this.seg('#seg-skin', (v) => this.changeSkin(asSkin(v)))
     this.seg('#seg-tier', (v) => {
       const t = Number(v) || 0
@@ -549,14 +521,11 @@ export class Lobby {
   }
 
   /** 호스트 설정(맵·목표·모드)이 바뀌면 방송·목록 갱신 */
-  /** 분위기 바꾸기 (게임 만들기 창 · 대기실의 방장). 기억하고 · 로비 미리보기도 바꾸고 · 방에 알린다 */
+  /** 분위기 바꾸기 (도구가 누르는 숨은 단추). 기억하고 · 로비 미리보기도 바꾸고 · 방에 알린다 */
   private changeSkin(s: Skin): void {
     this.skin = s
     saveSkinPref(s)
     setSkin(s)
-    const d = this.host.querySelector('#skin-desc') as HTMLElement | null
-    if (d) d.textContent = SKIN_DESC[s]
-    this.host.querySelectorAll<HTMLButtonElement>('#seg-skin button').forEach((b) => b.classList.toggle('on', b.dataset.v === s))
     this.hostChanged()
   }
 
@@ -787,10 +756,10 @@ export class Lobby {
                   ? '<span class="pill ok">난입 가능</span>'
                   : '<span class="pill">게임 중</span>'
         // 두 줄 (2026-09-19 사용자 — 좁은 칸에 일곱 칸을 늘어놓아 한글이 한 글자씩 세로로 쪼개졌다):
-        // 1줄 "○○의 방 [상태]" · 2줄 "던전 · 보통 · 죽음 없음 · 맵 · 1/4명" · 오른쪽에 참가 단추
+        // 1줄 "○○의 방 [상태]" · 2줄 "던전 · 보통 · 맵 · 1/4명" · 오른쪽에 참가 단추
         const rule = arenaRoom
           ? [ROOM_MODE_LABEL[r.mode] ?? r.mode, `${r.targetKills}킬`]
-          : [`${SKIN_ICON[asSkin(r.skin)]} ${SKIN_LABEL[asSkin(r.skin)]}`, TIER_LABEL[r.tier ?? 0] ?? '보통', `죽음 ${DEATH_RULE_LABEL[r.deathRule ?? 0] ?? '없음'}`]
+          : [TIER_LABEL[r.tier ?? 0] ?? '보통']
         // 레벨 · 템 수준 (2026-09-20 요청 — 난입할 때 내게 맞는 방인지 보라고)
         const power = r.lv ? [`Lv ${r.lv}`, `템 ${r.gs ?? 0}`] : []
         const meta = [arenaRoom ? '투기장' : '던전', ...rule, ...power, m, `${r.count}/${r.max}명`]
@@ -1152,7 +1121,7 @@ export class Lobby {
         clearTimeout(this.waitTimer)
         this.hostId = from
         this.members = m.members
-        this.fillBotsRemote = !!m.fillBots
+        this.botsRemote = Math.max(0, Number(m.bots) || 0)
         this.roomMode = m.mode
         this.killsRoom = m.targetKills
         this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
@@ -1268,7 +1237,7 @@ export class Lobby {
 
   private broadcastRoom(): void {
     if (this.role !== 'host' || !this.link) return
-    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, fillBots: this.fillBots, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, ver: APP_VERSION })
+    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, bots: this.botCount, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, ver: APP_VERSION })
   }
 
   private sendHello(to?: string): void {
@@ -1328,8 +1297,9 @@ export class Lobby {
     // 자리는 **정원만큼** 잡아 둔다. 빈 자리는 판에 나오지 않다가 난입으로 채워진다 — 또는 (호스트가 켰으면) 봇이 앉는다
     const teamsOn = this.kind === 'arena' && this.roomMode === 'teams'
     const players: Member[] = this.members.map((m, i) => ({ ...m, team: teamsOn ? m.team : i }))
+    const nBots = this.botSeats()
     while (players.length < this.roomSize) {
-      const bot = this.fillBots
+      const bot = players.length - this.members.length < nBots
       players.push({
         id: '',
         char: bot ? this.pickBotChar(players) : 'cheolmyeon',
@@ -1351,7 +1321,12 @@ export class Lobby {
 
   /** 시작을 막는 까닭 (투기장만 · 없으면 null) — 게스트는 호스트가 알려 준 봇 채우기로 */
   private startBlock(): string | null {
-    return this.kind === 'arena' ? arenaStartBlock(this.members, this.roomSize, this.roomMode, this.role === 'host' ? this.fillBots : this.fillBotsRemote) : null
+    return this.kind === 'arena' ? arenaStartBlock(this.members, this.roomSize, this.roomMode, this.role === 'host' ? this.botCount : this.botsRemote) : null
+  }
+
+  /** 지금 봇이 앉을 자리 수 (정한 수와 남은 빈 자리 중 작은 것) */
+  private botSeats(): number {
+    return Math.max(0, Math.min(this.role === 'host' ? this.botCount : this.botsRemote, this.roomSize - this.members.length))
   }
 
   /** 대기실 제목용 호스트 이름 (닉네임 → 캐릭터 이름 → '호스트') */
@@ -1449,19 +1424,26 @@ export class Lobby {
     // 방 코드는 안 보여 준다 — 코드로 들어갈 길이 없으니 쓸 일이 없다(방 목록에서 뺀 것과 같은 이유, 2026-09-05)
     const title = this.role === 'host' ? '내 게임' : `${this.hostName()}의 게임`
     const teams = this.kind === 'arena' && this.roomMode === 'teams'
+    const isHost = this.role === 'host'
+    const nBots = this.botSeats()
+    const free = this.roomSize - this.members.length
     const slots: string[] = []
-    // 파티 구성 (던전 — 역할은 던전에서만 효과가 있다)
-    const roleCount: Record<string, number> = { tank: 0, dps: 0, heal: 0 }
     for (let i = 0; i < this.roomSize; i++) {
       const m = this.members[i]
       if (!m) {
-        slots.push(`<div class="slot empty"><div class="who">${i + 1}번</div><div class="cname">빈 자리</div><div class="rd">기다리는 중</div></div>`)
+        // 빈 자리: 앞에서부터 봇 자리 · 방장은 자리마다 "+ 봇" / "빼기"
+        if (i - this.members.length < nBots) {
+          const del = isHost ? `<button type="button" class="btn secondary botadd" data-botdel title="이 자리의 봇을 뺍니다">빼기</button>` : ''
+          slots.push(`<div class="slot bot"><div class="who">${i + 1}번</div><div class="cname">봇<span class="pw">방장 레벨 · 장비</span></div><div class="rd">${del}</div></div>`)
+        } else {
+          const add = isHost ? `<button type="button" class="btn secondary botadd" data-botadd>+ 봇</button>` : '기다리는 중'
+          slots.push(`<div class="slot empty${isHost ? ' canbot' : ''}"><div class="who">${i + 1}번</div><div class="cname">빈 자리</div><div class="rd">${add}</div></div>`)
+        }
         continue
       }
       const mine = m.id === link.selfId
       const c = (CHARACTERS as Record<string, { name: string; role: keyof typeof ROLE_INFO } | undefined>)[m.char]
       const role = c && this.kind !== 'arena' ? ROLE_INFO[c.role] : null
-      if (c && this.kind !== 'arena') roleCount[c.role]++
       const roleChip = role ? `<span class="role-chip" style="--rc:${role.color}" title="${role.desc}">${role.name}</span>` : ''
       const who = (i === 0 ? '방장' : `${i + 1}번`) + (mine ? ' · 나' : '')
       const badge = teams ? `<span class="team ${m.team === 0 ? 'team-a' : 'team-b'}">${m.team === 0 ? 'A팀' : 'B팀'}</span>` : ''
@@ -1469,45 +1451,36 @@ export class Lobby {
       // 레벨 · 템 수준 (2026-09-20 요청): 누가 얼마나 키웠는지 보고 자리를 고르라고
       const power = m.sheet ? `<span class="pw">Lv ${m.sheet.level ?? 1} · 템 ${gearScore(m.sheet.equip)}</span>` : ''
       // 방장만: 다른 사람 칸에 "내보내기" (2026-09-25 방송 개선 2 — 한 번 더 눌러야 내보낸다)
-      const kick = this.role === 'host' && !mine && !m.bot ? `<button type="button" class="kickbtn" data-kick="${esc(m.id)}" title="이 방에서 내보냅니다 (이 방에는 다시 못 들어옵니다)">내보내기</button>` : ''
+      const kick = isHost && !mine && !m.bot ? `<button type="button" class="kickbtn" data-kick="${esc(m.id)}" title="이 방에서 내보냅니다 (이 방에는 다시 못 들어옵니다)">내보내기</button>` : ''
       slots.push(`<div class="slot ${m.ready ? 'ready' : ''} ${mine ? 'mine' : ''}">
         <div class="who">${who}${badge}${kick}</div>
         <div class="cname">${nick ? esc(nick) : c ? c.name : m.char}${power}</div>
         <div class="rd">${nick ? `<span class="rc">${c ? c.name : m.char}</span>` : ''}${roleChip}<span class="rs">${m.ready ? '준비 완료' : i === 0 ? '' : '준비 안 됨'}</span></div>
       </div>`)
     }
+    // "모두 봇" 은 체크 칸 (켜면 빈 자리 전부 · 끄면 모두 뺀다) — 영상 · 점검 도구가 이 칸을 눌러 봇을 채운다
+    const botRow = isHost
+      ? `<div class="setrow botrow">
+        <label class="chk botall"><input type="checkbox" id="chk-bots" ${free > 0 && nBots >= free ? 'checked' : ''} ${free > 0 ? '' : 'disabled'}> 빈 자리 모두 봇</label>
+        ${nBots > 0 ? `<span class="botdifflabel"><b>봇 실력</b></span><div class="seg" id="seg-botdiff">${(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => `<button data-v="${d}" class="${d === this.botDiff ? 'on' : ''}" title="${DIFFICULTY_HINT[d]}">${DIFFICULTY_LABEL[d]}</button>`).join('')}</div>` : ''}
+      </div>`
+      : ''
     const html = `
       <div class="room-head"><div class="section-t" style="margin:0">${title}</div>
-        <div class="row"><button class="btn secondary" id="btn-settings-room">설정</button><button class="btn secondary" id="btn-cancel">${this.role === 'host' ? '방 닫기' : '나가기'}</button></div></div>
-      <p class="roomhint dim">이 사이트 안에서만 함께합니다.<br>친구는 <b>방 목록</b>에서 이 방을 찾아 들어옵니다.</p>
+        <div class="row"><button class="btn secondary" id="btn-settings-room">설정</button><button class="btn secondary" id="btn-cancel">${isHost ? '방 닫기' : '나가기'}</button></div></div>
       <div class="setrow">
         ${this.kind === 'arena'
           ? `<span><b>투기장</b>${MAPS[this.arenaMap].name}</span><span><b>모드</b>${ROOM_MODE_LABEL[this.roomMode]}</span><span><b>목표</b>${this.killsRoom}킬</span>`
-          : `<span><b>던전</b>방장이 연 막의 마을에서 시작</span><span><b>분위기</b>${this.role === 'host' ? `<span class="seg small" id="seg-skin-room">${(['dark', 'bright'] as Skin[]).map((k) => `<button type="button" data-v="${k}" class="${k === this.skin ? 'on' : ''}" title="${SKIN_DESC[k]}">${SKIN_ICON[k]} ${SKIN_LABEL[k]}</button>`).join('')}</span>` : `${SKIN_ICON[this.skin]} ${SKIN_LABEL[this.skin]}`}</span><span><b>난이도</b>${TIER_LABEL[this.tier] ?? '보통'}</span><span><b>죽음 규칙</b>${DEATH_RULE_LABEL[this.deathRule]}</span>`}
+          : `<span><b>던전</b>${TIER_LABEL[this.tier] ?? '보통'}</span>`}
         <span><b>인원</b>${this.members.length}/${this.roomSize}명</span>
         ${connected && link.peers.size > 0 ? `<span><b>핑</b>${link.rtt} ms</span>` : ''}
       </div>
       <div class="slots">${slots.join('')}</div>
-      ${this.kind !== 'arena' ? `<p class="roomhint party">파티 구성 — ${(['tank', 'dps', 'heal'] as const).map((r) => `<span style="color:${ROLE_INFO[r].color}">${ROLE_INFO[r].name} ${roleCount[r]}</span>`).join(' · ')}${this.members.length > 1 && roleCount.heal === 0 ? ' <span class="dim">(힐러가 있으면 오래 버팁니다)</span>' : ''}</p>` : ''}
-      ${
-        this.role === 'host'
-          ? `<div class="setrow botrow">
-        <label class="chk"><input type="checkbox" id="chk-bots" ${this.fillBots ? 'checked' : ''}> 빈 자리는 봇으로 채우기</label>
-        <span class="botdifflabel" id="lbl-botdiff" ${this.fillBots ? '' : 'hidden'}><b>봇 실력</b></span>
-        <div class="seg small" id="seg-botdiff" ${this.fillBots ? '' : 'hidden'}>
-          ${(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => `<button data-v="${d}" class="${d === this.botDiff ? 'on' : ''}" title="${DIFFICULTY_HINT[d]}">${DIFFICULTY_LABEL[d]}</button>`).join('')}
-        </div>
-        <p class="dim hintline" id="hint-botdiff" ${this.fillBots ? '' : 'hidden'}>봇이 얼마나 잘 싸우는가입니다 — 게임 난이도(보통 · 악몽 · 지옥)와는 다릅니다. ${DIFFICULTY_HINT[this.botDiff]}.<br>봇은 <b>방장과 같은 레벨 · 그 레벨의 장비</b>로 들어옵니다. 봇 자리는 난입으로 채워지지 않습니다.</p>
-      </div>`
-          : this.fillBotsRemote
-            ? `<p class="roomhint dim">빈 자리는 호스트가 <b>봇</b>으로 채웁니다.</p>`
-            : ''
-      }
+      ${botRow}
       <div class="room-actions">
-        <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : this.role === 'host' ? '▶ 게임 시작' : '준비'}</button>
+        <button class="btn main" id="btn-ready" ${connected ? '' : 'disabled'}>${this.myReady ? '준비 취소' : isHost ? '▶ 게임 시작' : '준비'}</button>
         ${teams ? `<button class="btn secondary" id="btn-team" ${connected ? '' : 'disabled'}>팀 바꾸기</button>` : ''}
-      </div>
-      <p class="roomhint">${this.kind === 'arena' ? '둘 이상 모이거나 빈 자리를 봇으로 채우고, 모두 준비를 누르면 시작합니다.' : '"게임 시작" 을 누르면 바로 시작합니다(들어온 사람이 있으면 모두 준비한 뒤). 남은 자리는 게임 중에도 들어올 수 있습니다.'}</p>`
+      </div>`
     const readyCount = this.members.filter((m) => m.ready).length
     const st = !connected
       ? '연결 중… (최대 20초)'
@@ -1519,14 +1492,9 @@ export class Lobby {
           ? (this.startBlock() ?? '모두 준비. 시작합니다…')
           : this.myReady
             ? `준비 ${readyCount}/${this.members.length} · 나머지를 기다리는 중…`
-            : this.role === 'host'
-              ? '▶ 게임 시작을 누르세요.'
-              : '준비를 누르세요.'
+            : ''
     this.status(st, connected ? 'ok' : '', html)
     this.bindCancel()
-    this.host.querySelectorAll<HTMLButtonElement>('#seg-skin-room button').forEach((b) => {
-      b.onclick = () => this.changeSkin(asSkin(b.dataset.v))
-    })
     const setBtn = this.host.querySelector('#btn-settings-room') as HTMLButtonElement | null
     if (setBtn) setBtn.onclick = () => this.openSettings()
     this.host.querySelectorAll<HTMLButtonElement>('[data-kick]').forEach((b) => {
@@ -1547,21 +1515,22 @@ export class Lobby {
         this.kick(b.dataset.kick ?? '')
       }
     })
-    const chk = this.host.querySelector('#chk-bots') as HTMLInputElement | null
-    if (chk) {
-      chk.onchange = () => {
-        this.fillBots = chk.checked
-        this.broadcastRoom()
-        this.renderRoom()
-        this.maybeStart() // 이미 준비한 채로 켰으면 바로
-      }
-      this.host.querySelectorAll<HTMLButtonElement>('#seg-botdiff button').forEach((b) => {
-        b.onclick = () => {
-          this.botDiff = b.dataset.v as Difficulty
-          this.renderRoom()
-        }
-      })
+    const setBots = (n: number) => {
+      this.botCount = Math.max(0, Math.min(this.roomSize, n))
+      this.broadcastRoom()
+      this.renderRoom()
+      this.maybeStart() // 이미 준비한 채로 넣었으면 바로
     }
+    const chk = this.host.querySelector('#chk-bots') as HTMLInputElement | null
+    if (chk) chk.onchange = () => setBots(chk.checked ? this.roomSize : 0)
+    this.host.querySelectorAll<HTMLButtonElement>('[data-botadd]').forEach((b) => (b.onclick = () => setBots(this.botSeats() + 1)))
+    this.host.querySelectorAll<HTMLButtonElement>('[data-botdel]').forEach((b) => (b.onclick = () => setBots(this.botSeats() - 1)))
+    this.host.querySelectorAll<HTMLButtonElement>('#seg-botdiff button').forEach((b) => {
+      b.onclick = () => {
+        this.botDiff = b.dataset.v as Difficulty
+        this.renderRoom()
+      }
+    })
     ;(this.host.querySelector('#btn-ready') as HTMLButtonElement).onclick = () => this.toggleReady()
     const teamBtn = this.host.querySelector('#btn-team') as HTMLButtonElement | null
     if (teamBtn) teamBtn.onclick = () => this.changeTeam()

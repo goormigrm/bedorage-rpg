@@ -56,7 +56,7 @@ export const PUNGWOL = { gritPer: 0.05, gritMax: 6, gritCool: 120, pvpTaken: 0.8
  * 풍월 69 · 철면 66 … 통천 41 · 침착 39% → 모두 46 ~ 54%. 근접(철면 · 승빠 · 우재)에도 이 배율이 걸리게 했다(전에는 총알에만).
  * 맵마다 차이는 남는다(좁은 주차장에서 산탄 · 근접이 강하고 트인 마당에서 소총 · 저격이 강하다 — 맵의 성격)
  */
-export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.14, uwon: 1.26, dangun: 1.24, giyeol: 1.1, cheolmyeon: 0.89, chim: 1.07, tongdak: 1.04, seungwoo: 1.12, juwoojae: 1.06, oknyang: 1.09, magic: 0.9, jupeol: 0.98 }
+export const CHAR_PVP: Partial<Record<CharacterId, number>> = { pungwol: 1.14, uwon: 1.26, dangun: 1.24, giyeol: 1.1, cheolmyeon: 0.89, chim: 1.07, tongdak: 0.94, seungwoo: 1.12, juwoojae: 1.06, oknyang: 1.09, magic: 0.9, jupeol: 0.98 }
 export const UWON = { invulnAfterDash: 24 }
 /**
  * 던전 구르기 끝의 무적 유예 틱 (2026-09-25 사용자: "구르는 시간이 0.3초쯤 되나? 늘리면 너무 쉬워지지 않나 — 수치로 정해 줘").
@@ -153,6 +153,8 @@ export interface PlayerState {
   ammo: number
   reloadTimer: number
   fireCooldown: number
+  /** 연사 배율이 남긴 틱 조각 (틱 단위로 올리면 5틱 SMG 는 연사 +24% 까지 그대로 5틱이었다 — 2026-10-25) */
+  fireFrac?: number
   recoil: number
   ads: boolean
   /** 조준점(커서)까지의 거리 px (입력에서 온다). 0 = 조준점 없음 */

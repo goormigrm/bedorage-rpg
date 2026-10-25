@@ -213,6 +213,11 @@ export function sheetOf(char: CharacterId): Sheet {
 }
 
 /** 판의 플레이어 상태를 세이브에 적는다. 퀘스트는 그 판의 난이도 칸에 (보통 = quests · 악몽·지옥 = tq[난이도]) */
+/** 판 위의 캐릭터 → 기록 한 벌 (저장 · 투기장 다시 하기가 같이 쓴다 — 하나라도 빠지면 다음 판에 그만큼 잃는다) */
+export function playerSheet(p: PlayerState): Sheet {
+  return { level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, gpity: p.gpity, stats: p.stats, stash: p.stash, stashMax: p.stashMax, wps: p.wps, potMax: p.potMax, build: p.build, attr: p.attr, mlv: p.mlv, mxp: p.mxp, mst: p.mst, rift: p.riftBest, quests: p.quests }
+}
+
 export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; sec: number }[], slot = activeSlot()): void {
   const d = loadSave(slot)
   const prev = d.chars[p.char]
@@ -230,7 +235,7 @@ export function commitSheet(p: PlayerState, tier = 0, played?: { act: number; se
     playSec[k] = (playSec[k] ?? 0) + Math.round(x.sec)
   }
   for (let i = 0; i < playSec.length; i++) playSec[i] = playSec[i] ?? 0
-  d.chars[p.char] = sanitizeSheet({ level: p.level, xp: p.xp, gold: p.gold, equip: p.equip, bag: p.bag, bagMax: p.bagMax, gpity: p.gpity, stats: p.stats, stashMax: p.stashMax, wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, potMax: p.potMax, build: p.build, attr: p.attr, mlv: p.mlv, mxp: p.mxp, mst: p.mst, rift: p.riftBest, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
+  d.chars[p.char] = sanitizeSheet({ ...playerSheet(p), wps: tier > 0 ? (prev?.wps ?? 0) : p.wps, twps, quests: tier > 0 ? (prev?.quests ?? []) : p.quests, tq, playSec })
   delete d.chars[p.char]!.stash
   delete d.chars[p.char]!.stashMax
   const shared = sanitizeSheet({ stash: p.stash, stashMax: p.stashMax })
