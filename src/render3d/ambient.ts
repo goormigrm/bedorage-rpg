@@ -64,7 +64,8 @@ void main() {
   float edge = 1.0 - smoothstep(0.32, 0.5, max(abs(rel.x) / uBox.x, abs(rel.z) / uBox.z));
   float vert = smoothstep(0.0, 0.12, rel.y / uBox.y) * (1.0 - smoothstep(0.8, 1.0, rel.y / uBox.y));
   float tw = 1.0 - uTwinkle + uTwinkle * (0.5 + 0.5 * sin(uTime * (1.3 + aSeed.y * 2.7) + aSeed.z * 31.0));
-  vA = edge * vert * tw;
+  // 카메라 코앞(1.5 ~ 4칸)은 옅게 — 3인칭에서 카메라 곁 먼지가 화면에 큰 흐린 원으로 찍혔다(쿼터뷰는 카메라가 멀어 그대로)
+  vA = edge * vert * tw * smoothstep(1.5, 4.0, -mv.z);
 }
 `
 

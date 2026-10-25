@@ -13,7 +13,7 @@
 //   마을 천막 → 숙소(돼지 저금통 · 큰 시계 · 이층 침대). 바닥엔 분필 ♡ ☆ ◇. 판정(sim)은 그대로.
 
 import { isBright } from '../game/skin'
-import { BRIGHT_FLOOR, applyGrain, hash, paintBrightBand } from './brightFloor'
+import { BRIGHT_FLOOR, applyGrain, grainTexture, hash, paintBrightBand } from './brightFloor'
 import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture, vc } from './brightWalls'
 import { buildLandmarks, planLandmarks } from './brightLandmarks'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
@@ -172,6 +172,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   // ☀ 맵별 바닥 (brightFloor — 없는 맵은 예전 바닥)
   const fdef = bright ? BRIGHT_FLOOR[map.id] : undefined
   if (fdef) disposables.push(applyGrain(floorMat, map, fdef))
+  else if (!bright) disposables.push(nearGrain(floorMat))
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(map.w, map.h), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.position.set(map.w / 2, 0, map.h / 2)
@@ -209,6 +210,45 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
     m.setMatrixAt(m.count, m4)
     if (color) m.setColorAt(m.count, color)
     m.count++
+  }
+
+  // ☀ 맵 밖 띠 (2026-10-25 검토 — 맵 밖이 지평선까지 맨땅이라 3인칭에서 울타리 너머가 비어 보였다): 1.5 ~ 12칸에 낮은 막대사탕 나무 · 덤불.
+  // 그림자 없음 · 인스턴스 셋(구역으로 나눠 화면 밖은 거른다 — chunkInstances) · 자리는 맵마다 같다(hash)
+  if (bright) {
+    const spots: [number, number, number][] = []
+    for (let i = 0; i < 1400 && spots.length < 420; i++) {
+      const x = -12 + hash(i, map.w, 900) * (map.w + 24)
+      const z = -12 + hash(i, map.h, 901) * (map.h + 24)
+      // 맵 밖으로 나간 거리 (맵 안 · 벽 바로 곁은 뺀다)
+      if (Math.max(-x, x - map.w, -z, z - map.h) < 1.5) continue
+      spots.push([x, z, hash(i, 7, 902)])
+    }
+    const white = new THREE.MeshLambertMaterial({ color: 0xffffff })
+    const trees = spots.filter((p) => p[2] < 0.55)
+    const bushes = spots.filter((p) => p[2] >= 0.55)
+    const trunk = inst(new THREE.CylinderGeometry(0.07, 0.09, 0.8, 6), white, trees.length, false)
+    const crown = inst(new THREE.IcosahedronGeometry(0.45, 1), white, trees.length, false)
+    const bush = inst(new THREE.IcosahedronGeometry(0.36, 1), white, bushes.length, false)
+    const CROWN = [0xffb3cf, 0xa8e6cf, 0xc9b6ff, 0xffe39a, 0x9fd8ff]
+    const BUSH = [0x9be3b0, 0xb6efc4, 0x86d6a6]
+    const trunkCol = new THREE.Color(0xe8c49a)
+    trees.forEach(([x, z, h], i) => {
+      // 멀수록 조금 크게 (먼 띠도 알아보게)
+      const out = Math.max(-x, x - map.w, -z, z - map.h)
+      const k = (0.85 + hash(i, 3, 903) * 0.5) * (1 + out * 0.04)
+      put(trunk, x, 0.4 * k, z, k, k, k, 0, trunkCol)
+      put(crown, x, (0.8 + 0.32) * k, z, k, k * 0.9, k, h * 9, col.setHex(CROWN[Math.floor(hash(i, 4, 904) * CROWN.length)]))
+    })
+    bushes.forEach(([x, z, h], i) => {
+      const out = Math.max(-x, x - map.w, -z, z - map.h)
+      const k = (0.8 + hash(i, 5, 905) * 0.7) * (1 + out * 0.04)
+      put(bush, x, 0.2 * k, z, k * 1.3, k * 0.75, k, h * 9, col.setHex(BUSH[Math.floor(hash(i, 6, 906) * BUSH.length)]))
+    })
+    for (const m of [trunk, crown, bush]) {
+      m.instanceMatrix.needsUpdate = true
+      if (m.instanceColor) m.instanceColor.needsUpdate = true
+    }
+    disposables.push(white)
   }
 
   // ---- 벽 ----
@@ -651,6 +691,9 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   // 진짜 빛은 가까운 여섯에만 (빛 수가 셰이더 비용이다)
   const lights = Array.from({ length: Math.min(6, torchSpots.length) }, () => {
     const l = new THREE.PointLight(0xff9a4a, 0, 9, 1.6)
+    // at = 비추는 횃불 번호(-1 아직) · t0 = 옮긴 때 (그때부터 0.3초에 걸쳐 밝힌다)
+    l.userData.at = -1
+    l.userData.t0 = -9
     group.add(l)
     return l
   })
@@ -706,24 +749,38 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
         const k = 1 + Math.sin(time * 11 + f.phase) * 0.08 + Math.sin(time * 23 + f.phase * 2) * 0.05
         sprites[i].scale.set(f.s * k * 0.8, f.s * k * 1.15, 1)
       }
-      // 0.25초마다 가까운 횃불을 골라 빛을 옮긴다
+      // 0.25초마다 가까운 횃불을 고른다. 이미 비추는 횃불의 빛은 그대로 두고, 새로 든 횃불에만 빈 빛을 옮겨 0.3초에 걸쳐 밝힌다 —
+      // 전에는 가까운 순서대로 빛을 통째로 다시 놓아 걸을 때마다 빛 웅덩이가 툭툭 켜지고 꺼졌다(3인칭에서 잘 보였다 · 2026-10-25 검토)
       const pick = Math.floor(time * 4)
       if (pick !== lastPick && lights.length) {
         lastPick = pick
-        const near = torchSpots
-          .map((s, i) => ({ i, d: (s.x - x) ** 2 + (s.z - z) ** 2 }))
-          .sort((a, b) => a.d - b.d)
-          .slice(0, lights.length)
-        near.forEach((n, k) => {
-          const s = torchSpots[n.i]
-          lights[k].position.set(s.x, s.y, s.z)
-          lights[k].userData.fire = s === fireLight
-        })
+        const want = new Set(
+          torchSpots
+            .map((s, i) => ({ i, d: (s.x - x) ** 2 + (s.z - z) ** 2 }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, lights.length)
+            .map((n) => n.i),
+        )
+        const free: THREE.PointLight[] = []
+        for (const l of lights) {
+          if (want.has(l.userData.at)) want.delete(l.userData.at)
+          else free.push(l)
+        }
+        for (const i of want) {
+          const l = free.shift()
+          if (!l) break
+          const s = torchSpots[i]
+          l.position.set(s.x, s.y, s.z)
+          l.userData.at = i
+          l.userData.t0 = time
+          l.userData.fire = s === fireLight
+        }
       }
       for (let k = 0; k < lights.length; k++) {
         const big = lights[k].userData.fire
+        const fade = Math.min(1, Math.max(0, (time - lights[k].userData.t0) / 0.3))
         // 모닥불은 마을 한가운데를 넓게 밝힌다 (2026-09-19 — 마을이 어둡다는 점검)
-        lights[k].intensity = (big ? 32 : 7) * (1 + Math.sin(time * 13 + k * 2.1) * 0.08 + Math.sin(time * 7.7 + k) * 0.06)
+        lights[k].intensity = (big ? 32 : 7) * fade * (1 + Math.sin(time * 13 + k * 2.1) * 0.08 + Math.sin(time * 7.7 + k) * 0.06)
         lights[k].distance = big ? 20 : 9
       }
     },
@@ -1131,6 +1188,31 @@ function grassGeometry(): THREE.BufferGeometry {
 }
 
 /** 부드러운 빛 방울 텍스처 (불꽃) */
+/** 🌙 3인칭 발밑 결의 세기 (renderer — 3인칭이면 1 · 쿼터뷰는 0 이라 그대로) */
+export const NEAR_GRAIN = { value: 0 }
+/**
+ * 🌙 3인칭 발밑 결 (2026-10-25 검토 — 바닥 그림이 칸당 24px 라 3인칭 발밑이 민짜였다): 카메라 6칸 안에서만 잔 결(모래 결 128px)을 곱한다.
+ * 쿼터뷰 🌙 는 NEAR_GRAIN 0 이라 그대로("🌙 는 그대로 둔다" — 3인칭 근접 문제라서 하는 변경)
+ */
+function nearGrain(mat: THREE.MeshLambertMaterial): THREE.Texture {
+  const tex = grainTexture('sand')
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uNearGrain = NEAR_GRAIN
+    sh.uniforms.uNGTex = { value: tex }
+    sh.vertexShader = 'varying vec3 vNGW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vNGW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;')
+    sh.fragmentShader = 'uniform float uNearGrain;\nuniform sampler2D uNGTex;\nvarying vec3 vNGW;\n' + sh.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      if ( uNearGrain > 0.0 ) {
+        float ngk = ( 1.0 - smoothstep( 3.0, 6.0, distance( vNGW, cameraPosition ) ) ) * uNearGrain;
+        if ( ngk > 0.0 ) diffuseColor.rgb *= 1.0 + ( texture2D( uNGTex, vNGW.xz * 0.6 ).r - 0.5 ) * 0.45 * ngk;
+      }`,
+    )
+  }
+  mat.customProgramCacheKey = () => 'floor-neargrain'
+  return tex
+}
+
 function glowTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas')
   c.width = c.height = 64

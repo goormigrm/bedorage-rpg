@@ -960,7 +960,7 @@ export function paintBrightBand(def: FloorDef, g: CanvasRenderingContext2D, map:
 // ---------------------------------------------------------------- 결 텍스처
 
 /** 128px 반복 결 (회색 0.5 둘레 — 바닥색에 곱한다). 가장자리를 넘는 것은 맞은편에도 그려 이음매가 없다 */
-function grainTexture(kind: Grain): THREE.CanvasTexture {
+export function grainTexture(kind: Grain): THREE.CanvasTexture {
   const N = 128
   const c = document.createElement('canvas')
   c.width = N

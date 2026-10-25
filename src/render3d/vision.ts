@@ -77,6 +77,12 @@ const VIS_U = {
   visColor: { value: new THREE.Vector3() },
   visAlpha: { value: 0 },
   visOn: { value: 0 },
+  /** 3인칭: 카메라에서 이 거리(칸) 안의 벽 · 나무 · 풀은 점무늬로 비운다 (0 = 끔 — 쿼터뷰 · 정조준) */
+  visNear: { value: 0 },
+}
+/** 3인칭 카메라 코앞 비우기 거리 (renderer — 3인칭이면 1.3 · 아니면 0) */
+export const setNearFade = (d: number): void => {
+  VIS_U.visNear.value = d
 }
 
 /** 세계(벽 · 상자 · 소품) 재질에 구조물 안개를 붙인다 — 바닥(userData.noVisFog)은 덮개가 맡는다. 무서운 판에서는 visOn 0 이라 그대로 */
@@ -108,10 +114,17 @@ function addVisFog(mat: THREE.Material): void {
       }`,
     )
     sh.fragmentShader =
-      'uniform sampler2D visMask; uniform vec2 visSize; uniform vec3 visColor; uniform float visAlpha; uniform float visOn; varying vec3 vVisW;\n' +
+      'uniform sampler2D visMask; uniform vec2 visSize; uniform vec3 visColor; uniform float visAlpha; uniform float visOn; uniform float visNear; varying vec3 vVisW;\n' +
       sh.fragmentShader.replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
+      // 3인칭: 카메라 코앞(visNear 칸)의 벽 · 나무 · 풀은 2×2 점무늬로 비운다 — 가까울수록 많이 (2026-10-25 검토: 카메라가 나무 · 생울타리 속에 들어갔다)
+      if ( visNear > 0.0 ) {
+        float vnd = distance( vVisW, cameraPosition ) / visNear;
+        vec2 vnc = mod( floor( gl_FragCoord.xy ), 2.0 );
+        float vnt = ( vnc.x * 2.0 + vnc.y + 0.5 ) / 4.0;
+        if ( vnd < vnt ) discard;
+      }
       if ( visOn > 0.5 ) {
         vec2 vuv = vec2( vVisW.x / visSize.x, 1.0 - vVisW.z / visSize.y );
         vec2 vo = vec2( 0.7 / visSize.x, 0.7 / visSize.y );
@@ -220,7 +233,20 @@ export class Vision {
       this.sideQuads(TILE_CRATE, CRATE_H),
       this.sideQuads(TILE_SANDBAG, SANDBAG_H),
     ]
+    for (const m of this.structures) m.visible = !this.matFog
     this.group.add(...this.structures)
+  }
+
+  /**
+   * 🌙 3인칭: 벽 · 상자 위 네모 덮개(높이 1.8 고정)는 들판 바위(0.9 ~ 1.6) · 성당(2.2 ~ 2.6) · 숲 나무(2.2 ~ 3.4)와 높이가 달라
+   * 눈높이에서 바위 위에 검은 판이 뜨고 나무를 가슴께에서 잘랐다 → 3인칭 동안만 ☀ 처럼 재질이 시야 마스크를 읽어 안개를 섞는다.
+   * 셰이더는 이미 붙어 있다(fogStructures — 🌙 는 visOn 0 이었다) — uniform 하나 · 덮개 숨김뿐. 쿼터뷰 🌙 는 그대로 (2026-10-25 검토)
+   */
+  private matFog = false
+  setMaterialFog(on: boolean): void {
+    if (this.soft || on === this.matFog) return
+    this.matFog = on
+    for (const m of this.structures) m.visible = !on
   }
 
   /**
@@ -410,7 +436,7 @@ export class Vision {
     VIS_U.visSize.value.set(this.map.w, this.map.h)
     VIS_U.visColor.value.copy(this.fogColor)
     VIS_U.visAlpha.value = this.fogAlpha
-    VIS_U.visOn.value = this.soft && this.group.visible ? 1 : 0
+    VIS_U.visOn.value = (this.soft || this.matFog) && this.group.visible ? 1 : 0
     if (!this.dirty) return
     this.dirty = false
     const prevRt = gl.getRenderTarget()

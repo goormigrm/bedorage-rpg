@@ -984,6 +984,8 @@ export class MonsterView {
   private prevPos = new Map<number, { x: number; y: number }>()
   /** 그린 위치 (체력 바·조준선이 쓴다) */
   readonly shown = new Map<number, { x: number; z: number }>()
+  /** 시야 끝 어둡게 (🌙 3인칭만 — renderer): 자리 → 밝기 배율 0 ~ 1. 바닥은 반경 74% 부터 어두워지는데 괴물만 밝은 채로 툭 나타났다 */
+  edgeShade: ((x: number, z: number) => number) | null = null
   /** 실사 모델 (종류 번호 → 받는 중 · 실패 · 준비됨). 2026-09-19 */
   private models: (ModelKind | 'loading' | 'failed' | undefined)[] = []
   private mcounts: number[] = []
@@ -1463,6 +1465,7 @@ export class MonsterView {
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
+    if (this.edgeShade) this.col.multiplyScalar(this.edgeShade(x, z))
     if (model) {
       this.putModel(model, i, a)
       return

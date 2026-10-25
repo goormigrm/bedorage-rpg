@@ -3,8 +3,9 @@
 
 import * as THREE from 'three'
 import { CHARACTERS, headHitScale } from '../core/characters'
+import { inZone, zoneEscape } from '../core/bosszone'
 import { angleToRad } from '../core/fixedmath'
-import { GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
+import { GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL, rayBlocked } from '../core/map'
 import { flowField, flowStep } from '../core/flow'
 import { CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
@@ -50,8 +51,9 @@ import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
-import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures } from './vision'
-import { U, World3D, buildWorld, paintFloorSteps } from './world3d'
+import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures, setNearFade } from './vision'
+import { Sky } from './sky'
+import { NEAR_GRAIN, U, World3D, buildWorld, paintFloorSteps } from './world3d'
 import { buildNpc } from './npc3d'
 import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
@@ -322,6 +324,8 @@ export class Renderer3D {
   private lanterns: THREE.PointLight[] = []
   /** 거대한 막 보스를 카메라 쪽에서 비추는 빛 (등불 반경 밖으로 몸이 나가 검은 덩어리로 보였다 — 2026-09-24) */
   private giantLight = new THREE.PointLight(0xffb48c, 0, 30, 1.1)
+  /** ☀ 3인칭 하늘 (🌙 는 없다 — 검정 그대로) */
+  private readonly sky: Sky | null = isBright() ? new Sky() : null
   /** 스킬 연출: 땅의 무대(스포트라이트) · 던진 수류탄 · 버프 고리 */
   private zoneMeshes = new Map<number, THREE.Group>()
   private throwMeshes = new Map<number, THREE.Mesh>()
@@ -625,6 +629,10 @@ export class Renderer3D {
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, VIEW_W / VIEW_H, 0.5, 140)
     this.scene.background = new THREE.Color(map.theme.outside)
     this.scene.fog = new THREE.Fog(map.theme.fog, 34, 70)
+    if (this.sky) {
+      this.sky.setHorizon(map.theme.fog)
+      this.scene.add(this.sky.mesh)
+    }
     this.world = buildWorld(map)
     fogStructures(this.world.group)
     this.scene.add(this.world.group)
@@ -839,6 +847,7 @@ export class Renderer3D {
     this.prebuilt.clear()
     this.scene.background = new THREE.Color(map.theme.outside)
     this.scene.fog = new THREE.Fog(map.theme.fog, 34, 70)
+    this.sky?.setHorizon(map.theme.fog)
     this.miniCanvas = null
     this.bagShown.clear()
     for (const g of this.globeMeshes.values()) this.scene.remove(g)
@@ -1008,6 +1017,14 @@ export class Renderer3D {
     const bare = new THREE.BufferGeometry()
     bare.setAttribute('position', plane.getAttribute('position'))
     g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
+    // 3인칭 끊김 (2026-10-25 계측 — 처음 그릴 때 20 ~ 49ms 씩): ① 쓰러진 캐릭터가 흐려질 때 재질이 투명으로 바뀌면(setRigOpacity) three 는
+    // 불투명과 다른 셰이더를 만든다 ② 봇 · 내가 무기를 바꿔 끼면 처음 보는 무기 모양(부품 · 재질 갈래)을 그 자리에서 만들었다 → 견본을 둔다
+    const rig = buildCharacter(CHARACTERS.cheolmyeon)
+    setRigOpacity(rig, 0.5)
+    g.add(rig.root)
+    for (const w of Object.values(WEAPONS)) {
+      for (let meat = 0; meat < (w.family === 'violin' ? 3 : 1); meat++) g.add(buildGun(w, 0.42, meat).group)
+    }
     this.warmKitGroup = g
     return g
   }
@@ -1038,8 +1055,8 @@ export class Renderer3D {
     const kit = root === this.warmKitGroup
     for (const n of WARM_ORDER) {
       for (const w of warm) {
-        // 견본은 싸움에서 나오는 빛 수만 (8 · 12 · 16)
-        if (kit ? n < 8 : !w.lit && n !== 12 && n !== 16) continue
+        // 견본은 싸움에서 나오는 빛 수만 (8 · 12 · 16) · 빛을 안 받는 재질은 0 만 뺀다(12 · 16 만이던 때 3인칭 들판에서 4 · 8 로 처음 그리며 몇 ms 씩 멈췄다 — 2026-10-25 계측, 몇 개뿐이다)
+        if (kit ? n < 8 : !w.lit && n === 0) continue
         const k = `${w.key}|${w.lit || kit ? n : '-'}`
         if (this.warmKeys.has(k)) continue
         this.warmKeys.add(k)
@@ -1120,8 +1137,9 @@ export class Renderer3D {
     // 빛 상한: 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
     let lights = this.realLights()
     if (lights.length > LIGHT_BUDGET) {
-      const cx = this.camTarget.x
-      const cz = this.camTarget.z
+      // 3인칭은 시선 앞(lightRef) — 몸 둘레로 고르면 등 뒤 빛이 앞의 빛보다 먼저 남았다
+      const cx = this.lightRef.x
+      const cz = this.lightRef.z
       const wp = this.tmpV3
       const dist = new Map<THREE.PointLight, number>()
       for (const l of lights) {
@@ -2497,8 +2515,11 @@ export class Renderer3D {
     this.updateLanterns(curr, pos)
     this.updateGiantLight(curr)
     this.updateCamera(curr, pos, dt, opts)
+    // 3인칭(정조준 아님)만 카메라 코앞의 벽 · 나무 · 풀을 점무늬로 비운다
+    setNearFade(this.fpsCam && !this.fpsFirst ? 1.3 : 0)
+    NEAR_GRAIN.value = this.fpsCam ? 1 : 0
     this.updateViewGun(opts.localPlayer >= 0 ? curr.players[opts.localPlayer] : undefined)
-    this.world.update(this.t, this.camTarget.x, this.camTarget.z)
+    this.world.update(this.t, this.lightRef.x, this.lightRef.z)
     // 떠다니는 것: 던전만 (투기장은 끈다) · 지역이 바뀌면 그 막 · 분위기의 종류로
     const amb = curr.mode === 'dungeon' && curr.curArea >= 0
     if (amb && curr.curArea !== this.ambientArea) {
@@ -2618,6 +2639,7 @@ export class Renderer3D {
     }
     this.drawDowned(curr, pos, opts)
     this.drawDownedNav(curr, pos, opts)
+    this.drawZoneWarn(curr, opts.localPlayer)
     if (this.fade.t > 0) {
       // 실제 시간으로 (느린 화면 · 멈칫과 상관없이)
       this.fade.t = Math.max(0, this.fade.t - Math.min(0.05, this.lastDt))
@@ -2708,11 +2730,13 @@ export class Renderer3D {
     // 보스 등장 장면 동안은 안개를 걷는다 (2026-10-22 — 카메라가 보스 쪽으로 가는데 보스가 어둠 속이었다)
     const fog = (opts.fog ?? true) && lp >= 0 && (!isBright() || darkNow) && !this.bossCut
     this.vision.setVisible(fog)
+    this.vision.setMaterialFog(this.fpsCam)
     const n = curr.players.length
     if (this.hidden.length !== n) this.hidden = curr.players.map(() => false)
     if (!fog) {
       this.hidden.fill(false)
       this.hiddenM.clear()
+      this.monsterView.edgeShade = null
       return
     }
     const me = curr.players[lp]
@@ -2727,6 +2751,17 @@ export class Renderer3D {
     const dark = (me.don?.[DON_DARK] ?? 0) > 0
     const radius = dark ? DARK_VIEW_TILES : VIEW_RADIUS_TILES * (this.scoped ? 1.8 : 1)
     this.vision.update(viewers, radius)
+    // 🌙 3인칭: 괴물도 바닥처럼 시야 끝(반경 74% ~)에서 어둡게 녹는다 — 화면 가운데라 툭 나타나는 것이 잘 보였다 (2026-10-25 검토)
+    if (this.fpsCam) {
+      const r0 = radius * 0.74
+      const r1 = radius
+      this.monsterView.edgeShade = (x, z) => {
+        let d = Infinity
+        for (const v of viewers) d = Math.min(d, Math.hypot(x - v.x * U, z - v.y * U))
+        const k = Math.min(1, Math.max(0, (d - r0) / (r1 - r0)))
+        return 1 - 0.8 * k * k * (3 - 2 * k)
+      }
+    } else this.monsterView.edgeShade = null
     this.vision.draw(this.gl)
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
@@ -3633,6 +3668,57 @@ export class Renderer3D {
     ctx.globalAlpha = 1
   }
 
+  /**
+   * 3인칭 위험 범위 경고 (2026-10-25 검토): 땅의 예고 원은 눈높이에서 납작하고 등 뒤 것은 보이지 않는다 — 지금 적의 범위(산성 · 폭발 예고 ·
+   * 보스 패턴 · 즉사기) 안이면 화면 가장자리가 붉게 맥박치고, 빠져나갈 쪽을 화살표로. 판정은 봇과 같은 core/bosszone(inZone · zoneEscape)
+   */
+  private drawZoneWarn(curr: GameState, lp: number): void {
+    if (!this.fpsCam || lp < 0 || curr.mode !== 'dungeon') return
+    const me = curr.players[lp]
+    if (!me || !me.alive || me.downed) return
+    let hit: Zone | null = null
+    for (const z of curr.zones) {
+      if (z.owner !== -1 || (z.kind !== ZONE_ACID && z.kind !== ZONE_FUSE && z.kind !== ZONE_WARN) || z.wait) continue
+      if (!inZone(z, me.x, me.y, 12)) continue
+      // 즉사기 · 곧 터지는 것을 먼저
+      if (!hit || z.kill || z.t < hit.t) hit = z
+      if (z.kill) break
+    }
+    if (!hit) return
+    const ctx = this.hud.ctx
+    const urgent = hit.kill || (hit.kind !== ZONE_ACID && hit.t < 30)
+    const pulse = 0.5 + 0.5 * Math.sin(this.t * (urgent ? 14 : 8))
+    ctx.save()
+    // 가장자리 붉은 맥박 (가운데는 비운다)
+    const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.85)
+    g.addColorStop(0, 'rgba(255,40,30,0)')
+    g.addColorStop(1, `rgba(255,40,30,${(urgent ? 0.34 : 0.2) + 0.14 * pulse})`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H)
+    // 빠져나갈 쪽: 조준점 둘레에 큰 화살표
+    const e = zoneEscape(hit, me.x, me.y)
+    const a = this.hitDirAngle(e.x, e.y)
+    if (a !== null) {
+      const cx = VIEW_W / 2 + Math.cos(a) * 92
+      const cy = VIEW_H / 2 + Math.sin(a) * 92
+      ctx.translate(cx, cy)
+      ctx.rotate(a)
+      ctx.globalAlpha = 0.75 + 0.25 * pulse
+      ctx.fillStyle = '#ff5a3a'
+      ctx.strokeStyle = 'rgba(40,0,0,0.85)'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.moveTo(26, 0)
+      ctx.lineTo(-12, -18)
+      ctx.lineTo(-4, 0)
+      ctx.lineTo(-12, 18)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
   /** 화면 밖의 것을 가리키는 가장자리 화살표 (총성·팀 신호 공용) */
   private edgeArrow(s: { x: number; y: number }, color: string, label?: string): void {
     const ctx = this.hud.ctx
@@ -3684,6 +3770,8 @@ export class Renderer3D {
     for (const i of order) {
       const p = curr.players[i]
       if (!p.alive || !this.rigs[i]?.root.visible) continue
+      // 3인칭: 내 이름표 · 체력 띠는 숨긴다 — 조준점 바로 아래에 늘 떠 있었다(체력은 왼쪽 아래 구슬) (2026-10-25 검토)
+      if (i === lp && this.fpsCam) continue
       const c = CHARACTERS[p.char]
       const s = this.worldToScreen(pos[i].x, this.rigs[i].height + 0.2, pos[i].z)
       const name = opts.names[i] ?? c.name
@@ -4967,7 +5055,11 @@ export class Renderer3D {
     const cut = this.bossCut ? 2.4 : 1
     l.intensity = dark.lantern * 9 * cut * (1 + Math.sin(this.t * 2.1) * 0.05)
     l.distance = (12 + best.top * 1.6) * (this.bossCut ? 1.4 : 1)
-    l.position.set(best.x + Math.sin(YAW) * best.top * 0.45, best.top * 0.6, best.z + Math.cos(YAW) * best.top * 0.45)
+    // 보스에서 카메라 쪽 — 쿼터뷰는 예전 그대로(카메라가 YAW 쪽), 3인칭으로 옆 · 뒤에서 보면 역광이던 것
+    const cdx = this.camera.position.x - best.x
+    const cdz = this.camera.position.z - best.z
+    const cl = Math.hypot(cdx, cdz) || 1
+    l.position.set(best.x + (cdx / cl) * best.top * 0.45, best.top * 0.6, best.z + (cdz / cl) * best.top * 0.45)
   }
 
   /** 등불: 살아 있는 플레이어마다 따뜻한 빛. 쓰러지면 꺼져 간다 (던전만) */
@@ -5047,16 +5139,17 @@ export class Renderer3D {
       this.dropViewGun()
       const group = buildGun(w, 0.42).group
       group.traverse((o) => (o.castShadow = o.receiveShadow = false))
-      // 몸에 들린 크기 그대로면 눈앞에서 화면 아래를 다 가렸다
-      group.scale.setScalar(0.6)
+      // 몸에 들린 크기 그대로면 눈앞에서 화면 아래를 다 가렸다. 0.6 → 0.3 · 자리도 절반(화면에 보이는 크기 · 자리는 같다):
+      // 앞 0.46 + 총 길이가 몸 반지름(0.44칸)을 넘어 벽에 붙으면 총구가 벽 속에 박혔다 (2026-10-25 검토)
+      group.scale.setScalar(0.3)
       this.scene.add(group)
       this.viewGun = { id: p.weapon, group }
     }
     const g = this.viewGun!.group
     g.visible = true
-    // 카메라 기준 오른쪽 0.2 · 아래 0.17 · 앞 0.46 — 쏘면 반동만큼 뒤로 · 총의 앞(+z)을 카메라 앞(-z)으로 돌린다
-    const kick = Math.min(0.06, p.recoil * 0.003)
-    g.position.copy(this.tmpV3.set(0.2, -0.17, -0.46 + kick).applyQuaternion(this.camera.quaternion).add(this.camera.position))
+    // 카메라 기준 오른쪽 0.1 · 아래 0.085 · 앞 0.23 — 쏘면 반동만큼 뒤로 · 총의 앞(+z)을 카메라 앞(-z)으로 돌린다
+    const kick = Math.min(0.03, p.recoil * 0.0015)
+    g.position.copy(this.tmpV3.set(0.1, -0.085, -0.23 + kick).applyQuaternion(this.camera.quaternion).add(this.camera.position))
     g.quaternion.copy(this.camera.quaternion).multiply(this.flipY)
   }
 
@@ -5180,17 +5273,21 @@ export class Renderer3D {
       this.drawSay(ctx, m, at, def)
       // 정예는 늘, 나머지는 맞은 뒤 3초만. 보스 · 우두머리는 화면 위 큰 막대와 따로 머리 위에 큰 이름표
       // 1인칭: 먼 괴물의 이름 · 체력 띠는 그리지 않는다 — 지평선까지 겹쳐 보였다 (보스 이름표 · 공격 예고는 그대로)
-      if (this.fpsCam && !isBossLike(m) && Math.hypot(at.x - this.camera.position.x, at.z - this.camera.position.z) > 14) continue
+      const camD = this.fpsCam ? Math.hypot(at.x - this.camera.position.x, at.z - this.camera.position.z) : 0
+      if (this.fpsCam && !isBossLike(m) && camD > 14) continue
       const goblin = def.attack === 'flee'
       if (isBossLike(m)) {
         this.drawBossPlate(ctx, curr, m, at, def)
         continue
       }
       if (!m.elite && !goblin && curr.tick - m.hitTick > 180) continue
+      // 3인칭: 벽 · 생울타리 뒤 괴물의 띠는 그리지 않는다(2D 라 벽을 뚫고 보였다) · 멀수록 작게 0.7 ~ 1.1배 (2026-10-25 검토)
+      if (this.fpsCam && rayBlocked(this.map, this.camera.position.x / U, this.camera.position.z / U, at.x / U, at.z / U)) continue
+      const bk = this.fpsCam ? Math.max(0.7, Math.min(1.1, 1.25 - camD * 0.04)) : 1
       const s0 = this.worldToScreen(at.x, monsterTop(m) + 0.15, at.z)
       // 막대를 굵게 (2026-10-08 사용자: "모든 몬스터의 체력바가 너무 얇아서 잘 안 보인다" — 30 × 4px(안쪽 2px) → 44 · 정예 54 × 8px)
-      const w = m.elite ? 54 : 44
-      const bh = 8
+      const w = (m.elite ? 54 : 44) * bk
+      const bh = Math.round(8 * bk)
       const k = Math.max(0, m.hp / m.maxHp)
       ctx.globalAlpha = m.elite ? 1 : Math.min(1, (180 - (curr.tick - m.hitTick)) / 30)
       ctx.fillStyle = 'rgba(12,8,16,0.82)'
@@ -5878,32 +5975,50 @@ export class Renderer3D {
             break
           }
         }
-        this.camera.position.set(p.x - fx * d + rx * TPP_SIDE * (d / TPP_DIST), Math.max(0.5, h * 1.1 - fy * d + 0.45), p.z - fz * d + rz * TPP_SIDE * (d / TPP_DIST))
+        // 위를 볼수록 카메라가 내려온다 — 1.2 아래로는 안 간다(풀 · 바닥 입자가 렌즈 앞에 손바닥만 하게 찍혔다 · 2026-10-25 검토)
+        this.camera.position.set(p.x - fx * d + rx * TPP_SIDE * (d / TPP_DIST), Math.max(1.2, h * 1.1 - fy * d + 0.45), p.z - fz * d + rz * TPP_SIDE * (d / TPP_DIST))
         this.tppDist = d
       }
       const c = this.camera.position
       this.camera.lookAt(c.x + fx, c.y + fy, c.z + fz)
+      if (this.sky) {
+        this.sky.mesh.visible = true
+        this.sky.mesh.position.copy(c)
+      }
       // 3인칭은 넓게 · 정조준(1인칭)은 좁게 (조준경은 더). 벽에 붙어도 벽이 잘리지 않게 가까운 면을 당긴다
       const fov = ads ? (this.scoped ? 28 : 50) : 74
       if (!this.fpsCam || Math.abs(this.camera.fov - fov) > 0.05) {
         this.camera.fov = this.fpsCam ? this.camera.fov + (fov - this.camera.fov) * Math.min(1, dt * 12) : fov
         this.camera.near = 0.08
-        // 안개(34 ~ 70)가 다 덮는 너머는 그리지 않는다 — 지평선까지 보여 쿼터뷰보다 그릴 것이 많다
-        this.camera.far = 72
+        // 안개(34 ~ 70)가 다 덮는 너머는 그리지 않는다 — 지평선까지 보여 쿼터뷰보다 그릴 것이 많다.
+        // 🌙 는 시야(15칸) 밖이 거의 까매 안개를 30 ~ 46 으로 당기고 48 너머는 그리지 않는다 (2026-10-25 검토 — 까만 너머의 구역 · 소품 · 횃불까지 그렸다)
+        this.camera.far = isBright() ? 72 : 48
         this.camera.updateProjectionMatrix()
+      }
+      // 지역을 옮기면 안개를 새로 만든다(34 ~ 70) — 3인칭 동안은 프레임마다 맞춘다
+      if (!isBright()) {
+        const fg = this.scene.fog as THREE.Fog
+        fg.near = 30
+        fg.far = 46
       }
       this.fpsCam = true
       // 쿼터뷰로 돌아가면 그 자리에서 바로 (따라오는 흐름 없이)
       this.camTarget.set(p.x, 0, p.z)
       this.camInit = false
-      this.world.sun.position.set(p.x + 8, 18, p.z + 10)
-      this.world.sun.target.position.set(p.x, 0, p.z)
+      // 빛 고르기 · 그림자 상자는 시선 앞으로 (2026-10-25 검토 — 몸 가운데면 그림자 상자 절반 · 빛 몫이 등 뒤에 쓰였다)
+      const hl = Math.hypot(fx, fz) || 1
+      this.lightRef.set(p.x + (fx / hl) * 7, 0, p.z + (fz / hl) * 7)
+      this.placeSun(p.x + (fx / hl) * 11, p.z + (fz / hl) * 11)
       return
     }
     if (this.fpsCam) {
       this.fpsCam = false
+      if (this.sky) this.sky.mesh.visible = false
       this.camera.near = 0.5
       this.camera.far = 140
+      const fg = this.scene.fog as THREE.Fog
+      fg.near = 34
+      fg.far = 70
       this.resize()
     }
     let tx: number
@@ -6015,8 +6130,38 @@ export class Renderer3D {
     this.camera.position.set(cx + Math.sin(YAW) * flat, Math.sin(PITCH) * cd, cz + Math.cos(YAW) * flat)
     this.camera.lookAt(cx, 0.6, cz)
     // 그림자 카메라가 시점을 따라오도록
-    this.world.sun.position.set(this.camTarget.x + 8, 18, this.camTarget.z + 10)
-    this.world.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z)
+    this.lightRef.copy(this.camTarget)
+    this.placeSun(this.camTarget.x, this.camTarget.z)
+  }
+
+  /** 빛을 고르는 기준점 (쿼터뷰 = 카메라가 보는 곳 · 3인칭 = 시선 앞 7칸) */
+  private lightRef = new THREE.Vector3()
+  private sunR: THREE.Vector3 | null = null
+  private sunU = new THREE.Vector3()
+  /**
+   * 해(그림자 상자 가운데)를 땅 위 (cx, cz) 근처에 — 빛에서 본 좌표를 그림자 지도 한 칸에 맞춰 붙인다.
+   * 칸 사이를 미끄러지면 움직일 때마다 그림자 가장자리가 반 칸씩 떨렸다 (2026-10-25 검토)
+   */
+  private placeSun(cx: number, cz: number): void {
+    const sun = this.world.sun
+    if (!this.sunR) {
+      // 해는 늘 (8, 18, 10) 쪽 — 빛 방향 d 에 수직인 두 축 r(가로) · u
+      const d = new THREE.Vector3(8, 18, 10).normalize()
+      this.sunR = new THREE.Vector3(0, 1, 0).cross(d).normalize()
+      this.sunU.crossVectors(d, this.sunR).normalize()
+    }
+    const r = this.sunR
+    const u = this.sunU
+    const cam = sun.shadow.camera as THREE.OrthographicCamera
+    const texel = (cam.right - cam.left) / (sun.shadow.mapSize.x || 2048)
+    const a = Math.round((cx * r.x + cz * r.z) / texel) * texel
+    const b = Math.round((cx * u.x + cz * u.z) / texel) * texel
+    // 땅(y 0) 위의 점 P: P·r = a · P·u = b 를 푼다
+    const det = r.x * u.z - r.z * u.x
+    const x = (a * u.z - b * r.z) / det
+    const z = (b * r.x - a * u.x) / det
+    sun.position.set(x + 8, 18, z + 10)
+    sun.target.position.set(x, 0, z)
   }
 
   /** 쏜 방향 (쏜 사람 → 맞은 자리, 그림 좌표의 단위 벡터). 쏜 사람을 모르면 (0, 0) */
@@ -6058,6 +6203,7 @@ export class Renderer3D {
     this.skillFx.dispose()
     this.quarks.dispose()
     this.ambient.dispose()
+    this.sky?.dispose()
     this.post.dispose()
     this.glow.dispose()
     this.puff.dispose()
