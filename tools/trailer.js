@@ -1148,7 +1148,8 @@ function patch24Scenes() {
       base = moonYaw
       inp().yaw = moonYaw
     }
-    // 3인칭으로 바꿀 때 볼 쪽: 지금 조준에서 가장 덜 돌면서 앞(10칸)이 트이고 뒤(4칸 — 카메라 자리)에 벽이 없는 쪽 (벽에 등을 대면 화면이 벽으로 덮였다)
+    // 3인칭으로 바꿀 때 볼 쪽: 지금 조준에서 덜 돌면서 앞(10칸)이 트이고 뒤(5칸 — 카메라 자리 · 양옆 2칸까지)에 벽이 적은 쪽
+    // (벽에 등을 대면 화면이 벽으로 덮였다 · ☀ 나무 · 생울타리는 칸보다 크게 그려져 곁에 있어도 카메라를 덮었다)
     const tppYaw = () => {
       const p = st().players[0]
       const a0 = inp().yaw
@@ -1156,8 +1157,11 @@ function patch24Scenes() {
       let bs = -Infinity
       for (let k = 0; k < 24; k++) {
         const a = a0 + (k / 24) * Math.PI * 2
-        if (!clearRay(p.x, p.y, a + Math.PI, 4 * T)) continue
-        const sc = (clearRay(p.x, p.y, a, 10 * T) ? 10 : 0) - Math.abs(angD(a, a0))
+        const sx = -Math.sin(a) * T
+        const sy = Math.cos(a) * T
+        // 카메라 자리(뒤 5칸)의 양옆 2칸까지 트인 줄마다 3점 · 앞이 트였으면 10점 · 덜 돌수록
+        const back = [0, 1, -1, 2, -2].filter((o) => clearRay(p.x + sx * o, p.y + sy * o, a + Math.PI, 5 * T)).length
+        const sc = back * 3 + (clearRay(p.x, p.y, a, 10 * T) ? 10 : 0) - Math.abs(angD(a, a0))
         if (sc > bs) {
           bs = sc
           best = a
@@ -1215,20 +1219,33 @@ function patch24Scenes() {
     })
     at(0.7, () => aimOn())
     const s1b = tl.t
-    every(s1b + 0.3, s1b + 4.4, 0.6, () => ahead() < 10 && spawnAhead(K(1), 5, 6, 11, 0.7, 1.5))
+    every(s1b + 0.3, s1b + 3.0, 0.6, () => ahead() < 10 && spawnAhead(K(1), 5, 6, 11, 0.7, 1.5))
     at(1.5, () => mv.strafe('KeyD'))
-    at(1.5, () => mv.strafe('KeyA'))
-    at(1.4, () => {})
+    // 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커 (공지 "오른쪽 클릭 정조준" · 🌙 에서는 화면이 거의 까매 ☀ 에서)
+    // 바짝 붙은 괴물은 비우고(1인칭으로 당기는 순간) 10 ~ 14칸 표적을 (물러서면 동료가 앞을 가렸다)
+    at(1.5, () => {
+      mv.stop()
+      const p = st().players[0]
+      st().monsters = st().monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 9 * T)
+      inp().mouseDown.add(2)
+      perFrame = both(tppAimer({ head: true }), botsBehind(3, true))
+      // 1인칭은 확대(화각 50)라 가까우면 화면을 덮는다 — 멀리 셋 · 단단하게(쓰러질 때 색종이가 화면을 덮었다)
+      spawnAhead(K(1), 3, 10, 14, 0.35, 3)
+    })
+    const s1c = tl.t
+    every(s1c + 0.6, s1c + 2.6, 0.6, () => ahead() < 3 && spawnAhead(K(1), 2, 10, 14, 0.35, 3))
+    at(2.6, () => inp().mouseDown.clear())
     // ---- 2. 그 자리에서 🌙 로 (게임의 G) — 3인칭 그대로 · 달 쪽을 보며 싸운다
     at(0, () => goto(1, 'dark'))
     at(1.0, () => {
       faceMoon()
-      tpp(1, { n: 12, hp: 1.6, spread: 0.55, pitch: 0.06, r0: 8 })
-      aimOn({ minPitch: -0.03 })
+      // 달(높이 22°)은 시선을 -0.12 까지 내려도 화면 위쪽에 남는다 — -0.03 에 묶으면 조준점이 괴물 머리 위로 지나가 쏘지 않았다(어둠 속이라 괴물도 안 보였다)
+      tpp(1, { n: 12, hp: 1.6, spread: 0.55, pitch: 0, r0: 5, r1: 9 })
+      aimOn({ minPitch: -0.12 })
       holding = false
     })
     const s2 = tl.t
-    every(s2 + 0.4, s2 + 4.8, 0.5, () => ahead() < 12 && spawnAhead(K(1), 6, 7, 11, 0.55, 1.6))
+    every(s2 + 0.4, s2 + 4.8, 0.5, () => ahead() < 12 && spawnAhead(K(1), 6, 5, 9, 0.55, 1.6))
     at(1.7, () => mv.strafe('KeyA'))
     at(1.6, () => mv.strafe('KeyD'))
     // ---- 3. 🌙 3인칭 → 쿼터뷰
@@ -1240,30 +1257,40 @@ function patch24Scenes() {
     })
     const s3 = tl.t
     every(s3 + 0.5, s3 + 4.6, 0.8, () => alive() < 22 && spawn(K(1), 6, 6, 11))
-    at(4.6, () => {})
-    // ---- 4. ☀ 후원 전투 (2막 숲 — 4막 균열은 좁은 길이라 3인칭에서 벽이 화면 한쪽을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
-    at(0, () => goto(11, 'bright'))
+    // ---- 무기 모아 보기 (따로 그린 3D — 게임 화면 아님): 캐릭터마다 기본 무기 → 변형 무기 (2026-10-25 사용자: "어제 영상의 캐릭터별 무기 다양화 등
+    // 관심을 끌 만한 것은 영상에도")
+    at(4.6, () => {
+      dissolve(260)
+      perFrame = null
+      S().autopilot = false
+      inp().mouseDown.clear()
+      for (const m of st().monsters) m.hp = 0
+      showcaseStart()
+    })
+    at(SC_DUR, () => {})
+    // ---- 4. ☀ 후원 전투 (4막 재의 들판 — 균열은 좁은 길 · 2막 숲은 칸보다 크게 그린 솜사탕 나무가 3인칭 카메라 곁을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
+    at(0, () => goto(30, 'bright'))
     at(1.2, () => {
       place()
       equipWeapon('smg')
-      quarter(11, 26, 0.8)
+      quarter(30, 26, 0.8)
       for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
       holding = false
     })
     const s4 = tl.t
     every(s4 + 0.3, s4 + 10.6, 0.45, () => M.stream.fakeChat(false))
-    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(11), 10, 6, 12))
+    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(30), 10, 6, 12))
     at(0.8, () => don(1000, '좀비 떼 갑니다'))
     at(1.4, () => don(3000, '정예 한번 보자'))
     at(0.6, () => don(6000, '총잡이 출동!!'))
     at(0.6, () => don(9000, '대행진 가즈아'))
     at(1.2, () => {
       flip()
-      tpp(11, { n: 12, hp: 1.4, spread: 0.8 })
+      tpp(30, { n: 12, hp: 1.4, spread: 0.8 })
     })
     at(0.7, () => aimOn({ storm: true }))
     const s4b = tl.t
-    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(11), 8, 6, 11, 0.8, 1.4))
+    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(30), 8, 6, 11, 0.8, 1.4))
     at(5.0, () => {})
     // ---- 5. 🌙 4막 보스 예고: 심연의 옥좌 — 정면에서 올려다보면 달이 보스 오른쪽 하늘에 떠 있다 (보스는 깨우지 않는다)
     let sample0 = null
@@ -2727,30 +2754,38 @@ export async function start(opts = {}) {
   // 레벨업 알림 글은 영상에 넣지 않는다 (빛 고리 · 불티는 그대로) — 빈 세이브(1 레벨)로 뜨면 보스 장면 위에
   // "단군란 레벨 5 · 침착란 레벨 5 · 레벨 5!" 가 세 줄 겹쳐 메인 사진을 가렸다 (2026-10-06 노트북에서 처음 뜰 때)
   // 스킬 외침에서 쓰지 않는 말 (2026-10-09 사용자: "캐논 변주곡, 야차라는 말은 트레일러에서 빼") — 궁극기 "야차의 포효!!" 가 머리 위에 떴다
-  const shout0 = sess.renderer.showShout
-  sess.renderer.showShout = function (p, text, ally) {
-    if (/야차|캐논/.test(text)) return
-    return shout0.call(this, p, text, ally)
+  // 모드를 바꾸면(session.switchSkin) 렌더러 · HUD 를 새로 만든다 — 그때마다 다시 건다(녹화 루프가 장마다 본다). 전에는 모드를 바꾼 뒤
+  // 보스 안내 · 3인칭 설명 글이 영상에 떴다 (2026-10-25)
+  const patchRenderer = () => {
+    const R = sess.renderer
+    if (R.__vidPatched) return
+    R.__vidPatched = true
+    const shout0 = R.showShout
+    R.showShout = function (p, text, ally) {
+      if (/야차|캐논/.test(text)) return
+      return shout0.call(this, p, text, ally)
+    }
+    const hud = R.hud
+    // 패치 플레이 영상: 업적 띠는 뺀다
+    if (P24) {
+      const banner0 = hud.banner.bind(hud)
+      hud.banner = (title, ...rest) => (String(title).startsWith('업적') ? undefined : banner0(title, ...rest))
+    }
+    const notice0 = hud.notice.bind(hud)
+    hud.notice = (text, color, life) => {
+      // 패치 플레이 영상은 알림 글을 뺀다 (사용자: "글이 너무 많다") — 후원 알림 띠 · 예고는 renderer.banner · startDonWarn 이라 그대로 뜬다
+      if (P24) return
+      if (/(^|\s)레벨 \d+/.test(text) && !text.includes('지역 레벨')) return
+      notice0(text, color, life)
+    }
   }
-  const hud = sess.renderer.hud
-  // 패치 플레이 영상: 업적 띠는 뺀다
-  if (P24) {
-    const banner0 = hud.banner.bind(hud)
-    hud.banner = (title, ...rest) => (String(title).startsWith('업적') ? undefined : banner0(title, ...rest))
-  }
-  const notice0 = hud.notice.bind(hud)
-  hud.notice = (text, color, life) => {
-    // 패치 플레이 영상은 알림 글을 뺀다 (사용자: "글이 너무 많다") — 후원 알림 띠 · 예고는 renderer.banner · startDonWarn 이라 그대로 뜬다
-    if (P24) return
-    if (/(^|\s)레벨 \d+/.test(text) && !text.includes('지역 레벨')) return
-    notice0(text, color, life)
-  }
+  patchRenderer()
   // 소리는 모아 두었다가 따로 그린다 (라이브 소리는 내지 않는다)
   const sfx = sess.sfx
   sfx.onEvents = (ev, s, lp) => {
-    // 시점 · 모드 영상은 처음 11초에 동료가 낸 총소리 · 맞히는 소리와 벽 맞는 소리 · 괴물 깨는 · 공격 예고 소리를 뺀다 — 맞는 소리만 초당 24번이었다
+    // 시점 · 모드 영상은 처음 11초에 동료가 낸 총소리 · 맞히는 소리와 벽 맞는 소리 · 괴물 깨는 · 공격 예고 · 휘두르는 소리 · 내가 맞는 소리를 뺀다 — 맞는 소리만 초당 24번이었다
     // (2026-10-25 사용자: "초반 10초에 소리가 겹쳐서 너무 정신없다")
-    if (TPPV && vidSec() < 11) ev = ev.filter((e) => !((e.type === 'fire' && e.p !== lp) || (e.type === 'mhit' && e.by !== lp) || e.type === 'wall' || e.type === 'wake' || e.type === 'windup'))
+    if (TPPV && vidSec() < 11) ev = ev.filter((e) => !((e.type === 'fire' && e.p !== lp) || (e.type === 'mhit' && e.by !== lp) || e.type === 'wall' || e.type === 'wake' || e.type === 'windup' || e.type === 'swipe' || e.type === 'hurt'))
     if (!holding && !ov.showcase && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
   }
   sfx.donate = (big) => {
@@ -2787,6 +2822,7 @@ export async function start(opts = {}) {
   }
   glc?.addEventListener('webglcontextlost', onLost)
   glc?.addEventListener('webglcontextrestored', onBack)
+  const gaveUp = new Set()
   try {
     for (let i = 0; i < FPS * 240; i++) {
       if (lost) {
@@ -2805,6 +2841,7 @@ export async function start(opts = {}) {
       }
       if (stop) break
       god()
+      patchRenderer()
       perFrame?.()
       if (!holding) pullBots()
       if (ov.canon) forceCanon()
@@ -2828,7 +2865,9 @@ export async function start(opts = {}) {
       // 1인칭으로 바꾸는 준비(fpsPrep — 그동안은 쿼터뷰로 그린다)도 기다린다
       // 지역 덮개(covering — v1.10.7 부터 빛 수마다 데우기가 끝날 때까지 몇 초 쥔다)도: 그동안 장을 담지 않으면 가상 시계만 흘러 장면이 통째로 지나갔다
       // (2026-10-24 패치 영상이 32초로 잘렸다) → 가상 시계를 멈춘 채 화면만 그려(데우기는 그리기 안에서 돈다) 걷힐 때까지 기다린다
-      const unready = () => !R.ready || R.covering || R.fpsPrep === 'busy' || (R.monsterView?.models ?? []).some((mk) => mk && mk.asked && !mk.shown)
+      // 한 번 40초를 넘긴 준비는 그 뒤로 기다리지 않는다 — 끝나지 않는 준비가 하나 있으면 장마다 40초씩 쌓여 녹화가 30분 넘게 멈췄다 (2026-10-25 두 번)
+      const waits = { ready: () => !R.ready, covering: () => !!R.covering, fpsPrep: () => R.fpsPrep === 'busy', models: () => (R.monsterView?.models ?? []).some((mk) => mk && mk.asked && !mk.shown) }
+      const unready = () => Object.entries(waits).some(([k, f]) => !gaveUp.has(k) && f())
       if (unready()) {
         const w0 = realNow()
         // 방금 그린 장이 걸어 둔 화면 신호를 먼저 끊는다 — 기다리는 동안 그 신호가 진짜 시각으로 그리면 세션 시계(last)가 가상 시계를 앞질러
@@ -2840,6 +2879,12 @@ export async function start(opts = {}) {
           cancelAnimationFrame(sess.raf)
           clearTimeout(sess.raf)
           await new Promise((r) => setTimeout(r, 16))
+        }
+        if (unready()) {
+          const stuck = Object.entries(waits).filter(([k, f]) => !gaveUp.has(k) && f()).map(([k]) => k)
+          for (const k of stuck) gaveUp.add(k)
+          log.push(`⚠ 준비 40초 넘김 (영상 ${vidSec().toFixed(1)}초): ${stuck.join(' · ')} — 그 뒤로는 기다리지 않는다`)
+          console.log(`준비 40초 넘김: ${stuck.join(' · ')}`)
         }
         prepWait.n++
         prepWait.ms += realNow() - w0
