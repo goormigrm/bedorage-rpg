@@ -6,7 +6,7 @@ import { CHARACTERS, headHitScale } from '../core/characters'
 import { angleToRad } from '../core/fixedmath'
 import { GameMap, SANDBAG_HP, TILE, TILE_CRATE, TILE_FLOOR, TILE_SANDBAG, TILE_WALL } from '../core/map'
 import { flowField, flowStep } from '../core/flow'
-import { Ally, CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_CHASE, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
+import { CURSE_WAVES, DASH_GRACE, DASH_TICKS, GameState, MS_WINDUP, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, SHRINE_NAMES, PLAYER_RADIUS, Monster, PlayerState, REVIVE_TICKS, SimEvent, ZONE_ACID, ZONE_FUSE, ZONE_BURN, ZONE_ECHO, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isEnemy, isTeamMatch } from '../core/state'
 import { FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_PARTYDR, FX_RATE, FX_SNIPE, FX_WHIRL, SkillId, skillShout } from '../core/skills'
 import { ACID, BOSS_PATS, EA_SHIELD, LORD, MONSTER_LIST, MonsterDef, PAT, QUEEN, affixNames, bodyR, fromBehind, isBossLike, isGiant, shieldUp } from '../core/monsters'
 
@@ -37,7 +37,7 @@ registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드�
 import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, gateTarget, isRift, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
 import { SpriteFx } from './spritefx'
-import { allyGood, allyTagCss } from '../core/palette'
+import { allyGood } from '../core/palette'
 import { dmgNumbersOn, shakeScale } from '../ui/settings'
 import { PostFx, gradeFor } from './post'
 import { AmbientFx, ambientFor } from './ambient'
@@ -1277,9 +1277,34 @@ export class Renderer3D {
   private w2s = new THREE.Vector3()
   worldToScreen(x: number, y: number, z: number): { x: number; y: number } {
     const v = this.w2s.set(x, y, z).project(this.camera)
-    // 카메라 뒤(1인칭)는 화면 밖으로 — 뒤집혀 앞에 비치지 않게
-    if (v.z > 1) return { x: -1e4, y: -1e4 }
+    // 카메라 뒤(1 · 3인칭)는 화면 밖 먼 곳으로 — 뒤집혀 앞에 비치지 않게. 방향은 카메라 기준 좌우 · 위아래를 살린다(뒤의 땅은 아래쪽):
+    // 전에는 늘 왼쪽 위(-1e4, -1e4)라 등 뒤 쓰러진 동료 · 총성 · 신호 화살표가 모두 왼쪽 위를 가리켰다 (2026-10-25 검토)
+    if (v.z > 1) {
+      const c = this.w2s.set(x, y, z).applyMatrix4(this.camera.matrixWorldInverse)
+      const len = Math.hypot(c.x, c.y) || 1
+      return { x: VIEW_W / 2 + (c.x / len) * 1e4, y: VIEW_H / 2 - (c.y / len) * 1e4 }
+    }
     return { x: ((v.x + 1) / 2) * VIEW_W, y: ((1 - v.y) / 2) * VIEW_H }
+  }
+
+  private s2a = new THREE.Vector3()
+  private s2b = new THREE.Vector3()
+  /**
+   * 선분을 화면에 — 카메라 뒤로 넘어간 쪽은 카메라 앞면에서 자른다(1 · 3인칭에서 뒤의 점까지 그으면 선이 화면을 가로질렀다).
+   * 둘 다 뒤면 null. cut = 시작점을 잘랐나(이어 그리던 선이면 새로 시작해야 한다)
+   */
+  private segToScreen(ax: number, ay: number, az: number, bx: number, by: number, bz: number): { x1: number; y1: number; x2: number; y2: number; cut: boolean } | null {
+    const inv = this.camera.matrixWorldInverse
+    const a = this.s2a.set(ax, ay, az).applyMatrix4(inv)
+    const b = this.s2b.set(bx, by, bz).applyMatrix4(inv)
+    const zn = -this.camera.near - 0.01
+    if (a.z > zn && b.z > zn) return null
+    const cut = a.z > zn
+    if (cut) a.lerp(b, (a.z - zn) / (a.z - b.z))
+    else if (b.z > zn) b.lerp(a, (b.z - zn) / (b.z - a.z))
+    a.applyMatrix4(this.camera.projectionMatrix)
+    b.applyMatrix4(this.camera.projectionMatrix)
+    return { x1: ((a.x + 1) / 2) * VIEW_W, y1: ((1 - a.y) / 2) * VIEW_H, x2: ((b.x + 1) / 2) * VIEW_W, y2: ((1 - b.y) / 2) * VIEW_H, cut }
   }
 
   /**
@@ -2449,13 +2474,12 @@ export class Renderer3D {
     this.updateVision(curr, opts)
     this.announceBoss(curr)
     for (let i = 0; i < n; i++) this.updateRig(i, curr.players[i], pos[i], sdt)
-    // 응원 아군 괴물은 괴물과 같은 표에 초록으로 그린다 (sim 에서는 따로 — core/state.ts Ally)
     // 시야 밖 괴물 · 시체는 그리지 않는다 (2026-10-24 최적화: 인스턴스 메시는 통째로만 걸러져 ☀ 지역 17 에서 괴물 모델만 삼각형 160만 개 —
     // 화면에 없는 220마리까지 그렸다). 카메라는 이 뒤에 움직이니 지난 프레임 시야에 여유를 둔다
     this.cullMat.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
     this.cullFrustum.setFromProjectionMatrix(this.cullMat)
     const sph = this.cullSphere
-    this.monsterView.update(withAllies(prev), withAllies(curr), alpha, sdt, (m) => this.hiddenM.has(m.id), (x, z, r) => {
+    this.monsterView.update(prev, curr, alpha, sdt, (m) => this.hiddenM.has(m.id), (x, z, r) => {
       sph.center.set(x, 1, z)
       sph.radius = r + 1.5
       return this.cullFrustum.intersectsSphere(sph)
@@ -2546,7 +2570,6 @@ export class Renderer3D {
     if (opts.showHud) this.drawFloorNav(curr, opts.localPlayer)
     this.drawMonsterBars(curr)
     this.drawKillXs(dt)
-    this.drawAllyTags(curr)
     this.drawUltWarn()
     this.drawDonWarn()
     this.drawOrphanSays(curr)
@@ -3080,7 +3103,7 @@ export class Renderer3D {
    */
   /**
    * 바닥 길 안내 (2026-10-22 사용자: "다음 맵으로 넘어가는 길을 내비게이션으로 바닥에 알려줘"): 미니맵 금빛 화살표와 같은 목표
-   * (퀘스트 — 없으면 다음 지역 출구)까지 흐름장(괴물이 쓰는 길찾기)을 따라 바닥에 금빛 화살표를 잇는다. 목표 곁(2칸)이면 감춘다
+   * (퀘스트 — 없으면 다음 지역 출구)까지 흐름장(괴물이 쓰는 길찾기)을 따라 바닥에 금빛 화살표를 잇는다(10-22 점 → 10-25 다시 화살표). 목표 곁(2칸)이면 감춘다
    */
   /**
    * 바닥 길 안내의 길: 지역에 들어설 때 · 목표가 바뀔 때만 한 번 정해 바닥에 박아 둔다 (2026-10-22 사용자: "점이 움직일 때마다 너무 자주
@@ -3131,16 +3154,43 @@ export class Renderer3D {
     }
     const ctx = this.hud.ctx
     ctx.save()
-    // 점 (2026-10-22 사용자: "> 모양은 각도가 계속 바뀌어 정신없다 — 점만 따라가면 되니까 점으로") · 깜빡이지 않게 늘 같은 진하기
+    // 바닥에 눕힌 화살표 (2026-10-25 사용자: "점이 자주 안 움직이게 패치됐으니 방향을 잘 알아보게 화살표로 다시"):
+    // 예전 꺾쇠(>)는 길을 프레임마다 다시 그어 각도가 계속 바뀌었다(10-22 → 점). 이제 길이 바닥에 박혀 있고, 방향은 앞뒤 두 점씩 건너 잡아
+    // 흐름장의 계단(가로 · 대각 번갈아)에도 각도가 튀지 않는다. 꼭짓점을 월드에서 정해 비추니 3인칭에서도 바닥에 누워 보인다 · 늘 같은 진하기
     ctx.globalAlpha = 0.9
     ctx.fillStyle = '#ffd84a'
-    ctx.lineWidth = 3
+    ctx.lineWidth = 2.5
+    ctx.lineJoin = 'round'
     ctx.strokeStyle = 'rgba(30,18,0,0.75)'
-    for (let i = near + (nd < (1.5 * TILE) ** 2 ? 1 : 0); i < pts.length; i++) {
-      const b = this.worldToScreen(pts[i].x * U, 0.05, pts[i].y * U)
-      if (b.x < -20 || b.y < -20 || b.x > VIEW_W + 20 || b.y > VIEW_H + 20) continue
+    // 화살표 모양 (칸 단위 · 앞 = +f, 옆 = s): 촉 · 왼쪽 날개 · 오목한 뒤 · 오른쪽 날개
+    const SHAPE: [number, number][] = [[0.34, 0], [-0.26, 0.26], [-0.1, 0], [-0.26, -0.26]]
+    const far = (q: { x: number; y: number }) => Math.abs(q.x - VIEW_W / 2) > 4000 || Math.abs(q.y - VIEW_H / 2) > 4000
+    const n = pts.length
+    for (let i = near + (nd < (1.5 * TILE) ** 2 ? 1 : 0); i < n; i++) {
+      const c = this.worldToScreen(pts[i].x * U, 0.05, pts[i].y * U)
+      if (c.x < -30 || c.y < -30 || c.x > VIEW_W + 30 || c.y > VIEW_H + 30) continue
+      // 3인칭: 카메라 코앞(2.5칸 안)의 화살표는 화면을 덮을 만큼 커진다 — 숨긴다
+      if (this.fpsCam && Math.hypot(pts[i].x * U - this.camera.position.x, pts[i].y * U - this.camera.position.z) < 2.5) continue
+      const a = pts[Math.max(0, i - 2)]
+      const b = pts[Math.min(n - 1, i + 2)]
+      let fx = b.x - a.x
+      let fy = b.y - a.y
+      const len = Math.hypot(fx, fy)
+      if (len < 1) continue
+      fx /= len
+      fy /= len
+      const cx = pts[i].x * U
+      const cz = pts[i].y * U
       ctx.beginPath()
-      ctx.arc(b.x, b.y, 7, 0, Math.PI * 2)
+      let skip = false
+      SHAPE.forEach(([f, sd], k) => {
+        const q = this.worldToScreen(cx + fx * f - fy * sd, 0.05, cz + fy * f + fx * sd)
+        if (far(q)) skip = true
+        if (k === 0) ctx.moveTo(q.x, q.y)
+        else ctx.lineTo(q.x, q.y)
+      })
+      if (skip) continue
+      ctx.closePath()
       ctx.fill()
       // 진한 테두리 — ☀ 모래 바닥에서도 보이게
       ctx.stroke()
@@ -4953,11 +5003,19 @@ export class Renderer3D {
     ctx.lineWidth = 2
     ctx.setLineDash([7, 5])
     ctx.beginPath()
-    for (let k = 0; k <= 36; k++) {
-      const a = (k / 36) * Math.PI * 2
-      const q = this.worldToScreen(x + Math.cos(a) * r, 0.05, z + Math.sin(a) * r)
-      if (k === 0) ctx.moveTo(q.x, q.y)
-      else ctx.lineTo(q.x, q.y)
+    // 조각마다 카메라 앞면에서 자른다 (1 · 3인칭에서 원의 뒤쪽 점이 화면을 가로지르지 않게)
+    let pen = false
+    for (let k = 0; k < 36; k++) {
+      const a0 = (k / 36) * Math.PI * 2
+      const a1 = ((k + 1) / 36) * Math.PI * 2
+      const q = this.segToScreen(x + Math.cos(a0) * r, 0.05, z + Math.sin(a0) * r, x + Math.cos(a1) * r, 0.05, z + Math.sin(a1) * r)
+      if (!q) {
+        pen = false
+        continue
+      }
+      if (!pen || q.cut) ctx.moveTo(q.x1, q.y1)
+      ctx.lineTo(q.x2, q.y2)
+      pen = true
     }
     ctx.stroke()
     ctx.restore()
@@ -5091,31 +5149,33 @@ export class Renderer3D {
         ctx.strokeStyle = '#e8f0d8'
         ctx.globalAlpha = 0.5
         ctx.setLineDash([6, 6])
-        const from = this.worldToScreen(at.x, 0.9, at.z)
         for (let k = 0; k < n; k++) {
           const a = a0 + ((k - h) / h) * ((QUEEN.spread * Math.PI) / 180)
-          const to = this.worldToScreen(at.x + Math.cos(a) * 9, 0.9, at.z + Math.sin(a) * 9)
+          const q = this.segToScreen(at.x, 0.9, at.z, at.x + Math.cos(a) * 9, 0.9, at.z + Math.sin(a) * 9)
+          if (!q) continue
           ctx.beginPath()
-          ctx.moveTo(from.x, from.y)
-          ctx.lineTo(to.x, to.y)
+          ctx.moveTo(q.x1, q.y1)
+          ctx.lineTo(q.x2, q.y2)
           ctx.stroke()
         }
         ctx.restore()
       }
       if (m.st === MS_WINDUP && ((def.attack === 'ranged' && m.mode === 0) || m.mode === 1)) {
         const k = 1 - m.t / def.windup
-        const a = this.worldToScreen(at.x, 0.9, at.z)
-        const b = this.worldToScreen(m.ax * U, 0.9, m.ay * U)
-        ctx.save()
-        ctx.globalAlpha = 0.25 + k * 0.6
-        ctx.strokeStyle = '#ff4a3a'
-        ctx.lineWidth = 1 + k * 2
-        ctx.setLineDash([8, 6])
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(a.x + (b.x - a.x) * 1.4, a.y + (b.y - a.y) * 1.4)
-        ctx.stroke()
-        ctx.restore()
+        // 겨눈 곳 너머까지 1.4배 (월드에서 늘린 뒤 카메라 앞면에서 자른다)
+        const q = this.segToScreen(at.x, 0.9, at.z, at.x + (m.ax * U - at.x) * 1.4, 0.9, at.z + (m.ay * U - at.z) * 1.4)
+        if (q) {
+          ctx.save()
+          ctx.globalAlpha = 0.25 + k * 0.6
+          ctx.strokeStyle = '#ff4a3a'
+          ctx.lineWidth = 1 + k * 2
+          ctx.setLineDash([8, 6])
+          ctx.beginPath()
+          ctx.moveTo(q.x1, q.y1)
+          ctx.lineTo(q.x2, q.y2)
+          ctx.stroke()
+          ctx.restore()
+        }
       }
       this.drawSay(ctx, m, at, def)
       // 정예는 늘, 나머지는 맞은 뒤 3초만. 보스 · 우두머리는 화면 위 큰 막대와 따로 머리 위에 큰 이름표
@@ -5373,33 +5433,6 @@ export class Renderer3D {
     say.z = at.z
     say.top = top
     this.drawBubble(ctx, head, say, under)
-  }
-
-  /**
-   * 응원 아군 괴물 머리 위 (초록): 졸개는 "아군 · 남은 초" 만 (넷이 붙어 서면 긴 이름표가 겹쳤다 — 보낸 사람은 배너 · 채팅 줄에),
-   * 보스 모습은 "○○님의 아군 · 남은 초"
-   */
-  private drawAllyTags(curr: GameState): void {
-    if (!curr.allies?.length) return
-    const ctx = this.hud.ctx
-    ctx.save()
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'alphabetic'
-    ctx.lineWidth = 3
-    ctx.strokeStyle = 'rgba(0,0,0,0.75)'
-    for (const a of curr.allies) {
-      const at = this.monsterView.shown.get(a.id)
-      if (!at) continue
-      const def = MONSTER_LIST[a.kind]
-      const p = this.worldToScreen(at.x, monsterTop({ kind: a.kind }) + 0.3, at.z)
-      const who = def.boss ? this.summonLabel?.(a.by, a.seq) : undefined
-      const label = `${who ? `${who}님의 아군` : '아군'} · ${Math.ceil(a.t / 60)}`
-      ctx.font = `800 ${def.boss ? 14 : 11}px ${SAY_FONT}`
-      ctx.strokeText(label, p.x, p.y)
-      ctx.fillStyle = allyTagCss()
-      ctx.fillText(label, p.x, p.y)
-    }
-    ctx.restore()
   }
 
   /** 괴물이 쓰러졌거나 사라진 말풍선: 마지막으로 그린 자리(시체 위, 조금 낮게)에 제 시간까지 */
@@ -6058,20 +6091,10 @@ export { hex, PLAYER_RADIUS }
  * 빨강 = 적의 범위 공격(장판 · 예고 원 · 폭발) · 초록 = 동료를 고치거나 지켜 주는 범위 · 보라 = 적이 세지는 것(괴물 치유 등).
  * 초록을 다른 뜻에 쓰지 말 것 — 예전 산성 웅덩이가 초록이라 좋은 범위로 착각했다.
  */
-/** 응원 아군 이름표 색 */
 /** 후원 "화면 흔들림": 카메라가 떨리는 폭(월드 칸 — 화면 높이의 약 1%). 기울기는 없다 (멀미 — 2026-09-26) */
 const DON_SHAKE_AMP = 0.11
 /** 시청자 이름 괴물의 닉네임 (하늘빛 — 후원 소환의 초록 · 응원 아군의 연두와 다르게) */
 export const VIEWER_TAG = '#8fd8ff'
-
-/** 아군을 괴물 모습으로 (monsterView 는 괴물만 그린다 — 보간 스냅샷은 id · x · y 만 있다) */
-function allyLook(a: Ally): Monster {
-  return { id: a.id, kind: a.kind, x: a.x, y: a.y, aim: a.aim, hp: 1, maxHp: 1, st: MS_CHASE, t: 0, moving: a.moving, elite: 0, ally: 1 } as unknown as Monster
-}
-
-function withAllies(s: GameState): GameState {
-  return s.allies?.length ? { ...s, monsters: s.monsters.concat(s.allies.map(allyLook)) } : s
-}
 
 /** 보스 이름표 높이 (말풍선 · 소환 이름표를 그 위로 올린다) */
 const BOSS_PLATE_H = 50

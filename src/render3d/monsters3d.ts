@@ -178,8 +178,6 @@ interface Anim {
   elite?: boolean
   /** 우두머리 (더 크게) */
   unique?: boolean
-  /** 응원 아군 (초록으로 빛난다 — renderer3d allyLook) */
-  ally?: boolean
   /** 막 보스 — 맞아도 그림이 밀려 보이지 않는다 (보스는 밀리지 않는다 — 2026-09-24) */
   boss?: boolean
   /** 보스 방의 거대한 막 보스 (그림 4배 — core/monsters isGiant) */
@@ -1341,7 +1339,6 @@ export class MonsterView {
       v.yaw += d * Math.min(1, dt * 14)
       v.elite = m.elite > 0
       v.unique = (m.elite & 64) !== 0
-      v.ally = (m as { ally?: number }).ally === 1
       v.boss = !!def.boss
       this.want(m.kind)
       if (hidden(m) || !inView(x, z, v.giant ? 9 : 2.5)) continue
@@ -1464,7 +1461,6 @@ export class MonsterView {
     const w = a.wind
     if (f > 0) this.col.setRGB(1 + f * 1.6, 1 + f * (a.crit ? 1.2 : -0.4), 1 + f * (a.crit ? -0.4 : -0.5))
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
-    else if (a.ally) this.col.setRGB(0.7, 1.45 + 0.12 * Math.sin(Date.now() / 180), 0.85)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
     if (model) {

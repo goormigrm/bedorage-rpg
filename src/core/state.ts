@@ -310,34 +310,6 @@ export interface PlayerState {
 }
 
 /**
- * 응원으로 온 **아군 괴물** (2026-09-24 사용자: "아군 몬스터 10초 소환"). 정해진 시간 동안 둘레의 괴물을 치고 사라진다.
- * 괴물 배열과 **따로** 둔다 — 사람의 탄 · 스킬 · 괴물의 공격 · 봇 · 퀘스트 · 전리품이 모두 괴물 배열만 보므로
- * 아군은 맞지도 · 막지도 · 세어지지도 않는다. 번호는 괴물과 같은 칸(nextMonsterId)에서 받는다 — 화면이 같은 표에 그린다.
- */
-export interface Ally {
-  id: number
-  /** MONSTER_LIST 번호 (그 막의 괴물 모습 — 초록으로 빛난다) */
-  kind: number
-  x: number
-  y: number
-  aim: number
-  /** 남은 틱 */
-  t: number
-  /** 다음 공격까지 */
-  cd: number
-  /** 노리는 괴물 id (-1 없음) */
-  target: number
-  /** 부른 사람 (처치 · 전리품은 이 사람 몫) · 후원 번호 (이름표) */
-  by: number
-  seq: number
-  /** 한 번 칠 때 피해 · 둘레를 함께 치는 반지름(px, 0 이면 하나만) */
-  dmg: number
-  splash: number
-  /** 이번 틱에 움직였나 (렌더 걷기) */
-  moving: number
-}
-
-/**
  * 지역 하나의 움직이는 것 전부 (GUIDE 12장). 사람이 있는 지역만 틱을 돌리고, 나머지는 얼려 둔다(최근 셋까지).
  * step 은 지역마다 이 배열들을 GameState 의 같은 이름 칸에 **묶어** 기존 전투 코드를 그대로 돌린다(`withArea`).
  */
@@ -354,8 +326,6 @@ export interface AreaState {
   throws: Throw[]
   drops: Drop[]
   monstersTotal: number
-  /** 응원 아군 괴물 (없으면 비어 있다 — 사람이 떠난 지역에서는 사라진다) */
-  allies?: Ally[]
   /** 마지막으로 사람이 있던 틱 (얼린 지역을 버리는 순서) */
   seen: number
 }
@@ -848,8 +818,6 @@ export interface GameState {
   /** 묶인 지역의 물건 (상자·항아리·제단) */
   objects: MapObj[]
   nextObjId: number
-  /** 묶인 지역의 응원 아군 괴물 (Ally — 없으면 undefined) */
-  allies?: Ally[]
   /**
    * 지금 묶인 지역 (step 이 지역마다 그 배열들을 위의 칸에 묶는다). step 밖에서는 -1 이고 위의 칸들은 비어 있다 —
    * 화면·봇은 `areaView(state, 지역)` 로 본다

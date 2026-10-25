@@ -211,9 +211,18 @@ export function eventRows(cfg = loadStreamCfg()): { e: DonateEvent; amount: numb
 
 export const won = (n: number): string => `${n.toLocaleString('ko-KR')}원`
 
-/** 큰 후원 예고 (2026-09-26 방송 개선 2): 중간보스 이상의 방해 이벤트(번호 6~10 — 중간보스 · 봉인 · 광폭화 · 막 보스 · 지옥문)는 3초 세고 일어난다 */
+/**
+ * 후원 연출의 등급(소리 · 배너 색 · 3초 예고 · 처치 배너): **기본 가격표의 금액 순** — 0 작음 · 1 큼(5천 원 ~) · 2 아주 큼(1만 원 ~).
+ * 번호로 정하던 때는 10-22 금액 개편 뒤 순서가 어긋나 8천 원 시야 축소가 1천 원과 같은 옅은 연출이었다 (2026-10-25 검토).
+ * 받은 금액이 아니라 공개 가격표의 기본값이다 — 방송인이 바꾼 값 · 받은 금액은 쓰지 않는다
+ */
+export const donTier = (ev: number): number => {
+  const a = DONATE_EVENTS.find((e) => e.id === ev)?.amount ?? 0
+  return a >= 10000 ? 2 : a >= 5000 ? 1 : 0
+}
+/** 큰 후원 예고 (2026-09-26 방송 개선 2): 큰 후원(5천 원 ~)은 3초 세고 일어난다 */
 export const DON_WARN_MS = 3000
-export const isBigDonation = (ev: number): boolean => (ev >= 6 && ev <= 10) || ev === 16
+export const isBigDonation = (ev: number): boolean => donTier(ev) >= 1
 
 /**
  * 다음에 판에 넣을 후원 (2026-09-26 방송 개선 3 — 잠깐 멈춤 · 보스전 대기): 멈춤 중에는 **방해 이벤트만** 기다리고 응원은 그대로 간다.

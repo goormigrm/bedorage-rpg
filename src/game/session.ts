@@ -7,7 +7,7 @@ import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
 import { DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
-import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, addJoiner, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -1893,7 +1893,8 @@ export class Session {
       if (!this.autopilot) this.sealHint(localIn)
       let inputs: Input[]
       if (this.lockstep) {
-        this.lockstep.pushLocal(t, localIn)
+        // 같은 틱을 다시 돌면 판은 첫 입력만 쓴다 — 이번에 꺼낸 후원 · 가방 명령은 대기열 앞에 되돌린다 (전에는 사라졌다 — 2026-10-25 검토)
+        if (!this.lockstep.pushLocal(t, localIn) && localIn.cmd) this.input.requeueCmd(localIn.cmd, localIn.arg ?? 0)
         // 봇 자리: 호스트가 지금 판을 보고 입력을 만들어 자리 패킷으로 보낸다 (게스트는 받기만)
         if (this.isHost && this.cfg.bots) {
           for (let i = 0; i < this.cfg.bots.length; i++) {
@@ -2366,7 +2367,8 @@ export class Session {
     if (!this.canDonateNow()) {
       const e = donateEvent(ev)
       this.chat?.add(nick, `${e?.name ?? '후원'} (던전에 나가면 일어납니다)`, 'don')
-      this.message = `후원 이벤트 ${this.donPending.length}개가 기다리는 중 — 던전에 나가면 일어납니다`
+      // 기다리는 수는 적지 않는다 — 받은 후원 수가 드러난다 (2026-10-25 사용자: "대기 중인 후원 수 보여 줄 필요 없음")
+      this.message = '후원 이벤트가 기다리는 중 — 던전에 나가면 일어납니다'
       setTimeout(() => (this.message = ''), 4000)
     }
   }
@@ -2582,16 +2584,20 @@ export class Session {
     })
   }
 
-  /** 지금 후원 이벤트를 판에 넣어도 되나: 던전 · 살아 있음 · 마을 밖 (sim 도 같은 조건으로 거른다) */
+  /**
+   * 지금 후원 이벤트를 판에 넣어도 되나: 던전 · 살아 있음 · 마을 밖 (sim 도 같은 조건으로 거른다).
+   * 멈춤 · 판 끝 · 지역 덮개 동안도 기다린다 — 멈춘 동안 명령 줄(8개)로 넘어가 넘치면 버려졌고, 덮개 속에서 흔들림 · 거꾸로 걷기가 지나갔다 (2026-10-25 검토)
+   */
   private canDonateNow(): boolean {
     const me = this.state.players[this.cfg.localPlayer]
-    return !this.arena && !this.joiningIn && !!me && me.alive && !me.out && !me.left && !isTown(me.area)
+    return !this.arena && !this.joiningIn && !this.paused && this.state.phase !== 'over' && !this.renderer.covering && !!me && me.alive && !me.out && !me.left && !isTown(me.area)
   }
 
-  /** 프레임마다: 기다리는 후원을 1.5초에 하나씩 판에 넣고, 채팅을 0.3초에 하나씩 괴물에게 말하게 하고, 표를 고친다 */
+  /** 프레임마다: 기다리는 후원을 1.5초(뒤에 더 있으면 3초)에 하나씩 판에 넣고, 채팅을 0.3초에 하나씩 괴물에게 말하게 하고, 표를 고친다 */
   private pumpStream(now: number): void {
-    // 후원: 이름표를 먼저 보내고(번호는 이때 매긴다) 0.3초 뒤에 명령 · 1.5초에 하나
-    if (this.donSending && now >= this.donSending.at) {
+    // 후원: 이름표를 먼저 보내고(번호는 이때 매긴다) 0.3초 뒤에 명령 · 1.5 ~ 3초에 하나
+    // 큰 후원은 3초 예고 뒤에 쏜다 — 그사이 쓰러지거나 마을 · 덮개로 가면 쏠 수 있을 때까지 쥐고 있는다 (전에는 sim 이 버려 예고만 나갔다)
+    if (this.donSending && now >= this.donSending.at && this.canDonateNow()) {
       const d = this.donSending
       this.donSending = null
       this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))
@@ -2610,7 +2616,8 @@ export class Session {
         this.cfg.link?.sendCtl({ t: 'donate', p: lp, seq, nick: d.nick, amount: 0, text: d.text, ev: d.ev, warn })
         if (warn > 0) this.startDonWarn(`${d.nick}님의 ${donateEvent(d.ev)?.name ?? '후원'}!`, now + 300 + warn)
         this.donSending = { ev: d.ev, seq, at: now + 300 + warn }
-        this.donNextAt = now + 1500 + warn
+        // 뒤에 더 기다리면 3초 간격 — 1.5초면 배너(4.5초 한 칸)가 다음 이름에 덮여 후원자 이름이 1.5초만 보였다 (2026-10-25 검토)
+        this.donNextAt = now + (this.donPending.length > 0 ? 3000 : 1500) + warn
       }
     }
     // 큰 후원 예고의 초 읽기 (3 · 2 · 1)
@@ -2667,10 +2674,11 @@ export class Session {
     const nick = info?.nick ?? '후원자'
     const here = this.state.players[e.p]?.area === this.viewArea
     if (here) {
-      // 색 · 소리의 세기는 **이벤트**로 정한다 (금액은 적지도 들고 있지도 않는다)
-      const color = ev.id >= 7 ? '#ff6a4a' : ev.id >= 6 ? '#ffae4a' : '#f1d58a'
+      // 색 · 소리의 세기는 **이벤트**의 공개 가격 등급으로 정한다 (받은 금액은 적지도 들고 있지도 않는다)
+      const tier = donTier(ev.id)
+      const color = tier >= 2 ? '#ff6a4a' : tier >= 1 ? '#ffae4a' : '#f1d58a'
       this.renderer.banner(`${nick}님 · ${ev.name}!`, ev.desc, color)
-      if (e.p !== this.cfg.localPlayer) this.sfx.donate(ev.id >= 6)
+      if (e.p !== this.cfg.localPlayer) this.sfx.donate(tier >= 1)
       if (e.m >= 0) this.renderer.monsterSay(e.m, nick, info?.text || `${nick}님이 보냈다!`, true)
     }
     this.chat?.add(nick, `${ev.name}: ${ev.desc}`, 'don')
@@ -2701,7 +2709,7 @@ export class Session {
       if (w.area !== this.viewArea) continue
       const secs = Math.max(1, Math.round((now - w.at) / 1000))
       const title = `${w.nick}님의 ${w.name} 처치!`
-      if (w.ev >= 6) this.renderer.banner(title, `${secs}초 만에`, '#ffd24a')
+      if (isBigDonation(w.ev)) this.renderer.banner(title, `${secs}초 만에`, '#ffd24a')
       else this.renderer.notice(`${title} (${secs}초)`, '#ffd24a', 3, this.renderer.sayScale)
     }
     this.donWatch = keep
@@ -2811,9 +2819,9 @@ export class Session {
       .join('')
     const held = this.donHeld()
     const wait = held
-      ? `<div class="dw hold">⏸ ${stream.hold ? '방해 이벤트 잠깐 멈춤' : '보스전 — 방해 이벤트 대기'}${this.donPending.length > 0 ? ` · 대기 ${this.donPending.length}` : ''}</div>`
+      ? `<div class="dw hold">⏸ ${stream.hold ? '방해 이벤트 잠깐 멈춤' : '보스전 — 방해 이벤트 대기'}${this.donPending.length > 0 ? ' · 대기 중' : ''}</div>`
       : this.donPending.length > 0
-        ? `<div class="dw">대기 ${this.donPending.length} — ${this.canDonateNow() ? '차례로 일어납니다' : '던전에서 일어납니다'}</div>`
+        ? `<div class="dw">대기 중 — ${this.canDonateNow() ? '차례로 일어납니다' : '던전에서 일어납니다'}</div>`
         : ''
     const tie = tieE.size > 0 ? `<div class="dw tie">🎲 같은 금액은 그중 하나가 무작위로</div>` : ''
     // 채팅 "!참여" — 돈 없이도 참여할 수 있다는 것을 알린다 (2026-09-25 방송 개선 7 · 2026-10-24 사용자: "채팅에 !참여 / 괴물에 내 이름 — 간단하게")

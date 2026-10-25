@@ -2,6 +2,5 @@
 
 /** 우리 편 좋은 효과 색 */
 export const allyGood = (): number => 0x5aff8a
-export const allyTagCss = (): string => '#8dffb0'
 /** 세트 아이템 색 */
 export const setItemCss = (): string => '#5ce07a'

@@ -326,11 +326,13 @@ export function pickRarity(rng: Rng, src: LootSource, up = 0, ilvl = 99): number
 
 /**
  * 아이템 하나를 굴린다. myWeapon = 주운 사람의 무기(스마트 루트 85%). src = 어디서 나왔나(DROP_TABLE) · up = 난이도 보너스.
+ * legOk = 주운 사람이 쓸 수 있는 전설 효과만 (sim legFor — 근접의 관통 탄띠 · 회복 스킬 없는 은총 같은 꽝을 빼려고). 난수는 그대로 한 번 뽑는다
  */
-export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1): Item {
+export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1, legOk?: (leg: number) => boolean): Item {
   const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
   const rarity = Math.max(minRarity, pickRarity(rng, src, up, ilvl))
-  const leg = rarity >= 3 ? randInt(rng, 0, LEGENDS.length) : undefined
+  const legs = legOk ? LEGENDS.map((_, i) => i).filter(legOk) : null
+  const leg = rarity >= 3 ? (legs ? legs[randInt(rng, 0, legs.length)] : randInt(rng, 0, LEGENDS.length)) : undefined
   let wt = -1
   if (slot === SLOT_WEAPON) {
     // 스마트 루트 85%: 내 계열 무기 — 아이템 레벨 6 부터는 계열의 변형도 (절반쯤). 나머지 15% 는 아무 종류(팔거나 동료에게)

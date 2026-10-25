@@ -161,7 +161,7 @@ async function tokenRequest(extra: Record<string, string>): Promise<TokenSet> {
     body: JSON.stringify({ clientId: CHZZK_CLIENT_ID, ...extra }),
   })
   const json = (await res.json().catch(() => null)) as { content?: { accessToken?: string; refreshToken?: string }; message?: string } | null
-  if (!res.ok || !json?.content?.accessToken) throw new Error(json?.message ?? `HTTP ${res.status}`)
+  if (!res.ok || !json?.content?.accessToken) throw Object.assign(new Error(json?.message ?? `HTTP ${res.status}`), { status: res.status })
   return { accessToken: json.content.accessToken, refreshToken: json.content.refreshToken ?? '' }
 }
 
@@ -176,7 +176,12 @@ async function api<T>(path: string, init: RequestInit = {}, retry = true): Promi
     if (retry && t.refreshToken) {
       try {
         saveTokens(await tokenRequest({ grantType: 'refresh_token', refreshToken: t.refreshToken }))
-      } catch {
+      } catch (e) {
+        // 네트워크 · 프록시 5xx · 429 는 잠깐의 실패 — 로그인을 지우지 않고 보통처럼 다시 붙는다 (전에는 무엇이든 지워 방송 중에 다시 로그인해야 했다)
+        const st = (e as { status?: number }).status
+        if (st !== 400 && st !== 401) throw e
+        // 다른 탭이 먼저 갱신했으면(갱신 토큰이 바뀜) 그 토큰으로 — 지우면 둘 다 로그아웃된다
+        if (tokens()?.refreshToken !== t.refreshToken) return api<T>(path, init, false)
         saveTokens(null)
         throw new AuthExpiredError()
       }
@@ -262,6 +267,7 @@ function openSocket(url: string): void {
   const s = io(url, { reconnection: false, transports: ['websocket'], timeout: 8000, forceNew: true })
   socket = s
   s.on('SYSTEM', (raw) => {
+    if (socket !== s) return
     const ev = parse(raw) as { type?: string; data?: { sessionKey?: string; eventType?: string } } | null
     if (!ev) return
     if (ev.type === 'connected' && ev.data?.sessionKey) void subscribeAll(ev.data.sessionKey)
@@ -290,17 +296,22 @@ function openSocket(url: string): void {
     if (dupe(`d|${d.donatorChannelId ?? nick}|${amount}|${text}`)) return
     stream.donation({ nick, amount, text })
   })
+  // 옛 소켓의 처리기는 무시한다 — connect() 가 옛 소켓을 끊을 때 그 'disconnect' 가 바로 불려 다시 붙기를 또 걸었다
+  // (구독이 한 번 실패한 뒤로 5초마다 끊고 붙기를 끝없이 되풀이 — 2026-10-25 검토)
   s.on('disconnect', () => {
+    if (socket !== s) return
     if (!manualOff) {
       stream.setStatus('error', '연결이 끊어졌습니다 — 다시 연결하는 중')
       scheduleReconnect()
     }
   })
   s.on('connect_error', () => {
+    if (socket !== s) return
     stream.setStatus('error', '웹소켓 연결 실패')
     scheduleReconnect()
   })
   s.on('connect_timeout', () => {
+    if (socket !== s) return
     stream.setStatus('error', '웹소켓 연결 시간 초과')
     scheduleReconnect()
   })
@@ -339,13 +350,15 @@ function scheduleReconnect(): void {
 }
 
 function disconnectSocket(): void {
-  if (!socket) return
+  const s = socket
+  if (!s) return
+  // 먼저 비운다 — 끊는 그 자리에서 불리는 옛 소켓의 'disconnect' 처리기가 제가 옛 것임을 알게 (openSocket 의 socket !== s)
+  socket = null
   try {
-    socket.disconnect()
+    s.disconnect()
   } catch {
     /* 이미 끊김 */
   }
-  socket = null
 }
 
 export function disconnect(): void {

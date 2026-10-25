@@ -187,14 +187,13 @@ function drawGame() {
 
 /**
  * 왼쪽 아래 후원 표 (2026-09-26 사용자: "후원 관련 기능들을 잘 보이게"): 게임의 표는 HTML 이라 캔버스를 합치는 영상에 담기지 않는다 →
- * 같은 모양 · 같은 내용(금액 → 이벤트 · 걸려 있으면 남은 초 · !응원 단계 · !참여)을 영상에 그린다. 게임과 같은 금액표(stream.ts)를 읽는다
+ * 같은 모양 · 같은 내용(금액 → 이벤트 · 걸려 있으면 남은 초 · !참여)을 영상에 그린다. 게임과 같은 금액표(stream.ts)를 읽는다
  */
 function drawDonTable() {
   const SM = M.streamMod
   if (!SM) return
   const cfg = SM.loadStreamCfg()
   const rows = SM.eventRows(cfg)
-  const cheers = SM.cheerRows(cfg)
   const s = st()
   const don = s.players[0]?.don ?? []
   let rage = 0
@@ -205,7 +204,7 @@ function drawDonTable() {
   const lh = 21 * K
   const pad = 10 * K
   const w = 292 * K
-  const nLines = 1 + rows.length + (cheers.length ? 1 + cheers.length : 0) + (cfg.named ? 1 : 0)
+  const nLines = 1 + rows.length + (cfg.named ? 1 : 0)
   const h = nLines * lh + pad * 2 + 6 * K
   // 자막(왼쪽 아래 — 약 300px)을 피해 그 위에 (자막에 아래 절반이 가렸다)
   const x0 = 24
@@ -237,16 +236,16 @@ function drawDonTable() {
     say(text, x0 + pad, y)
     y += lh
   }
-  const row = (amount, name, sec, cheer) => {
+  const row = (amount, name, sec) => {
     if (sec > 0) {
       g.fillStyle = `rgba(255,90,60,${0.2 + 0.14 * Math.sin(now() / 160)})`
       g.fillRect(x0 + pad * 0.5, y - lh / 2 + 1, w - pad, lh - 2)
     }
     g.font = `800 ${16 * K}px "IBM Plex Sans KR", sans-serif`
-    g.fillStyle = cheer ? '#9dffb8' : '#ffd35a'
+    g.fillStyle = '#ffd35a'
     g.textAlign = 'right'
     say(SM.won(amount), x0 + pad + 76 * K, y)
-    g.fillStyle = cheer ? '#d8ffe2' : '#fff4dc'
+    g.fillStyle = '#fff4dc'
     g.textAlign = 'left'
     say(name, x0 + pad + 85 * K, y)
     if (sec > 0) {
@@ -258,12 +257,7 @@ function drawDonTable() {
     y += lh
   }
   head('💰 후원 이벤트', '#f1d58a')
-  for (const r of rows) row(r.amount, r.e.name, left[r.e.key] ?? 0, false)
-  if (cheers.length) {
-    y += 3 * K
-    head('💚 후원 글에 !응원 입력', '#7aff9a')
-    for (const r of cheers) row(r.amount, r.e.name, 0, true)
-  }
+  for (const r of rows) row(r.amount, r.e.name, left[r.e.key] ?? 0)
   if (cfg.named) {
     y += 3 * K
     head('🙋 채팅에 !참여 — 추첨으로 괴물에 내 이름', '#8fd8ff')
@@ -1852,12 +1846,6 @@ function partStream(tl = timeline()) {
   at(3.2, () => {
     caption('큰 후원은 3초 예고', '3 · 2 · 1 — 방송인이 준비할 틈')
     M.stream.fakeDonation(10000)
-  })
-  at(3.6, () => {
-    caption('후원 글에 !응원', '괴롭히는 대신 돕는다 — 아군 괴물 · 아군 보스 · 회복 · 공격 강화')
-    M.stream.fakeCheer(10000)
-    M.stream.fakeCheer(30000)
-    spawn([0, 1, 2, 0], 26, 5, 10)
   })
   endHere(tl, 3.4)
   return tl.done()

@@ -8,7 +8,7 @@ import { EA_UNIQUE, MONSTER_LIST, levelHp, tierOf } from '../src/core/monsters'
 import { HORDE_SIZE, SUMMON_CAP, areaView, createState, hashState, step } from '../src/core/sim'
 import { GameState, MS_CHASE } from '../src/core/state'
 import { CharacterId } from '../src/core/characters'
-import { CHEER_EVENTS, CHEER_RE, DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, donateEvent, effectFits } from '../src/core/donate'
+import { DONATE_EVENTS, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, RAGE_POW, RAGE_TICKS, SHAKE_MAX, SUMMON_BOSS_HP, effectFits } from '../src/core/donate'
 import { defaultStreamCfg, eventForAmount, isBigDonation, nextDonation, tiedAmounts } from '../src/game/stream'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -90,7 +90,6 @@ describe('후원 이벤트 — 소환', () => {
     expect(eventForAmount(20000, cfg)?.key).toBe('rage')
     expect(eventForAmount(30000, cfg)?.key).toBe('hell')
     expect(eventForAmount(100000, cfg)?.key).toBe('hell')
-    expect(CHEER_EVENTS.map((e) => e.amount)).toEqual([1000, 2000, 3000, 5000])
     expect(eventForAmount(500000, cfg)?.key).toBe('hell')
     // 끈 칸(0 원)은 건너뛴다
     expect(eventForAmount(100000, { ...cfg, amounts: cfg.amounts.map((a, i) => (i === 9 ? 0 : a)) })?.key).toBe('rage')
@@ -262,107 +261,8 @@ describe('후원 이벤트 — 효과', () => {
 })
 
 // 응원 (2026-09-23 — 치지직 "!응원" 후원, 금액마다 단계가 다르다): 괴롭히는 대신 돕는다
-describe('후원 이벤트 — 응원', () => {
-  const cfg = { ...defaultStreamCfg(), amounts: DONATE_EVENTS.map((e) => e.amount) }
-
-  it('응원은 금액표 밖의 네 단계(번호 11~14 — 명령 네 비트 안) · 후원 글 "!응원" 을 알아본다', () => {
-    expect(DONATE_EVENTS.some((e) => e.key === 'cheer')).toBe(false)
-    expect(CHEER_EVENTS.map((e) => e.id)).toEqual([11, 12, 13, 14])
-    for (const e of CHEER_EVENTS) expect(donateEvent(e.id)?.key).toBe('cheer')
-    for (let i = 1; i < CHEER_EVENTS.length; i++) expect(CHEER_EVENTS[i].amount).toBeGreaterThan(CHEER_EVENTS[i - 1].amount)
-    expect(CHEER_RE.test('힘내세요 !응원')).toBe(true)
-    expect(CHEER_RE.test('! 힐 부탁')).toBe(true)
-    expect(CHEER_RE.test('응원합니다')).toBe(false)
-  })
-
-  // 2026-10-24 사용자: "!응원 기능 그냥 빼" — 후원 글의 !응원은 더 알아보지 않는다(session) · 치지직 설정에 응원 금액이 없다
-  it('!응원 금액 설정은 없다 — 판의 응원 처리만 남아 있다', () => {
-    expect('cheers' in cfg).toBe(false)
-  })
-
-  // 2026-09-24 사용자: 즉시 회복 · 부활 대신 회복 구슬 · 공격 강화 · 아군 괴물
-  it('가장 싼 응원: 부른 사람 둘레에 회복 구슬 셋 (즉시 회복은 없다) · 공격 속도는 그대로 · 초록 고리', () => {
-    const g = game(81)
-    toField(g)
-    const a = g.s.players[0]
-    a.hp = Math.round(a.maxHp * 0.9)
-    const hp0 = a.hp
-    const before = areaView(g.s, 1).globes.length
-    g.donate(CHEER_EVENTS[0].id)
-    const globes = areaView(g.s, 1).globes.slice(before)
-    expect(globes.length).toBe(3)
-    for (const o of globes) expect(Math.hypot(o.x - a.x, o.y - a.y)).toBeLessThan(5 * 32)
-    expect(a.hp).toBeLessThanOrEqual(hp0 + 1)
-    expect(a.rateMul).toBeCloseTo(1)
-    expect(g.s.events.some((e) => e.type === 'allyfx')).toBe(true)
-  })
-
-  it('5천 원: 회복 구슬 다섯 · 공격 속도 1.3 배 (공격력은 그대로)', () => {
-    const g = game(82)
-    toField(g)
-    const a = g.s.players[0]
-    const before = areaView(g.s, 1).globes.length
-    g.donate(CHEER_EVENTS[1].id)
-    expect(areaView(g.s, 1).globes.length - before).toBe(5)
-    expect(a.rateMul).toBeCloseTo(1.3)
-    expect(a.cpow ?? 0).toBe(0)
-  })
-
-  it('1만 원: 아군 괴물 넷이 10초 동안 둘레 괴물을 치고 사라진다 · 우리 편 30초 공격력 · 공격 속도 1.4 배', () => {
-    const g = game(83)
-    toField(g)
-    const [a, b] = g.s.players
-    b.area = a.area
-    b.x = a.x + 40
-    b.y = a.y
-    g.donate(CHEER_EVENTS[2].id)
-    const allies = areaView(g.s, 1).allies ?? []
-    expect(allies.length).toBe(4)
-    for (const al of allies) expect(MONSTER_LIST[al.kind].attack).toBe('melee')
-    for (const q of [a, b]) {
-      expect(q.rateMul).toBeCloseTo(1.4)
-      expect(q.cpowMul).toBeCloseTo(1.4)
-      expect(q.cpow).toBeGreaterThan(29 * 60)
-    }
-    // 곁에 괴물 하나를 깨워 두면 아군이 달려가 친다 (쏜 사람 몫)
-    // (들판 입구는 맵 가장자리 — 아군이 선 안쪽으로 놓는다)
-    const m = areaView(g.s, 1).monsters.find((x) => x.hp > 0 && MONSTER_LIST[x.kind].attack !== 'flee')!
-    m.x = allies[0].x - 70
-    m.y = allies[0].y
-    m.st = MS_CHASE
-    const hp0 = m.hp
-    let swipes = 0
-    for (let t = 0; t < 120; t++) {
-      g.run(() => idle())
-      swipes += g.s.events.filter((e) => e.type === 'swipe' && allies.some((al) => al.id === e.m)).length
-    }
-    expect(m.hp < hp0 || !areaView(g.s, 1).monsters.includes(m)).toBe(true)
-    expect(swipes).toBeGreaterThan(0)
-    for (let t = 0; t < 10 * 60; t++) g.run(() => idle())
-    expect(areaView(g.s, 1).allies ?? []).toEqual([])
-  })
-
-  it('3만 원: 그 막 보스 모습의 아군 하나 · 공격력 · 공격 속도 1.6 배 · 회복 구슬 다섯 · 같은 입력이면 같은 판', () => {
-    const run = () => {
-      const g = game(84)
-      toField(g)
-      const before = areaView(g.s, 1).globes.length
-      g.donate(CHEER_EVENTS[3].id)
-      const allies = areaView(g.s, 1).allies ?? []
-      expect(allies.length).toBe(1)
-      expect(MONSTER_LIST[allies[0].kind].boss).toBe(true)
-      expect(areaView(g.s, 1).globes.length - before).toBe(5)
-      expect(g.s.players[0].cpowMul).toBeCloseTo(1.6)
-      for (let t = 0; t < 300; t++) g.run(() => idle())
-      return hashState(g.s)
-    }
-    expect(run()).toBe(run())
-  })
-})
-
-// 2026-09-24 사용자: "후원은 스트리머 한 명에게만 온다 — 소환 말고 다른 효과는 파티원 모두에게"
 describe('후원 효과는 파티 모두에게', () => {
-  it('손 떨림 · 시야 축소는 곁의 동료도 · 다른 지역(마을)에 있는 동료도 받는다 · 공격 강화도 모두', () => {
+  it('손 떨림 · 시야 축소는 곁의 동료도 · 다른 지역(마을)에 있는 동료도 받는다', () => {
     const g = game(88)
     toField(g)
     const [a, b] = g.s.players
@@ -373,11 +273,6 @@ describe('후원 효과는 파티 모두에게', () => {
       expect(q.don?.[DON_SHAKE] ?? 0).toBeGreaterThan(0)
       expect(q.don?.[DON_DARK] ?? 0).toBeGreaterThan(0)
     }
-    g.donate(CHEER_EVENTS[2].id | (2 << 4))
-    for (const q of [a, b]) expect(q.cpowMul).toBeCloseTo(1.4)
-    // 아군 괴물 · 구슬은 부른 사람 곁에만
-    expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
-    expect(areaView(g.s, b.area).allies ?? []).toEqual([])
   })
 })
 
@@ -420,56 +315,6 @@ describe('같은 방해 효과가 이어 붙는 한도', () => {
 })
 
 // 2026-09-26 사용자: "응원으로 소환된 아군 괴물 · 아군 보스가 맵 이동 시 안 따라온다"
-describe('응원 아군은 부른 사람을 따라 지역을 건너간다', () => {
-  it('출구로 옮기면 아군 넷이 새 지역의 곁에 · 남은 시간은 그대로 · 옛 지역에는 없다 · 같은 입력이면 같은 판', () => {
-    const run = () => {
-      const g = game(93)
-      toField(g)
-      const p = g.s.players[0]
-      g.donate(CHEER_EVENTS[2].id | (4 << 4))
-      expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
-      for (let t = 0; t < 30; t++) g.run(() => idle())
-      const left = (areaView(g.s, 1).allies ?? []).map((a) => a.t)
-      // 다른 출구(마을이 아닌 곳)로
-      const ex = areaLayout(1, g.mapOf(1)).exits.find((x) => x.to !== 0)!
-      p.x = ex.x
-      p.y = ex.y
-      p.exitLock = 0
-      p.btnPrev = 0
-      g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
-      expect(p.area).toBe(ex.to)
-      const moved = areaView(g.s, ex.to).allies ?? []
-      expect(moved.length).toBe(4)
-      for (const a of moved) expect(Math.hypot(a.x - p.x, a.y - p.y)).toBeLessThan(120)
-      expect(moved.map((a) => a.t).every((t, i) => t <= left[i] && t > left[i] - 5)).toBe(true)
-      expect(areaView(g.s, 1).allies ?? []).toEqual([])
-      for (let t = 0; t < 60; t++) g.run(() => idle())
-      return hashState(g.s)
-    }
-    expect(run()).toBe(run())
-  })
-})
-
-describe('응원 아군은 마을로는 안 따라간다', () => {
-  it('부른 사람이 마을로 가면 아군은 마을에 없다 (남은 지역에 사람이 없으면 사라진다)', () => {
-    const g = game(94)
-    toField(g)
-    const p = g.s.players[0]
-    g.donate(CHEER_EVENTS[2].id | (5 << 4))
-    expect((areaView(g.s, 1).allies ?? []).length).toBe(4)
-    const ex = areaLayout(1, g.mapOf(1)).exits.find((x) => x.to === 0)!
-    p.x = ex.x
-    p.y = ex.y
-    p.exitLock = 0
-    p.btnPrev = 0
-    g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
-    expect(p.area).toBe(0)
-    g.run(() => idle())
-    expect(areaView(g.s, 0).allies ?? []).toEqual([])
-  })
-})
-
-// 2026-09-26 방송 개선 1 · 2 · 3
 describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
   it('멈춤 중에는 모두 기다린다 · 풀면 먼저 온 것부터', () => {
     const pending = [{ ev: ev('dark') }, { ev: ev('elite') }, { ev: ev('horde') }]
@@ -479,10 +324,9 @@ describe('후원 멈춤 · 큰 후원 예고 · 결과 알림', () => {
     expect(nextDonation(pending, false, (e) => e !== ev('dark'))).toBe(1)
   })
 
-  it('3초 예고는 중간보스 이상의 방해 이벤트만 (응원 · 싼 것은 바로)', () => {
+  it('3초 예고는 기본 가격 5천 원 이상만 — 번호가 아니라 금액 순 (싼 것은 바로)', () => {
     const big = DONATE_EVENTS.filter((e) => isBigDonation(e.id)).map((e) => e.key)
-    expect(big).toEqual(['unique', 'seal', 'rage', 'boss', 'hell', 'march'])
-    for (const c of CHEER_EVENTS) expect(isBigDonation(c.id)).toBe(false)
+    expect(big).toEqual(['dark', 'unique', 'seal', 'rage', 'boss', 'hell', 'gun', 'march'])
   })
 
   it('쓰러짐 이벤트에 쓰러뜨린 괴물이 실린다 ("○○님의 막 보스에게 쓰러짐")', () => {
@@ -540,10 +384,9 @@ describe('한도에 걸린 방해 효과는 버리지 않고 기다린다', () =
     expect(effectFits(ev('rage'), undefined, 60, 1)).toBe(false)
     expect(effectFits(ev('rage'), undefined, 60, 0)).toBe(true)
   })
-  it('소환 · 응원은 이 조건과 상관없다 · 기다리는 동안 뒤의 다른 후원은 먼저 간다', () => {
+  it('소환은 이 조건과 상관없다 · 기다리는 동안 뒤의 다른 후원은 먼저 간다', () => {
     const full = [SHAKE_MAX, DON_CAP_DEFAULT * T, DON_CAP_DEFAULT * T, DON_CAP_DEFAULT * T]
     expect(effectFits(ev('horde'), full, 60, 999)).toBe(true)
-    expect(effectFits(CHEER_EVENTS[0].id, full, 60, 999)).toBe(true)
     const pending = [{ ev: ev('dark') }, { ev: ev('dark') }, { ev: ev('horde') }]
     const d = don(DON_DARK, 45)
     expect(nextDonation(pending, false, (e) => effectFits(e, d, 60, 0))).toBe(2)

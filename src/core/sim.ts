@@ -22,12 +22,12 @@ import { circleHitsWall, circlesOverlap, moveCircle, pointLineDistance, segmentH
 import { makeRng, rand, randInt, Rng } from './rng'
 import {
   AFFIX_TUNE, DEATH_BLAST_MULT, GOBLIN, GOBLIN_KIND, QUEEN, SPIDER_KIND, ACID, GHOUL_KIND, GUARD, RAISE, SHIELD_KIND, WARDEN, BLINK, DEMON_FUSE, LORD, SHADE_KIND, levelHp, levelPow, tierOf,
-  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MOB_HP, MonsterDef, gunBurst, gunCooldown, UNIQUE, isBossLike, xpFor, xpGapMul,
+  BOSS_PATS, BOSS_PLANS, BOSS_RAGE_PM, BOSS_ULT, BOSS_ULT_CD, BOSS_SWIPE_PM, BOSS_TIER_PM, BP, BossPatId, PAT, EA_BLINK, EA_FAST, EA_FIRE, EA_FROST, EA_SHIELD, EA_SPLIT, EA_STOUT, EA_UNIQUE, EA_VAMP, EA_VOLATILE, shieldUp, ELITE, MONSTER_LIST, MOB_COUNT, MonsterDef, gunBurst, gunCooldown, UNIQUE, isBossLike, xpFor, xpGapMul,
   bodyR, GIANT_HP, fromBehind, isGiant,
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { ALLY_BOSS_CD, ALLY_BOSS_HIT, ALLY_BOSS_SPLASH, ALLY_CD, ALLY_HIT, ALLY_SEEK, CheerDef, cheerEvent, DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
+import { DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
 import { botSheet, botSkillNext, gearLevelOf } from './botsheet'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, gateTarget, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
@@ -35,13 +35,13 @@ import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
 import { variantKind,
   CHAR_SKILLS, baseSkill, FX_CARPET, FX_CHARGE, FX_COUNT, FX_CRIT, FX_FREEAMMO, FX_GUARD, FX_KING, FX_PARTYDR, FX_RATE, FX_REFLECT, FX_KENWANG, FX_SNIPE, FX_SWIFT, FX_WHIRL,
-  MAX_RANK, SKILLS, SkillId, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
+  MAX_RANK, SKILLS, SkillId, ULT_NODE, ULT_START_FRAC, focusCost, freePoints, nodeCd, nodePow, nodeSkill, sanitizeBuild, slotNode,
 } from './skills'
 import {
   AreaState, BLEED_TICKS, BLOCK_CHANCE, BLOCK_COST, BLOCK_LOCK_TICKS, Bullet, CHICKEN_HEAL, CHICKEN_MAXHP_CAP, CHICKEN_MAXHP_PER_KILL,
   COUNTDOWN_TICKS, CHIM, MapObj, OBJ_CHEST, OBJ_CURSED, OBJ_GOLDCHEST, OBJ_SECRET, OBJ_SHRINE, OBJ_URN, CURSE_WAVES, CURSE_WAVE_TICKS, SHRINE_TICKS, DASH_COST, DASH_SPEED, DASH_TICKS, GIYEOL, GLOBE_BIG_FRAC, GLOBE_DROP_MUL, GLOBE_HEAL_FRAC, GLOBE_RADIUS, GLOBE_SHARE_FRAC,
   GLOBE_SHARE_RANGE, GLOBE_TTL, GameState, JUPEOL, MAX_PLAYERS, MEDKIT_HEAL_FRAC, MEDKIT_RADIUS, MEDKIT_TTL, MIN_PLAYERS,
-  CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, Ally, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
+  CHAR_PVP, MS_CHARGE, MS_CHASE, MS_RECOVER, MS_SLEEP, MS_WINDUP, MatchConfig, Monster, PLAYER_RADIUS, PUNGWOL, PlayerState, RESPAWN_TICKS,
   REVIVE_HP_FRAC, REVIVE_RANGE, REVIVE_TICKS, SOLO_BLEED_TICKS, SPAWN_PROTECT_TICKS, SPRINT_COST, SPRINT_MIN, SPRINT_MUL, TICK_RATE,
   STAMINA_MAX, STAMINA_REGEN, UWON, DASH_GRACE, ZONE_ACID, ZONE_BURN, ZONE_ECHO, ZONE_FUSE, ZONE_SPOTLIGHT, ZONE_TRAP, ZONE_VORTEX, ZONE_WARN, ZS_CIRCLE, ZS_CONE, ZS_LINE, ZS_RING, Zone, isActive, isEnemy, isHumanSeat, teamKills, MoveHow, SimEvent,
 } from './state'
@@ -166,8 +166,6 @@ function unbind(state: GameState): void {
     a.drops = state.drops
     a.objects = state.objects
     a.monstersTotal = state.monstersTotal
-    if (state.allies?.length) a.allies = state.allies
-    else delete a.allies
   }
   state.curArea = -1
 }
@@ -183,7 +181,6 @@ function bind(state: GameState, a: AreaState): void {
   state.drops = a.drops
   state.objects = a.objects
   state.monstersTotal = a.monstersTotal
-  state.allies = a.allies
 }
 
 /**
@@ -207,7 +204,6 @@ function bindPrimary(state: GameState): void {
   state.drops = []
   state.objects = []
   state.monstersTotal = 0
-  state.allies = undefined
 }
 
 /**
@@ -539,9 +535,6 @@ function placeIn(state: GameState, map: GameMap, p: PlayerState, to: number, x: 
   p.fx[FX_CHARGE] = 0
   p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS)
   p.arriveT = state.tick
-  // 응원 아군 괴물은 부른 사람을 따라 지역을 건너간다 (2026-09-26 사용자: "맵 이동 시 안 따라온다 — 같이 이동하도록").
-  // **마을로는 안 따라간다**(같은 날 사용자 — 싸울 곳이 아니다): 남은 지역에서 제 둘레 괴물과 싸우다(동료가 있으면 돕는다) 사람이 모두 떠나면 사라진다
-  if (from !== to && !isTown(to)) carryAllies(state, map, p, from, a)
   // 마을에 들어서면 그 마을의 웨이포인트가 열린다 · 2026-10-22 부터 웨이포인트가 있는 지역은 **들어서기만 하면** 열린다
   // (사용자: "웨이포인트는 밟지 않더라도 그 지역 입성만 하면 자동으로 뚫리도록")
   if (isTown(to)) p.wps |= wpBit(to)
@@ -568,33 +561,6 @@ function wpFound(state: GameState, p: PlayerState, area: number): void {
   state.events.push({ type: 'wpFound', p: p.id, area })
   const lv = areaDef(area).level
   state.portals = state.portals.filter((q) => q.owner !== p.id || areaDef(q.area).level >= lv)
-}
-
-/**
- * p 가 부른 응원 아군을 지역 from 에서 to 로 옮겨 p 곁에 둥글게 세운다(벽을 넘지 않게). 남은 시간 · 공격 대기는 그대로.
- * 지역 배열은 묶였다 풀렸다 하므로 풀어 둔 채(unbind) 지역 쪽 칸을 직접 고치고, 판 밖이면 도로 묶는다
- */
-function carryAllies(state: GameState, map: GameMap, p: PlayerState, from: number, to: AreaState): void {
-  unbind(state)
-  const src = findArea(state, from)
-  const mine = src?.allies?.filter((al) => al.by === p.id) ?? []
-  if (src && mine.length > 0) {
-    const rest = src.allies!.filter((al) => al.by !== p.id)
-    if (rest.length > 0) src.allies = rest
-    else delete src.allies
-    to.allies ??= []
-    mine.forEach((al, i) => {
-      if (to.allies!.length >= ALLY_CAP) return
-      const ang = (Math.round((i * 1024) / mine.length) + 256) & 1023
-      const at = moveCircle(map, p.x, p.y, MONSTER_LIST[al.kind].r, cosA(ang) * 56, sinA(ang) * 56)
-      al.x = at.x
-      al.y = at.y
-      al.target = -1
-      al.moving = 0
-      to.allies!.push(al)
-    })
-  }
-  if (!stepping) bindPrimary(state)
 }
 
 function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
@@ -647,8 +613,6 @@ function freezeAreas(state: GameState): void {
     a.mshots = []
     a.zones = []
     a.throws = []
-    // 응원 아군은 사람이 떠나면 사라진다
-    delete a.allies
   }
   if (frozen.length <= FROZEN_KEEP) return
   frozen.sort((a, b) => b.seen - a.seen || a.id - b.id)
@@ -813,6 +777,22 @@ function questCommand(state: GameState, p: PlayerState, i: number): void {
   questReward(state, p, i, slot)
 }
 
+/**
+ * 이 사람이 쓸 수 있는 전설 효과만 (2026-10-25 검토 — 무작위라 근접 셋에게 관통 탄띠 · 회복 스킬 없는 여덟에게 은총이 나와 꽝이었다).
+ * 범위 · 강화 · 회복 전설은 그 갈래 스킬이 트리(액티브 · 궁극기)에 있을 때만
+ */
+export function legFor(p: { char: PlayerState['char']; weapon: PlayerState['weapon'] }): (leg: number) => boolean {
+  const kinds = new Set<string>()
+  for (let n = 0; n <= ULT_NODE; n++) kinds.add(variantKind(nodeSkill(p, n)))
+  const melee = !!WEAPONS[p.weapon].melee
+  return (leg) =>
+    leg === LEG_AMMO ? !melee
+    : leg === LEG_ECHO || leg === LEG_EMBER ? kinds.has('blast')
+    : leg === LEG_LINGER || leg === LEG_SHARE ? kinds.has('buff')
+    : leg === LEG_GRACE ? kinds.has('heal')
+    : true
+}
+
 /** 이룬 퀘스트의 보상 (전설은 slot 부위 — -1 이면 무작위) */
 function questReward(state: GameState, p: PlayerState, i: number, slot: number): void {
   p.quests[i] = 3
@@ -820,7 +800,7 @@ function questReward(state: GameState, p: PlayerState, i: number, slot: number):
   const qd = QUESTS[i]
   if (qd.legend) {
     // 전설 하나 (가방이 차 있으면 발밑에)
-    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 'boss', tierOf(state.tier).loot, 3, slot)
+    const it = rollItem(state.rng, state.nextItemUid++, Math.max(p.level, areaDef(QUESTS[i].area).level + tierOf(state.tier).lvl), p.weapon, 'boss', tierOf(state.tier).loot, 3, slot, legFor(p))
     if (p.bag.length < p.bagMax) p.bag.push(it)
     else state.drops.push({ id: state.nextDropId++, owner: p.id, x: p.x, y: p.y + 30, item: it, gold: 0, pot: 0, ttl: 60 * 600, lock: 30 })
   }
@@ -982,7 +962,7 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     const carry = mats.reduce((a, k) => Math.max(a, matAt(p.bag, p.stash, k)?.up ?? 0), 0)
     takeMaterials(p.bag, p.stash, mats)
     const out = rand(state.rng) < forgeOdds(rar) ? rar + 1 : rar
-    const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', 0, out, slot)
+    const it = rollItem(state.rng, state.nextItemUid++, ilvl, p.weapon, 'forge', 0, out, slot, legFor(p))
     if (carry > 0) it.up = carry
     p.bag.push(it)
     trade('forge', -g, it.uid)
@@ -1002,7 +982,7 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
       spent += g
       // 천장: 전설 없이 GAMBLE_PITY 번이면 이번은 전설 이상
       const pity = p.gpity >= GAMBLE_PITY
-      const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 'gamble', tierOf(state.tier).loot, pity ? 3 : 0, slot)
+      const it = rollItem(state.rng, state.nextItemUid++, p.level + 2, p.weapon, 'gamble', tierOf(state.tier).loot, pity ? 3 : 0, slot, legFor(p))
       p.gpity = it.rarity >= 3 ? 0 : p.gpity + 1
       p.bag.push(it)
       uids.push(it.uid)
@@ -1216,7 +1196,6 @@ export function areaView(state: GameState, id: number): GameState {
     drops: a?.drops ?? [],
     objects: a?.objects ?? [],
     monstersTotal: a?.monstersTotal ?? 0,
-    allies: a?.allies,
     events: eventsIn(state, id),
   }
 }
@@ -1744,7 +1723,6 @@ function stepArea(state: GameState, map: GameMap, inputs: Input[]): void {
   }
   if (state.rift) stepRift(state, map)
   if (state.mode === 'dungeon' && state.phase === 'playing') stepCurses(state, map)
-  if (state.allies?.length) stepAllies(state, map)
   const grid = buildGrid(state, map)
   separate(state, map, grid)
   stepZones(state, map)
@@ -3631,23 +3609,6 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, id: numbe
     case 'seal':
       addDon(DON_SEAL, DON_TICKS[DON_SEAL])
       break
-    case 'cheer': {
-      // 응원 (금액 단계마다 다르다, donate.ts CHEER_EVENTS): 회복 구슬 · 같은 지역 우리 편 공격 강화 · 아군 괴물 · 초록 고리
-      const c = cheerEvent(ev.id)
-      if (!c) break
-      state.events.push({ type: 'allyfx', p: p.id, x: p.x, y: p.y, r: 12 * TILE })
-      // 공격 강화는 파티 모두 (다른 지역에 있어도) — 구슬 · 아군 괴물은 부른 사람 곁
-      if (c.ticks > 0) {
-        for (const q of party) {
-          if (!q.alive) continue
-          if (c.rate > 1) buffRate(q, c.ticks, c.rate)
-          if (c.pow > 1) buffPow(q, c.ticks, c.pow)
-        }
-      }
-      if (c.globes > 0) cheerGlobes(state, map, p, c.globes)
-      if (c.allies > 0) spawnAllies(state, map, p, c, seq)
-      break
-    }
     case 'rage':
       // 이 지역의 살아 있는 괴물 모두 (잠든 무리까지 — 깨우면 이미 세다)
       for (const m of state.monsters) {
@@ -3658,133 +3619,6 @@ function donateCommand(state: GameState, map: GameMap, p: PlayerState, id: numbe
       break
   }
   state.events.push({ type: 'donate', p: p.id, ev: ev.id, seq, m: lead ? lead.id : -1 })
-}
-
-// ---------------------------------------------------------------- 응원 (회복 구슬 · 아군 괴물)
-
-/** 응원 회복 구슬: 부른 사람 둘레 2.5~4 칸에 고르게 (벽을 넘지 않는다). 가득이면 줍지 않고 남는다 */
-function cheerGlobes(state: GameState, map: GameMap, p: PlayerState, n: number): void {
-  const a0 = randInt(state.rng, 0, 1024)
-  for (let i = 0; i < n; i++) {
-    const a = (a0 + Math.round((i * 1024) / n)) & 1023
-    const d = 80 + randInt(state.rng, 0, 48)
-    const g = moveCircle(map, p.x, p.y, GLOBE_RADIUS, cosA(a) * d, sinA(a) * d)
-    dropGlobe(state, g.x, g.y, GLOBE_HEAL_FRAC)
-  }
-}
-
-/** 한 지역의 응원 아군 상한 (몰려도 화면 · 판이 무너지지 않게) */
-export const ALLY_CAP = 12
-
-/**
- * 아군 괴물을 부른다: 그 막의 근접 괴물(보스 단계는 그 막 보스) 모습으로 부른 사람 곁에. 피해는 그 지역 구울 체력에 맞춘다 —
- * 막 · 레벨 · 난이도 · 인원이 달라도 졸개 하나를 서너 번에 쓰러뜨린다.
- */
-function spawnAllies(state: GameState, map: GameMap, p: PlayerState, c: CheerDef, seq: number): void {
-  state.allies ??= []
-  const act = areaDef(p.area).act
-  const lvl = areaLevel(p.area, state.tier)
-  const seats = state.players.length
-  // 시련이면 그 단계의 괴물 체력에 맞춰 아군도 세게 친다 (riftHere)
-  const ghoulHp = MONSTER_LIST[GHOUL_KIND].hp * MOB_HP * (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp * (riftHere(state, p.area)?.hp ?? 1)
-  const melee = summonPool(act).filter((k) => MONSTER_LIST[k].attack === 'melee')
-  const boss = AREAS.find((a) => a.act === act && a.boss !== undefined)?.boss
-  for (let i = 0; i < c.allies && state.allies.length < ALLY_CAP; i++) {
-    const kind = c.allyBoss && boss !== undefined ? boss : melee.length ? melee[randInt(state.rng, 0, melee.length)] : GHOUL_KIND
-    const a = (p.aim + 512 + Math.round(((i - (c.allies - 1) / 2) * 1024) / Math.max(4, c.allies * 2))) & 1023
-    const at = moveCircle(map, p.x, p.y, MONSTER_LIST[kind].r, cosA(a) * 56, sinA(a) * 56)
-    const al: Ally = {
-      id: state.nextMonsterId++, kind, x: at.x, y: at.y, aim: p.aim, t: c.allyTicks, cd: 20 + i * 6, target: -1, by: p.id, seq,
-      dmg: Math.max(1, Math.round(ghoulHp * (c.allyBoss ? ALLY_BOSS_HIT : ALLY_HIT))), splash: c.allyBoss ? ALLY_BOSS_SPLASH : 0, moving: 0,
-    }
-    state.allies.push(al)
-    state.events.push({ type: 'allyfx', p: p.id, x: al.x, y: al.y, r: MONSTER_LIST[kind].r * 3 })
-  }
-}
-
-/**
- * 아군 괴물 한 틱: 부른 사람 둘레(ALLY_SEEK)의 가장 가까운 괴물에게 달려가 친다 · 없으면 부른 사람 곁으로 · 시간이 다 되면 사라진다.
- * 괴물은 아군을 노리지 않고, 아군은 맞지 않는다 (Ally 설명).
- */
-function stepAllies(state: GameState, map: GameMap): void {
-  const list = state.allies!
-  let write = 0
-  for (const al of list) {
-    const def = MONSTER_LIST[al.kind]
-    al.moving = 0
-    if (--al.t <= 0) {
-      state.events.push({ type: 'allyfx', p: al.by, x: al.x, y: al.y, r: def.r * 3 })
-      continue
-    }
-    list[write++] = al
-    if (al.cd > 0) al.cd--
-    const owner = state.players[al.by]
-    const home = owner && isActive(owner) ? owner : null
-    // 표적: 10틱마다 (또는 쓰러지면) 다시 — 부른 사람 곁의, 아군에게서 보이는 괴물
-    let tgt = al.target >= 0 ? state.monsters.find((m) => m.id === al.target && m.hp > 0) : undefined
-    if (!tgt || (state.tick + al.id) % 10 === 0) {
-      const cx = home ? home.x : al.x
-      const cy = home ? home.y : al.y
-      let best: Monster | undefined
-      let bd = Infinity
-      for (const m of state.monsters) {
-        if (m.hp <= 0 || MONSTER_LIST[m.kind].attack === 'flee') continue
-        // 보스 방의 보스는 사람이 먼저 친 뒤에 (응원 아군도 봇과 같다)
-        if (m.hitTick < 0 && isGiant(m)) continue
-        if ((m.x - cx) ** 2 + (m.y - cy) ** 2 > ALLY_SEEK * ALLY_SEEK) continue
-        const d2 = (m.x - al.x) ** 2 + (m.y - al.y) ** 2
-        if (d2 < bd && !rayBlocked(map, al.x, al.y, m.x, m.y)) {
-          bd = d2
-          best = m
-        }
-      }
-      tgt = best
-      al.target = best ? best.id : -1
-    }
-    const speed = Math.max(def.speed, 1.4) * 1.25
-    if (tgt) {
-      const dx = tgt.x - al.x
-      const dy = tgt.y - al.y
-      const d = len(dx, dy)
-      al.aim = atan2A(dy, dx)
-      const reach = def.r + MONSTER_LIST[tgt.kind].r + 12
-      if (d > reach) {
-        const k = Math.min(speed, d - reach + 1) / Math.max(1, d)
-        const r = moveCircle(map, al.x, al.y, def.r, dx * k, dy * k)
-        al.x = r.x
-        al.y = r.y
-        al.moving = 1
-      } else if (al.cd === 0) {
-        al.cd = al.splash > 0 ? ALLY_BOSS_CD : ALLY_CD
-        state.events.push({ type: 'swipe', m: al.id, x: al.x, y: al.y, aim: al.aim })
-        if (al.splash > 0) {
-          for (const m of state.monsters) {
-            if (m.hp > 0 && m !== tgt && !(m.hitTick < 0 && isGiant(m)) && (m.x - tgt.x) ** 2 + (m.y - tgt.y) ** 2 <= al.splash * al.splash) hurtMonster(state, m, Math.round(al.dmg * 0.5), al.by, false, m.x, m.y)
-          }
-        }
-        hurtMonster(state, tgt, al.dmg, al.by, false, tgt.x, tgt.y)
-      }
-    } else if (home) {
-      // 부른 사람 곁으로 (멀리 떨어져 길을 잃으면 곁으로 옮긴다)
-      const dx = home.x - al.x
-      const dy = home.y - al.y
-      const d = len(dx, dy)
-      if (d > 14 * TILE) {
-        const g = moveCircle(map, home.x, home.y, def.r, cosA((al.id * 137) & 1023) * 48, sinA((al.id * 137) & 1023) * 48)
-        al.x = g.x
-        al.y = g.y
-      } else if (d > 70) {
-        al.aim = atan2A(dy, dx)
-        const k = Math.min(speed, d - 60) / d
-        const r = moveCircle(map, al.x, al.y, def.r, dx * k, dy * k)
-        al.x = r.x
-        al.y = r.y
-        al.moving = 1
-      }
-    }
-  }
-  list.length = write
-  if (write === 0) state.allies = undefined
 }
 
 /** 한 지역에 동시에 살아 있을 수 있는 후원 소환 괴물 (졸개 포함) — 후원이 몰려도 판이 무너지지 않게 */
@@ -3924,7 +3758,7 @@ function spill(state: GameState, p: PlayerState, x: number, y: number, lvl: numb
     state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item: null, gold: g, pot: 0, ttl: 60 * 120, lock: 12 })
   }
   for (let k = 0; k < items; k++) {
-    const item = rollItem(state.rng, state.nextItemUid++, lvl, p.weapon, src, up, k === 0 ? minFirst : 0)
+    const item = rollItem(state.rng, state.nextItemUid++, lvl, p.weapon, src, up, k === 0 ? minFirst : 0, -1, legFor(p))
     const a = at()
     state.drops.push({ id: state.nextDropId++, owner: p.id, x: a.x, y: a.y, item, gold: 0, pot: 0, ttl: 60 * 240, lock: 20 })
     state.events.push({ type: 'loot', owner: p.id, x: a.x, y: a.y, rarity: item.rarity })
@@ -5230,7 +5064,6 @@ export function interpSnapshot(state: GameState): GameState {
     bullets: state.bullets.map((b) => ({ id: b.id, x: b.x, y: b.y })),
     monsters: state.monsters.map((m) => ({ id: m.id, x: m.x, y: m.y })),
     mshots: state.mshots.map((m) => ({ id: m.id, x: m.x, y: m.y })),
-    allies: state.allies?.map((m) => ({ id: m.id, x: m.x, y: m.y })),
   } as unknown as GameState
 }
 

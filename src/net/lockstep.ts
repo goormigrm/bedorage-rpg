@@ -47,12 +47,14 @@ export class Lockstep {
     link.onInput((buf, from) => this.receive(buf, from))
   }
 
-  /** 틱 t 에서 샘플한 입력을 t+delay 에 배정하고 전송 */
-  pushLocal(t: number, input: Input): void {
+  /** 틱 t 에서 샘플한 입력을 t+delay 에 배정하고 전송. 그 틱에 이미 입력이 있으면(상대 입력을 기다리며 같은 틱을 다시 돎) 버리고 false */
+  pushLocal(t: number, input: Input): boolean {
     const target = t + this.delay
     const mine = this.inputs[this.me]
-    if (!mine.has(target)) mine.set(target, cloneInput(input))
+    const fresh = !mine.has(target)
+    if (fresh) mine.set(target, cloneInput(input))
     this.send(target)
+    return fresh
   }
 
   /** 내가 보낸 가장 앞선 틱 */

@@ -118,6 +118,11 @@ export class LocalInput {
     if (this.cmds.length < 8) this.cmds.push({ cmd, arg })
   }
 
+  /** 판에 실리지 못한 명령을 대기열 앞에 되돌린다 (상대 입력을 기다리며 같은 틱을 다시 돌 때 — session.tick) */
+  requeueCmd(cmd: number, arg: number): void {
+    this.cmds.unshift({ cmd, arg })
+  }
+
   /** 대기열의 명령 하나 (자동 조종 — 봇이 움직여도 후원 · 가방 명령은 판에 들어가야 한다) */
   takeCmd(): { cmd: number; arg: number } | undefined {
     return this.cmds.shift()
