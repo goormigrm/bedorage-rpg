@@ -12,8 +12,8 @@ import { CMD_ATTR, CMD_SKILL_UP } from './input'
 import { makeRng } from './rng'
 import { Build, MAX_RANK, ULT_NODE, defaultBuild, freePoints } from './skills'
 
-/** 그 레벨짜리 한 벌 (마법 등급 이상 — 사람도 이쯤이면 주워 갈아입는다) */
-function gear(char: CharacterId, level: number, seed: number): (Item | null)[] {
+/** 그 레벨짜리 한 벌 (마법 등급 이상 — 사람도 이쯤이면 주워 갈아입는다) · 게임 중 봇 · 용병이 처지면 다시 굴린다(sim gainXp) */
+export function gear(char: CharacterId, level: number, seed: number): (Item | null)[] {
   const rng = makeRng(seed * 131 + level * 7)
   const out: (Item | null)[] = []
   for (let slot = 0; slot < SLOT_COUNT; slot++) out.push(rollItem(rng, 900000 + slot, level, CHARACTERS[char].weapon, 'elite', 0, 1, slot))

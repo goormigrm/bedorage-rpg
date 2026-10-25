@@ -6,6 +6,7 @@
 // 창백하고 마른 살빛 · 뼈 · 썩은 녹색, 그리고 **어둠 속에서 빛나는 눈**(MeshBasic — 조명과 상관없이 보인다).
 
 import * as THREE from 'three'
+import { addNearFade } from './vision'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GIANT_VIEW, GOBLIN_KIND, GOBLIN_VIEW, MONSTER_LIST, isGiant } from '../core/monsters'
 import { GameState, MS_WINDUP, Monster } from '../core/state'
@@ -1015,7 +1016,11 @@ export class MonsterView {
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
-    for (const parts of this.kinds) for (const p of parts) this.group.add(p.mesh)
+    for (const parts of this.kinds)
+      for (const p of parts) {
+        this.group.add(p.mesh)
+        addNearFade(p.mesh.material as THREE.Material)
+      }
     // 밝은 분위기: 도형 괴물(귀여운 모델이 구워지기 전 · 실사 끔)도 검게 보이지 않게 파스텔 쪽으로 (그림자 · 도깨비가 새까맸다)
     if (isBright()) {
       const done = new Set<THREE.Material>()
@@ -1175,6 +1180,7 @@ export class MonsterView {
         const meshes = baked.parts.map((p) => {
           p.geo.setAttribute('aFrame', frame)
           frameShader(p.mat)
+          addNearFade(p.mat)
           const mesh = new THREE.InstancedMesh(p.geo, p.mat, CAP) as InstancedMesh
           mesh.frustumCulled = false
           // 그림자 맵에는 보스만 (떼는 발밑 그림자 — blob)

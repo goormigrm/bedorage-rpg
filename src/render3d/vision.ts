@@ -141,6 +141,44 @@ function addVisFog(mat: THREE.Material): void {
   mat.customProgramCacheKey = () => `${key()}|visfog`
 }
 
+/**
+ * 괴물 재질에 3인칭 카메라 코앞 점무늬만 붙인다 (시야 안개는 아니다 — 괴물은 시야 끝에서 따로 어둡게 녹인다 · MonsterView.edgeShade).
+ * 3인칭은 카메라가 캐릭터 뒤라 뒤에서 쫓아온 괴물 · 거대한 보스가 카메라와 나 사이를 덮었다 (2026-10-25 검토). 첫 컴파일 전에 붙인다
+ */
+export function addNearFade(mat: THREE.Material): void {
+  if (!mat || mat.userData.nearFade || mat.userData.visFog || (mat as THREE.ShaderMaterial).isShaderMaterial) return
+  mat.userData.nearFade = true
+  const prev = mat.onBeforeCompile
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
+    sh.uniforms.visNear = VIS_U.visNear
+    sh.vertexShader = 'varying vec3 vNearW;\n' + sh.vertexShader.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      {
+        vec4 nw = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+        nw = instanceMatrix * nw;
+        #endif
+        vNearW = ( modelMatrix * nw ).xyz;
+      }`,
+    )
+    sh.fragmentShader =
+      'uniform float visNear; varying vec3 vNearW;\n' +
+      sh.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+      if ( visNear > 0.0 ) {
+        float vnd = distance( vNearW, cameraPosition ) / visNear;
+        vec2 vnc = mod( floor( gl_FragCoord.xy ), 2.0 );
+        if ( vnd < ( vnc.x * 2.0 + vnc.y + 0.5 ) / 4.0 ) discard;
+      }`,
+      )
+  }
+  const key = mat.customProgramCacheKey.bind(mat)
+  mat.customProgramCacheKey = () => `${key()}|nearfade`
+}
+
 /** 벽 끝을 부드럽게: 광선 끝에서 바깥으로 이만큼(타일) 흐려지는 띠 — 예전 캔버스 흐림(0.35 타일)을 대신한다 */
 const FEATHER = 0.45
 /** 한 번에 보는 사람 (파티 넷) */

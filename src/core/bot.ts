@@ -209,8 +209,10 @@ export function botInput(state: GameState, map: GameMap, idx: number, mem: BotMe
   let fy = 0
   if (target) {
     const d = len(target.x - me.x, target.y - me.y)
-    // 느린 몬스터라 예측은 조금만
-    const want = (atan2A(target.y - me.y, target.x - me.x) + mem.wobbleBias + Math.round(randSigned(mem.rng) * diff.aimErr * 0.3)) & 1023
+    // 느린 몬스터라 예측은 조금만. 손떨림은 각도라 멀수록 옆으로 크게 빗나간다 — 170px 밖은 거리에 반비례로 줄인다
+    // (2026-10-25 검토: ±5° 고정이면 저격 봇이 서는 330px 에서 옆으로 29px — 괴물 몸 12 ~ 17px 라 절반쯤 빗나가 원거리 봇 · 용병이 약했다). 난수는 그대로 뽑는다
+    const shake = mem.wobbleBias + Math.round(randSigned(mem.rng) * diff.aimErr * 0.3)
+    const want = (atan2A(target.y - me.y, target.x - me.x) + Math.round(shake * Math.min(1, 170 / Math.max(1, d)))) & 1023
     const diffA = angleDiff(want, mem.aim)
     mem.aim = (mem.aim + Math.round(diffA * diff.turnRate) + (Math.abs(diffA) < 4 ? diffA : 0)) & 1023
     out.aimDist = Math.min(255, Math.round(d / 4))

@@ -23,3 +23,20 @@ describe('전설 효과는 주운 사람이 쓸 수 있는 것만', () => {
     expect(legFor({ char: 'cheolmyeon', weapon: CHARACTERS.cheolmyeon.weapon })(LEG_AMMO)).toBe(false)
   })
 })
+
+// 2026-10-25 검토: 세트 조각이 신화에만 있어 보통 한 바퀴에 0개 — 보스 전설(무기 빼고)의 일부를 세트 조각(신화)으로
+describe('보스 전설의 세트 조각', () => {
+  it('무기가 아닌 칸의 보스 전설 보상 중 일부는 세트 조각이고, 세트는 늘 신화 · 무기 칸은 세트가 아니다', () => {
+    const rng = makeRng(11)
+    let sets = 0
+    for (let i = 0; i < 400; i++) {
+      const it = rollItem(rng, i, 20, 'rifle', 'boss', 0, 3, 1)
+      if (it.set !== undefined) {
+        sets++
+        expect(it.rarity).toBe(4)
+      }
+    }
+    expect(sets).toBeGreaterThan(40)
+    for (let i = 0; i < 100; i++) expect(rollItem(rng, 1000 + i, 20, 'rifle', 'boss', 0, 3, 0).set).toBeUndefined()
+  })
+})

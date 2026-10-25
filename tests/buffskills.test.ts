@@ -4,7 +4,7 @@ import { BTN_SKILL1, Input } from '../src/core/input'
 import { TILE, TILE_FLOOR, buildMap, GameMap } from '../src/core/map'
 import { createState, step } from '../src/core/sim'
 import { CharacterId } from '../src/core/characters'
-import { FX_PARTYDR, FX_SWIFT, SKILLS } from '../src/core/skills'
+import { FX_CRIT, FX_PARTYDR, FX_SWIFT, SKILLS } from '../src/core/skills'
 import { COUNTDOWN_TICKS, GameState } from '../src/core/state'
 
 const idle = (): Input => ({ mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0 })
@@ -68,5 +68,28 @@ describe('돌진 · 도약 스킬은 자리를 옮기지 않는 버프', () => {
     const b = ready('seungwoo')
     step(b.s, b.map, [{ ...idle(), buttons: BTN_SKILL1 }])
     expect(b.s.players[0].rateMul).toBeCloseTo(1.4)
+  })
+})
+
+// 2026-10-25 검토: 트리 스킬이 남의 스킬 재탕이라 캐릭터마다 하나씩 던전 고유 덧효과 (sim treeTwist · 설명 "던전 고유 —")
+describe('캐릭터 고유 트리 스킬 덧효과', () => {
+  const castNode = (c: CharacterId, node: number) => {
+    const { s, map } = ready(c)
+    const p = s.players[0]
+    p.build.r[node] = 1
+    p.build.s[0] = node
+    step(s, map, [{ ...idle(), buttons: BTN_SKILL1 }])
+    return p
+  }
+  it('단군란 슬로 리플레이: 10발 · 잠깐 모든 탄 치명타 / 기열란 뇌절 관통탄: 뇌절 네 칸 바로', () => {
+    const d = castNode('dangun', 4)
+    expect(d.pierceShots).toBe(10)
+    expect(d.fx[FX_CRIT]).toBeGreaterThan(0)
+    const g = castNode('giyeol', 2)
+    expect(g.streak).toBeGreaterThanOrEqual(4)
+  })
+  it('열두 캐릭터 모두 트리 스킬 하나에 "던전 고유" 설명이 있다', () => {
+    const n = Object.values(SKILLS).filter((k) => k.desc.includes('던전 고유 —')).length
+    expect(n).toBe(12)
   })
 })

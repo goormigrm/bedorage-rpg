@@ -2,7 +2,7 @@
 // 전에는 레벨만 맞고 맨몸이라 "껐다 다시 켜면 봇이 너무 약했다".
 import { describe, expect, it } from 'vitest'
 import { botSheet, botSpendCmd, gearLevelOf } from '../src/core/botsheet'
-import { createState, step } from '../src/core/sim'
+import { createState, gainXp, step } from '../src/core/sim'
 import { ACTS, buildAreaMap } from '../src/core/world'
 import type { Input } from '../src/core/input'
 import { Item, MASTERY_CAP, SLOT_COUNT, SLOT_WEAPON, attrFree, masteryFree } from '../src/core/items'
@@ -88,5 +88,26 @@ describe('봇은 게임 중에 레벨이 올라도 포인트를 다 쓴다', () 
     expect(Math.max(...s.mst!) - Math.min(...s.mst!)).toBeLessThanOrEqual(1)
     expect(Math.max(...s.mst!)).toBeLessThanOrEqual(MASTERY_CAP)
     expect(botSheet('chim', 20, 20, 1, [], 0, 9).mlv).toBe(0)
+  })
+})
+
+// 2026-10-25 검토: 봇 · 용병 장비가 판 시작 · 고용 때 것 그대로라 레벨이 오르는 동안 처졌다 — 대장보다 장비 레벨이 3 넘게 낮으면 레벨업 때 다시 굴린다
+describe('처진 봇 장비는 레벨업 때 다시', () => {
+  it('대장(장비 20)을 따라다니는 봇(장비 1)은 레벨이 오르면 장비 20 한 벌 · 같은 판이면 같은 한 벌 · 사람은 그대로', () => {
+    const town = ACTS[0].town
+    const map = buildAreaMap(5, town)
+    const make = () =>
+      createState({ area: town, seed: 5, chars: ['chim', 'magic'], sheets: [botSheet('chim', 20, 20, 1), botSheet('magic', 1, 1, 2)], follow: [-1, 0] }, () => map)
+    const a = make()
+    const b = make()
+    for (const s of [a, b]) {
+      gainXp(s, s.players[1], 99999)
+      gainXp(s, s.players[0], 99999)
+    }
+    expect(gearLevelOf(a.players[1])).toBe(20)
+    expect(JSON.stringify(a.players[1].equip)).toBe(JSON.stringify(b.players[1].equip))
+    // 사람(따라가지 않는 자리)은 장비를 건드리지 않는다
+    expect(gearLevelOf(a.players[0])).toBe(20)
+    expect(a.players[0].equip.every((e, i) => e?.uid === b.players[0].equip[i]?.uid)).toBe(true)
   })
 })

@@ -29,7 +29,7 @@ export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
 import { DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
-import { botSheet, botSkillNext, gearLevelOf } from './botsheet'
+import { botSheet, botSkillNext, gear as botGear, gearLevelOf } from './botsheet'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, gateTarget, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
 import { Grid, flowField, flowStep } from './flow'
 import { inZone } from './bosszone'
@@ -1558,9 +1558,15 @@ function dmgMul(p: PlayerState): number {
   return (1 + p.st[ST_DMG] / 100) * (p.shrineT > 0 && p.shrine === 0 ? 1.25 : 1) * ((p.cpow ?? 0) > 0 ? (p.cpowMul ?? 1) : 1)
 }
 
-/** 무기(사격 · 휘두르기) 피해 배율 = 레벨·장비 × 역할 (딜러 1.2 · 힐러 0.8 — 던전). 스킬 피해에는 역할을 곱하지 않는다 */
+/**
+ * 던전 무기 피해의 캐릭터 배율 (투기장 CHAR_PVP 와 따로). 2026-10-25 검토 — 봇 계측(혼자 · 3막 무너진 시장 · 3분 · 시드 3):
+ * 봇 조준을 고친 뒤에도 저격 둘(옥냥 · 통천)만 근접의 53 ~ 67% 를 잡고 죽음 4 ~ 7번 — 느린 연사로 떼에 밀렸다
+ */
+const CHAR_PVE: Partial<Record<CharacterId, number>> = { oknyang: 1.15, tongdak: 1.15 }
+
+/** 무기(사격 · 휘두르기) 피해 배율 = 레벨·장비 × 역할 (딜러 1.2 · 힐러 0.8 — 던전) × 던전 캐릭터 배율. 스킬 피해에는 역할을 곱하지 않는다 */
 function weaponMul(p: PlayerState): number {
-  return dmgMul(p) * (roleOn ? ROLE_DMG[roleOf(p)] : 1)
+  return dmgMul(p) * (roleOn ? ROLE_DMG[roleOf(p)] * (CHAR_PVE[p.char] ?? 1) : 1)
 }
 
 /** 치유 배율: 스킬 위력 × 힐러 1.5 (던전) */
@@ -2666,6 +2672,7 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
   castV5 = kind === 'blast' ? vm : 0
   try {
     castSkillBody(state, map, p, slot, id, def)
+    if (state.mode === 'dungeon') treeTwist(state, map, p, id, def)
     if (aoeLog) for (const a of aoeLog) blastVariant(state, p, a, vm)
     if (fx0) {
       const share = vm & 2 ? alliesFx(state, p, 6 * TILE).filter((q) => q !== p) : []
@@ -2690,6 +2697,61 @@ function castSkill(state: GameState, map: GameMap, p: PlayerState, slot: number)
     skillPow = 1
     aoeLog = null
     castV5 = 0
+  }
+}
+
+/**
+ * 캐릭터 고유 덧효과 (던전 — 투기장 밸런스는 그대로). 트리 스킬 36개가 바탕 14개를 이름만 바꿔 써서 캐릭터를 바꿔도 손에 쥐는 도구가
+ * 같았다(2026-10-25 검토 — 단군란은 다섯 액티브가 모두 남과 같았다) → 캐릭터마다 트리 스킬 하나에 그 캐릭터다운 덧효과를 붙인다.
+ * 설명은 skills.ts TREE_SKILLS 의 "고유 —"
+ */
+function treeTwist(state: GameState, map: GameMap, p: PlayerState, id: SkillId, def: (typeof SKILLS)[SkillId]): void {
+  const T = TILE
+  switch (id) {
+    case 'cm_steel': // 철면란(탱커): 회복하며 둘레를 끌어당긴다
+      tauntNear(state, p, 6 * T, 180)
+      break
+    case 'chim_mark': // 침착란(정밀): 정예 · 우두머리를 더 아프게
+      for (const m of state.monsters) if (m.hp > 0 && m.elite && len(m.x - p.x, m.y - p.y) <= 18 * T) m.vulnPct = Math.max(m.vulnPct, 50)
+      break
+    case 'dg_replay': // 단군란(소음기 권총): 더 많이 · 잠깐 모두 치명타
+      p.pierceShots = 10
+      p.fx[FX_CRIT] = Math.max(p.fx[FX_CRIT], 120)
+      break
+    case 'mg_flask': {
+      // 매직란(힐러): 약병이 떨어질 자리의 동료도 고친다
+      const c = cursorPoint(map, p, def.reach ?? 9 * T)
+      for (const q of state.players) {
+        if (!q.alive || q.left || q.downed || q.area !== p.area || q.team !== p.team || len(q.x - c.x, q.y - c.y) > 4 * T) continue
+        healPlayer(state, q, q.maxHp * 0.12 * healMul(p))
+      }
+      state.events.push({ type: 'allyfx', p: p.id, x: c.x, y: c.y, r: 4 * T })
+      break
+    }
+    case 'sw_torch': // 승빠란(요리): 불맛이 바닥에 남는다
+      state.zones.push({ id: state.nextFxId++, kind: ZONE_BURN, owner: p.id, x: p.x, y: p.y, r: 3 * T, t: 180, max: 180, dmg: Math.max(2, Math.round(60 * skillPow * 0.12)) })
+      break
+    case 'ok_hairball': // 옥냥란(고양이): 털뭉치에 걸려 잠깐 멈춘다
+      aoe(state, map, p, p.x, p.y, 3 * T, 0, { stun: 60, id: 'oil', quiet: true })
+      break
+    case 'jp_glare': // 주펄란(힐러 · 빛): 빛이 곁의 동료를 고친다
+      for (const q of alliesFx(state, p, 6 * T)) healPlayer(state, q, q.maxHp * 0.08 * healMul(p))
+      break
+    case 'uw_exit': // 우원란(스턴트): 인사하는 순간 무적
+      p.invuln = Math.max(p.invuln, 30)
+      break
+    case 'gy_rant': // 기열란(뇌절): 뇌절이 바로 네 칸
+      p.streak = Math.min(99, p.streak + 4)
+      break
+    case 'pw_gale': // 풍월란(무술): 몸을 풀며 둘레를 잠깐 세운다
+      aoe(state, map, p, p.x, p.y, 3 * T, 0, { stun: 60, id: 'pancharge', quiet: true })
+      break
+    case 'td_crow': // 통천란(힐러 · 닭): 새벽 울음에 동료가 빨라진다
+      for (const q of alliesFx(state, p, 8 * T)) buffRate(q, 240, 1.3)
+      break
+    case 'jw_turn': // 우재란(런웨이): 칼바람을 타고 빠르게
+      p.fx[FX_SWIFT] = Math.max(p.fx[FX_SWIFT], 180)
+      break
   }
 }
 
@@ -3786,7 +3848,10 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     // 시련은 단계만큼 경험치 · 골드 · 전리품 등급이 오른다 (막 배율 대신)
     const rs = state.mode === 'dungeon' && state.rift && state.rift.area === state.curArea ? riftScale(state.rift.stage) : null
     const actXp = rs ? rs.xp : state.mode === 'dungeon' ? (ACTS[areaDef(state.curArea).act]?.xp ?? 1) : 1
-    gainXp(state, p, Math.round(xpFor(m) * xpGapMul(p.level, m.lvl) * actXp * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
+    // 악몽 · 지옥의 숙련 경험치(만렙 뒤)만 레벨 차이 감소를 40% 밑으로 내리지 않는다 — 보통을 깬 Lv30 이 악몽 1막(지역 11 ~ 18)에서 5% 만 받아
+    // 한 시간 남짓 성장 없이 돌았다 (2026-10-25 검토 · 사용자: "개발 적게 권장대로"). 레벨 올리기는 그대로(낮은 곳은 경험치로 막는다)
+    const gap = p.level >= LEVEL_CAP && state.tier >= 1 ? Math.max(0.4, xpGapMul(p.level, m.lvl)) : xpGapMul(p.level, m.lvl)
+    gainXp(state, p, Math.round(xpFor(m) * gap * actXp * (1 + p.st[ST_XP] / 100) * (p.shrineT > 0 && p.shrine === 2 ? 1.5 : 1)))
     // 전리품 (GUIDE 9장): 졸개는 골드 더미 35% · 아이템 10~16%(일반·마법만) / 정예는 골드 둘 · 아이템 1~2(희귀·전설도) /
     // 우두머리·보스는 **전리품 분수** — 골드 다섯 · 아이템 3~4(보스 5~6), 첫 아이템은 희귀 이상, 신화가 드물게 (items.ts DROP_TABLE).
     // 사람마다 따로 굴리고, 주인에게만 보이고 주인만 줍는다 (디아블로 3·4 개인 전리품)
@@ -3803,7 +3868,7 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
   }
 }
 
-function gainXp(state: GameState, p: PlayerState, xp: number): void {
+export function gainXp(state: GameState, p: PlayerState, xp: number): void {
   if (xp <= 0) return
   if (p.level >= LEVEL_CAP) {
     gainMastery(state, p, xp)
@@ -3822,6 +3887,13 @@ function gainXp(state: GameState, p: PlayerState, xp: number): void {
   if (p.merc >= 0) {
     autoAttr(p)
     for (let n = botSkillNext(p.build); n >= 0 && freePoints(p.level, p.build, p.spBonus) > 0; n = botSkillNext(p.build)) p.build.r[n]++
+  }
+  // 봇 · 용병의 장비는 판 시작 · 고용 때 한 벌뿐이라, 대장(따라가는 사람)의 장비 레벨보다 3 넘게 처지면 그 레벨로 한 벌 다시 굴린다
+  // (2026-10-25 검토 — 1막 → 2막 끝(Lv1 → 16)에 봇 무기가 +6% 그대로였고 괴물 체력은 4자리 2.8배였다). 판 안의 시드라 모두 같다
+  if (!isHumanSeat(p) && !p.cameo) {
+    const lead = state.players[p.merc >= 0 ? p.merc : p.follow]
+    const want = gearLevelOf(lead)
+    if (lead && want > gearLevelOf(p) + 3) p.equip = botGear(p.char, want, (state.seed ^ Math.imul(state.tick + 1, 0x85ebca6b) ^ p.id) >>> 0)
   }
   recalc(p)
   // 레벨이 오르면 체력이 가득 찬다 (디아블로)

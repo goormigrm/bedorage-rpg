@@ -194,6 +194,8 @@ export const LEG_GRACE = 14
  */
 export const SET_COLOR = '#5ce07a'
 export const SET_CHANCE = 0.4
+/** 보스 전설(무기 빼고)이 세트 조각(신화)이 될 확률 (rollItem — 2026-10-25) */
+export const BOSS_SET_CHANCE = 0.25
 export type SetDef = { name: string; tag: string; slots: number[]; two: [number, number][]; three: [number, number][] }
 export const SETS: SetDef[] = [
   { name: '순례자의 맹세', tag: '순례자', slots: [SLOT_HELM, SLOT_ARMOR, SLOT_AMULET], two: [[ST_DR, 8]], three: [[ST_HP, 180], [ST_LIFEKILL, 15]] },
@@ -330,7 +332,14 @@ export function pickRarity(rng: Rng, src: LootSource, up = 0, ilvl = 99): number
  */
 export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId, src: LootSource = 'chest', up = 0, minRarity = 0, forceSlot = -1, legOk?: (leg: number) => boolean): Item {
   const slot = forceSlot >= 0 ? forceSlot : randInt(rng, 0, SLOT_COUNT)
-  const rarity = Math.max(minRarity, pickRarity(rng, src, up, ilvl))
+  let rarity = Math.max(minRarity, pickRarity(rng, src, up, ilvl))
+  // 보스(막 보스 · 퀘스트 전설 보상)의 전설은 무기 칸이 아니면 BOSS_SET_CHANCE 로 세트 조각(신화)이 된다 — 세트가 신화에만 있어
+  // 보통 한 바퀴(4인 · 4막)에 0개였다 (2026-10-25 검토). 세트는 신화에만(2026-10-08 사용자) — 그래서 등급을 신화로 올린다
+  let forceSet = false
+  if (src === 'boss' && rarity === RARITY_MYTHIC - 1 && slot !== SLOT_WEAPON && rand(rng) < BOSS_SET_CHANCE) {
+    rarity = RARITY_MYTHIC
+    forceSet = true
+  }
   const legs = legOk ? LEGENDS.map((_, i) => i).filter(legOk) : null
   const leg = rarity >= 3 ? (legs ? legs[randInt(rng, 0, legs.length)] : randInt(rng, 0, LEGENDS.length)) : undefined
   let wt = -1
@@ -370,7 +379,7 @@ export function rollItem(rng: Rng, uid: number, ilvl: number, myWeapon: WeaponId
   // 세트 조각: **신화** · 무기가 아닌 칸의 SET_CHANCE — 그 칸이 들어가는 세트 중 하나. 고유 효과 대신이다 (2026-10-08 — 예전에는 전설)
   if (rarity === RARITY_MYTHIC && slot !== SLOT_WEAPON && src !== 'shop') {
     const fits = SETS.map((s, i) => (s.slots.includes(slot) ? i : -1)).filter((i) => i >= 0)
-    if (fits.length > 0 && rand(rng) < SET_CHANCE) {
+    if (fits.length > 0 && (forceSet || rand(rng) < SET_CHANCE)) {
       it.set = fits[randInt(rng, 0, fits.length)]
       delete it.leg
     }
