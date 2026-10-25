@@ -6028,7 +6028,44 @@ export class Renderer3D {
     this.scopeFlash = Math.max(0, this.scopeFlash - dt * 3.2)
   }
 
+  /**
+   * 쿼터뷰 ↔ 3인칭을 바꾸면 카메라를 0.6초 동안 이어 준다 — 바꾸기 직전의 자리 · 방향 · 화각에서 새 자리로 (2026-10-25 사용자: "게임 중에
+   * 자연스럽게 3인칭으로 바뀌는 것 · 반대로도"). 전에는 그 자리에서 뚝 바뀌었다. 지역을 옮기는 동안(3인칭 준비)에는 잇지 않는다 — 고른 시점이 바뀔 때만
+   */
+  private camBlend: { p: THREE.Vector3; q: THREE.Quaternion; fov: number; fovT: number; t: number } | null = null
+  private camWant: boolean | null = null
+  private camArm = false
+  private readonly camP0 = new THREE.Vector3()
+  private readonly camQ0 = new THREE.Quaternion()
+  private readonly camQ1 = new THREE.Quaternion()
   private updateCamera(curr: GameState, pos: { x: number; z: number }[], dt: number, opts: RenderOptions): void {
+    const lp = opts.viewer ?? opts.localPlayer
+    const want = this.fpsPlayer >= 0 && this.fpsPlayer === lp && !!curr.players[lp]?.alive && opts.cameraMode === 'follow'
+    if (this.camWant !== null && want !== this.camWant) this.camArm = true
+    this.camWant = want
+    const was = this.fpsCam
+    this.camP0.copy(this.camera.position)
+    this.camQ0.copy(this.camera.quaternion)
+    const f0 = this.camera.fov
+    this.placeCamera(curr, pos, dt, opts)
+    if (this.fpsCam !== was && this.camArm) {
+      this.camArm = false
+      this.camBlend = { p: this.camP0.clone(), q: this.camQ0.clone(), fov: f0, fovT: this.camera.fov, t: 0 }
+    }
+    const b = this.camBlend
+    if (!b) return
+    b.t += dt
+    const k = Math.min(1, b.t / 0.6)
+    const e = k * k * (3 - 2 * k)
+    this.camera.position.lerpVectors(b.p, this.camera.position, e)
+    this.camQ1.copy(this.camera.quaternion)
+    this.camera.quaternion.slerpQuaternions(b.q, this.camQ1, e)
+    this.camera.fov = b.fov + (b.fovT - b.fov) * e
+    this.camera.updateProjectionMatrix()
+    if (k >= 1) this.camBlend = null
+  }
+
+  private placeCamera(curr: GameState, pos: { x: number; z: number }[], dt: number, opts: RenderOptions): void {
     const lp = opts.viewer ?? opts.localPlayer
     const wantFps = this.fpsPlayer >= 0 && this.fpsPlayer === lp && curr.players[lp]?.alive && opts.cameraMode === 'follow'
     if (wantFps && this.fpsPrep === 'none') {

@@ -4,7 +4,7 @@
 //   MODE=trailer PART=3 DIR=release-<날짜> [SKIN=dark] → 한 편 소개 intro_<분위기>.webm (파일당 20 MB 안 — 새로 올리는 사이트)
 //   MODE=patch24 → 10월 23일 이후 패치 플레이 영상 docs/img/patch-2026-10-24/patch_1024_play(_hq).webm (☀ · 720 은 20 MB 안)
 //   MODE=patch24 MODES=1 → 같은 영상을 🌙 · ☀ 장면마다 바꿔 가며 patch_1024_modes(_hq).webm
-//   MODE=patch24 TPPV=1 → 모든 장면 3인칭 · ☀ 하늘 · 🌙 달 · 보스 예고 뒤에 달 — docs/img/patch-2026-10-25/patch_1025_tpp(_hq).webm
+//   MODE=patch24 TPPV=1 → 쿼터뷰 ↔ 3인칭 · ☀ ↔ 🌙 를 게임 중에 바꿔 가며 · 보스 예고 뒤에 달 — docs/img/patch-2026-10-25/patch_1025_views(_hq).webm (예전 모두 3인칭 판 patch_1025_tpp 는 그대로 둔다)
 //   짧게 확인: MAXSEC=12(영상 12초에서 멈춤) · OUTDIR=patch-0000-1(docs/img 아래 다른 폴더 — 이름은 patch- · release- + 숫자만) ·
 //   DIAG=3(녹화 없이 3초 동안 장마다 판 틱 · 위치 · 카메라를 적는다) · WHY=1(장을 담다 / 빼는 까닭) · NOSAVE=1
 // 깔린 Chrome(헤드리스) · 1920×1080 · 소리 끔(게임 소리는 영상에만 — trailer.js 가 오프라인으로 그린다)

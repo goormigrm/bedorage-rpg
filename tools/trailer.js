@@ -1120,78 +1120,151 @@ function patch24Scenes() {
     return st().monsters.filter((m) => m.hp > 0 && (m.x - p.x) * fx + (m.y - p.y) * fy > 0 && Math.hypot(m.x - p.x, m.y - p.y) < 12 * T).length
   }
   const K = (a) => kindsOf(a)
-  // ==== 3인칭 하늘 영상 (TPPV — 2026-10-25 사용자: "하늘이 추가된 모습으로 3인칭 플레이 영상 · 보스 장면에서도 뒷배경에 달이 떠 있게").
-  // 모든 장면 3인칭 · ☀ 파란 하늘 · 구름 / 🌙 달 · 달빛 구름 · 별. 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자)
+  // ==== 시점 · 모드 영상 (TPPV — 2026-10-25 사용자: "하늘이 추가된 모습으로 3인칭 플레이 영상 · 보스 장면 뒤에 달" → 같은 날 "모드 바꾸기 · 시점 바꾸기가
+  // 모두 잘 보이게 번갈아 — 쿼터뷰에서 시작해 게임 중에 자연스럽게 3인칭으로, 반대로도 · 4가지(☀ · 🌙 × 쿼터뷰 · 3인칭)를 섞어서 · 철면란 대신 원거리 딜러 ·
+  // 초반 10초 소리가 겹쳐 정신없다"). 시점은 게임의 B(session.toggleView — 카메라가 0.6초 이어진다) · 모드는 G(session.switchSkin)와 같은 길.
+  // 보스는 깨우지 않는다(등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 — 2026-10-22 사용자)
   if (TPPV) {
     // 3인칭 시선(input.yaw)에서 달 쪽 = π - MOON_AZ (sky.ts — 세계 방향 (-cos az, sin az) 의 각)
     const moonYaw = Math.PI - M.sky.MOON_AZ
     const don = (amount, text) => M.stream.donation({ nick: DON_NICKS[amount % DON_NICKS.length], amount, text })
-    // 3인칭 전투 한 장면: 트인 자리(moon 이면 달 쪽이 트였을 때 달 쪽을 본다) · 앞에 괴물 · 비켜 걸으며 쏜다.
-    // 시선이 땅으로 처지지 않게(minPitch) — 하늘이 화면 위쪽에 늘 보이게 괴물은 6칸 너머에 부른다
-    const fight = (area, o = {}) => {
-      place()
-      if (o.moon) {
-        const p = st().players[0]
-        if (clearRay(p.x, p.y, moonYaw, 9 * T)) {
-          base = moonYaw
-          inp().yaw = moonYaw
+    // 달 쪽(12칸)이 트이고 등 뒤(카메라 4칸)에 벽이 없는 가까운 자리로 옮겨 달을 본다 — 모드를 바꾸며 화면이 녹는 동안이라 옮긴 것이 안 보인다.
+    // 붙어 있던 괴물은 비운다 (바위 · 괴물 떼에 달이 가려진 판이 있었다)
+    const faceMoon = () => {
+      const s = st()
+      const p = s.players[0]
+      const ok = (x, y) => clearRay(x, y, moonYaw, 12 * T) && clearRay(x, y, moonYaw + Math.PI, 4 * T)
+      search: for (let r = 0; r <= 12; r += 2) {
+        for (let k = 0; k < (r ? 16 : 1); k++) {
+          const x = p.x + Math.cos((k / 16) * Math.PI * 2) * r * T
+          const y = p.y + Math.sin((k / 16) * Math.PI * 2) * r * T
+          if (!ok(x, y)) continue
+          p.x = x
+          p.y = y
+          break search
         }
       }
-      inp().fps = true
-      inp().pitch = o.pitch ?? 0.02
-      if (o.weapon) equipWeapon(o.weapon)
-      mv = mover(o.mode ?? 'hold')
-      perFrame = both(tppAimer({ minPitch: o.minPitch ?? -0.07, range: o.range }), mv, botsBehind(), ...(o.storm ? [skillStorm()] : []))
-      spawnAhead(K(area), o.n ?? 12, o.r0 ?? 6, o.r1 ?? 11, o.spread ?? 0.7, o.hp ?? 1.5)
-      holding = false
+      s.monsters = s.monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 24 * T)
+      base = moonYaw
+      inp().yaw = moonYaw
     }
-    // ---- 1. ☀ 운동장: 파란 하늘 · 구름 + 제목
+    // 3인칭으로 바꿀 때 볼 쪽: 지금 조준에서 가장 덜 돌면서 앞(10칸)이 트이고 뒤(4칸 — 카메라 자리)에 벽이 없는 쪽 (벽에 등을 대면 화면이 벽으로 덮였다)
+    const tppYaw = () => {
+      const p = st().players[0]
+      const a0 = inp().yaw
+      let best = a0
+      let bs = -Infinity
+      for (let k = 0; k < 24; k++) {
+        const a = a0 + (k / 24) * Math.PI * 2
+        if (!clearRay(p.x, p.y, a + Math.PI, 4 * T)) continue
+        const sc = (clearRay(p.x, p.y, a, 10 * T) ? 10 : 0) - Math.abs(angD(a, a0))
+        if (sc > bs) {
+          bs = sc
+          best = a
+        }
+      }
+      return best
+    }
+    // 시점 바꾸기 (게임의 B 와 같은 길 — 알림 · 오른쪽 스위치 글도 바뀐다)
+    const flip = () => {
+      S().toggleView()
+      if (inp().fps) inp().yaw = tppYaw()
+      uiDirty = true
+      uiAge = 99
+    }
+    // 쿼터뷰 싸움: 게임 자동 플레이 + 조준점이 내 조준을 따라간다
+    const quarter = (area, n, zoom) => {
+      S().renderer.setDebugZoom(zoom)
+      spawn(K(area), n, 5, 11)
+      S().autopilot = true
+      perFrame = botCursor()
+    }
+    // 3인칭 싸움: 카메라가 이어지는 0.6초 동안은 걷기만 하고(조준은 화면 좌표라 이어지는 동안 엉뚱하게 돌았다) 그 뒤 aimOn 으로 겨눈다
+    const tpp = (area, o = {}) => {
+      S().autopilot = false
+      inp().mouseDown.clear()
+      // 하늘이 화면 위쪽에 보이게 조금만 내려다본다 (toggleView 는 -0.2 — 조준이 -0.07 아래로는 안 내려가 이어진 뒤 튀었다)
+      inp().pitch = o.pitch ?? -0.04
+      mv = mover('hold')
+      perFrame = both(mv, botsBehind(3, true))
+      spawnAhead(K(area), o.n ?? 12, o.r0 ?? 6, o.r1 ?? 11, o.spread ?? 0.7, o.hp ?? 1.5)
+    }
+    const aimOn = (o = {}) => (perFrame = both(tppAimer({ minPitch: o.minPitch ?? -0.07 }), mv, botsBehind(3, true), ...(o.storm ? [skillStorm()] : [])))
+    // ---- 1. ☀ 운동장 · 쿼터뷰 + 제목 → 싸우는 중에 3인칭으로. 괴물 · 스킬을 줄였다(초반 소리가 겹쳐 정신없었다 — 스킬 몰아 쓰기 없음)
     at(0, () => {
       S().autopilot = false
       document.querySelector('.ending.intro .ending-go')?.click()
+      inp().fps = false
       goto(1, 'bright')
     })
     at(1.5, () => {
+      place()
       levelUpParty()
-      fight(1, { storm: true, n: 14 })
+      quarter(1, 12, 0.85)
       cue('hot', { act: 0 })
       // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
-      ov.title = { text: '배도라지 알PG', sub: '3인칭 · 낮과 밤의 하늘', at: now() - 1300 }
+      ov.title = { text: '배도라지 알PG', sub: '시점 · 모드를 게임 중에 바꾼다', at: now() - 1300 }
+      holding = false
     })
     at(2.0, () => (ov.title.out = now()))
     const s1 = tl.t
-    every(s1 + 0.4, s1 + 7, 0.45, () => ahead() < 14 && spawnAhead(K(1), 8, 6, 11, 0.7, 1.5))
-    at(2.2, () => mv.strafe('KeyD'))
-    at(2.4, () => mv.strafe('KeyA'))
-    at(2.4, () => {})
-    // ---- 2. 🌙 안개 숲: 달 쪽을 보며 싸운다 — 달 · 달빛 구름 · 별
-    at(0, () => goto(11, 'dark'))
-    at(1.2, () => fight(11, { moon: true, n: 12, hp: 1.6, pitch: 0.08, minPitch: -0.03, spread: 0.55 }))
+    every(s1 + 0.5, s1 + 3.4, 0.8, () => alive() < 16 && spawn(K(1), 4, 6, 11))
+    at(3.4, () => {
+      flip()
+      tpp(1, { n: 8 })
+    })
+    at(0.7, () => aimOn())
+    const s1b = tl.t
+    every(s1b + 0.3, s1b + 4.4, 0.6, () => ahead() < 10 && spawnAhead(K(1), 5, 6, 11, 0.7, 1.5))
+    at(1.5, () => mv.strafe('KeyD'))
+    at(1.5, () => mv.strafe('KeyA'))
+    at(1.4, () => {})
+    // ---- 2. 그 자리에서 🌙 로 (게임의 G) — 3인칭 그대로 · 달 쪽을 보며 싸운다
+    at(0, () => goto(1, 'dark'))
+    at(1.0, () => {
+      faceMoon()
+      tpp(1, { n: 12, hp: 1.6, spread: 0.55, pitch: 0.06, r0: 8 })
+      aimOn({ minPitch: -0.03 })
+      holding = false
+    })
     const s2 = tl.t
-    every(s2 + 0.4, s2 + 8.5, 0.45, () => ahead() < 13 && spawnAhead(K(11), 7, 7, 11, 0.55, 1.6))
-    at(2.6, () => mv.strafe('KeyA'))
-    at(2.8, () => mv.strafe('KeyD'))
-    at(3.1, () => {})
-    // ---- 3. ☀ 무너진 시장: 화염방사기 — 하늘 아래 불길
-    at(0, () => goto(22, 'bright'))
-    at(1.2, () => fight(22, { weapon: 'flamer', mode: 'flame', range: 6, n: 16, r0: 5, r1: 10, hp: 1.3, pitch: -0.02, minPitch: -0.12, spread: 0.6 }))
+    every(s2 + 0.4, s2 + 4.8, 0.5, () => ahead() < 12 && spawnAhead(K(1), 6, 7, 11, 0.55, 1.6))
+    at(1.7, () => mv.strafe('KeyA'))
+    at(1.6, () => mv.strafe('KeyD'))
+    // ---- 3. 🌙 3인칭 → 쿼터뷰
+    at(1.6, () => {
+      mv.stop()
+      inp().mouseDown.clear()
+      flip()
+      quarter(1, 14, 0.85)
+    })
     const s3 = tl.t
-    every(s3 + 0.8, s3 + 7, 0.7, () => ahead() < 14 && spawnAhead(K(22), 7, 6, 10, 0.6, 1.3))
-    at(7, () => {})
-    // ---- 4. ☀ 후원 전투 (4막 균열 · 3인칭): 채팅 · 후원 표 · 좀비 떼 → 정예 무리 → 총잡이 무리 → 괴물 대행진
-    at(0, () => goto(29, 'bright'))
+    every(s3 + 0.5, s3 + 4.6, 0.8, () => alive() < 22 && spawn(K(1), 6, 6, 11))
+    at(4.6, () => {})
+    // ---- 4. ☀ 후원 전투 (2막 숲 — 4막 균열은 좁은 길이라 3인칭에서 벽이 화면 한쪽을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
+    at(0, () => goto(11, 'bright'))
     at(1.2, () => {
-      fight(29, { weapon: 'smg', storm: true, n: 16, hp: 1.4, spread: 0.8 })
+      place()
+      equipWeapon('smg')
+      quarter(11, 26, 0.8)
       for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
+      holding = false
     })
     const s4 = tl.t
-    every(s4 + 0.3, s4 + 10.5, 0.45, () => M.stream.fakeChat(false))
-    every(s4 + 1, s4 + 10.5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(29), 8, 6, 11, 0.8, 1.4))
+    every(s4 + 0.3, s4 + 10.6, 0.45, () => M.stream.fakeChat(false))
+    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(11), 10, 6, 12))
     at(0.8, () => don(1000, '좀비 떼 갑니다'))
-    at(2.0, () => don(3000, '정예 한번 보자'))
-    at(2.0, () => don(6000, '총잡이 출동!!'))
-    at(2.4, () => don(9000, '대행진 가즈아'))
-    at(3.6, () => {})
+    at(1.4, () => don(3000, '정예 한번 보자'))
+    at(0.6, () => don(6000, '총잡이 출동!!'))
+    at(0.6, () => don(9000, '대행진 가즈아'))
+    at(1.2, () => {
+      flip()
+      tpp(11, { n: 12, hp: 1.4, spread: 0.8 })
+    })
+    at(0.7, () => aimOn({ storm: true }))
+    const s4b = tl.t
+    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(11), 8, 6, 11, 0.8, 1.4))
+    at(5.0, () => {})
     // ---- 5. 🌙 4막 보스 예고: 심연의 옥좌 — 정면에서 올려다보면 달이 보스 오른쪽 하늘에 떠 있다 (보스는 깨우지 않는다)
     let sample0 = null
     at(0, () => {
@@ -1490,16 +1563,18 @@ function bossTilt(face) {
   }
 }
 /** 3인칭 · 정조준: 동료 셋을 내 뒤 양옆(시선 뒤 3칸)에 세운다 — 앞에 서면 화면 가운데를 가렸다 (그 자리에서 쏘고 스킬을 쓴다) */
-function botsBehind(dist = 3) {
+function botsBehind(dist = 3, wide = false) {
   return () => {
     const s = st()
     const p = s.players[0]
     const yaw = S().input.yaw
     s.players.forEach((q, i) => {
       if (i === 0 || !q.alive || q.area !== p.area) return
-      const a = yaw + Math.PI + (i - 2) * 0.75
-      const x = p.x + Math.cos(a) * dist * T
-      const y = p.y + Math.sin(a) * dist * T
+      // wide: 둘은 양옆(조금 뒤) · 하나는 카메라 너머 뒤 — 바로 뒤 3칸이면 카메라(3.2칸 뒤) 코앞이라 화면 구석에 크게 찍혔다 (2026-10-25)
+      const a = wide ? yaw + (i === 2 ? Math.PI : (i - 2) * 1.9) : yaw + Math.PI + (i - 2) * 0.75
+      const dd = wide && i === 2 ? dist + 2.5 : dist
+      const x = p.x + Math.cos(a) * dd * T
+      const y = p.y + Math.sin(a) * dd * T
       const map = window.__bd.map()
       if (map.tiles[Math.floor(y / T) * map.w + Math.floor(x / T)] !== 0) return
       q.x = x
@@ -2215,6 +2290,10 @@ async function renderAudio(durSec) {
   }
   const monEv = sfxCues.reduce((n, c) => n + (c.ev ?? []).filter((e) => e.type === 'mdeath' || e.type === 'wake' || e.type === 'windup').length, 0)
   log.push(`괴물 소리 ${voiced}번 / 부름 ${asked} (괴물 깸 · 공격 · 쓰러짐 단서 ${monEv}) · 빠진 소리 ${dropped}`)
+  // 처음 10초에 무슨 소리가 몰렸나 (초반이 정신없다는 말을 잴 때)
+  const head = {}
+  for (const c of sfxCues) if (c.t < 10) for (const e of c.ev ?? []) head[e.type] = (head[e.type] ?? 0) + 1
+  log.push(`처음 10초 소리 단서 ${Object.entries(head).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, n]) => `${k} ${n}`).join(' · ')}`)
   // 보스 대사 — 게임과 **같은 가공**(sfx.bossLine — 음 내리기 · 겹치기 · 메아리 · 긴 잔향)으로.
   // 보스 목소리 영상은 즉사기 순간에, 소개 영상은 보스가 나올 때(2026-09-24 사용자: "즉사기는 쓰지 않지만 보스 나왔을 때 각 보스의
   // 대사 일부분이 들리도록" — lineCue). 소리 파일은 게임이 싣는 것(public/voice — tools/bossvoice.ps1)
@@ -2422,7 +2501,8 @@ async function startGameFromLobby() {
   window.__lobby?.selectChar?.(P24 ? 'dangun' : 'cheolmyeon')
   // 파티: 나 철면란(탱커) · 딜러 침착란 · 단군란 · 힐러 매직란 (2026-09-24 사용자)
   // 패치 플레이 영상의 동료: 철면란(고기 바이올린) · 주펄란(SMG 힐러) · 침착란(소총) — 2026-10-24 사용자: "봇을 추가해서 4개의 캐릭터가 전투"
-  if (window.__lobby) window.__lobby.botChars = P24 ? ['cheolmyeon', 'jupeol', 'chim'] : BOT_CHARS
+  // 시점 · 모드 영상(TPPV)은 철면란 대신 원거리 딜러 기열란(소총) — 2026-10-25 사용자: "철면란 빼고 다른 원거리 딜러 · 초반 소리가 겹쳐 정신없다"(고기 바이올린 선율)
+  if (window.__lobby) window.__lobby.botChars = P24 ? [TPPV ? 'giyeol' : 'cheolmyeon', 'jupeol', 'chim'] : BOT_CHARS
   btn('게임 만들기')?.click()
   await sleep(700)
   // 로비는 지난 분위기를 기억한다 — 🌙 판을 뜰 때도 직접 고른다 (2026-10-17 패치 플레이 영상 두 벌)
@@ -2522,7 +2602,7 @@ export async function start(opts = {}) {
   // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
   // 10월 23일 이후 패치 영상: 공지용 720(20 MB 안 — 셋 중 가장 큰 것) + 고화질 1080
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
-  const P24NAME = TPPV ? 'patch_1025_tpp' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
+  const P24NAME = TPPV ? 'patch_1025_views' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
   const encs = P24
     ? [
         // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
@@ -2668,6 +2748,9 @@ export async function start(opts = {}) {
   // 소리는 모아 두었다가 따로 그린다 (라이브 소리는 내지 않는다)
   const sfx = sess.sfx
   sfx.onEvents = (ev, s, lp) => {
+    // 시점 · 모드 영상은 처음 11초에 동료가 낸 총소리 · 맞히는 소리와 벽 맞는 소리 · 괴물 깨는 · 공격 예고 소리를 뺀다 — 맞는 소리만 초당 24번이었다
+    // (2026-10-25 사용자: "초반 10초에 소리가 겹쳐서 너무 정신없다")
+    if (TPPV && vidSec() < 11) ev = ev.filter((e) => !((e.type === 'fire' && e.p !== lp) || (e.type === 'mhit' && e.by !== lp) || e.type === 'wall' || e.type === 'wake' || e.type === 'windup'))
     if (!holding && !ov.showcase && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
   }
   sfx.donate = (big) => {
