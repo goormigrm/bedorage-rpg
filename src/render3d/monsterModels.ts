@@ -108,7 +108,8 @@ MODEL_SPECS[7] = {
     idle: { clip: 'Witch.Skeleton|idle', frames: 6 },
     walk: { clip: 'Witch.Skeleton|walk', frames: 10 },
     attack: { clip: 'Witch.Skeleton|skill', from: 0.2, to: 1.8, frames: 8 },
-    death: { clip: 'Witch.Skeleton|death', from: 0.1, to: 1.6, frames: 6 },
+    // 죽음 동작(2.93초)은 2.4초까지 비틀거리기만 하고 2.4 ~ 2.6초에 쓰러진다 — 앞(0.1 ~ 1.6)을 쓰면 시체가 선 채로 남았다 (2026-10-25 사용자: "2막 괴물이 3인칭에서 죽어도 서 있다")
+    death: { clip: 'Witch.Skeleton|death', from: 2.2, to: 2.85, frames: 6 },
   },
   windup: 0.5,
 }
