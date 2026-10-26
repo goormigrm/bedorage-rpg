@@ -517,6 +517,8 @@ interface Move {
   closePortal?: boolean
   /** 들판에서 탄 포털의 주인 — 마을에서는 그 포털 앞에 선다 */
   portalOwner?: number
+  /** 방장을 따라 옮겨졌다 (방장이 이끈다 — 알림용) */
+  led?: boolean
 }
 /** 이번 틱에 다른 지역으로 건너갈 사람 (지역을 다 돈 뒤에 한꺼번에 옮긴다 — 도는 중에 지역이 바뀌지 않게) */
 const moves: Move[] = []
@@ -600,7 +602,7 @@ function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
   if (lead && lm) {
     for (const q of state.players) {
       if (q === lead || !isActive(q) || q.area !== lead.area || leaderOver(state, q) !== lead || moves.some((m) => m.p === q.id)) continue
-      moves.push({ p: q.id, to: lm.to, how: lm.how, x: lm.x, y: lm.y, portalOwner: lm.portalOwner })
+      moves.push({ p: q.id, to: lm.to, how: lm.how, x: lm.x, y: lm.y, portalOwner: lm.portalOwner, led: true })
     }
   }
   moves.sort((a, b) => a.p - b.p)
@@ -616,6 +618,13 @@ function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
     else if (m.how === 'portal') at = townPortalArrive(l, m.portalOwner ?? p.id) ?? l.spawn
     else at = l.spawn
     placeIn(state, map, p, m.to, at.x, at.y, m.how)
+    if (m.led) for (let k = state.events.length - 1; k >= 0; k--) {
+      const e = state.events[k]
+      if (e.type === 'areaEnter' && e.p === p.id) {
+        e.led = true
+        break
+      }
+    }
     if (m.closePortal) state.portals = state.portals.filter((q) => q.owner !== p.id)
   }
   moves.length = 0
@@ -729,7 +738,10 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
           const far = e.gate ? gateTarget(area, p.wps) : e.to
           used = true
           if (!memberMayGo(state, p, far)) {
-            state.events.push({ type: 'leadOnly', p: p.id })
+            // 마을에서 사냥터로 나가는 문은 "파티로 돌아가기" — 방장이 사냥터에 있으면 방장 곁으로 (사냥터의 다른 출구는 막는다)
+            const ld = leaderOver(state, p)!
+            if (town && !isTown(ld.area) && ld.alive && !ld.downed) queueMove(p, { to: ld.area, how: 'wp', x: ld.x, y: ld.y })
+            else state.events.push({ type: 'leadOnly', p: p.id })
             break
           }
           queueMove(p, far === e.to ? { to: e.to, how: 'exit' } : { to: far, how: 'wp' })

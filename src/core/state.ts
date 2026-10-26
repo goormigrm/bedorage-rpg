@@ -649,7 +649,7 @@ export type SimEvent =
   | { type: 'skill'; p: number; slot: number; id: string; x: number; y: number; aim: number; tx: number; ty: number; rid?: string }
   /** 계단: 내려가기 시작 · 다음 층에 들어섬 */
   /** 다른 지역으로 건너갔다 (출구 · 웨이포인트 · 포털 · 마을에서 되살아남 · 따라감) */
-  | { type: 'areaEnter'; p: number; area: number; from: number; how: MoveHow }
+  | { type: 'areaEnter'; p: number; area: number; from: number; how: MoveHow; led?: boolean }
   | { type: 'wpFound'; p: number; area: number }
   /** 파티원이 혼자 다른 사냥터로 가려 했다 — 방장이 이끈다 (출구 · 웨이포인트 · 시련) */
   | { type: 'leadOnly'; p: number }

@@ -31,7 +31,7 @@ import './skinText'
 import { angleToRad } from '../core/fixedmath'
 import { DeathRule, GameMode, GameState, TICK_MS, isTeamMatch, teamKills } from '../core/state'
 import { PvpBotMemory, makePvpBot, pvpBotInput } from '../core/pvpbot'
-import { Sheet, sanitizeSheet } from '../core/items'
+import { Sheet, gearScore, sanitizeSheet } from '../core/items'
 import { GfxMode, bindSettings, fpsCapOn, gfxMode, hudScale, loadAutoPick, realMonstersOn, settingsHtml, toggleFullscreen } from '../ui/settings'
 
 import { activeSlot, commitSheet, playerSheet } from './save'
@@ -49,7 +49,7 @@ import { Sfx } from '../audio/sfx'
 import { LocalInput } from './localInput'
 import { TouchControls, enterLandscape, isTouchDevice } from './touch'
 import { Ticker, shouldDraw } from './ticker'
-import { rejectGuestText, sameVersion } from '../ui/update'
+import { APP_VERSION, rejectGuestText, sameVersion } from '../ui/update'
 
 /** 마을 준비(idlePrep) 속도 제한 — 걸음 사이 최소 쉼(ms) · 걸음 시간의 몇 배를 쉴지 · 들어선 뒤 기다림 · 끊김 기준(초) · 끊기면 쉼 */
 const PREP_GAP = 160
@@ -630,17 +630,26 @@ export class Session {
       if (this.disposed) return
       // 용병은 세지 않는다 — 용병이 자리를 채워도 방 목록에 '정원 참'으로 뜨지 않게 (난입하면 용병 자리를 받는다)
       const count = this.state.players.filter((p) => !p.left && p.merc < 0).length
+      // 사람들의 평균 레벨 · 템 수준 · 방장이 지금 있는 곳 (대기실 알림과 같게 — 전에는 게임이 시작되면 빠지고 위치는 늘 처음 마을이었다)
+      const humans = this.state.players.filter((p, i) => !p.left && p.merc < 0 && !this.cfg.bots?.[i])
+      const lv = humans.length ? Math.round(humans.reduce((a, p) => a + p.level, 0) / humans.length) : 1
+      const gs = humans.length ? Math.round(humans.reduce((a, p) => a + gearScore(p.equip), 0) / humans.length) : 0
+      const lead = partyLeader(this.state)
       lobby.announce({
         code: this.cfg.link?.code ?? '',
         hostChar: this.state.players[0].char,
         hostName: this.cfg.names?.[0] ?? '',
-        map: info.map,
+        map: !this.arena && lead ? areaDef(lead.area).name : info.map,
+        lv,
+        gs,
         mode: info.mode as never,
         targetKills: info.targetKills,
         deathRule: info.deathRule,
         tier: info.tier,
         kind: info.kind,
         skin: info.skin,
+        // 판 번호 — 빠지면 목록에서 "다른 판(옛 판)" 으로 보여 게임 중 난입이 모두 막혔다 (2026-10-26 멀티 점검 · 2026-10-09 판 번호 확인부터)
+        ver: APP_VERSION,
         count,
         max: info.size,
         // 레벨 제한은 방장의 지금 레벨로 (판 중에 오른다)
@@ -1991,8 +2000,11 @@ export class Session {
           showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, it, e.up)
         } else if (e.type === 'wpFound' && e.p === this.cfg.localPlayer) {
           this.wpFoundAt = performance.now()
+        } else if (e.type === 'areaEnter' && e.led && e.p === this.cfg.localPlayer) {
+          // 방장을 따라 옮겨졌다 — 상점을 보다가 갑자기 들판이면 당황스럽다 (2026-10-26 멀티 점검)
+          this.renderer.notice(`👑 방장을 따라 ${areaDef(e.area).name}(으)로`, '#ffd24a', 2.5)
         } else if (e.type === 'leadOnly' && e.p === this.cfg.localPlayer) {
-          this.renderer.notice('👑 방장이 이끕니다 — 방장이 옮기면 같이 갑니다 · 마을은 따로 다녀오고 웨이포인트의 "방장 곁으로"로 합류', '#ffd24a', 3)
+          this.renderer.notice('👑 방장이 이끕니다 — 방장이 옮기면 같이 갑니다', '#ffd24a', 3)
         } else if (e.type === 'gamble' && e.p === this.cfg.localPlayer) {
           // 도박 결과도 창에 카드로 (2026-09-25 "어떤 아이템을 뽑았는지 알려 줘"). 전설 이상이면 가운데 연출까지
           const bag = this.state.players[e.p]?.bag ?? []
@@ -2181,6 +2193,7 @@ export class Session {
           : undefined,
       cameraMode: 'follow',
       names: this.names,
+      leader: partyLeader(this.state)?.id ?? -1,
       subLabels: sub,
       ping: this.cfg.link ? this.cfg.link.rtt : undefined,
       message,

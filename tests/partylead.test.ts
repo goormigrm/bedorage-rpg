@@ -97,6 +97,29 @@ describe('방장이 이끈다', () => {
     expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThan(120)
   })
 
+  it('마을에서 사냥터로 나가는 문은 방장 곁으로 (방장이 사냥터에 있을 때) · 같이 옮겨진 사람의 지역 이벤트에는 led', () => {
+    const { s, run, onExit } = game()
+    const [a, b] = s.players
+    onExit(0, 1)
+    s.events = []
+    run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(b.area).toBe(1)
+    // 이 틱의 이벤트: 같이 옮겨진 사람만 led (알림용) · 방장은 아니다
+    expect(s.events.some((e) => e.type === 'areaEnter' && e.p === 1 && e.led)).toBe(true)
+    expect(s.events.some((e) => e.type === 'areaEnter' && e.p === 0 && e.led)).toBe(false)
+    // 둘째만 마을로 → 마을의 들판 문으로 나가면 (그 문이 데려갈 곳이 아니라) 방장 곁으로
+    run(40)
+    onExit(1, TOWN)
+    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(b.area).toBe(TOWN)
+    run(40)
+    a.x += 3 * 32
+    onExit(1, 1)
+    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
+    expect(b.area).toBe(1)
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThan(120)
+  })
+
   it('방장이 죽어 마을에서 되살아날 때는 파티원을 끌고 가지 않는다', () => {
     const { s, run, onExit } = game()
     const [a, b] = s.players

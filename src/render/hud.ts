@@ -84,6 +84,8 @@ export interface RenderOptions {
   spectateLabel?: string
   cameraMode: 'follow' | 'both'
   names: string[]
+  /** 파티를 이끄는 자리 (방장이 이끈다 — 파티 칸에 👑) · 없으면 -1 */
+  leader?: number
   subLabels: string[]
   ping?: number
   message?: string

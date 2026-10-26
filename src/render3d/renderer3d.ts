@@ -1776,7 +1776,8 @@ export class Renderer3D {
           else this.hud.notice(`${nm[e.p]} 의 타운 포털`, '#7ab8ff')
           break
         case 'areaEnter':
-          if (e.p !== localPlayer && e.how !== 'follow') this.hud.notice(`${nm[e.p]} — ${areaDef(e.area).name}`, '#a89878')
+          // 동료가 옮겼다는 알림 — 나도 같은 곳으로 같이 옮겨졌으면(방장이 이끈다) 빼서 알림이 세 줄로 겹치지 않게 (2026-10-26 멀티 점검)
+          if (e.p !== localPlayer && e.how !== 'follow' && !events.some((q) => q.type === 'areaEnter' && q.p === localPlayer && q.area === e.area)) this.hud.notice(`${nm[e.p]} — ${areaDef(e.area).name}`, '#a89878')
           // 웨이포인트 · 포털로 왔으면 검은 페이드 대신 푸른 빛에서 밝아진다
           if (e.p === localPlayer && (e.how === 'wp' || e.how === 'portal') && this.fade.t > 0) this.fade.rgb = '170,205,255'
           break

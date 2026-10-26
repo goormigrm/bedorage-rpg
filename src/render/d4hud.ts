@@ -1023,7 +1023,8 @@ export class D4Hud {
       c.textAlign = 'left'
       c.textBaseline = 'alphabetic'
       c.fillStyle = '#efe4cf'
-      const nameT = fitText(c, opts.names[p.id] ?? def.name, W - 62 - roleW)
+      // 파티를 이끄는 사람은 👑 (방장이 이끈다 — 2026-10-26 멀티 점검: 누가 이끄는지 보이지 않았다)
+      const nameT = fitText(c, (p.id === opts.leader ? '👑 ' : '') + (opts.names[p.id] ?? def.name), W - 62 - roleW)
       c.fillText(nameT, x + 52, y + 20)
       const hpK = p.alive && !p.downed && !gone ? Math.max(0, p.hp / p.maxHp) : 0
       c.fillStyle = 'rgba(255,255,255,0.08)'
