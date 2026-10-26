@@ -63,8 +63,10 @@ export const CMD_EQUIP = 1
 export const CMD_UNEQUIP = 2
 /** 가방 arg 칸을 바닥에 버린다 (모두에게 보인다 — 선물) */
 export const CMD_DROP = 3
-/** 웨이포인트로 이동: arg = 가려는 지역 번호 (웨이포인트 곁에 서 있고, 그곳이 열려 있어야 한다) */
+/** 웨이포인트로 이동: arg = 가려는 지역 번호 (웨이포인트 곁에 서 있고, 그곳이 열려 있어야 한다) · WP_TO_LEADER 면 방장 곁으로 */
 export const CMD_WAYPOINT = 4
+/** CMD_WAYPOINT 의 arg — 방장(파티를 이끄는 사람) 곁으로 (2026-10-26 "방장이 이끈다"). 지역 번호는 255 에 닿지 않는다(시련 지역도 웨이포인트가 아니다) */
+export const WP_TO_LEADER = 255
 /** 마을 NPC (그 NPC 곁에서만 — GUIDE 9장): 상인 팔기(가방 칸) · 사기(진열 칸) · 물약 칸 늘리기 · 대장장이 다시 굴리기(가방 칸) ·
  *  도박(장비 칸 종류) · 보관함 넣기(가방 칸) · 꺼내기(보관함 칸) */
 export const CMD_SELL = 5

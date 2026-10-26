@@ -76,20 +76,25 @@ describe('이어진 세계', () => {
     expect(s.players[0].hp).toBe(s.players[0].maxHp)
   })
 
-  it('출구로 걸어 들어가면 그 사람만 이어진 지역으로 — 맞은편 입구 곁에 서고, 지역이 채워진다', () => {
+  it('출구로 걸어 들어가면 이어진 지역으로 — 맞은편 입구 곁에 서고, 지역이 채워진다 · 방장이면 같은 지역의 파티원도 같이 (2026-10-26)', () => {
     const { s, mapOf, run } = game(['chim', 'magic'])
     standOnExit(s, mapOf, 0, 1)
     run(1)
     const [a, b] = s.players
     expect(a.area).toBe(1)
-    expect(b.area).toBe(TOWN)
+    expect(b.area).toBe(1)
     const l = areaLayout(1, mapOf(1))
     const back = l.exits.find((e) => e.to === TOWN)!
     expect(Math.hypot(a.x - back.arrive.x, a.y - back.arrive.y)).toBeLessThan(80)
+    expect(Math.hypot(b.x - back.arrive.x, b.y - back.arrive.y)).toBeLessThan(120)
     const v = areaView(s, 1)
     expect(v.monsters.length).toBeGreaterThan(40)
-    // 화면용 사본: 다른 지역 사람은 away, 원본은 그대로
-    expect(v.players[1].away).toBe(true)
+    // 파티원은 마을로는 혼자 간다 → 화면용 사본: 다른 지역 사람은 away, 원본은 그대로
+    run(40)
+    standOnExit(s, mapOf, 1, TOWN)
+    run(1)
+    expect(b.area).toBe(TOWN)
+    expect(areaView(s, 1).players[1].away).toBe(true)
     expect(s.players[1].left).toBe(false)
     // 되돌아가기
     run(40)
@@ -103,6 +108,10 @@ describe('이어진 세계', () => {
       const g = game(['chim', 'cheolmyeon'], 52)
       // 한 명은 들판으로 나가 싸우고, 한 명은 마을에
       standOnExit(g.s, g.mapOf, 0, 1)
+      g.run(1)
+      // 방장이 이끌어 같이 온 파티원은 마을로 돌려보낸다 (파티원도 마을로는 혼자 간다)
+      standOnExit(g.s, g.mapOf, 1, TOWN)
+      g.s.players[1].exitLock = 0
       g.run(1)
       // 들판에서 죽어 마을로 돌아가면 "두 지역" 이 아니게 된다 — 이 시험은 결정론이 목적이라 죽지 않게
       g.s.players[0].invuln = 1e9
@@ -219,13 +228,13 @@ describe('이어진 세계', () => {
     run(1)
     const p = s.players[0]
     run(60)
-    // 움직이면 끊긴다
-    run(1, () => ({ ...idle(), buttons: BTN_PORTAL }))
+    // 움직이면 끊긴다 (방장이 이끌어 파티원도 들판에 왔다 — 시전은 방장만)
+    run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_PORTAL } : idle()))
     expect(p.portalCast).toBeGreaterThan(0)
-    run(10, () => ({ ...idle(), mx: 1 }))
+    run(10, (i) => (i === 0 ? { ...idle(), mx: 1 } : idle()))
     expect(p.portalCast).toBe(0)
     // 가만히 시전
-    run(1, () => ({ ...idle(), buttons: BTN_PORTAL }))
+    run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_PORTAL } : idle()))
     run(PORTAL_CAST + 2)
     expect(s.portals.length).toBe(1)
     const q = s.portals[0]
@@ -239,28 +248,23 @@ describe('이어진 세계', () => {
     const tl = areaLayout(TOWN, mapOf(TOWN))
     const at = townPortalSpot(tl, 0)!
     expect(Math.hypot(p.x - at.x, p.y - at.y)).toBeLessThan(60)
-    // 동료가 마을 쪽 포털로 들판에 간다 (포털은 남는다)
+    // 방장이 이끌어 동료도 같이 마을에 왔다. 방장이 마을에 있는 동안 동료 혼자 포털로 들판에 가지는 못한다 (2026-10-26)
     const mate = s.players[1]
+    expect(mate.area).toBe(TOWN)
     mate.x = at.x
     mate.y = at.y
     run(2)
-    run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
-    expect(mate.area).toBe(1)
-    expect(s.portals.length).toBe(1)
-    // 동료가 내 포털로 마을에 돌아오면 내 포털 앞에 선다
-    mate.x = q.x
-    mate.y = q.y
-    run(2)
+    s.events = []
     run(1, (i) => (i === 1 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(mate.area).toBe(TOWN)
-    // (내가 그 자리에 서 있어 몸끼리 조금 밀린다)
-    expect(Math.hypot(mate.x - at.x, mate.y - at.y)).toBeLessThan(90)
-    // 주인이 돌아가면 닫힌다
+    expect(s.portals.length).toBe(1)
+    // 주인이 돌아가면 닫힌다 · 같은 마을에 있던 동료도 같이 들판으로
     p.x = at.x
     p.y = at.y
     run(2)
     run(1, (i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
     expect(p.area).toBe(1)
+    expect(mate.area).toBe(1)
     expect(s.portals.length).toBe(0)
   })
 
@@ -293,6 +297,11 @@ describe('이어진 세계', () => {
     const p = s.players[0]
     const mate = s.players[1]
     expect(p.area).toBe(1)
+    // 방장이 이끌어 같이 온 동료는 마을로 돌려보낸다 (파티원도 마을로는 혼자 간다)
+    standOnExit(s, mapOf, 1, TOWN)
+    mate.exitLock = 0
+    run(1)
+    expect(mate.area).toBe(TOWN)
     // 들판의 마을 쪽 출구 바로 위(44px — 출구 반경 밖)에서 포털을 연다 → 포털로 오면 출구 위에 내려선다
     const e = areaLayout(1, mapOf(1)).exits.find((x) => x.to === TOWN)!
     p.x = e.x
@@ -360,15 +369,19 @@ describe('이어진 세계', () => {
     expect(Math.hypot(s.players[1].x - s.players[0].x, s.players[1].y - s.players[0].y)).toBeLessThan(100)
   })
 
-  it('게임 중 난입은 마을에서 시작한다', () => {
+  // 2026-10-26 사용자: "방장은 4막 보스인데 신규 플레이어가 들어오니까 따로 떨어진다" — 전에는 마을에서 시작했다
+  it('게임 중 난입은 방장 곁에서 시작한다 · 그 막 마을의 웨이포인트도 안다', () => {
     const { s, mapOf, run } = game(['chim', 'magic'], 55, { absent: [false, true] })
     standOnExit(s, mapOf, 0, 1)
     run(5)
     joinPlayer(s, mapOf, 1, 'magic')
-    expect(s.players[1].area).toBe(TOWN)
-    expect(s.players[1].left).toBe(false)
+    const [a, b] = s.players
+    expect(b.area).toBe(1)
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThan(120)
+    expect(b.wps & wpBit(TOWN)).toBeTruthy()
+    expect(b.left).toBe(false)
     run(5)
-    expect(s.players[0].area).toBe(1)
+    expect(a.area).toBe(1)
   })
 
   it('지역 표 (1·2막): 모든 링크가 양쪽으로 이어지고, 모든 지역의 맵과 자리가 만들어진다', () => {
@@ -569,7 +582,7 @@ describe('2막 안개 숲 (D6)', () => {
 })
 
 describe('2막 난입', () => {
-  it('누군가 2막에 가면 난입한 사람도 2막 마을에서 — 2막을 못 연 캐릭터는 1막 마을에서', () => {
+  it('누군가 2막에 가면 난입한 사람은 방장 곁(2막 마을)에서 — 2막을 못 연 캐릭터도', () => {
     const seed = 61
     const mapOf = world(seed)
     const s = createState({ seed, chars: ['chim', 'magic', 'oknyang'], absent: [false, true, true] }, mapOf)
@@ -584,8 +597,9 @@ describe('2막 난입', () => {
     sheet.quests = QUESTS.map((_, i) => (i <= 3 ? 3 : 0))
     joinPlayer(s, mapOf, 1, 'magic', 0, sheet)
     expect(s.players[1].area).toBe(ACTS[1].town)
+    // 2막을 못 연 캐릭터도 방장 곁(2막 마을)에서 — 방장이 이끈다 (2026-10-26 · 전에는 자기가 연 1막 마을)
     joinPlayer(s, mapOf, 2, 'oknyang')
-    expect(s.players[2].area).toBe(TOWN)
+    expect(s.players[2].area).toBe(ACTS[1].town)
   })
 })
 

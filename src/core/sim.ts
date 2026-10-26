@@ -9,7 +9,7 @@ import { ATTR_REC, CHARACTERS, CharacterId, PLAYABLE, Role, headHitScale } from 
 import { angleDiff, atan2A, cosA, sinA, len } from './fixedmath'
 import {
   BTN_ADS, BTN_DASH, BTN_FIRE, BTN_PORTAL, BTN_SPRINT, BTN_ULT, BTN_USE, CMD_BUY, CMD_DROP, CMD_EQUIP, CMD_EQUIP_BEST, CMD_GAMBLE, CMD_PICK, CMD_SKIN, BTN_LOADING, CMD_TRIAL, CMD_UPGRADE, CMD_RELEVEL,
-  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS,
+  CMD_ATTR, CMD_AUTOPICK, CMD_BAGUP, CMD_DONCAP, CMD_FORGE, CMD_HIRE, CMD_LOCK, CMD_QUEST, CMD_DONATE, CMD_DONATE_HI, CMD_SELL_ALL, CMD_SHOPNEW, CMD_SORT, CMD_RESPEC, CMD_SELL, CMD_SKILL_MOD, CMD_SKILL_SLOT, CMD_SKILL_UP, CMD_STASHUP, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_UNEQUIP, CMD_WAYPOINT, Input, SKILL_BTNS, WP_TO_LEADER,
   TOWN_BLOCKED,
 } from './input'
 import {
@@ -376,7 +376,14 @@ function trialCommand(state: GameState, p: PlayerState, arg: number): void {
   if (state.mode !== 'dungeon' || !isActive(p) || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'trial') return
   const r = state.rift
   if (arg === 0) {
-    if (r && r.boss < 2) queueMove(p, { to: r.area, how: 'wp' })
+    if (r && r.boss < 2) {
+      if (memberMayGo(state, p, r.area)) queueMove(p, { to: r.area, how: 'wp' })
+      else state.events.push({ type: 'leadOnly', p: p.id })
+    }
+    return
+  }
+  if (leaderOver(state, p)) {
+    state.events.push({ type: 'leadOnly', p: p.id })
     return
   }
   if (!riftOpen(p, state.tier) || arg < 1 || arg > Math.min(RIFT_MAX, p.riftBest + 1)) return
@@ -514,6 +521,29 @@ interface Move {
 /** 이번 틱에 다른 지역으로 건너갈 사람 (지역을 다 돈 뒤에 한꺼번에 옮긴다 — 도는 중에 지역이 바뀌지 않게) */
 const moves: Move[] = []
 
+/**
+ * 파티를 이끄는 사람 — 던전에서 남아 있는 사람 중 가장 앞 자리(방장 · 방장이 나가면 그다음). 용병 · 따라다니는 봇 · 영상 동료는 빼고.
+ * 2026-10-26 사용자: "멀티에서 방장은 4막 보스인데 신규 플레이어가 들어오니 따로 떨어진다 · 맵 이동은 방장이 결정" → **방장이 이끈다**:
+ * 방장이 출구 · 웨이포인트 · 포털로 옮기면 같은 지역에 있던 파티원도 같이 옮겨지고(runMoves), 파티원은 혼자 다른 사냥터로 가지 않는다
+ * (마을은 따로 다녀온다 · 웨이포인트 창의 "방장 곁으로"로 합류). 괴물 체력이 방 자리 수로 정해져(hpScaleFor) 흩어지면 혼자 4인용 괴물을 맞았다
+ */
+export function partyLeader(state: GameState): PlayerState | null {
+  if (state.mode !== 'dungeon') return null
+  // 지역마다 돌 때(withArea) 다른 지역 사람은 잠깐 left 로 가려진다 — 그 사람도 판에는 남아 있다
+  return state.players.find((q) => (!q.left || hiddenNow.includes(q)) && q.follow < 0 && q.merc < 0 && !q.cameo) ?? null
+}
+/** 방장이 이끄는 파티원이면 그 방장 (방장 자신 · 용병 · 봇이면 null) */
+function leaderOver(state: GameState, p: PlayerState): PlayerState | null {
+  if (p.follow >= 0 || p.merc >= 0 || p.cameo) return null
+  const l = partyLeader(state)
+  return l && l !== p ? l : null
+}
+/** 파티원이 혼자 갈 수 있는 곳: 마을 · 방장이 있는 지역 */
+function memberMayGo(state: GameState, p: PlayerState, to: number): boolean {
+  const l = leaderOver(state, p)
+  return !l || isTown(to) || to === l.area
+}
+
 function queueMove(p: PlayerState, m: Omit<Move, 'p'>): void {
   if (moves.some((q) => q.p === p.id)) return
   moves.push({ p: p.id, ...m })
@@ -564,6 +594,15 @@ function wpFound(state: GameState, p: PlayerState, area: number): void {
 }
 
 function runMoves(state: GameState, mapOf: (area: number) => GameMap): void {
+  // 방장이 이끈다: 방장이 옮기면(마을에서 되살아나는 것 빼고) 같은 지역에 서 있던 파티원도 같은 곳으로 — 쓰러진 · 죽은 사람은 남는다
+  const lead = partyLeader(state)
+  const lm = lead ? moves.find((m) => m.p === lead.id && m.how !== 'town') : undefined
+  if (lead && lm) {
+    for (const q of state.players) {
+      if (q === lead || !isActive(q) || q.area !== lead.area || leaderOver(state, q) !== lead || moves.some((m) => m.p === q.id)) continue
+      moves.push({ p: q.id, to: lm.to, how: lm.how, x: lm.x, y: lm.y, portalOwner: lm.portalOwner })
+    }
+  }
   moves.sort((a, b) => a.p - b.p)
   for (const m of moves) {
     const p = state.players[m.p]
@@ -668,7 +707,10 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
         if (town) {
           const at = townPortalSpot(l, q.owner)
           if (!at || len(p.x - at.x, p.y - at.y) > PORTAL_R) continue
-          queueMove(p, { to: q.area, how: 'portal', x: q.x, y: q.y + 44, closePortal: q.owner === p.id })
+          const ld = leaderOver(state, p)
+          if (ld && !isTown(ld.area) && q.area !== ld.area) queueMove(p, { to: ld.area, how: 'portal', x: ld.x, y: ld.y, closePortal: q.owner === p.id })
+          else if (!memberMayGo(state, p, q.area)) state.events.push({ type: 'leadOnly', p: p.id })
+          else queueMove(p, { to: q.area, how: 'portal', x: q.x, y: q.y + 44, closePortal: q.owner === p.id })
         } else {
           if (q.area !== area || len(p.x - q.x, p.y - q.y) > PORTAL_R) continue
           const t = ACTS[areaDef(area).act].town
@@ -685,14 +727,19 @@ function stepInteract(state: GameState, map: GameMap, inputs: Input[]): void {
           if (len(p.x - e.x, p.y - e.y) > EXIT_USE_R) continue
           // 마을 들판 문은 웨이포인트를 연 가장 먼 지역의 웨이포인트 앞으로
           const far = e.gate ? gateTarget(area, p.wps) : e.to
-          queueMove(p, far === e.to ? { to: e.to, how: 'exit' } : { to: far, how: 'wp' })
           used = true
+          if (!memberMayGo(state, p, far)) {
+            state.events.push({ type: 'leadOnly', p: p.id })
+            break
+          }
+          queueMove(p, far === e.to ? { to: e.to, how: 'exit' } : { to: far, how: 'wp' })
           break
         }
       }
       // 다음 막으로 가는 문: 보스를 쓰러뜨리면 보스가 섰던 자리에 열린다 (2026-09-20 — 보스를 잡고 갈 곳이 없던 문제)
       if (!used && p.exitLock === 0 && gateOpen(areaDef(area), p) && l.special && len(p.x - l.special.x, p.y - l.special.y) <= EXIT_USE_R) {
-        queueMove(p, { to: areaDef(area).gate!, how: 'exit' })
+        if (memberMayGo(state, p, areaDef(area).gate!)) queueMove(p, { to: areaDef(area).gate!, how: 'exit' })
+        else state.events.push({ type: 'leadOnly', p: p.id })
         used = true
       }
       if (!used) used = useObject(state, p)
@@ -1780,8 +1827,13 @@ export function joinPlayer(state: GameState, maps: MapSource, idx: number, char:
     p.area = 0
     const a = ensureArea(state, 0, mapOf(0), false)
     withArea(state, a, () => respawn(state, mapOf(0), p))
+  } else if (leaderOver(state, p) && isActive(leaderOver(state, p)!)) {
+    // 난입한 사람은 방장 곁에서 시작한다 (2026-10-26 사용자: "방장은 4막 보스인데 들어온 사람은 마을로 떨어졌다") — 그 막 마을의 웨이포인트도 안다
+    const ld = leaderOver(state, p)!
+    p.wps |= wpBit(ACTS[areaDef(ld.area).act].town)
+    placeIn(state, mapOf(ld.area), p, ld.area, ld.x, ld.y, 'wp')
   } else {
-    // 난입한 사람은 지금 막의 마을에서 시작한다 (GUIDE 5.3) — 아직 그 막을 열지 못한 캐릭터는 자기가 연 가장 뒤 막의 마을
+    // 방장이 없거나 쓰러져 있으면 지금 막의 마을 (GUIDE 5.3) — 아직 그 막을 열지 못한 캐릭터는 자기가 연 가장 뒤 막의 마을
     const t = ACTS[Math.min(state.act, actReached(p.quests))].town
     const map = mapOf(t)
     const a = ensureArea(state, t, map)
@@ -4119,10 +4171,21 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
   }
   if (cmd === CMD_WAYPOINT) {
     // 웨이포인트 곁에 서 있고, 가려는 곳의 웨이포인트가 열려 있어야 한다
-    if (state.mode !== 'dungeon' || !isActive(p) || arg === p.area) return
+    if (state.mode !== 'dungeon' || !isActive(p)) return
     const l = areaLayout(p.area, map)
+    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20) return
+    // 방장 곁으로: 파티원만 · 방장이 살아 있을 때 (막 진행과 상관없이 — 방장이 이끄는 곳에는 같이 있을 수 있다)
+    if (arg === WP_TO_LEADER) {
+      const ld = leaderOver(state, p)
+      if (ld && ld.alive && !ld.downed) queueMove(p, { to: ld.area, how: 'wp', x: ld.x, y: ld.y })
+      return
+    }
     const bit = wpBit(arg)
-    if (!l.wp || len(p.x - l.wp.x, p.y - l.wp.y) > WP_R + 20 || !bit || (p.wps & bit) === 0 || areaDef(arg).retired || actLocked(p.quests, areaDef(arg).act)) return
+    if (arg === p.area || !bit || (p.wps & bit) === 0 || areaDef(arg).retired || actLocked(p.quests, areaDef(arg).act)) return
+    if (!memberMayGo(state, p, arg)) {
+      state.events.push({ type: 'leadOnly', p: p.id })
+      return
+    }
     queueMove(p, { to: arg, how: 'wp' })
     return
   }

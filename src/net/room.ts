@@ -62,6 +62,9 @@ export interface RoomInfo {
   /** 방 사람들의 평균 레벨 · 평균 템 수준 (2026-09-20 — 목록에서 내게 맞는 방을 고르라고) */
   lv?: number
   gs?: number
+  /** 방장의 레벨 · 레벨 제한(방장 ± lim · 0 없음) — levelBlock */
+  hostLv?: number
+  lim?: number
   /** open = 참가 가능, full = 정원 참, playing = 게임 중 */
   state: 'open' | 'full' | 'playing' | 'closed'
   /** 수신 시각 (로컬) */
@@ -208,6 +211,14 @@ export type Member = {
  * 투기장 시작을 막는 까닭 (없으면 null) — 호스트의 시작과 대기실 안내가 같은 규칙을 쓴다.
  * 빈 자리를 봇으로 채우면 혼자여도 시작한다 (2026-10-17 사용자: 혼자 방 · 봇 채우기 · 준비 → "모두 준비. 시작합니다…" 에서 멈춤)
  */
+/** 방 레벨 제한 (방장 레벨 ±) — 0 = 없음. 2026-10-26 사용자: "레벨이 5 이상 차이 나면 같은 방에 들어오면 안 될 것 같다" → 방 만들 때 고른다 */
+export const LV_LIMITS = [5, 10, 0] as const
+/** 레벨 제한으로 못 들어오는 까닭 (들어올 수 있으면 null) — 방 목록 · 대기실 방장 · 게임 중 방장이 같이 쓴다 */
+export function levelBlock(hostLv: number, myLv: number, lim: number | undefined): string | null {
+  if (!lim || Math.abs(myLv - hostLv) <= lim) return null
+  return `레벨 ${Math.max(1, hostLv - lim)} ~ ${hostLv + lim} 캐릭터만 들어올 수 있는 방입니다 (방장 Lv ${hostLv} · 내 캐릭터 Lv ${myLv})`
+}
+
 export function arenaStartBlock(members: Member[], size: number, mode: RoomMode, botCount: number): string | null {
   const bots = Math.min(botCount, size - members.length) > 0
   if (members.length < 2 && !bots) return '상대가 있어야 시작합니다 — 기다리거나 빈 자리에 봇을 넣으세요.'
@@ -225,7 +236,7 @@ export type CtlMessage =
   /** 내 상태 (캐릭터·준비·팀). 모두에게 */
   | { t: 'hello'; char: string; ready: boolean; team: number; name: string; sheet?: Sheet; ver?: string }
   /** 호스트 → 모두: 방 상태 정본 */
-  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; bots?: number; deathRule?: number; tier?: number; kind?: string; skin?: string; ver?: string }
+  | { t: 'room'; mode: RoomMode; targetKills: number; map: string; members: Member[]; size: number; bots?: number; lim?: number; deathRule?: number; tier?: number; kind?: string; skin?: string; ver?: string }
   /** 호스트 → 정원 초과로 들어온 피어 */
   | { t: 'full' }
   /** 호스트 → 모두: 시작. players 순서가 플레이어 인덱스 */

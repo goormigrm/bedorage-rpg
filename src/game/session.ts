@@ -12,7 +12,7 @@ import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
 import { DEFAULT_MAP, MAPS, MapId, MapScale, scaleForPlayers } from '../core/maps'
-import { SUMMON_CAP, areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, joinSeat, snapshot, step, syncSandbags } from '../core/sim'
+import { SUMMON_CAP, areaView, createState, dropPlayer, hashState, interpSnapshot, joinPlayer, joinSeat, partyLeader, snapshot, step, syncSandbags } from '../core/sim'
 import { ACTS, NPC_RANGE, actReached, areaDef, areaLayout, buildAreaMap, isTown, npcNear, questPoints, townNpcs, tierQuests, WAYPOINTS, wpBit } from '../core/world'
 import { GameMap } from '../core/map'
 import { WaypointPanel } from '../ui/waypoints'
@@ -39,7 +39,7 @@ import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
 import { Lockstep } from '../net/lockstep'
-import { CtlMessage, LobbyLink, RoomLink } from '../net/room'
+import { CtlMessage, LobbyLink, RoomLink, levelBlock } from '../net/room'
 import { banPeer, isBanned } from '../net/bans'
 import { UiRect, VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
 import { worldDirToScreen } from '../render3d/camera'
@@ -100,7 +100,7 @@ export interface SessionConfig {
    */
   lobby?: LobbyLink
   /** 방 정보 (난입 안내용) */
-  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; tier?: number; kind?: string; skin?: string }
+  roomInfo?: { map: string; mode: string; targetKills: number; size: number; deathRule?: number; tier?: number; kind?: string; skin?: string; lim?: number }
   /** 재접속: 호스트가 보내 준 그 시점의 판. 있으면 처음부터가 아니라 여기서 이어서 시작한다 */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resumeState?: any
@@ -415,6 +415,12 @@ export class Session {
         this.sfx.ui(open)
       },
       () => tierOf(this.state.tier).lvl,
+      // 방장이 이끈다 — 파티원 창에는 "방장 곁으로" (방장 자신 · 용병 · 혼자면 null)
+      () => {
+        const me = this.state.players[this.cfg.localPlayer]
+        const ld = partyLeader(this.state)
+        return me && ld && ld !== me && me.merc < 0 ? { area: ld.area, name: this.names[ld.id] ?? '방장', alive: ld.alive && !ld.downed } : null
+      },
     )
     this.town = new TownPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
@@ -637,6 +643,9 @@ export class Session {
         skin: info.skin,
         count,
         max: info.size,
+        // 레벨 제한은 방장의 지금 레벨로 (판 중에 오른다)
+        hostLv: this.state.players[0].level,
+        lim: info.lim,
         state: this.state.phase === 'over' || count >= info.size ? 'full' : 'playing',
       })
     }
@@ -1746,6 +1755,12 @@ export class Session {
           this.cfg.link?.sendCtl({ t: 'rejoinNo', why: rejectGuestText(m.ver) }, from)
           break
         }
+        // 레벨 제한 (방 만들 때 고른 방장 ± — 방장의 지금 레벨로)
+        const lvNo = levelBlock(this.state.players[this.cfg.localPlayer]?.level ?? 1, m.sheet?.level ?? 1, this.cfg.roomInfo?.lim)
+        if (lvNo) {
+          this.cfg.link?.sendCtl({ t: 'rejoinNo', why: lvNo }, from)
+          break
+        }
         this.onJoinAsk(m.char as CharacterId, m.name, from, m.sheet)
         break
       }
@@ -1976,6 +1991,8 @@ export class Session {
           showForgeFx(this.stage.querySelector('.game-ui') as HTMLElement, it, e.up)
         } else if (e.type === 'wpFound' && e.p === this.cfg.localPlayer) {
           this.wpFoundAt = performance.now()
+        } else if (e.type === 'leadOnly' && e.p === this.cfg.localPlayer) {
+          this.renderer.notice('👑 방장이 이끕니다 — 방장이 옮기면 같이 갑니다 · 마을은 따로 다녀오고 웨이포인트의 "방장 곁으로"로 합류', '#ffd24a', 3)
         } else if (e.type === 'gamble' && e.p === this.cfg.localPlayer) {
           // 도박 결과도 창에 카드로 (2026-09-25 "어떤 아이템을 뽑았는지 알려 줘"). 전설 이상이면 가운데 연출까지
           const bag = this.state.players[e.p]?.bag ?? []

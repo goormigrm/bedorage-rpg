@@ -1656,3 +1656,9 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .lobby.d2 .status .setrow span { font-size: 16px; padding: 6px 12px; }
 .lobby.d2 .status .setrow b { font-size: 13px; }
 .status .room-actions .btn.main { font-size: 18px; padding: 12px 30px; }
+/* 웨이포인트 창 "방장 곁으로" (2026-10-26 방장이 이끈다) — 막 목록 위 금빛 단추 */
+.wpp-lead { display: flex; justify-content: space-between; align-items: baseline; width: 100%; margin: 6px 0 4px; padding: 9px 12px; cursor: pointer;
+  font: 700 15px "IBM Plex Sans KR", sans-serif; color: #ffe6a8; background: linear-gradient(180deg, #5a4420, #3a2c14); border: 1px solid #c9a24a; border-radius: 4px; }
+.wpp-lead small { font-size: 12px; color: #e8d7a8; font-weight: 500; }
+.wpp-lead:hover:not([disabled]) { filter: brightness(1.15); }
+.wpp-lead[disabled] { opacity: 0.45; cursor: default; }

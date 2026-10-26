@@ -22,3 +22,17 @@ describe('투기장 시작 조건', () => {
     expect(seatTeam([m(1), m(0)])).toBe(0)
   })
 })
+
+// 2026-10-26 사용자: "레벨이 5 이상 차이 나면 같은 방에 들어오면 안 될 것 같다" → 방 만들 때 방장 ±5 · ±10 · 제한 없음
+describe('방 레벨 제한', () => {
+  it('방장 ± lim 안이면 들어온다 · 밖이면 까닭(범위)을 알린다 · 0 이면 제한 없음', async () => {
+    const { levelBlock, LV_LIMITS } = await import('../src/net/room')
+    expect(LV_LIMITS).toEqual([5, 10, 0])
+    expect(levelBlock(30, 25, 5)).toBeNull()
+    expect(levelBlock(30, 35, 5)).toBeNull()
+    expect(levelBlock(30, 24, 5)).toContain('25 ~ 35')
+    expect(levelBlock(3, 12, 5)).toContain('1 ~ 8')
+    expect(levelBlock(30, 1, 0)).toBeNull()
+    expect(levelBlock(30, 1, undefined)).toBeNull()
+  })
+})

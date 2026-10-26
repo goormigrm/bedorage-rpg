@@ -41,6 +41,17 @@ function toField(g: ReturnType<typeof game>): void {
   p.btnPrev = 0
   g.run((i) => (i === 0 ? { ...idle(), buttons: BTN_USE } : idle()))
   expect(p.area).toBe(1)
+  // 방장이 이끌어 파티원도 같이 왔다(2026-10-26) — 이 시험들은 동료가 마을에 남은 판이라 마을로 걸어 돌려보낸다(파티원도 마을로는 혼자 간다)
+  const back = areaLayout(1, g.mapOf(1)).exits.find((x) => x.to === p.area - 1 || x.to === 0)!
+  const mates = g.s.players.slice(1).filter((q) => q.area === 1)
+  for (const q of mates) {
+    q.x = back.x
+    q.y = back.y
+    q.exitLock = 0
+    q.btnPrev = 0
+  }
+  if (mates.length) g.run((i) => (i > 0 ? { ...idle(), buttons: BTN_USE } : idle()))
+  for (const q of mates) expect(q.area).toBe(0)
 }
 
 const summoned = (s: GameState) => areaView(s, 1).monsters.filter((m) => m.sum !== undefined && m.hp > 0)

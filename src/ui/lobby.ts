@@ -25,7 +25,7 @@ import { sanitizeSheet } from '../core/items'
 import { SAVE_SLOTS, activeSlot, backupNag, clearSlot, exportSave, importSave, levelOf, setActiveSlot, sheetOf, slotSummary } from '../game/save'
 import { WEAPONS } from '../core/weapons'
 import {
-  CtlMessage, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode, arenaStartBlock, seatTeam,
+  CtlMessage, LV_LIMITS, LobbyLink, Member, ROOM_MODE_LABEL, RoomInfo, RoomLink, RoomMode, arenaStartBlock, levelBlock, seatTeam,
   makeRoomCode, openLobby, openRoom,
 } from '../net/room'
 import { banPeer, isBanned } from '../net/bans'
@@ -105,6 +105,8 @@ export class Lobby {
   botChars?: CharacterId[]
   private botDiff: Difficulty = 'normal'
   private botsRemote = 0
+  /** 레벨 제한 (방장 ± · 0 없음 — 방 만들 때 고른다 · 게스트는 방 정보로 받는다) */
+  private lvLimit = 5
   private hostId: string | null = null
   private myReady = false
   private myTeam = 0
@@ -258,6 +260,9 @@ export class Lobby {
             <div class="row"><label>정원</label><div class="seg" id="seg-size">
               ${[2, 3, 4].map((n) => `<button data-v="${n}" class="${n === 4 ? 'on' : ''}">${n}명</button>`).join('')}
             </div></div>
+            <div class="row"><label>레벨 제한</label><div class="seg" id="seg-lvlim">
+              ${LV_LIMITS.map((n) => `<button data-v="${n}" class="${n === 5 ? 'on' : ''}">${n ? `방장 ±${n}` : '제한 없음'}</button>`).join('')}
+            </div></div>
             <div class="dungeon-only">
               <div class="row" id="row-tier"><label>난이도</label><div class="seg" id="seg-tier">
                 ${TIER_LABEL.map((l, i) => `<button data-v="${i}" class="${i === 0 ? 'on' : ''}">${l}</button>`).join('')}
@@ -354,6 +359,10 @@ export class Lobby {
     }
 
     this.seg('#seg-skin', (v) => this.changeSkin(asSkin(v)))
+    this.seg('#seg-lvlim', (v) => {
+      this.lvLimit = Math.max(0, Number(v) || 0)
+      this.hostChanged()
+    })
     this.seg('#seg-tier', (v) => {
       const t = Number(v) || 0
       if (!tierOpen(sheetOf(this.char), t)) return
@@ -743,10 +752,13 @@ export class Lobby {
         const arenaRoom = r.kind === 'arena'
         const teamsPlaying = arenaRoom && r.state === 'playing' && r.mode === 'teams'
         const otherVer = !sameVersion(r.ver)
-        const canJoin = !otherVer && (r.state === 'open' || (r.state === 'playing' && room && !teamsPlaying))
+        const lvNo = r.hostLv ? levelBlock(r.hostLv, levelOf(this.char), r.lim) : null
+        const canJoin = !otherVer && !lvNo && (r.state === 'open' || (r.state === 'playing' && room && !teamsPlaying))
         const st = otherVer
           ? `<span class="pill" title="방장 ${r.ver ? 'v' + esc(r.ver) : '옛 판'} · 나 v${APP_VERSION} — 판 번호가 같아야 같이 할 수 있습니다">다른 판</span>`
-          : r.state === 'open'
+          : lvNo
+            ? `<span class="pill" title="${esc(lvNo)}">레벨 차이</span>`
+            : r.state === 'open'
             ? '<span class="pill ok">참가 가능</span>'
             : r.state === 'full'
               ? '<span class="pill">정원 참</span>'
@@ -761,7 +773,9 @@ export class Lobby {
           ? [ROOM_MODE_LABEL[r.mode] ?? r.mode, `${r.targetKills}킬`]
           : [TIER_LABEL[r.tier ?? 0] ?? '보통']
         // 레벨 · 템 수준 (2026-09-20 요청 — 난입할 때 내게 맞는 방인지 보라고)
-        const power = r.lv ? [`Lv ${r.lv}`, `템 ${r.gs ?? 0}`] : []
+        // 레벨 제한이 있으면 들어올 수 있는 범위를 (방장 ± lim)
+        const lvTag = r.hostLv && r.lim ? `Lv ${Math.max(1, r.hostLv - r.lim)}~${r.hostLv + r.lim}` : r.lv ? `Lv ${r.lv}` : ''
+        const power = r.lv ? [lvTag, `템 ${r.gs ?? 0}`] : []
         const meta = [arenaRoom ? '투기장' : '던전', ...rule, ...power, m, `${r.count}/${r.max}명`]
         return `<div class="room">
           <div class="rmain">
@@ -862,6 +876,8 @@ export class Lobby {
       max: this.roomSize,
       // 목록에서 "나와 비슷한 방인가" 를 보라고 (2026-09-20 요청). 봇 자리는 빼고 사람만 센다
       ...this.partyPower(),
+      hostLv: levelOf(this.char),
+      lim: this.lvLimit,
       state: state ?? (this.members.length >= this.roomSize ? 'full' : 'open'),
     })
   }
@@ -1095,7 +1111,7 @@ export class Lobby {
         return
       }
       case 'rejoinNo': {
-        // 게임 중인 호스트가 거절했다 (팀전·자리 없음·이미 끝남). 대기실이라면 이 메시지는 오지 않는다
+        // 방장이 거절했다 (게임 중: 팀전 · 자리 없음 · 이미 끝남 · 판 번호 / 대기실 · 게임 중: 레벨 제한 — 2026-10-26)
         if (this.role === 'guest') this.giveUpRejoin(m.why)
         return
       }
@@ -1122,6 +1138,7 @@ export class Lobby {
         this.hostId = from
         this.members = m.members
         this.botsRemote = Math.max(0, Number(m.bots) || 0)
+        this.lvLimit = Math.max(0, Number(m.lim) || 0)
         this.roomMode = m.mode
         this.killsRoom = m.targetKills
         this.deathRule = (m.deathRule === 1 || m.deathRule === 2 ? m.deathRule : 0) as DeathRule
@@ -1208,6 +1225,18 @@ export class Lobby {
       }
       return
     }
+    // 레벨 제한 (방장 ± — 방 만들 때 고른 것). 들어와 있던 사람이 캐릭터를 바꿔 벗어나도 내보낸다
+    const lvNo = levelBlock(levelOf(this.char), m.sheet?.level ?? 1, this.lvLimit)
+    if (lvNo) {
+      if (existing) this.members = this.members.filter((x) => x.id !== from)
+      this.link.sendCtl({ t: 'rejoinNo', why: lvNo }, from)
+      if (existing) {
+        this.broadcastRoom()
+        this.announce()
+        this.renderRoom()
+      }
+      return
+    }
     if (existing) {
       existing.char = m.char
       existing.ready = m.ready
@@ -1237,7 +1266,7 @@ export class Lobby {
 
   private broadcastRoom(): void {
     if (this.role !== 'host' || !this.link) return
-    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, bots: this.botCount, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, ver: APP_VERSION })
+    this.link.sendCtl({ t: 'room', mode: this.roomMode, targetKills: this.killsRoom, map: this.kind === 'arena' ? this.arenaMap : this.mapId, members: this.members, size: this.roomSize, bots: this.botCount, lim: this.lvLimit, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, ver: APP_VERSION })
   }
 
   private sendHello(to?: string): void {
@@ -1256,6 +1285,13 @@ export class Lobby {
         me.team = this.roomMode === 'teams' ? this.myTeam : 0
         me.name = this.nick
         me.sheet = sheetOf(this.char)
+      }
+      // 방장 캐릭터가 바뀌면 레벨 범위도 바뀐다 — 벗어난 사람은 까닭을 알려 내보낸다
+      for (const x of this.members.slice(1)) {
+        const why = x.bot ? null : levelBlock(levelOf(this.char), x.sheet?.level ?? 1, this.lvLimit)
+        if (!why) continue
+        this.members = this.members.filter((y) => y !== x)
+        this.link.sendCtl({ t: 'rejoinNo', why }, x.id)
       }
       this.broadcastRoom()
       this.announce()
@@ -1406,7 +1442,7 @@ export class Lobby {
         cfg = {
           ...cfg,
           lobby: this.lobbyLink,
-          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin },
+          roomInfo: { map: String(cfg.mapId ?? this.mapId), mode: this.roomMode, targetKills: cfg.targetKills ?? 0, size: this.roomSize, deathRule: this.deathRule, tier: this.tier, kind: this.kind, skin: this.skin, lim: this.lvLimit },
         }
       } else if (!this.sharedLobby) {
         this.lobbyLink.leave()
@@ -1473,6 +1509,7 @@ export class Lobby {
           ? `<span><b>투기장</b>${MAPS[this.arenaMap].name}</span><span><b>모드</b>${ROOM_MODE_LABEL[this.roomMode]}</span><span><b>목표</b>${this.killsRoom}킬</span>`
           : `<span><b>던전</b>${TIER_LABEL[this.tier] ?? '보통'}</span>`}
         <span><b>인원</b>${this.members.length}/${this.roomSize}명</span>
+        ${this.lvLimit ? `<span><b>레벨</b>${Math.max(1, (this.members[0]?.sheet?.level ?? 1) - this.lvLimit)} ~ ${(this.members[0]?.sheet?.level ?? 1) + this.lvLimit}</span>` : ''}
         ${connected && link.peers.size > 0 ? `<span><b>핑</b>${link.rtt} ms</span>` : ''}
       </div>
       <div class="slots">${slots.join('')}</div>
