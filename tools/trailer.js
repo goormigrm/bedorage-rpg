@@ -162,6 +162,7 @@ async function grabUi() {
 }
 function drawGame() {
   if (ov.showcase) return drawShowcase()
+  if (ov.split) return drawSplit()
   const cvs = [...document.querySelectorAll('.game-stage canvas')].filter((c) => c.width > 0)
   if (!cvs.length) return
   const z = ov.zoom
@@ -964,6 +965,90 @@ const SHOWCASE = [
   ['chim', 'rifle', 'crossbow'], ['dangun', 'smg', 'flamer'], ['magic', 'shotgun', 'doublebarrel'], ['oknyang', 'sniper', 'railgun'],
   ['cheolmyeon', 'violin', 'cello'], ['juwoojae', 'rapier', 'katana'], ['seungwoo', 'pan', 'wok'],
 ]
+// ---- 같은 판 · 네 화면 (tools/splitcap.mjs 가 찍은 .frames/split — 칸마다 사진 · 진짜 시각 · 방장 화면의 판 이벤트)
+const SPLIT_DUR = 7.5
+/** 찍은 것 중 앞 몇 초는 버린다 (싸움이 무르익기 전 · 모두가 방장 곁으로 모이는 중) */
+const SPLIT_SKIP = 2.5
+let splitMeta = null
+const splitImgs = [null, null, null, null]
+const splitIdx = [-1, -1, -1, -1]
+const SPLIT_LABEL = { bright: '☀ 철면수심', dark: '🌙 공포', quarter: '쿼터뷰', fps: '3인칭' }
+async function splitSetup() {
+  try {
+    const r = await fetch(`${location.origin}/bedorage-rpg/.frames/split/meta.json`, { cache: 'no-store' })
+    splitMeta = r.ok ? await r.json() : null
+  } catch {
+    splitMeta = null
+  }
+}
+function splitStart(dur) {
+  const c0 = splitMeta.start + SPLIT_SKIP
+  ov.split = { at: now(), c0 }
+  // 소리: 방장 화면에서 그 시각에 난 판 이벤트를 영상 시각으로 옮겨 싣는다 (게임 자체의 소리 단서는 이 동안 받지 않는다)
+  const v0 = vidSec()
+  for (const e of splitMeta.ev) if (e.t >= c0 && e.t < c0 + dur) sfxCues.push({ t: v0 + (e.t - c0), ev: e.ev, st: e.st, lp: e.lp })
+}
+/** 지금 장에 쓸 칸마다의 사진을 읽어 둔다 (진짜 시각으로 그 칸의 가장 가까운 앞 장) */
+async function splitPrep() {
+  const ct = ov.split.c0 + (now() - ov.split.at) / 1000
+  await Promise.all(
+    splitMeta.frames.map(async (fr, i) => {
+      let lo = 0
+      let hi = fr.length - 1
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1
+        if (fr[mid].t <= ct) lo = mid
+        else hi = mid - 1
+      }
+      if (splitIdx[i] === lo && splitImgs[i]) return
+      const img = new Image()
+      img.src = `${location.origin}/bedorage-rpg/.frames/split/q${i}/${String(fr[lo].n).padStart(5, '0')}.jpg`
+      await img.decode().catch(() => {})
+      splitImgs[i] = img
+      splitIdx[i] = lo
+    }),
+  )
+}
+function drawSplit() {
+  const w = W / 2
+  const h = H / 2
+  g.fillStyle = '#000'
+  g.fillRect(0, 0, W, H)
+  splitMeta.seats.forEach((seat, i) => {
+    const img = splitImgs[i]
+    const x = (i % 2) * w
+    const y = Math.floor(i / 2) * h
+    if (img) {
+      // 🌙 는 영상의 다른 장면처럼 조금 밝게 (drawGame 과 같은 값)
+      g.filter = seat.skin === 'dark' ? 'brightness(1.4) contrast(1.03)' : 'none'
+      g.drawImage(img, x, y, w, h)
+      g.filter = 'none'
+    }
+    // 칸 이름표: 분위기 · 시점 · 캐릭터 이름 (왼쪽 위 파티 칸을 가리지 않게 가운데 위)
+    const label = `${SPLIT_LABEL[seat.skin]} · ${SPLIT_LABEL[seat.view]}`
+    g.font = `800 ${Math.round(H * 0.026)}px "Black Han Sans", "IBM Plex Sans KR", sans-serif`
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    const tw = g.measureText(label).width + H * 0.03
+    const th = H * 0.042
+    const cx = x + w / 2
+    const cy = y + H * 0.034
+    g.fillStyle = 'rgba(10,8,6,0.72)'
+    g.beginPath()
+    g.roundRect(cx - tw / 2, cy - th / 2, tw, th, th / 2)
+    g.fill()
+    g.strokeStyle = seat.skin === 'bright' ? 'rgba(255,214,120,0.9)' : 'rgba(150,180,255,0.9)'
+    g.lineWidth = 2
+    g.stroke()
+    g.fillStyle = '#fff4dc'
+    g.fillText(label, cx, cy + 1)
+  })
+  // 칸 사이 선
+  g.fillStyle = 'rgba(255,240,210,0.85)'
+  g.fillRect(w - 2, 0, 4, H)
+  g.fillRect(0, h - 2, W, 4)
+}
+
 const SC_DUR = 6.4
 let sc = null
 async function showcaseSetup() {
@@ -1107,6 +1192,7 @@ function patch24Scenes() {
     mv?.stop()
     inp().mouseDown.clear()
     ov.showcase = false
+    ov.split = null
     if ((MODES || TPPV) && skin && !!document.querySelector('.skin-bright') !== (skin === 'bright')) S().switchSkin()
     if (st().players[0].area !== area) warpParty(area)
     // 장면이 바뀌면 HTML UI 겹을 새로 찍는다 (로딩 덮개 · 바뀐 모드 색)
@@ -1268,29 +1354,42 @@ function patch24Scenes() {
       showcaseStart()
     })
     at(SC_DUR, () => {})
-    // ---- 4. ☀ 후원 전투 (4막 재의 들판 — 균열은 좁은 길 · 2막 숲은 칸보다 크게 그린 솜사탕 나무가 3인칭 카메라 곁을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
-    at(0, () => goto(30, 'bright'))
+    // ---- 같은 판 · 네 화면 (2026-10-26 사용자: "4분할 영상으로 각자 다른 플레이어가 같은 전투 상황에서 각기 다른 모드로") —
+    // tools/splitcap.mjs 가 실제 멀티 판(브라우저 넷)을 찍어 둔 사진을 2×2 로 (없으면 건너뛴다)
+    if (splitMeta) {
+      at(0, () => {
+        dissolve(260)
+        perFrame = null
+        S().autopilot = false
+        inp().mouseDown.clear()
+        ov.showcase = false
+        splitStart(SPLIT_DUR)
+      })
+      at(SPLIT_DUR, () => (ov.split = null))
+    }
+    // ---- 4. ☀ 후원 전투 (1막 묘지 길 — 운동장처럼 트였다. 4막 균열은 좁은 길 · 2막 숲은 큰 솜사탕 나무 · 4막 들판은 생울타리가 3인칭 카메라 곁을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
+    at(0, () => goto(3, 'bright'))
     at(1.2, () => {
       place()
       equipWeapon('smg')
-      quarter(30, 26, 0.8)
+      quarter(3, 26, 0.8)
       for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
       holding = false
     })
     const s4 = tl.t
     every(s4 + 0.3, s4 + 10.6, 0.45, () => M.stream.fakeChat(false))
-    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(30), 10, 6, 12))
+    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(3), 10, 6, 12))
     at(0.8, () => don(1000, '좀비 떼 갑니다'))
     at(1.4, () => don(3000, '정예 한번 보자'))
     at(0.6, () => don(6000, '총잡이 출동!!'))
     at(0.6, () => don(9000, '대행진 가즈아'))
     at(1.2, () => {
       flip()
-      tpp(30, { n: 12, hp: 1.4, spread: 0.8 })
+      tpp(3, { n: 12, hp: 1.4, spread: 0.8 })
     })
     at(0.7, () => aimOn({ storm: true }))
     const s4b = tl.t
-    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(30), 8, 6, 11, 0.8, 1.4))
+    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(3), 8, 6, 11, 0.8, 1.4))
     at(5.0, () => {})
     // ---- 5. 🌙 4막 보스 예고: 심연의 옥좌 — 정면에서 올려다보면 달이 보스 오른쪽 하늘에 떠 있다 (보스는 깨우지 않는다)
     let sample0 = null
@@ -2786,7 +2885,7 @@ export async function start(opts = {}) {
     // 시점 · 모드 영상은 처음 11초에 동료가 낸 총소리 · 맞히는 소리와 벽 맞는 소리 · 괴물 깨는 · 공격 예고 · 휘두르는 소리 · 내가 맞는 소리를 뺀다 — 맞는 소리만 초당 24번이었다
     // (2026-10-25 사용자: "초반 10초에 소리가 겹쳐서 너무 정신없다")
     if (TPPV && vidSec() < 11) ev = ev.filter((e) => !((e.type === 'fire' && e.p !== lp) || (e.type === 'mhit' && e.by !== lp) || e.type === 'wall' || e.type === 'wake' || e.type === 'windup' || e.type === 'swipe' || e.type === 'hurt'))
-    if (!holding && !ov.showcase && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
+    if (!holding && !ov.showcase && !ov.split && ev.length) sfxCues.push({ t: vidSec(), ev: structuredClone(ev), st: liteState(s), lp })
   }
   sfx.donate = (big) => {
     if (!holding) sfxCues.push({ t: vidSec(), donate: big })
@@ -2795,8 +2894,9 @@ export async function start(opts = {}) {
     if (!holding) sfxCues.push({ t: vidSec(), count: sec })
   }
   sfx.updateSteps = () => {}
-  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, showcase: false, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
+  Object.assign(ov, { don: false, canon: false, title: null, cap: null, end: null, xfade: null, bright: undefined, showcase: false, split: null, fade: { a: 0, from: 0, to: 0, at: vt, dur: 1 }, flash: { a: 0, at: 0 }, zoom: { from: 1, to: 1, at: vt, dur: 1 } })
   if (P24) {
+    if (TPPV) await splitSetup()
     await showcaseSetup()
     watchUi()
   }
@@ -2935,7 +3035,8 @@ export async function start(opts = {}) {
       if (!holding && !areaFade && settle === 0 && !opts.diag) {
         g.fillStyle = '#000'
         g.fillRect(0, 0, W, H)
-        if (P24 && window.__grabUi && !ov.showcase && uiDirty && uiAge >= 4) {
+        if (ov.split) await splitPrep()
+        if (P24 && window.__grabUi && !ov.showcase && !ov.split && uiDirty && uiAge >= 4) {
           uiDirty = false
           uiAge = 0
           await grabUi()
