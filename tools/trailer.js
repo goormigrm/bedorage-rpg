@@ -62,6 +62,8 @@ let P24 = false
 let MODES = false
 /** 3인칭 하늘 영상 (2026-10-25 사용자: "하늘이 추가된 모습으로 3인칭 플레이 영상 · 보스 장면에서도 뒷배경에 달") — 모든 장면 3인칭 · 🌙 · ☀ 를 오간다 */
 let TPPV = false
+/** 새로 올리는 곳 트레일러 편 번호 (1 소개 · 2 같이 하기 · 방송 · 3 세계 · 막 보스) — 0 이면 아님. TPPV 장면 부품을 쓴다 */
+let REL = 0
 const P24_DIR = 'patch-2026-10-24'
 let perFrame = null
 /** 자막 고르기: 어둡게 · 밝게 */
@@ -967,6 +969,8 @@ const SHOWCASE = [
 ]
 // ---- 같은 판 · 네 화면 (tools/splitcap.mjs 가 찍은 .frames/split — 칸마다 사진 · 진짜 시각 · 방장 화면의 판 이벤트)
 const SPLIT_DUR = 7.5
+/** 트레일러 2편(같이 하기)은 4분할을 길게 (찍은 14초에서 앞 2.5초를 버린 만큼 안) */
+const SPLIT_DUR_REL = 11
 /** 찍은 것 중 앞 몇 초는 버린다 (싸움이 무르익기 전 · 모두가 방장 곁으로 모이는 중) */
 const SPLIT_SKIP = 2.5
 let splitMeta = null
@@ -1280,160 +1284,296 @@ function patch24Scenes() {
       spawnAhead(K(area), o.n ?? 12, o.r0 ?? 6, o.r1 ?? 11, o.spread ?? 0.7, o.hp ?? 1.5)
     }
     const aimOn = (o = {}) => (perFrame = both(tppAimer({ minPitch: o.minPitch ?? -0.07 }), mv, botsBehind(3, true), ...(o.storm ? [skillStorm()] : [])))
-    // ---- 1. ☀ 운동장 · 쿼터뷰 + 제목 → 싸우는 중에 3인칭으로. 괴물 · 스킬을 줄였다(초반 소리가 겹쳐 정신없었다 — 스킬 몰아 쓰기 없음)
-    at(0, () => {
-      S().autopilot = false
-      document.querySelector('.ending.intro .ending-go')?.click()
-      inp().fps = false
-      goto(1, 'bright')
-    })
-    at(1.5, () => {
-      place()
-      levelUpParty()
-      quarter(1, 12, 0.85)
-      cue('hot', { act: 0 })
-      // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
-      ov.title = { text: '배도라지 알PG', sub: '시점 · 모드를 게임 중에 바꾼다', at: now() - 1300 }
-      holding = false
-    })
-    at(2.0, () => (ov.title.out = now()))
-    const s1 = tl.t
-    every(s1 + 0.5, s1 + 3.4, 0.8, () => alive() < 16 && spawn(K(1), 4, 6, 11))
-    at(3.4, () => {
-      flip()
-      tpp(1, { n: 8 })
-    })
-    at(0.7, () => aimOn())
-    const s1b = tl.t
-    every(s1b + 0.3, s1b + 3.0, 0.6, () => ahead() < 10 && spawnAhead(K(1), 5, 6, 11, 0.7, 1.5))
-    at(1.5, () => mv.strafe('KeyD'))
-    // 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커 (공지 "오른쪽 클릭 정조준" · 🌙 에서는 화면이 거의 까매 ☀ 에서)
-    // 바짝 붙은 괴물은 비우고(1인칭으로 당기는 순간) 10 ~ 14칸 표적을 (물러서면 동료가 앞을 가렸다)
-    at(1.5, () => {
-      mv.stop()
-      const p = st().players[0]
-      st().monsters = st().monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 9 * T)
-      inp().mouseDown.add(2)
-      perFrame = both(tppAimer({ head: true }), botsBehind(3, true))
-      // 1인칭은 확대(화각 50)라 가까우면 화면을 덮는다 — 멀리 셋 · 단단하게(쓰러질 때 색종이가 화면을 덮었다)
-      spawnAhead(K(1), 3, 10, 14, 0.35, 3)
-    })
-    const s1c = tl.t
-    every(s1c + 0.6, s1c + 2.6, 0.6, () => ahead() < 3 && spawnAhead(K(1), 2, 10, 14, 0.35, 3))
-    at(2.6, () => inp().mouseDown.clear())
-    // ---- 2. 그 자리에서 🌙 로 (게임의 G) — 3인칭 그대로 · 달 쪽을 보며 싸운다
-    at(0, () => goto(1, 'dark'))
-    at(1.0, () => {
-      faceMoon()
-      // 달(높이 22°)은 시선을 -0.12 까지 내려도 화면 위쪽에 남는다 — -0.03 에 묶으면 조준점이 괴물 머리 위로 지나가 쏘지 않았다(어둠 속이라 괴물도 안 보였다)
-      tpp(1, { n: 12, hp: 1.6, spread: 0.55, pitch: 0, r0: 5, r1: 9 })
-      aimOn({ minPitch: -0.12 })
-      holding = false
-    })
-    const s2 = tl.t
-    every(s2 + 0.4, s2 + 4.8, 0.5, () => ahead() < 12 && spawnAhead(K(1), 6, 5, 9, 0.55, 1.6))
-    at(1.7, () => mv.strafe('KeyA'))
-    at(1.6, () => mv.strafe('KeyD'))
-    // ---- 3. 🌙 3인칭 → 쿼터뷰
-    at(1.6, () => {
-      mv.stop()
-      inp().mouseDown.clear()
-      flip()
-      quarter(1, 14, 0.85)
-    })
-    const s3 = tl.t
-    every(s3 + 0.5, s3 + 4.6, 0.8, () => alive() < 22 && spawn(K(1), 6, 6, 11))
-    // ---- 무기 모아 보기 (따로 그린 3D — 게임 화면 아님): 캐릭터마다 기본 무기 → 변형 무기 (2026-10-25 사용자: "어제 영상의 캐릭터별 무기 다양화 등
-    // 관심을 끌 만한 것은 영상에도")
-    at(4.6, () => {
-      dissolve(260)
-      perFrame = null
-      S().autopilot = false
-      inp().mouseDown.clear()
-      for (const m of st().monsters) m.hp = 0
-      showcaseStart()
-    })
-    at(SC_DUR, () => {})
-    // ---- 같은 판 · 네 화면 (2026-10-26 사용자: "4분할 영상으로 각자 다른 플레이어가 같은 전투 상황에서 각기 다른 모드로") —
+    // ==== 장면 부품 — 패치 영상(TPPV)과 새로 올리는 곳 트레일러(REL 1 ~ 3)가 같이 쓴다
+    // ☀ 운동장 · 쿼터뷰(제목) → 싸우는 중에 3인칭으로 → 정조준. 괴물 · 스킬을 줄였다(초반 소리가 겹쳐 정신없었다 — 스킬 몰아 쓰기 없음)
+    const seqPlayground = (title) => {
+      at(0, () => {
+        S().autopilot = false
+        document.querySelector('.ending.intro .ending-go')?.click()
+        inp().fps = false
+        goto(1, 'bright')
+      })
+      at(1.5, () => {
+        place()
+        levelUpParty()
+        quarter(1, 12, 0.85)
+        cue('hot', { act: 0 })
+        // 첫 장이 썸네일이 된다 — 첫 장부터 제목이 다 떠 있게
+        if (title) ov.title = { ...title, at: now() - 1300 }
+        holding = false
+      })
+      at(2.0, () => ov.title && (ov.title.out = now()))
+      const s1 = tl.t
+      every(s1 + 0.5, s1 + 3.4, 0.8, () => alive() < 16 && spawn(K(1), 4, 6, 11))
+      at(3.4, () => {
+        flip()
+        tpp(1, { n: 8 })
+      })
+      at(0.7, () => aimOn())
+      const s1b = tl.t
+      every(s1b + 0.3, s1b + 3.0, 0.6, () => ahead() < 10 && spawnAhead(K(1), 5, 6, 11, 0.7, 1.5))
+      at(1.5, () => mv.strafe('KeyD'))
+      // 정조준(오른쪽 버튼): 1인칭으로 당겨 머리를 맞힌다 — 금빛 히트마커 (공지 "오른쪽 클릭 정조준" · 🌙 에서는 화면이 거의 까매 ☀ 에서)
+      // 바짝 붙은 괴물은 비우고(1인칭으로 당기는 순간) 10 ~ 14칸 표적을 (물러서면 동료가 앞을 가렸다)
+      at(1.5, () => {
+        mv.stop()
+        const p = st().players[0]
+        st().monsters = st().monsters.filter((m) => m.hp > 0 && Math.hypot(m.x - p.x, m.y - p.y) > 9 * T)
+        inp().mouseDown.add(2)
+        perFrame = both(tppAimer({ head: true }), botsBehind(3, true))
+        // 1인칭은 확대(화각 50)라 가까우면 화면을 덮는다 — 멀리 셋 · 단단하게(쓰러질 때 색종이가 화면을 덮었다)
+        spawnAhead(K(1), 3, 10, 14, 0.35, 3)
+      })
+      const s1c = tl.t
+      every(s1c + 0.6, s1c + 2.6, 0.6, () => ahead() < 3 && spawnAhead(K(1), 2, 10, 14, 0.35, 3))
+      at(2.6, () => inp().mouseDown.clear())
+    }
+    // 그 자리에서 🌙 로 (게임의 G) — 3인칭 그대로 · 달 쪽을 보며 싸운다 → 🌙 쿼터뷰
+    const seqMoon = () => {
+      at(0, () => goto(1, 'dark'))
+      at(1.0, () => {
+        faceMoon()
+        // 달(높이 22°)은 시선을 -0.12 까지 내려도 화면 위쪽에 남는다 — -0.03 에 묶으면 조준점이 괴물 머리 위로 지나가 쏘지 않았다(어둠 속이라 괴물도 안 보였다)
+        tpp(1, { n: 12, hp: 1.6, spread: 0.55, pitch: 0, r0: 5, r1: 9 })
+        aimOn({ minPitch: -0.12 })
+        holding = false
+      })
+      const s2 = tl.t
+      every(s2 + 0.4, s2 + 4.8, 0.5, () => ahead() < 12 && spawnAhead(K(1), 6, 5, 9, 0.55, 1.6))
+      at(1.7, () => mv.strafe('KeyA'))
+      at(1.6, () => mv.strafe('KeyD'))
+      at(1.6, () => {
+        mv.stop()
+        inp().mouseDown.clear()
+        flip()
+        quarter(1, 14, 0.85)
+      })
+      const s3 = tl.t
+      every(s3 + 0.5, s3 + 4.6, 0.8, () => alive() < 22 && spawn(K(1), 6, 6, 11))
+      at(4.6, () => {})
+    }
+    // 무기 모아 보기 (따로 그린 3D — 게임 화면 아님): 캐릭터마다 기본 무기 → 변형 무기 (2026-10-25 사용자: "캐릭터별 무기 다양화 등 관심을 끌 만한 것은 영상에도")
+    const seqShowcase = () => {
+      at(0, () => {
+        dissolve(260)
+        perFrame = null
+        S().autopilot = false
+        inp().mouseDown.clear()
+        for (const m of st().monsters) m.hp = 0
+        showcaseStart()
+      })
+      at(SC_DUR, () => {})
+    }
+    // 같은 판 · 네 화면 (2026-10-26 사용자: "4분할 영상으로 각자 다른 플레이어가 같은 전투 상황에서 각기 다른 모드로") —
     // tools/splitcap.mjs 가 실제 멀티 판(브라우저 넷)을 찍어 둔 사진을 2×2 로 (없으면 건너뛴다)
-    if (splitMeta) {
+    const seqSplit = (dur, title) => {
+      if (!splitMeta) return
       at(0, () => {
         dissolve(260)
         perFrame = null
         S().autopilot = false
         inp().mouseDown.clear()
         ov.showcase = false
-        splitStart(SPLIT_DUR)
+        splitStart(dur)
+        if (title) ov.title = { ...title, at: now() - 1300 }
       })
-      at(SPLIT_DUR, () => (ov.split = null))
+      if (title) at(2.2, () => ov.title && (ov.title.out = now()))
+      at(dur - (title ? 2.2 : 0), () => (ov.split = null))
     }
-    // ---- 4. ☀ 후원 전투 (1막 묘지 길 — 운동장처럼 트였다. 4막 균열은 좁은 길 · 2막 숲은 큰 솜사탕 나무 · 4막 들판은 생울타리가 3인칭 카메라 곁을 덮었다): 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로
-    at(0, () => goto(3, 'bright'))
-    at(1.2, () => {
-      place()
-      equipWeapon('smg')
-      quarter(3, 26, 0.8)
-      for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
-      holding = false
-    })
-    const s4 = tl.t
-    every(s4 + 0.3, s4 + 10.6, 0.45, () => M.stream.fakeChat(false))
-    every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(3), 10, 6, 12))
-    at(0.8, () => don(1000, '좀비 떼 갑니다'))
-    at(1.4, () => don(3000, '정예 한번 보자'))
-    at(0.6, () => don(6000, '총잡이 출동!!'))
-    at(0.6, () => don(9000, '대행진 가즈아'))
-    at(1.2, () => {
-      flip()
-      tpp(3, { n: 12, hp: 1.4, spread: 0.8 })
-    })
-    at(0.7, () => aimOn({ storm: true }))
-    const s4b = tl.t
-    every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(3), 8, 6, 11, 0.8, 1.4))
-    at(5.0, () => {})
-    // ---- 5. 🌙 4막 보스 예고: 심연의 옥좌 — 정면에서 올려다보면 달이 보스 오른쪽 하늘에 떠 있다 (보스는 깨우지 않는다)
-    let sample0 = null
-    at(0, () => {
-      const sess = S()
-      // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다 · 예고 장면에는 방송 표시를 끈다
-      sess.donPending.length = 0
-      sess.donSending = null
-      M.stream.tried = false
-      goto(34, 'dark')
-      sess.autopilot = false
-      // 화면 덮임(BTN_LOADING — 들어선 뒤 12초 안)을 실어 잠든 보스가 알아채지 못하게 · 동료도 멈춘다
-      const inp0 = sess.input
-      sample0 = inp0.sample.bind(inp0)
-      inp0.sample = (...a) => ({ ...sample0(...a), mx: 0, my: 0, buttons: M.input.BTN_LOADING })
-    })
-    at(1.4, () => {
-      const s = st()
-      const p = s.players[0]
-      const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
-      if (!b) return void (holding = false)
-      s.monsters = s.monsters.filter((m) => m === b)
-      // 카메라가 볼 쪽 = 달에서 off 만큼 왼쪽(달은 화면 오른쪽 위) — 거대한 몸이 달을 가리지 않게 30° 남짓 비킨다.
-      // 내 자리는 보스에서 시선 반대쪽 7.5칸 — 벽이면 다른 비킴을 고른다
-      let face = Math.atan2(b.y - p.y, b.x - p.x)
-      for (const off of [0.55, -0.55, 0.45, -0.45, 0.65, -0.65, 0.35, -0.35]) {
-        if (!clearRay(b.x, b.y, moonYaw - off + Math.PI, 7.5 * T)) continue
-        face = moonYaw - off
-        break
+    // ☀ 후원 전투 (1막 묘지 길 — 운동장처럼 트였다. 4막 균열은 좁은 길 · 2막 숲은 큰 솜사탕 나무 · 4막 들판은 생울타리가 3인칭 카메라 곁을 덮었다):
+    // 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로. dark 면 끝에 그 자리에서 🌙 로 바꿔 조금 더
+    const seqDonation = ({ dark = false } = {}) => {
+      at(0, () => goto(3, 'bright'))
+      at(1.2, () => {
+        place()
+        equipWeapon('smg')
+        quarter(3, 26, 0.8)
+        for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
+        holding = false
+      })
+      const s4 = tl.t
+      every(s4 + 0.3, s4 + 10.6 + (dark ? 6 : 0), 0.45, () => M.stream.fakeChat(false))
+      every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(3), 10, 6, 12))
+      at(0.8, () => don(1000, '좀비 떼 갑니다'))
+      at(1.4, () => don(3000, '정예 한번 보자'))
+      at(0.6, () => don(6000, '총잡이 출동!!'))
+      at(0.6, () => don(9000, '대행진 가즈아'))
+      at(1.2, () => {
+        flip()
+        tpp(3, { n: 12, hp: 1.4, spread: 0.8 })
+      })
+      at(0.7, () => aimOn({ storm: true }))
+      const s4b = tl.t
+      every(s4b + 0.3, s4b + 5, 0.6, () => alive() < 34 && ahead() < 16 && spawnAhead(K(3), 8, 6, 11, 0.8, 1.4))
+      at(5.0, () => {})
+      if (dark) {
+        // 같은 싸움을 🌙 로 (방송 표시 · 채팅은 그대로) — 시청자 말풍선이 어두운 판에서도 보이게
+        at(0, () => goto(3, 'dark'))
+        at(1.0, () => {
+          tpp(3, { n: 12, hp: 1.4, spread: 0.7, pitch: -0.06 })
+          aimOn({ storm: true })
+          holding = false
+        })
+        const s4c = tl.t
+        every(s4c + 0.3, s4c + 4.6, 0.6, () => alive() < 34 && ahead() < 14 && spawnAhead(K(3), 8, 5, 10, 0.7, 1.4))
+        at(4.6, () => {})
       }
-      p.x = b.x - Math.cos(face) * 7.5 * T
-      p.y = b.y - Math.sin(face) * 7.5 * T
-      // 보스가 나를 보게 (정면)
-      b.aim = Math.round((Math.atan2(p.y - b.y, p.x - b.x) / (Math.PI * 2)) * 1024) & 1023
-      inp().fps = true
-      inp().yaw = face
-      inp().pitch = -0.32
-      perFrame = both(bossTilt(face), botsBehind(4))
-      holding = false
-    })
-    at(5.0, () => {
-      perFrame = null
-      if (sample0) S().input.sample = sample0
-    })
+    }
+    // 막 보스 예고 (보스는 깨우지 않는다 — 등장 장면 · 경직 · 즉사기는 어떤 영상에도 넣지 않는다 · 2026-10-22 사용자).
+    // 화면 덮임(BTN_LOADING — 들어선 뒤 12초 안)을 실어 잠든 보스가 알아채지 못하게 · 동료도 멈춘다. 정면 dist 칸에서 발밑부터 얼굴까지 고개를 든다.
+    // moon 이면 달이 보스 오른쪽 하늘에 오게 (4막 🌙 심연의 옥좌)
+    const seqBoss = (area, skin, { dist = 7.5, show = 3.6, moon = false } = {}) => {
+      let sample0 = null
+      at(0, () => {
+        const sess = S()
+        // 밀려 있던 후원(대행진 같은)이 보스 방에서 터지지 않게 비운다 · 예고 장면에는 방송 표시를 끈다
+        sess.donPending.length = 0
+        sess.donSending = null
+        M.stream.tried = false
+        goto(area, skin)
+        sess.autopilot = false
+        const inp0 = sess.input
+        sample0 = inp0.sample.bind(inp0)
+        inp0.sample = (...a) => ({ ...sample0(...a), mx: 0, my: 0, buttons: M.input.BTN_LOADING })
+      })
+      at(1.4, () => {
+        const s = st()
+        const p = s.players[0]
+        const b = s.monsters.find((m) => m.hp > 0 && M.monsters.MONSTER_LIST[m.kind].boss)
+        if (!b) return void (holding = false)
+        s.monsters = s.monsters.filter((m) => m === b)
+        // 볼 쪽: 달이면 달에서 비킨 쪽(거대한 몸이 달을 가리지 않게) · 아니면 들어선 쪽에서 — 벽이면 다른 비킴 · 조금씩 당긴다
+        let face = Math.atan2(b.y - p.y, b.x - p.x)
+        let d = dist
+        if (moon) {
+          for (const off of [0.55, -0.55, 0.45, -0.45, 0.65, -0.65, 0.35, -0.35]) {
+            if (!clearRay(b.x, b.y, moonYaw - off + Math.PI, dist * T)) continue
+            face = moonYaw - off
+            break
+          }
+        } else for (; d > 4.5 && !clearRay(b.x, b.y, face + Math.PI, d * T); d -= 0.25);
+        p.x = b.x - Math.cos(face) * d * T
+        p.y = b.y - Math.sin(face) * d * T
+        // 보스가 나를 보게 (정면)
+        b.aim = Math.round((Math.atan2(p.y - b.y, p.x - b.x) / (Math.PI * 2)) * 1024) & 1023
+        inp().fps = true
+        inp().yaw = face
+        inp().pitch = -0.32
+        perFrame = both(bossTilt(face), botsBehind(4))
+        holding = false
+      })
+      at(show, () => {
+        perFrame = null
+        if (sample0) S().input.sample = sample0
+      })
+    }
+
+    // ==== 새로 올리는 곳 트레일러 (REL — 2026-11-03 사용자: "3인칭 모드 및 4분할 화면이 포함된 새로 올리는 곳용 트레일러 · 3개 이내 ·
+    // 소리 있는 영상은 45초 이내 · 11 ~ 40 MB 는 11 MB 로 자동 변환 · 총 50 MB(10 MB 하나는 이미)") — 편마다 44초 · 11 MB 안
+    if (REL === 1) {
+      // 1편 게임 소개: (고르는 화면 — lobbyPhase) → 운동장 쿼터뷰 → 3인칭 → 정조준 → 🌙 → 쿼터뷰 → 무기 모아 보기
+      seqPlayground(null)
+      seqMoon()
+      seqShowcase()
+      endCard(tl, 0, 700)
+      return tl.done()
+    }
+    if (REL === 2) {
+      // 2편 같이 하기 · 방송: 4분할(같은 판 · 네 화면) → 후원 전투 ☀ 쿼터뷰 → 3인칭 → 🌙
+      at(0, () => {
+        S().autopilot = false
+        document.querySelector('.ending.intro .ending-go')?.click()
+        // 파티 레벨 20 (1편처럼 — 낮으면 조작 안내 줄이 뜨고 스킬이 적었다)
+        levelUpParty()
+        cue('hot', { act: 0 })
+      })
+      seqSplit(SPLIT_DUR_REL, { text: '같이 하기 · 최대 4명', sub: '같은 판 · 분위기와 시점은 사람마다' })
+      seqDonation({ dark: true })
+      endCard(tl, 0, 700)
+      return tl.done()
+    }
+    if (REL === 3) {
+      // 3편 세계 · 막 보스: 1막 마을(제목) → 막 보스 넷 예고(깨우지 않는다) → 운동장 우두머리 전리품
+      at(0, () => {
+        S().autopilot = false
+        document.querySelector('.ending.intro .ending-go')?.click()
+        inp().fps = true
+        goto(0, 'bright')
+      })
+      at(1.5, () => {
+        levelUpParty()
+        const p = st().players[0]
+        // 마을 가운데(NPC 들의 가운데 — 모닥불 곁)에서 6칸 떨어져 그쪽을 보며 천천히 돈다 (울타리만 보였다)
+        const npcs = M.world.townNpcs(0)
+        const cx = npcs.reduce((a, n) => a + n.x, 0) / npcs.length
+        const cy = npcs.reduce((a, n) => a + n.y, 0) / npcs.length
+        let a0 = Math.atan2(p.y - cy, p.x - cx)
+        for (let k = 0; k < 16 && !clearRay(cx, cy, a0, 6.5 * T); k++) a0 += Math.PI / 8
+        p.x = cx + Math.cos(a0) * 6 * T
+        p.y = cy + Math.sin(a0) * 6 * T
+        const base0 = a0 + Math.PI - 0.25
+        inp().yaw = base0
+        inp().pitch = -0.1
+        let t = 0
+        perFrame = both(() => {
+          t += 1 / FPS
+          inp().yaw = base0 + t * 0.14
+        }, botsBehind(3, true))
+        cue('calm')
+        ov.title = { text: '배도라지 알PG', sub: '걸어서 이어지는 4막 · 막 보스 넷', at: now() - 1300 }
+        holding = false
+      })
+      at(2.2, () => ov.title && (ov.title.out = now()))
+      at(1.6, () => {})
+      seqBoss(9, 'bright', { dist: 6.5, show: 3.6 })
+      seqBoss(18, 'bright', { dist: 7, show: 3.6 })
+      seqBoss(27, 'bright', { dist: 7, show: 3.6 })
+      seqBoss(34, 'dark', { dist: 7.5, show: 4.2, moon: true })
+      // 전리품: 사람마다 따로 · 등급마다 빛기둥 (희귀 · 전설 · 신화 · 세트) — 싸우는 둘레로 쏟아진다 (자동 줍기는 꺼 둔 채라 바닥에 남는다)
+      at(0, () => goto(1, 'bright'))
+      at(1.2, () => {
+        place()
+        inp().fps = false
+        // 가깝게 — 멀면 빛기둥 · 이름표가 작았다
+        S().renderer.setDebugZoom(1.0)
+        spawn(K(1), 10, 5, 10)
+        S().autopilot = true
+        perFrame = botCursor()
+        holding = false
+      })
+      const sl = tl.t
+      const LOOT = [
+        [0, 'rifle', 4], [1, '', 3], [3, '', 2], [0, 'smg', 3], [2, '', 4], [4, '', 3], [1, '', 2], [0, 'sniper', 4], [3, '', 3], [2, '', 2], [4, '', 4], [0, 'shotgun', 3],
+      ]
+      let li = 0
+      const lootRng = M.rng.makeRng(1103)
+      every(sl + 0.3, sl + 3.6, 0.28, () => {
+        const s = st()
+        const p = s.players[0]
+        const [slot, w, rarity] = LOOT[li++ % LOOT.length]
+        const a = Math.random() * Math.PI * 2
+        const d = (1.2 + Math.random() * 2.2) * T
+        // 게임과 같은 굴림(옵션 · 이름) — 부위 · 등급만 정한다 (dropLoot 와 같게)
+        const it = M.items.rollItem(lootRng, 880000 + li, 20, w || p.weapon, 'boss', 0, rarity, slot)
+        it.rarity = rarity
+        const x = p.x + Math.cos(a) * d
+        const y = p.y + Math.sin(a) * d
+        s.drops.push({ id: s.nextDropId++, owner: 0, x, y, item: it, gold: 0, pot: 0, ttl: 60 * 240, lock: 20 })
+        s.events.push({ type: 'loot', owner: 0, x, y, rarity })
+      })
+      every(sl + 0.5, sl + 5, 0.7, () => alive() < 18 && spawn(K(1), 5, 6, 10))
+      at(5.2, () => {})
+      endCard(tl, 0, 700)
+      return tl.done()
+    }
+
+    // ==== 패치 플레이 영상 (patch_1025_views)
+    seqPlayground({ text: '배도라지 알PG', sub: '시점 · 모드를 게임 중에 바꾼다' })
+    seqMoon()
+    seqShowcase()
+    seqSplit(SPLIT_DUR)
+    seqDonation()
+    seqBoss(34, 'dark', { dist: 7.5, show: 5.0, moon: true })
     endCard(tl, 0, 700)
     return tl.done()
   }
@@ -2706,7 +2846,8 @@ export async function start(opts = {}) {
   NOTES = opts.mode === 'notes'
   P24 = opts.mode === 'patch24'
   MODES = P24 && !!opts.modes
-  TPPV = P24 && !!opts.tppv
+  REL = P24 ? Math.max(0, Math.min(3, opts.rel | 0)) : 0
+  TPPV = P24 && (!!opts.tppv || REL > 0)
   FPS = opts.fps ?? (P24 ? 60 : 30)
   perFrame = null
   // 밝은 분위기 영상: 로비 모닥불 · 방 만들기 · 판 모두 밝게 (분위기는 방 설정 — 방 만들기 창에서 '밝게' 를 누른다)
@@ -2719,7 +2860,8 @@ export async function start(opts = {}) {
     ;(await sameModule('/src/game/skin.ts')).setSkin('bright')
   }
   PART = Math.max(1, Math.min(3, opts.part ?? 1))
-  SELECT = !ULT && !NOTES && !P24 && PART !== 2 && opts.select !== false
+  // 트레일러 1편은 캐릭터 고르는 화면(모닥불 앞 12명)부터 — 처음 보는 사람용
+  SELECT = REL === 1 || (!ULT && !NOTES && !P24 && PART !== 2 && opts.select !== false)
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
   const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `${PART === 3 ? 'intro' : 'patch' + PART}_${BRIGHT ? 'bright' : 'dark'}`
   // 한 편 소개(part 3 · 49초)는 새 사이트 한도(파일당 20 MB) 안에서 — 2026-10-22 계측: 3.6 → 21.7 MB · 3.1 → 18.9 MB · 2.6 → 16.1 MB
@@ -2728,13 +2870,16 @@ export async function start(opts = {}) {
   // 패치 영상은 고화질 한 벌만 (1080 · 가변 24 Mbps · 키 2초)
   // 10월 23일 이후 패치 영상: 공지용 720(20 MB 안 — 셋 중 가장 큰 것) + 고화질 1080
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
-  const P24NAME = TPPV ? 'patch_1025_views' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
+  // 새로 올리는 곳: 11 ~ 40 MB 는 11 MB 로 자동 변환(화질 손실)된다 — 11 MB 안에서 가장 큰 것
+  if (REL && !opts.lowMax) LOW_MAX = 10_900_000
+  const P24NAME = REL ? `trailer${REL}_${['', 'intro', 'together', 'world'][REL]}` : TPPV ? 'patch_1025_views' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
   const encs = P24
     ? [
         // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
         // 모드 영상은 🌙 장면이 압축이 안 돼 1.9 Mbps 도 23.5 MB 였다 — 더 낮은 후보까지
         // 모드 영상은 🌙 장면이 압축이 안 돼 VP8 은 비트레이트를 낮춰도 22 MB 였다 → 720 도 VP9
-        ...(MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        // 트레일러는 11 MB 안에서 가장 큰 것 — 짧은 편(30초)은 3 Mbps 까지 쓴다
+        ...(REL ? [3_000_000, 2_600_000, 2_300_000, 2_000_000, 1_700_000] : MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
         (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
           ? { name: P24NAME + '_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
           : { name: P24NAME + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
@@ -2974,12 +3119,17 @@ export async function start(opts = {}) {
         // 그 뒤로 장 간격이 0 이 되었다(페이드가 줄지 않아 장면이 통째로 빠졌다 — 2026-10-24)
         cancelAnimationFrame(sess.raf)
         clearTimeout(sess.raf)
+        // 기다리는 동안은 진짜 시계로 — 렌더러의 "늦어도 몇 초 뒤 덮개를 걷는다"(HOLD_MAX)가 performance.now 로 재는데, 가상 시계가 멈춰 있어
+        // 끝내 오지 않았다(2026-11-03 트레일러 3편: 마을 → 1막 보스 방에서 덮개가 40초 넘게 남아 그 뒤가 통째로 빠졌다). 판 시각(sess.last)은 그대로
+        const vNow = performance.now
+        performance.now = realNow
         while (unready() && realNow() - w0 < 40000) {
           sess.frame(vt)
           cancelAnimationFrame(sess.raf)
           clearTimeout(sess.raf)
           await new Promise((r) => setTimeout(r, 16))
         }
+        performance.now = vNow
         if (unready()) {
           const stuck = Object.entries(waits).filter(([k, f]) => !gaveUp.has(k) && f()).map(([k]) => k)
           for (const k of stuck) gaveUp.add(k)
@@ -3096,7 +3246,7 @@ export async function start(opts = {}) {
   }
   const au = await encodeAudio(abuf)
   // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
-  const saveDir = opts.outDir ?? (P24 ? (TPPV ? 'patch-2026-10-25' : P24_DIR) : NOTES ? NOTES_DIR : opts.dir)
+  const saveDir = opts.outDir ?? (P24 ? (REL ? 'release-2026-11-03' : TPPV ? 'patch-2026-10-25' : P24_DIR) : NOTES ? NOTES_DIR : opts.dir)
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000, codec: e.codec?.startsWith('vp09') ? 'V_VP9' : 'V_VP8' })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
