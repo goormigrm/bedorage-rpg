@@ -395,6 +395,10 @@ export class D4Hud {
   /** 마우스를 올린 스킬 칸 (툴팁) 과 올려 둔 시간 */
   private hoverSlot = -1
   private hoverT = 0
+  /** 스킬 칸에 커서가 올라가 있나 — 그동안 아래 바는 굽지 않고 프레임마다 그린다 (hud.ts baked) */
+  get hovering(): boolean {
+    return this.hoverSlot >= 0
+  }
 
   /** 파티 초상 (한 번 그려 둔다 — drawPortrait 는 무겁다) */
   private portrait(def: CharacterDef): HTMLCanvasElement {

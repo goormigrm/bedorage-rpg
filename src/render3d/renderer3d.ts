@@ -3037,10 +3037,10 @@ export class Renderer3D {
    * 지금은 월드 방향 → 화면 방향과 같은 회전(카메라 요)을 미니맵에도 걸고, 나를 가운데 둔다.
    * 관전 중이면 보고 있는 사람이 가운데.
    */
-  private drawMinimap(curr: GameState, opts: RenderOptions): void {
+  private drawMinimap(curr: GameState, opts: RenderOptions, bake?: CanvasRenderingContext2D): void {
     const map = this.map
     if (!this.miniCanvas) this.miniCanvas = renderMapTiles(map)
-    const ctx = this.hud.ctx
+    const ctx = bake ?? this.hud.ctx
     const S = MINIMAP_SIZE
     // 디아블로 4 처럼 오른쪽 위 (그 아래에 목표 추적이 붙는다)
     const x = VIEW_W - 16 - S
@@ -3056,6 +3056,14 @@ export class Renderer3D {
     // 화면 방향과 맞추는 회전: 월드 +x 가 화면에서 어느 쪽인지
     const d = worldDirToScreen(1, 0)
     const rot = Math.atan2(d.y, d.x)
+    if (!bake) {
+      // 바탕 · 점은 구워 두고 1초에 30번만 다시 그린다 (hud.baked — 2026-11-12: 괴물 수백을 프레임마다 세 번 훑어 그렸다).
+      // 동료 이름 · 목표 화살표는 창 밖(가장자리)에도 그리므로 그 위에 프레임마다
+      this.hud.baked('mini', x - 12, y - 12, S + 24, S + 24, 33, (c) => this.drawMinimap(curr, opts, c))
+      this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
+      this.drawMiniGoal(curr, opts, x, y, S, mx, my, rot)
+      return
+    }
     ctx.save()
     // 테두리: 쇠 바탕 + 금선 두 겹 (한 줄짜리 얇은 테는 싸구려로 보인다 — 2026-09-20)
     const frame = ctx.createLinearGradient(0, y - 6, 0, y + S + 6)
@@ -3303,8 +3311,6 @@ export class Renderer3D {
     ctx.lineTo(cx, cy + 6)
     ctx.stroke()
     ctx.restore()
-    this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
-    this.drawMiniGoal(curr, opts, x, y, S, mx, my, rot)
   }
 
   /**

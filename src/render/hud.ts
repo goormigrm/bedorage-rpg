@@ -153,6 +153,12 @@ interface Notice {
 }
 
 
+/** 구울 때 HUD 캔버스에서 물려받는 그리기 상태 (Hud.baked) */
+const BAKE_STATE = [
+  'fillStyle', 'strokeStyle', 'lineWidth', 'lineCap', 'lineJoin', 'miterLimit', 'lineDashOffset', 'font', 'textAlign', 'textBaseline', 'direction',
+  'globalAlpha', 'globalCompositeOperation', 'imageSmoothingEnabled', 'imageSmoothingQuality', 'shadowBlur', 'shadowColor', 'shadowOffsetX', 'shadowOffsetY', 'filter',
+]
+
 export class Hud {
   readonly ctx: CanvasRenderingContext2D
   /** 가운데 알림. 최대 3개 */
@@ -325,6 +331,62 @@ export class Hud {
     this.overT = 0
   }
 
+  /**
+   * HUD 굽기 (2026-11-12 최적화 — HUD 가 프레임 CPU 의 20%였다): 값이 천천히 바뀌는 덩어리(미니맵 · 추적 칸 · 파티 칸)는 제 캔버스에 그려 두고
+   * 프레임마다는 붙이기만, everyMs 마다 다시 그린다. 같은 픽셀 격자(같은 배율 · 정수 픽셀 자리)에 그려 정수 픽셀로 붙이므로 바로 그릴 때와 화면이 같다.
+   * 조준점 · 맞은 방향 · 배너 · 월드 이름표 · 툴팁처럼 프레임마다 움직여야 하는 것은 굽지 않는다.
+   * 칸(x, y, w, h — 논리 좌표) 밖에 그린 것은 잘린다 — 테두리 장식만큼 넉넉히 잡을 것
+   */
+  private bottomDt = 0
+  private bakes = new Map<string, { cv: HTMLCanvasElement; c: CanvasRenderingContext2D; key: string; at: number; px: number; py: number }>()
+  baked(id: string, x: number, y: number, w: number, h: number, everyMs: number, draw: (c: CanvasRenderingContext2D) => void): void {
+    const k = this.dpr
+    const px = Math.floor(x * k)
+    const py = Math.floor(y * k)
+    const pw = Math.max(1, Math.ceil((x + w) * k) - px)
+    const ph = Math.max(1, Math.ceil((y + h) * k) - py)
+    let b = this.bakes.get(id)
+    if (!b) {
+      const cv = document.createElement('canvas')
+      const c = cv.getContext('2d')
+      // 캔버스를 못 만들면 그냥 바로 그린다
+      if (!c) return draw(this.ctx)
+      b = { cv, c, key: '', at: 0, px, py }
+      this.bakes.set(id, b)
+    }
+    const key = `${px},${py},${pw},${ph},${k}`
+    const now = performance.now()
+    // 4ms 봐준다 — 60Hz 에서 33ms 는 두 프레임에 한 번
+    if (b.key !== key || now - b.at >= everyMs - 4) {
+      if (b.cv.width !== pw || b.cv.height !== ph) {
+        b.cv.width = pw
+        b.cv.height = ph
+      }
+      // 지우고, 그리기 상태(선 이음 · 글꼴 · 정렬 …)는 지금 HUD 캔버스 것을 그대로 물려준다 — 바로 그릴 때 앞 그림이 남긴 상태를
+      // 이어받아 그려지던 것(오브 숫자 테두리의 둥근 이음 등)이 구워도 같게
+      // reset 이 없는 옛 브라우저(사파리 17.1 이하)는 크기를 다시 넣어 지운다
+      if (typeof b.c.reset === 'function') b.c.reset()
+      else b.cv.width = pw
+      b.c.setTransform(k, 0, 0, k, -px, -py)
+      const from = this.ctx as unknown as Record<string, unknown>
+      const to = b.c as unknown as Record<string, unknown>
+      for (const p of BAKE_STATE) to[p] = from[p]
+      b.c.setLineDash(this.ctx.getLineDash())
+      b.key = key
+      b.at = now
+      b.px = px
+      b.py = py
+      draw(b.c)
+    }
+    const ctx = this.ctx
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.drawImage(b.cv, b.px, b.py)
+    ctx.restore()
+  }
+
   /** 프레임 시작: 변환 초기화 + 지우기 */
   begin(dt: number): void {
     this.t += dt
@@ -399,13 +461,28 @@ export class Hud {
     const lp = opts.localPlayer
     if (lp !== -1) this.d4.drawLowHealth(h, s.players[lp])
     this.d4.dungeon = s.mode === 'dungeon'
-    this.d4.drawTracker(h, s, opts)
+    // 추적 칸(오른쪽 위 미니맵 아래 기둥) · 파티 칸(왼쪽 위)은 구워서 (baked) — 글이 대부분이라 1초에 10 · 20번이면 된다.
+    // 다시 구울 때 드는 값(지우기 · 그림 넘기기)이 넓이에 비례해, 칸은 지난번에 그린 높이만큼만 잡는다 — 칸이 길어지면 한 프레임 뒤에 맞춰진다
+    const tx = VIEW_W - 16 - MINIMAP_SIZE - 6
+    const ty = 16 + MINIMAP_SIZE + 14
+    const th = Math.min(VIEW_H, Math.max(ty + 120, this.d4.trackerBottom)) - ty
+    this.baked('tracker', tx - 8, ty - 8, MINIMAP_SIZE + 12 + 16, th + 16, 100, (c) => this.d4.drawTracker({ ...h, ctx: c }, s, opts))
     if (s.mode === 'dungeon') {
       this.d4.drawBoss(h, s)
       this.d4.drawBanner(h)
     }
-    this.d4.drawParty(h, s, opts)
-    if (lp !== -1) this.d4.drawBottom(h, s.players[lp], opts.cursor, this.lastDt)
+    this.baked('party', 8, 62, 226, 58 * Math.max(1, s.players.length - 1) + 8, 50, (c) => this.d4.drawParty({ ...h, ctx: c }, s, opts))
+    if (lp !== -1) {
+      // 아래 바(오브 · 스킬 칸 · 경험치)도 구워서 1초에 30번 — 스킬 칸에 커서를 올린 동안은 바로 그린다(툴팁은 칸 위로 나가고 프레임마다 그린다).
+      // 건너뛴 프레임의 시간은 모아 넘긴다(커서를 올려 둔 시간)
+      this.bottomDt += this.lastDt
+      const bottom = (c: CanvasRenderingContext2D): void => {
+        this.d4.drawBottom(c === ctx ? h : { ...h, ctx: c }, s.players[lp], opts.cursor, this.bottomDt)
+        this.bottomDt = 0
+      }
+      if (this.d4.hovering) bottom(ctx)
+      else this.baked('bottom', VIEW_W / 2 - 400, VIEW_H - 180, 800, 180, 33, bottom)
+    }
     if (lp !== -1) this.drawMyStatus(s.players[lp], s)
 
     if (s.phase === 'countdown') {
