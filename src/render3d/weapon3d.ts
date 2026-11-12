@@ -376,7 +376,7 @@ function tier(k: Kit, rarity: number): { c: number; to: Bake } | null {
 /** 바닥과 나란한 판: 윤곽(x, z)을 그려 두께(y)만큼 */
 function plate(outline: THREE.Shape, thick: number, bevel: number, y: number): THREE.BufferGeometry {
   const b = Math.min(bevel, thick * 0.4)
-  const g = new THREE.ExtrudeGeometry(outline, { depth: thick - b * 2, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 2, steps: 1, curveSegments: 10 })
+  const g = new THREE.ExtrudeGeometry(outline, { depth: thick - b * 2, bevelEnabled: b > 0, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 1, steps: 1, curveSegments: 6 })
   g.rotateX(Math.PI / 2)
   g.translate(0, y + thick - b, 0)
   return g

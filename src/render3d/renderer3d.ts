@@ -2519,14 +2519,17 @@ export class Renderer3D {
         const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
         mesh.geometry = g
         const mat = mesh.material as THREE.MeshBasicMaterial
-        mat.color.setHex(j === 1 ? 0xffb07a : 0xff7a5a)
+        // ☀ 밝은 바닥 · 벽 위에서는 더하기 빛 부채꼴이 흰 판으로 날아갔다 → 궤적 띠처럼 보통 섞기 + 진한 장난감 색 (2026-11-12)
+        const bright = isBright()
+        mat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
+        mat.color.setHex(bright ? (j === 1 ? 0xff9fc4 : 0xff5f9e) : j === 1 ? 0xffb07a : 0xff7a5a)
         mat.opacity = 0
         mesh.scale.setScalar(1)
         mesh.position.set(x, 0.45, z)
         mesh.rotation.y = -aim
         mesh.visible = false
         this.scene.add(mesh)
-        this.slashes.push({ mesh, life: 0.17, max: 0.17, delay: j * 0.045, peak: 0.75 })
+        this.slashes.push({ mesh, life: 0.17, max: 0.17, delay: j * 0.045, peak: bright ? 0.45 : 0.75 })
       }
       return
     }
@@ -2546,8 +2549,10 @@ export class Renderer3D {
     const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
     mesh.geometry = geo
     const mat = mesh.material as THREE.MeshBasicMaterial
-    mat.color.setHex(color)
-    mat.opacity = 0.6
+    const bright = isBright()
+    mat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
+    mat.color.setHex(bright ? (w.family === 'rapier' ? 0x3fc8ff : 0xffb21f) : color)
+    mat.opacity = bright ? 0.45 : 0.6
     mesh.scale.setScalar(1)
     mesh.position.set(x, 0.45, z)
     // 링 조각은 +x 가 가운데, 바닥에 눕히면 각이 -z 쪽으로 돈다 → y 축으로 -aim 만큼 돌리면 조준 방향
