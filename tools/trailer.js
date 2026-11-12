@@ -2579,7 +2579,13 @@ async function renderAudio(durSec) {
     // 밝은 판: 게임과 같은 고르기(평소 놀이곡 · 보스전 추격 곡 — sfx.scheduleBgm)
     if (BRIGHT) {
       sx.bgmStyle = 'bright'
-      sx.scheduleBgm()
+      // 게임처럼 시계를 조금씩 밀며 부른다 — scheduleBgm 은 밀린 박(지금 시각보다 앞)을 버리므로(v1.10.42 · 멈춘 뒤 박이 몰려 나오던 것)
+      // 구간 끝 시각으로 한 번만 부르면 끝 0.4초만 깔렸다 (2026-11-13 — 한 편짜리 영상에서 배경음이 비었다)
+      const end = fakeT
+      for (fakeT = Math.min(end, Math.max(0, s.t)); ; fakeT = Math.min(end, fakeT + 0.25)) {
+        sx.scheduleBgm()
+        if (fakeT >= end) break
+      }
     } else if (sx.boss) sx.scheduleBoss(fproxy)
     else sx.scheduleDark(fproxy)
   }
