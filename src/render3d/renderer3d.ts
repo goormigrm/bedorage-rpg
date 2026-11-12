@@ -654,6 +654,9 @@ export class Renderer3D {
         // 스크린샷을 뜰 때만 켠다(기본은 성능 우선). 주소 뒤 ?shot=1
         preserveDrawingBuffer: typeof location !== 'undefined' && location.search.includes('shot=1'),
       })
+    // 셰이더 오류 확인은 개발 · 화면 시험(?shot=1 — tools/uitest.mjs 가 빌드한 판에서 콘솔의 셰이더 오류를 잡는다)에서만 (2026-11-12):
+    // 켜 두면 처음 쓰는 셰이더마다 컴파일 로그를 동기로 물어 10 ~ 35ms 멈추고, 락스텝이라 모두가 기다린다
+    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1'))
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
