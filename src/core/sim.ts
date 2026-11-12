@@ -143,6 +143,11 @@ function findArea(state: GameState, id: number): AreaState | undefined {
 
 /** withArea 가 잠깐 가린(다른 지역에 있는) 사람들 — 파티 전체에 거는 후원 효과가 본다 (partyOf) */
 let hiddenNow: PlayerState[] = []
+/**
+ * 정말 나간 사람인가 — 지역을 묶어 도는 동안 **다른 지역 사람도 잠시 left** 다(withArea). 마을에서 내는 명령이 다른 지역의 파티원 · 용병을
+ * 세야 할 때는 `!q.left` 가 아니라 이것으로 본다 (2026-11-12 버그 검사: 시련 안에 사람이 있어도 새 시련이 열렸고, 들판에 쓰러진 용병은 값 계산 · 내보내기에서 빠졌다)
+ */
+const gone = (q: PlayerState): boolean => q.left && !hiddenNow.includes(q)
 
 /** p 의 파티 전체 (다른 지역에 있는 사람도 — 묶인 지역 밖이라 잠깐 left 로 가려져 있어도). 빈 자리 · 탈락은 빼고 */
 function partyOf(state: GameState, p: PlayerState): PlayerState[] {
@@ -388,7 +393,7 @@ function trialCommand(state: GameState, p: PlayerState, arg: number): void {
     return
   }
   if (!riftOpen(p, state.tier) || arg < 1 || arg > Math.min(RIFT_MAX, p.riftBest + 1)) return
-  if (r && state.players.some((q) => !q.left && q.area === r.area)) return
+  if (r && state.players.some((q) => !gone(q) && q.area === r.area)) return
   if (r) {
     // 앞 시련은 버린다 (지역 · 나가는 문)
     state.areas = state.areas.filter((a) => a.id !== r.area)
@@ -791,7 +796,10 @@ function buildCommand(state: GameState, p: PlayerState, cmd: number, arg: number
     p.gold -= g
     const s0 = b.s.slice()
     Object.assign(b, sanitizeBuild(null))
-    b.s = s0.map((n, k) => (b.r[n] > 0 ? n : k))
+    // 칸 배치는 남기되(Q · E 를 바꿔 쓰던 사람), 랭크가 사라진 칸을 제자리 스킬로 돌리다 같은 스킬이 두 칸에 걸리면 처음 배치로
+    // (2026-11-12 버그 검사: [2,1,0,3] → [0,1,0,3] — 응급 처치를 Q 와 [1] 로 따로 두 번 썼다)
+    const s1 = s0.map((n, k) => (b.r[n] > 0 ? n : k))
+    if (new Set(s1).size === s1.length) b.s = s1
     recalc(p)
     state.events.push({ type: 'trade', p: p.id, what: 'respec', gold: -g, uid: 0 })
   } else if (cmd === CMD_HIRE) {
@@ -894,10 +902,14 @@ function hireCommand(state: GameState, p: PlayerState, arg: number): void {
   if (state.mode !== 'dungeon' || p.merc >= 0 || !isTown(p.area) || npcNear(p.area, p.x, p.y) !== 'captain') return
   if (arg === 255 || (arg >= 100 && arg < 100 + state.players.length)) {
     for (const q of state.players) {
-      if (q.merc !== p.id || q.left || q.cameo || (arg !== 255 && q.id !== arg - 100)) continue
+      if (q.merc !== p.id || gone(q) || q.cameo || (arg !== 255 && q.id !== arg - 100)) continue
+      // 다른 지역에 있던 용병이면 지역 묶기가 끝날 때 left 를 되돌리지 않게 뺀다
+      if (hiddenNow.includes(q)) hiddenNow.splice(hiddenNow.indexOf(q), 1)
       q.left = true
       q.vacant = true
       q.alive = false
+      q.downed = false
+      q.hp = 0
       q.merc = -1
       q.follow = -1
       q.bot = undefined
@@ -906,7 +918,7 @@ function hireCommand(state: GameState, p: PlayerState, arg: number): void {
     return
   }
   const char = PLAYABLE[arg]
-  const g = mercPrice(p.level, state.players.filter((q) => q.merc === p.id && !q.left && !q.cameo).length)
+  const g = mercPrice(p.level, state.players.filter((q) => q.merc === p.id && !gone(q) && !q.cameo).length)
   if (!char || p.gold < g) return
   const seat = state.players.find((q) => q.vacant && q.left)
   if (!seat) return
@@ -944,7 +956,8 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
   const trade = (what: string, gold: number, uid: number) => state.events.push({ type: 'trade', p: p.id, what, gold, uid })
   if (cmd === CMD_SELL && npc === 'merchant') {
     const it = p.bag[arg]
-    if (!it) return
+    // 잠근 것은 팔리지 않는다 — 창은 막지만 잇달아 누르면 칸이 당겨져 다음 클릭이 잠근 칸에 닿았다 (2026-11-12 버그 검사 · 버리기와 같게)
+    if (!it || it.lk) return
     const g = itemValue(it)
     p.bag.splice(arg, 1)
     p.gold += g
@@ -1626,7 +1639,9 @@ export function recalc(p: PlayerState): void {
   // 탱커: 최대 체력 +30% (던전)
   if (roleOn && c.role === 'tank') p.st[ST_HP] += Math.round(c.maxHp * 0.3)
   const maxHp = c.maxHp + p.st[ST_HP]
-  if (maxHp > p.maxHp && p.alive) p.hp += maxHp - p.maxHp
+  // 체력은 **비율**을 지킨다 (2026-11-12 버그 검사): 전에는 늘어난 만큼 더해 줘서, 체력 옵션 갑옷을 벗었다 끼기만 해도 싸우는 중에
+  // 그만큼씩 찼고(세 번이면 가득) 쓰러진 사람도 체력 0 에서 300 이 됐다. 가득이면 가득 · 반이면 반
+  if (maxHp !== p.maxHp && p.maxHp > 0) p.hp = (p.hp * maxHp) / p.maxHp
   p.maxHp = maxHp
   p.hp = Math.min(p.hp, p.maxHp)
   // 재장전이 없다 (2026-09-19) — 탄창 칸은 0
@@ -1923,6 +1938,20 @@ export function dropPlayer(state: GameState, idx: number): void {
   p.hp = 0
   p.respawnTimer = 0
   state.events.push({ type: 'leave', p: idx })
+  // 그 사람의 용병도 같이 물러난다 (2026-11-12 버그 검사): 남아 있으면 따라갈 사람 없이 서 있다가, 그 자리에 난입한 **다른 사람**의
+  // 용병이 됐다(Lv 5 손님에게 Lv 30 용병이 공짜로). 영상 동료(cameo)는 그대로
+  for (const q of state.players) {
+    if (q.merc !== idx || q.left || q.cameo) continue
+    q.left = true
+    q.vacant = true
+    q.alive = false
+    q.downed = false
+    q.hp = 0
+    q.merc = -1
+    q.follow = -1
+    q.bot = undefined
+    state.events.push({ type: 'hire', p: q.id, by: idx, on: false })
+  }
 }
 
 function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input | undefined): void {
@@ -1987,6 +2016,9 @@ function stepPlayer(state: GameState, map: GameMap, p: PlayerState, input: Input
   if ((input.buttons & BTN_LOADING) !== 0 && state.mode === 'dungeon' && state.tick - (p.arriveT ?? -LOADING_MAX) < LOADING_MAX) {
     p.invuln = Math.max(p.invuln, SPAWN_PROTECT_TICKS + 1)
     p.cover = 1
+    // 보호받는 동안은 서 있기만 한다 — 세션이 이동 · 버튼을 비워 보내지만 판도 스스로 지킨다 (2026-11-12 버그 검사: 손댄 손님이
+    // 덮임 신호에 사격을 같이 실으면 맞지 않으면서 쏠 수 있었다 — 3000틱에 받은 피해 0 · 처치 35)
+    input = { ...input, mx: 0, my: 0, buttons: BTN_LOADING }
   } else if (p.cover) delete p.cover
   if (p.invuln > 0) p.invuln--
   if (p.rollInv) p.rollInv--
@@ -4187,10 +4219,21 @@ function runCommand(state: GameState, map: GameMap, p: PlayerState, cmd: number,
     return
   }
   if (cmd === CMD_PICK) {
-    const d = state.drops.find((q) => q.id === arg)
-    // 내 것 · 버려진 것만 (남의 전리품은 못 줍는다 — F 와 같다)
-    if (d && d.item && (d.owner === p.id || d.owner === -1)) {
-      p.pickGoal = arg
+    // 입력의 arg 는 한 바이트라 전리품 번호의 아래 8비트만 실린다 (2026-11-12 버그 검사: 번호가 255 를 넘으면 — 금화 더미도 번호를 쓰니
+    // 몇 분이면 넘는다 — 누른 사람 판은 온 번호 · 남의 판은 자른 번호를 써서 누를 때마다 판이 어긋나 리싱크가 났다).
+    // 아래 8비트가 같은 내 것 · 버려진 것 가운데 가장 가까운 것 (남의 전리품은 못 줍는다 — F 와 같다)
+    let d: (typeof state.drops)[number] | undefined
+    let dd = 0
+    for (const q of state.drops) {
+      if ((q.id & 255) !== (arg & 255) || !q.item || (q.owner !== p.id && q.owner !== -1)) continue
+      const e = (q.x - p.x) ** 2 + (q.y - p.y) ** 2
+      if (!d || e < dd) {
+        d = q
+        dd = e
+      }
+    }
+    if (d) {
+      p.pickGoal = d.id
       p.pickT = PICK_WALK_TICKS
     }
     return

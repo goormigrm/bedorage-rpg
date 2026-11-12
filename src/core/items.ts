@@ -741,13 +741,18 @@ export function sanitizeSheet(s: unknown): Sheet {
   const e = emptySheet()
   if (!s || typeof s !== 'object') return e
   const o = s as Partial<Sheet>
+  // 옵션은 [번호, 값] 짝 — 번호는 있는 옵션 · 값은 0 ~ 1000 (2026-11-12 버그 검사: 홀수 길이면 값이 undefined 라 최대 체력이 NaN —
+  // 맞아도 쓰러지지 않고, 판을 JSON 으로 받은 사람(난입 · 리싱크)은 NaN 이 0 이 돼 곧바로 어긋났다 · 큰 음수 이동 속도는 한 틱을 몇 초로 늘렸다)
+  const okAff = (a: number[]) => a.length % 2 === 0 && a.every((v, k) => (k % 2 === 0 ? Number.isInteger(v) && v >= 0 && v < ST_COUNT : Number.isFinite(v) && v >= 0 && v <= 1000))
   const okItem = (it: unknown): it is Item => {
     if (!it || typeof it !== 'object') return false
     const x = it as Item
     if (x && x.leg !== undefined && !(Number.isInteger(x.leg) && x.leg >= 0 && x.leg < LEGENDS.length)) return false
     if (x && x.lk !== undefined && x.lk !== 1) return false
     if (x && x.set !== undefined && !(Number.isInteger(x.set) && x.set >= 0 && x.set < SETS.length)) return false
-    return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && x.aff.every((v) => Number.isFinite(v))
+    // 부위 · 등급 · 레벨은 **정수** (2026-11-12: 글자 "1" 은 비교는 통과하지만 낄 때 equip["1"] 이 돼 장비 칸이 어긋났다)
+    if (!Number.isInteger(x.slot) || !Number.isInteger(x.rarity) || !Number.isInteger(x.ilvl) || (x.wt !== undefined && !Number.isInteger(x.wt))) return false
+    return Number.isInteger(x.uid) && x.slot >= 0 && x.slot < SLOT_COUNT && x.rarity >= 0 && x.rarity <= RARITY_MYTHIC && (x.up === undefined || (Number.isInteger(x.up) && x.up >= 0 && x.up <= UPGRADE_MAX)) && (x.bt === undefined || (Number.isInteger(x.bt) && x.bt >= -1 && x.bt < 8)) && x.ilvl >= 1 && x.ilvl <= 60 && Array.isArray(x.aff) && x.aff.length <= 12 && okAff(x.aff)
   }
   e.level = Math.max(1, Math.min(LEVEL_CAP, Math.floor(Number(o.level) || 1)))
   e.xp = Math.max(0, Math.floor(Number(o.xp) || 0))

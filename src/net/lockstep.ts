@@ -12,6 +12,17 @@ const REDUNDANCY = 8
 /** 내 입력은 이만큼(30초) 남겨 둔다 — 늦게 붙는 피어에게 몰아 보내기 위해 */
 const KEEP_MINE = 1800
 
+const wireBuf = new DataView(new ArrayBuffer(INPUT_BYTES))
+/**
+ * 입력을 **전선에 실리는 모양 그대로** (2026-11-12 버그 검사): 내 판은 내가 만든 입력을, 남의 판은 10바이트로 줄인 입력을 쓴다 —
+ * 바이트에 안 담기는 값(명령 인자 255 초과 · 조준 1023 초과)이 있으면 내 판만 달라져 어긋난다(줍기 명령의 전리품 번호가 그랬다).
+ * 내 것도 한 번 싣고 풀어서 쓴다
+ */
+export function wireInput(i: Input): Input {
+  writeInput(wireBuf, 0, i)
+  return readInput(wireBuf, 0)
+}
+
 export class Lockstep {
   /** 플레이어별 틱 → 입력 */
   private inputs: Map<number, Input>[] = []
@@ -52,7 +63,7 @@ export class Lockstep {
     const target = t + this.delay
     const mine = this.inputs[this.me]
     const fresh = !mine.has(target)
-    if (fresh) mine.set(target, cloneInput(input))
+    if (fresh) mine.set(target, wireInput(input))
     this.send(target)
     return fresh
   }
@@ -79,7 +90,7 @@ export class Lockstep {
     if (!this.bots[idx] || this.me !== 0) return
     const target = t + this.delay
     const m = this.inputs[idx]
-    if (!m.has(target)) m.set(target, cloneInput(input))
+    if (!m.has(target)) m.set(target, wireInput(input))
     this.link.sendInput(this.pack(idx, target, Math.min(REDUNDANCY, target - this.startTick + 1)))
   }
 
