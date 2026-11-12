@@ -2638,6 +2638,7 @@ export class Renderer3D {
     this.cullMat.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
     this.cullFrustum.setFromProjectionMatrix(this.cullMat)
     const sph = this.cullSphere
+    this.monsterView.faceCam = this.fpsCam ? this.camera.position : null
     this.monsterView.update(prev, curr, alpha, sdt, (m) => this.hiddenM.has(m.id), (x, z, r) => {
       sph.center.set(x, 1, z)
       sph.radius = r + 1.5

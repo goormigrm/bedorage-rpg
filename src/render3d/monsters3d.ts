@@ -1003,6 +1003,12 @@ export class MonsterView {
   private aqa = [0, 0, 0, 1]
   private am = new THREE.Matrix4()
   /** 납작 기호(flat)의 자리 · 회전 · 크기 (밝은 분위기 진행요원 기호) */
+  private fe = new THREE.Euler()
+  /**
+   * 3인칭 · 정조준일 때의 카메라 자리 (쿼터뷰는 null — renderer 가 정한다). 진행요원 머리 위 기호(♡ ☆ ◇)는 내려다보는 쿼터뷰에 맞춰 눕혀 두는데,
+   * 3인칭에서는 옆에서 보여 **괴물 머리 높이에 뜬 납작한 흰 조각**이 됐다 (2026-11-12 — 원인을 못 찾던 ☀ 3인칭 흰 조각)
+   */
+  faceCam: THREE.Vector3 | null = null
   private fp = new THREE.Vector3()
   private fq = new THREE.Quaternion()
   private fs = new THREE.Vector3()
@@ -1662,7 +1668,13 @@ export class MonsterView {
       } else this.tmp.multiplyMatrices(this.local, this.o.matrix)
       if (ex.flat) {
         this.tmp.decompose(this.fp, this.fq, this.fs)
-        this.tmp.compose(this.fp, this.fq.identity(), this.fs)
+        // 3인칭 · 정조준: 눕힌 기호를 옆에서 보면 납작한 흰 판이었다 → 세워서 카메라를 보게 (기호의 위 = -z 를 +y 로 · 면은 카메라 쪽)
+        // 세우면 몸만 한 크기(위에서 보라고 크게 만든 것)가 얼굴을 다 가린다 → 절반 아래로
+        if (this.faceCam) {
+          this.fq.setFromEuler(this.fe.set(Math.PI / 2, Math.atan2(this.faceCam.x - this.fp.x, this.faceCam.z - this.fp.z), 0, 'YXZ'))
+          this.fs.multiplyScalar(0.42)
+        } else this.fq.identity()
+        this.tmp.compose(this.fp, this.fq, this.fs)
       }
       ex.mesh.setMatrixAt(i, this.tmp)
     }
