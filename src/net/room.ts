@@ -326,6 +326,8 @@ export interface RoomLink {
   rtts: Map<string, number>
   /** 가장 느린 피어의 왕복 시간 */
   readonly rtt: number
+  /** 누적 수 (계측용) */
+  readonly stats: NetStats
   /** to 를 생략하면 모두에게 */
   sendCtl(m: CtlMessage, to?: string | string[]): void
   /** to 를 주면 그 피어에게만 (늦게 연결된 피어에게 지난 입력을 몰아 보낼 때) */
@@ -347,6 +349,32 @@ export const ROOM_MAX = MAX_PLAYERS
  * 상대 쪽이 아직 안 열었으면 보낸 것이 사라지므로, 상대에게서 이 채널로 처음 받기 전까지는 원래 줄로도 같이 보낸다
  */
 const FAST_IN_ID = 77
+
+/**
+ * 개발용 망 흉내 (2026-11-12 멀티 최적화): 같은 PC 의 브라우저끼리는 핑이 0 이라 지연 · 손실 · 흔들림을 받는 쪽에서 만들어 넣는다.
+ * 주소 인자 `?lag=75&jitter=20&loss=2` — lag = 한쪽 지연(ms · 왕복은 두 배) · jitter = 메시지마다 더하는 0 ~ 값(ms) · loss = 빠른 입력 채널의
+ * 손실(%). **개발 서버에서만**(배포판에는 없다). 믿을 수 있는 줄(제어 · 큰 메시지)은 차례를 지키고, 빠른 채널은 차례가 뒤바뀔 수 있다 — 실제와 같다
+ */
+export function netSimFrom(search: string, dev: boolean): { lag: number; jitter: number; loss: number } | null {
+  if (!dev) return null
+  const q = new URLSearchParams(search)
+  const n = (k: string, max: number) => Math.max(0, Math.min(max, Number(q.get(k)) || 0))
+  const sim = { lag: n('lag', 2000), jitter: n('jitter', 1000), loss: n('loss', 90) }
+  return sim.lag > 0 || sim.jitter > 0 || sim.loss > 0 ? sim : null
+}
+const NET_SIM = netSimFrom(typeof location !== 'undefined' ? location.search : '', import.meta.env?.DEV === true)
+
+/** 방 통로의 누적 수 (멀티 계측 — `__bd.net()`): 보낸 · 받은 입력 패킷과 바이트 · 제어 메시지 수 */
+export interface NetStats {
+  inSent: number
+  inSentBytes: number
+  inRecv: number
+  inRecvBytes: number
+  /** 빠른 채널이 아니라 원래 줄로 나간 입력 (상대가 빠른 채널을 아직 안 열었을 때) */
+  inSlow: number
+  ctlSent: number
+  ctlRecv: number
+}
 
 /** 우리가 나간 방 객체. Trystero 는 leave 가 끝나기 전(또는 중간에 멈추면 영영) 같은 방 id 로 옛 객체를 돌려준다 */
 const leftRooms = new WeakSet<Room>()
@@ -371,6 +399,18 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   /** 피어별 빠른 입력 채널 · 그 채널로 받은 적이 있는 피어 (FAST_IN_ID) */
   const fast = new Map<string, RTCDataChannel>()
   const fastHeard = new Set<string>()
+  const stats: NetStats = { inSent: 0, inSentBytes: 0, inRecv: 0, inRecvBytes: 0, inSlow: 0, ctlSent: 0, ctlRecv: 0 }
+  // 개발용 망 흉내: 받은 것을 늦게 넘긴다. 믿을 수 있는 줄은 피어마다 차례를 지킨다(앞 것보다 먼저 나가지 않는다)
+  const simLast = new Map<string, number>()
+  const simLater = (from: string, ordered: boolean, fn: () => void): void => {
+    if (!NET_SIM) return fn()
+    let at = performance.now() + NET_SIM.lag + Math.random() * NET_SIM.jitter
+    if (ordered) {
+      at = Math.max(at, simLast.get(from) ?? 0)
+      simLast.set(from, at)
+    }
+    setTimeout(fn, Math.max(0, at - performance.now()))
+  }
   const openFast = (id: string) => {
     if (fast.has(id)) return
     const pc = room.getPeers()[id] as RTCPeerConnection | undefined
@@ -381,7 +421,12 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
       ch.onmessage = (e) => {
         fastHeard.add(id)
         const buf = new Uint8Array(e.data as ArrayBuffer)
-        for (const cb of [...inCbs]) cb(buf, id)
+        if (NET_SIM && Math.random() * 100 < NET_SIM.loss) return
+        simLater(id, false, () => {
+          stats.inRecv++
+          stats.inRecvBytes += buf.byteLength
+          for (const cb of [...inCbs]) cb(buf, id)
+        })
       }
       ch.onclose = () => {
         if (fast.get(id) !== ch) return
@@ -415,7 +460,9 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
       for (const v of rtts.values()) m = Math.max(m, v)
       return m
     },
+    stats,
     sendCtl(m, to) {
+      stats.ctlSent++
       if (to !== undefined) {
         const list = Array.isArray(to) ? to.filter((p) => peers.has(p)) : peers.has(to) ? [to] : []
         if (list.length > 0) void sendCtlRaw(m, list)
@@ -430,6 +477,8 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
         return
       }
       if (peers.size === 0) return
+      stats.inSent += peers.size
+      stats.inSentBytes += buf.byteLength * peers.size
       const slow: string[] = []
       for (const id of peers) {
         const ch = fast.get(id)
@@ -443,6 +492,7 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
         }
         if (!open || !fastHeard.has(id)) slow.push(id)
       }
+      stats.inSlow += slow.length
       if (slow.length > 0) void sendInRaw(buf, slow)
     },
     onCtl(cb) {
@@ -496,6 +546,8 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
   room.onPeerJoin((id) => {
     peers.add(id)
     openFast(id)
+    // 핑은 붙자마자 한 번 잰다 — 입력 지연을 그 사람에 맞추는 데 쓴다(기다리면 1초 타이머까지 모른다 · session tuneDelay)
+    link.sendCtl({ t: 'ping', s: performance.now() }, id)
     for (const cb of [...joinCbs]) cb(id)
   })
   room.onPeerLeave((id) => {
@@ -504,20 +556,27 @@ export function openRoom(code: string, role: 'host' | 'guest'): RoomLink {
     closeFast(id)
     for (const cb of [...leaveCbs]) cb(id)
   })
-  onCtlRaw((m, from) => {
-    if (m.t === 'ping') {
-      link.sendCtl({ t: 'pong', s: m.s }, from)
-      return
-    }
-    if (m.t === 'pong') {
-      rtts.set(from, Math.round(performance.now() - m.s))
-      return
-    }
-    for (const cb of [...ctlCbs]) cb(m, from)
-  })
-  onInRaw((buf, from) => {
-    for (const cb of [...inCbs]) cb(buf as Uint8Array, from)
-  })
+  onCtlRaw((m, from) =>
+    simLater(from, true, () => {
+      if (m.t === 'ping') {
+        link.sendCtl({ t: 'pong', s: m.s }, from)
+        return
+      }
+      if (m.t === 'pong') {
+        rtts.set(from, Math.round(performance.now() - m.s))
+        return
+      }
+      stats.ctlRecv++
+      for (const cb of [...ctlCbs]) cb(m, from)
+    }),
+  )
+  onInRaw((buf, from) =>
+    simLater(from, true, () => {
+      stats.inRecv++
+      stats.inRecvBytes += (buf as Uint8Array).byteLength
+      for (const cb of [...inCbs]) cb(buf as Uint8Array, from)
+    }),
+  )
   const pingTimer = setInterval(() => {
     if (peers.size === 0) return
     link.sendCtl({ t: 'ping', s: performance.now() })

@@ -23,6 +23,15 @@ export function wireInput(i: Input): Input {
   return readInput(wireBuf, 0)
 }
 
+/**
+ * 핑에 맞는 입력 지연(틱). 내 입력은 상대가 그 틱을 돌기 전에 닿아야 한다 — 한쪽 길(왕복의 절반)에 여유 3틱(흔들림 · 16ms 타이머 어긋남).
+ * 방에 나 혼자면(손님을 기다리는 방장) 기다릴 상대가 없으니 가장 짧게. 상한 12틱(0.2초) — 그보다 느린 망은 판이 느려지는 쪽이 낫다(조작이 너무 늦다)
+ */
+export function wantDelay(peers: number, rttMs: number): number {
+  if (peers <= 0) return 2
+  return Math.max(4, Math.min(12, Math.ceil(rttMs / 2 / 16.7) + 3))
+}
+
 export class Lockstep {
   /** 플레이어별 틱 → 입력 */
   private inputs: Map<number, Input>[] = []
@@ -35,9 +44,12 @@ export class Lockstep {
   private bots: boolean[] = []
   latestRemoteTick = -1
 
+  /** 입력 지연(틱) — 게임 중에도 핑에 맞춰 바뀐다 (setDelay). 사람마다 달라도 된다: 저마다 "내 입력을 몇 틱 뒤에 쓸지" 일 뿐이다 */
+  delay: number
+
   constructor(
     private link: RoomLink,
-    readonly delay: number,
+    delay: number,
     private me: number,
     /** 피어 id → 플레이어 인덱스 */
     private peerIndex: Map<string, number>,
@@ -45,10 +57,13 @@ export class Lockstep {
     /** 시작 틱. 재접속으로 경기 도중에 합류하면 0 이 아니다 */
     private startTick = 0,
   ) {
+    this.delay = delay
     for (let i = 0; i < count; i++) {
       const m = new Map<number, Input>()
-      // 처음 delay 틱은 아직 아무도 입력을 못 보냈으므로 빈 입력으로 채운다
-      for (let t = startTick; t < startTick + delay; t++) m.set(t, cloneInput(EMPTY_INPUT))
+      // 처음 delay 틱은 아직 아무도 입력을 못 보냈으므로 빈 입력으로 채운다 — **판을 처음부터 같이 시작할 때만**.
+      // 도중에 들어온 사람(난입 · startTick > 0)이 이렇게 채우면, 그 틱에 남들이 실제로 누른 입력(곧 몰아 받는다)을 버리고 빈 입력으로
+      // 돌려 들어오자마자 판이 어긋났다 (2026-11-12 멀티 계측: 방장이 걷는 중에 난입하면 리싱크 1번 — 판 200 KB 를 한 번 더 받았다)
+      if (startTick === 0) for (let t = 0; t < delay; t++) m.set(t, cloneInput(EMPTY_INPUT))
       this.inputs.push(m)
       this.dropped.push(false)
       this.heard.push(false)
@@ -61,15 +76,40 @@ export class Lockstep {
   /** 틱 t 에서 샘플한 입력을 t+delay 에 배정하고 전송. 그 틱에 이미 입력이 있으면(상대 입력을 기다리며 같은 틱을 다시 돎) 버리고 false */
   pushLocal(t: number, input: Input): boolean {
     const target = t + this.delay
-    const mine = this.inputs[this.me]
-    const fresh = !mine.has(target)
-    if (fresh) mine.set(target, wireInput(input))
-    this.send(target)
+    const fresh = this.put(this.me, target, input)
+    // 지연을 막 줄였으면 target 이 이미 보낸 틱보다 뒤일 수 있다 — 보내는 것은 늘 가장 앞선 틱부터 (겹쳐 싣는 창이 뒤로 가지 않게)
+    this.send(Math.max(target, this.latestLocal))
     return fresh
   }
 
-  /** 내가 보낸 가장 앞선 틱 */
+  /**
+   * 자리 idx 의 target 틱에 입력을 넣는다 (이미 있으면 false). 지연을 한 틱 늘린 직후에는 target 앞 틱이 비어 있다 —
+   * 같은 이동 · 버튼으로 메운다(명령은 한 번만 가야 하니 뺀다). 비워 두면 그 틱에서 모두가 영영 기다린다
+   */
+  private put(idx: number, target: number, input: Input): boolean {
+    const m = this.inputs[idx]
+    if (m.has(target)) return false
+    const w = wireInput(input)
+    let g = target - 1
+    while (g > target - REDUNDANCY && g >= this.startTick && !m.has(g)) g--
+    if (m.has(g)) for (let k = g + 1; k < target; k++) m.set(k, { ...w, cmd: 0, arg: 0 })
+    m.set(target, w)
+    return true
+  }
+
+  /**
+   * 입력 지연을 n 쪽으로 바꾼다 (세션이 핑을 보고 부른다). 올릴 때는 한 번에(겹쳐 싣는 창 안에서 — 건너뛴 틱은 put 이 메운다),
+   * 내릴 때는 한 틱씩: 다음 입력 하나가 이미 보낸 틱과 겹쳐 버려진다(pushLocal 이 false — 세션이 명령을 되돌려 넣는다).
+   * 판의 결과는 "어느 틱에 어떤 입력" 뿐이라 모두에게 같다 — 따로 알릴 것이 없다
+   */
+  setDelay(n: number): void {
+    const want = Math.max(1, Math.min(30, Math.round(n)))
+    this.delay = want > this.delay ? Math.min(want, this.delay + REDUNDANCY - 2) : Math.max(want, this.delay - 1)
+  }
+
+  /** 내가 보낸 가장 앞선 틱 · 봇 자리마다 보낸 가장 앞선 틱 */
   private latestLocal = -1
+  private latestBot: number[] = []
 
   private send(latest: number): void {
     this.latestLocal = Math.max(this.latestLocal, latest)
@@ -89,9 +129,10 @@ export class Lockstep {
   pushBot(idx: number, t: number, input: Input): void {
     if (!this.bots[idx] || this.me !== 0) return
     const target = t + this.delay
-    const m = this.inputs[idx]
-    if (!m.has(target)) m.set(target, wireInput(input))
-    this.link.sendInput(this.pack(idx, target, Math.min(REDUNDANCY, target - this.startTick + 1)))
+    this.put(idx, target, input)
+    const latest = Math.max(target, this.latestBot[idx] ?? -1)
+    this.latestBot[idx] = latest
+    this.link.sendInput(this.pack(idx, latest, Math.min(REDUNDANCY, latest - this.startTick + 1)))
   }
 
   /**
@@ -177,6 +218,13 @@ export class Lockstep {
     return true
   }
 
+  /** 틱 t 의 입력이 아직 없는 자리들 (계측 · 진단용 — `__bd.waitingOn()`) */
+  missing(t: number): number[] {
+    const out: number[] = []
+    for (let i = 0; i < this.inputs.length; i++) if (!this.dropped[i] && !this.inputs[i].has(t)) out.push(i)
+    return out
+  }
+
   /** 틱 t 의 입력을 플레이어 순서대로 */
   get(t: number): Input[] {
     return this.inputs.map((m, i) => (this.dropped[i] ? EMPTY_INPUT : (m.get(t) ?? EMPTY_INPUT)))
@@ -209,6 +257,11 @@ export class Lockstep {
   /** 그 자리에서 받은 가장 앞선 틱 (-1 = 아직 없음) */
   latestFrom(idx: number): number {
     return this.latestOf[idx] ?? -1
+  }
+
+  /** 그 자리에서 받은 가장 앞선 입력 (없으면 undefined) — 방장이 난입자의 화면이 아직 덮여 있는지(BTN_LOADING) 본다 */
+  latestInput(idx: number): Input | undefined {
+    return this.inputs[idx]?.get(this.latestOf[idx] ?? -1)
   }
 
   /**
