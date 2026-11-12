@@ -43,7 +43,7 @@ function laggyMesh(lag: number, loss = 0) {
   return { link, tick }
 }
 
-/** 세션의 틱 고리와 같은 규칙으로 calls 번 돌린다(신호마다 밀린 틱을 최대 4개 · 밀림은 8틱까지): 저마다 나아간 틱 수 */
+/** 세션의 틱 고리와 같은 규칙으로 calls 번 돌린다(신호마다 밀린 틱을 최대 4개 · 밀림은 8틱까지 · 기다린 시간은 버린다): 저마다 나아간 틱 수 */
 function play(peers: { ls: Lockstep; t: number; acc: number }[], mesh: { tick: () => void }, calls: number, each?: (call: number) => void): void {
   for (let c = 0; c < calls; c++) {
     mesh.tick()
@@ -52,7 +52,11 @@ function play(peers: { ls: Lockstep; t: number; acc: number }[], mesh: { tick: (
       p.acc = Math.min(8, p.acc + 1)
       for (let steps = 0; p.acc >= 1 && steps < 4; steps++) {
         p.ls.pushLocal(p.t, IN(1))
-        if (!p.ls.hasAll(p.t)) break
+        if (!p.ls.hasAll(p.t)) {
+          // 남의 입력을 기다린 시간은 몰아서 되찾지 않는다 (session tick)
+          p.acc = Math.min(p.acc, 1)
+          break
+        }
         p.t++
         p.acc--
       }
