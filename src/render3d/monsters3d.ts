@@ -1003,6 +1003,12 @@ export class MonsterView {
   private aqa = [0, 0, 0, 1]
   private am = new THREE.Matrix4()
   /** 납작 기호(flat)의 자리 · 회전 · 크기 (밝은 분위기 진행요원 기호) */
+  private fe = new THREE.Euler()
+  /**
+   * 3인칭 · 정조준일 때의 카메라 자리 (쿼터뷰는 null — renderer 가 정한다). 진행요원 머리 위 기호(♡ ☆ ◇)는 내려다보는 쿼터뷰에 맞춰 눕혀 두는데,
+   * 3인칭에서는 옆에서 보여 **괴물 머리 높이에 뜬 납작한 흰 조각**이 됐다 (2026-11-12 — 원인을 못 찾던 ☀ 3인칭 흰 조각)
+   */
+  faceCam: THREE.Vector3 | null = null
   private fp = new THREE.Vector3()
   private fq = new THREE.Quaternion()
   private fs = new THREE.Vector3()
@@ -1014,6 +1020,13 @@ export class MonsterView {
    */
   private blob: THREE.InstancedMesh
   private blobN = 0
+  /**
+   * 정예 · 우두머리 표식 (2026-11-12 그래픽 최종 — 일반 괴물과 크기 · 금빛 기운으로만 달랐다): 머리 위에 뜬 관(정예 = 금테 · 우두머리 = 더 크고 붉은 보석 관)과
+   * 발밑에서 도는 톱니 고리. 종류와 상관없이 두 메시(관 · 고리)에 모두 모아 그린다 — 그리기 호출 2번
+   */
+  private crown: THREE.InstancedMesh
+  private aura: THREE.InstancedMesh
+  private rankN = 0
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
@@ -1051,6 +1064,41 @@ export class MonsterView {
     this.blob.renderOrder = -1
     this.blob.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.group.add(this.blob)
+    // 관: 테 + 뾰족한 살 다섯 + 앞 보석 (빛을 받지 않는다 — 어두운 던전에서도 먼저 보인다)
+    // (다면체는 색인이 없다 — 합치려면 모두 색인 없이)
+    const crownGeo = mergeGeometries([
+      new THREE.TorusGeometry(0.2, 0.035, 5, 14).rotateX(Math.PI / 2).toNonIndexed(),
+      ...[0, 1, 2, 3, 4].map((i) => new THREE.ConeGeometry(0.05, 0.17, 4).translate(Math.cos((i / 5) * Math.PI * 2 + Math.PI / 2) * 0.2, 0.1, Math.sin((i / 5) * Math.PI * 2 + Math.PI / 2) * 0.2).toNonIndexed()),
+      new THREE.OctahedronGeometry(0.055).translate(0, 0.02, 0.23),
+    ])!
+    const RANK = 48
+    const mkRank = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
+      const m = new THREE.InstancedMesh(geo, mat, RANK)
+      m.count = 0
+      m.visible = false
+      m.frustumCulled = false
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      const white = new THREE.Color(1, 1, 1)
+      for (let i = 0; i < RANK; i++) m.setColorAt(i, white)
+      this.group.add(m)
+      return m
+    }
+    this.crown = mkRank(crownGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }))
+    // 발밑 고리: 톱니 바깥 테 (바닥에 눕힌다) — 🌙 는 더하기 빛 · ☀ 는 보통 섞기(밝은 바닥에 묻히지 않게)
+    const ring = new THREE.Shape()
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2
+      const r = i % 2 === 0 ? 1.16 : 0.98
+      if (i === 0) ring.moveTo(Math.cos(a) * r, Math.sin(a) * r)
+      else ring.lineTo(Math.cos(a) * r, Math.sin(a) * r)
+    }
+    ring.closePath()
+    ring.holes.push(new THREE.Path().absarc(0, 0, 0.84, 0, Math.PI * 2, true))
+    this.aura = mkRank(
+      new THREE.ShapeGeometry(ring, 10).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: this.bright ? 0.8 : 0.6, depthWrite: false, blending: this.bright ? THREE.NormalBlending : THREE.AdditiveBlending }),
+    )
+    this.aura.renderOrder = -1
   }
 
   /** 실사 괴물 켜기/끄기. 끄면 받은 모델은 두고 도형 괴물로 그린다 */
@@ -1304,6 +1352,7 @@ export class MonsterView {
    */
   /** inView(x, z, 반지름): 카메라 시야에 드나 — 밖이면 그리지 않는다(위치 shown 은 그대로 — 이름표 · 조준이 쓴다) */
   update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean, inView: (x: number, z: number, r: number) => boolean = () => true): void {
+    this.rankN = 0
     // 자리 맵은 비우지 않고 객체를 다시 쓴다 — 프레임마다 괴물 수만큼 객체를 새로 만들어 쓰레기 수거가 잦았다 (2026-10-25 계측: 12초에 40 ~ 64MB)
     const stamp = ++this.posStamp
     for (const m of prev.monsters) {
@@ -1412,6 +1461,11 @@ export class MonsterView {
     this.blob.count = this.blobN
     this.blob.visible = this.blobN > 0
     if (this.blobN > 0) upload(this.blob, this.blobN, false)
+    for (const m of [this.crown, this.aura]) {
+      m.count = this.rankN
+      m.visible = this.rankN > 0
+      if (this.rankN > 0) upload(m, this.rankN, true)
+    }
     this.kinds.forEach((parts, k) => {
       for (const p of parts) {
         p.mesh.count = counts[k]
@@ -1463,6 +1517,28 @@ export class MonsterView {
       this.o.scale.set(r, 1, r)
       this.o.updateMatrix()
       this.blob.setMatrixAt(this.blobN++, this.o.matrix)
+    }
+    // 정예 · 우두머리 표식: 머리 위 관 + 발밑 고리 (살아 있을 때만 · 거대 보스는 빼고)
+    if ((a.elite || a.unique) && a.dead === 0 && corpseT === 0 && !a.giant && this.rankN < this.crown.instanceMatrix.count) {
+      const t = this.clock
+      const k = a.unique ? 1.5 : 1
+      this.o.position.set(x, MONSTER_TOP[kind] * size + 0.1 + Math.sin(t * 2.6 + x) * 0.04, z)
+      this.o.rotation.set(0, t * 1.4 + x, 0)
+      this.o.scale.setScalar(k * (0.9 + size * 0.25))
+      this.o.updateMatrix()
+      this.crown.setMatrixAt(this.rankN, this.o.matrix)
+      // 정예 = 금 · 우두머리 = 붉은 금 (🌙 에서는 더 밝게 빛난다)
+      if (a.unique) this.col.setRGB(1.0, 0.36, 0.24)
+      else this.col.setRGB(1.0, 0.8, 0.22)
+      this.crown.setColorAt(this.rankN, this.col)
+      const r = size * (QUADRUPEDS.has(kind) ? 0.7 : 0.52) * (a.unique ? 1.2 : 1) * (1 + 0.06 * Math.sin(t * 4 + z))
+      this.o.position.set(x, 0.035, z)
+      this.o.rotation.set(0, -t * (a.unique ? 1.1 : 0.7), 0)
+      this.o.scale.set(r, 1, r)
+      this.o.updateMatrix()
+      this.aura.setMatrixAt(this.rankN, this.o.matrix)
+      this.aura.setColorAt(this.rankN, this.col)
+      this.rankN++
     }
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
     this.o.position.set(x, lift - Math.max(0, corpseT - 0.5) * 0.9, z)
@@ -1592,13 +1668,24 @@ export class MonsterView {
       } else this.tmp.multiplyMatrices(this.local, this.o.matrix)
       if (ex.flat) {
         this.tmp.decompose(this.fp, this.fq, this.fs)
-        this.tmp.compose(this.fp, this.fq.identity(), this.fs)
+        // 3인칭 · 정조준: 눕힌 기호를 옆에서 보면 납작한 흰 판이었다 → 세워서 카메라를 보게 (기호의 위 = -z 를 +y 로 · 면은 카메라 쪽)
+        // 세우면 몸만 한 크기(위에서 보라고 크게 만든 것)가 얼굴을 다 가린다 → 절반 아래로
+        if (this.faceCam) {
+          this.fq.setFromEuler(this.fe.set(Math.PI / 2, Math.atan2(this.faceCam.x - this.fp.x, this.faceCam.z - this.fp.z), 0, 'YXZ'))
+          this.fs.multiplyScalar(0.42)
+        } else this.fq.identity()
+        this.tmp.compose(this.fp, this.fq, this.fs)
       }
       ex.mesh.setMatrixAt(i, this.tmp)
     }
   }
 
   dispose(): void {
+    for (const m of [this.crown, this.aura]) {
+      m.geometry.dispose()
+      ;(m.material as THREE.Material).dispose()
+      m.dispose()
+    }
     for (const mk of this.models) {
       if (!mk || typeof mk === 'string') continue
       for (const mesh of mk.meshes) {

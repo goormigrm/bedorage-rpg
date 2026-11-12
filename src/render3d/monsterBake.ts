@@ -4,7 +4,10 @@
 import * as THREE from 'three'
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { FILE_ANCHORS, type AnchorName, type BakedModel, type ModelSpec, type SegName } from './monsterModels'
-import { toonMat } from './toon'
+import { addBodyShade, toonMat } from './toon'
+
+/** ☀ 막 보스 넷의 모델 (보스 방에서 4배로 커진다 — 몸 무늬를 넣는다) */
+const CUTE_BOSS = new Set(['cute_mushking', 'cute_queenbee', 'cute_yeti', 'cute_dragon'])
 
 const SEG_ORDER: SegName[] = ['idle', 'walk', 'attack', 'hit', 'death']
 
@@ -289,12 +292,15 @@ function skinFrame(mesh: THREE.Mesh, fat: number): [Float32Array, Float32Array] 
  * 명암 3단 + 먹선 (toon.ts). 가볍기는 Lambert 와 같다
  */
 function toLambert(src: THREE.MeshStandardMaterial, spec: ModelSpec): THREE.Material {
+  // ☀ 귀여운 모델만 (2026-11-12): 림 빛(위에서 받는 밝은 테) + 배 밝게 · 막 보스 넷은 등에 물방울 무늬 — 🌙 실사 괴물은 그대로
+  const cute = spec.file.startsWith('cute_')
   const mat = toonMat({
     map: src.map ?? null,
     normalMap: src.normalMap ?? null,
     color: src.color ? src.color.clone() : new THREE.Color(1, 1, 1),
     side: src.side,
-  })
+  }, 0.7, cute ? { rim: 0.75 } : undefined)
+  if (cute) addBodyShade(mat, CUTE_BOSS.has(spec.file))
   if (spec.tint) mat.color.multiply(new THREE.Color(...spec.tint))
   // 받은 모델의 빛 텍스처 (고블린 · 방패병 · 주술사의 눈 등 — 2026-09-24). 조명과 상관없이 빛난다
   if (src.emissiveMap && (spec.emissive ?? 1) > 0) {

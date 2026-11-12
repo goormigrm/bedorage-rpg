@@ -1209,9 +1209,15 @@ function nearGrain(mat: THREE.MeshLambertMaterial): THREE.Texture {
         float ngk = ( 1.0 - smoothstep( 3.0, 6.0, distance( vNGW, cameraPosition ) ) ) * uNearGrain;
         if ( ngk > 0.0 ) diffuseColor.rgb *= 1.0 + ( texture2D( uNGTex, vNGW.xz * 0.6 ).r - 0.5 ) * 0.45 * ngk;
       }`,
+    ).replace(
+      // 3인칭 달빛 (2026-11-12 검토 — 불빛 없는 들판은 3인칭에서 발밑까지 새까맸다): 카메라 13칸 안의 바닥에 푸른 달빛을 조금 얹는다.
+      // 이 바닥 그림은 아주 짙어(쿼터뷰의 어둠) 색에 곱해서는 안 보인다 — 결 무늬를 실은 달빛색을 더한다. 쿼터뷰는 uNearGrain 0 이라 그대로
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      if ( uNearGrain > 0.0 ) totalEmissiveRadiance += ( diffuseColor.rgb * 1.6 + vec3( 0.03, 0.04, 0.07 ) * ( 0.55 + 0.9 * texture2D( uNGTex, vNGW.xz * 0.6 ).r ) ) * ( 1.0 - smoothstep( 4.0, 13.0, distance( vNGW, cameraPosition ) ) ) * uNearGrain;`,
     )
   }
-  mat.customProgramCacheKey = () => 'floor-neargrain'
+  mat.customProgramCacheKey = () => 'floor-neargrain2'
   return tex
 }
 

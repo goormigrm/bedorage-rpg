@@ -56,6 +56,9 @@ const STAGE_HALF_W = 4.6
 const STAGE_HALF_H = 2.45
 
 export class BonfireScene {
+  private tmpA = new THREE.Vector3()
+  private tmpB = new THREE.Vector3()
+  private tmpC = new THREE.Vector3()
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
   private camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
@@ -391,9 +394,27 @@ export class BonfireScene {
       v.fh += (g.fh - v.fh) * e
       this.applyView()
     }
+    // 고른 캐릭터가 화면에서 차지하는 네모 (NDC) — 그 위에 얹히는 옆자리 이름표는 숨긴다 (2026-11-12 검토: 이름표는 늘 맨 위에 그려 앞에 나온 사람 머리를 덮었다)
+    const sel = this.seats.find((x) => x.id === this.selected && x.k > 0.3)
+    let box: { x0: number; x1: number; y0: number; y1: number } | null = null
+    const right = this.tmpA.setFromMatrixColumn(this.camera.matrixWorld, 0)
+    if (sel) {
+      const rp = sel.rig.root.position
+      const lo = this.tmpB.set(rp.x, rp.y, rp.z).project(this.camera)
+      const y0 = lo.y
+      const cx = lo.x
+      const hi = this.tmpB.set(rp.x, rp.y + sel.rig.height + 0.1, rp.z).project(this.camera)
+      const y1 = hi.y
+      const w = Math.abs(this.tmpB.set(rp.x, rp.y, rp.z).addScaledVector(right, 0.48).project(this.camera).x - cx)
+      box = { x0: cx - w, x1: cx + w, y0, y1 }
+    }
+    let seatN = 0
     for (const s of this.seats) {
       const chosen = s.id === this.selected
       const hover = s.id === this.hovered
+      // 눈 깜빡임 (사람마다 다른 박자)
+      seatN++
+      s.rig.setBlink((t + seatN * 1.3) % (3.3 + seatN * 0.37) < 0.12)
       s.k += ((chosen ? 1 : 0) - s.k) * Math.min(1, dt * 3)
       const p = s.rig.root.position
       p.lerpVectors(s.home, s.front, s.k)
@@ -412,7 +433,16 @@ export class BonfireScene {
       }
       // 고리: 올리면 밝게 · 고른 사람의 빈 발판은 숨 쉬듯
       ;(s.ring.material as THREE.MeshBasicMaterial).opacity = hover ? 0.85 : chosen ? 0.45 + Math.sin(t * 3) * 0.15 : 0.12
-      ;(s.plate.material as THREE.SpriteMaterial).opacity = hover || chosen ? 1 : 0.72
+      let covered = false
+      if (box && s !== sel) {
+        const pp = this.tmpB.copy(s.plate.position).project(this.camera)
+        const hw = Math.abs(this.tmpC.copy(s.plate.position).addScaledVector(right, s.plate.scale.x / 2).project(this.camera).x - pp.x)
+        const hh = hw * (s.plate.scale.y / s.plate.scale.x) * this.camera.aspect
+        covered = pp.x + hw > box.x0 && pp.x - hw < box.x1 && pp.y + hh > box.y0 && pp.y - hh < box.y1
+      }
+      const pm = s.plate.material as THREE.SpriteMaterial
+      const want = covered ? 0 : hover || chosen ? 1 : 0.72
+      pm.opacity += (want - pm.opacity) * Math.min(1, dt * 10)
     }
     this.renderer.render(this.scene, this.camera)
     this.raf = requestAnimationFrame(this.loop)

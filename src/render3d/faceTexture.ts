@@ -49,10 +49,12 @@ function clothPath(ctx: CanvasRenderingContext2D): void {
   ctx.closePath()
 }
 
-export function bodyTexture(def: CharacterDef): THREE.CanvasTexture {
-  const key = `body:${def.id}`
+/** blink = 눈을 감은 얼굴 (깜빡임 — 2026-11-12 · 같은 그림에 눈만 실눈으로) */
+export function bodyTexture(def0: CharacterDef, blink = false): THREE.CanvasTexture {
+  const key = `body:${def0.id}${blink ? ':blink' : ''}`
   const hit = cache.get(key)
   if (hit) return hit
+  const def: CharacterDef = blink ? { ...def0, look: { ...def0.look, eyes: 'squint' } } : def0
   const L = def.look
   const c = document.createElement('canvas')
   c.width = W
@@ -195,6 +197,43 @@ export function bodyTexture(def: CharacterDef): THREE.CanvasTexture {
     ctx.fillStyle = '#5a4a1a'
     ctx.fillRect(bx - 18, by - 2, 36, 3)
   }
+  // 옷 아래쪽 그늘 + 등 가운데 솔기 (2026-11-12 — 3인칭에서 늘 보는 등이 한 색 덩어리였다)
+  {
+    const sh = ctx.createLinearGradient(0, H * 0.58, 0, H * PANTS_V)
+    sh.addColorStop(0, 'rgba(0,0,0,0)')
+    sh.addColorStop(1, 'rgba(0,0,0,0.2)')
+    ctx.save()
+    clothPath(ctx)
+    ctx.clip()
+    ctx.fillStyle = sh
+    ctx.fillRect(0, 0, W, H)
+    // 등(u = 0.75) 솔기 · 겉옷이면 아래 트임
+    const bx = W * 0.75
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(bx, H * COLLAR_BACK_V)
+    ctx.lineTo(bx, H * PANTS_V)
+    ctx.stroke()
+    if (L.coat !== undefined) {
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'
+      ctx.beginPath()
+      ctx.moveTo(bx, H * 0.74)
+      ctx.lineTo(bx + 9, H * PANTS_V)
+      ctx.lineTo(bx - 9, H * PANTS_V)
+      ctx.closePath()
+      ctx.fill()
+    }
+    // 어깨 솔기 (양옆 u = 0 · 0.5)
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)'
+    for (const u of [0.0, 0.5, 1.0]) {
+      ctx.beginPath()
+      ctx.moveTo(W * u, collarY(u) + 4)
+      ctx.lineTo(W * u, H * 0.72)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
   // 바지 띠
   ctx.fillStyle = hex(L.pants ?? 0x34405a)
   ctx.fillRect(0, H * PANTS_V, W, H * (1 - PANTS_V))
@@ -202,6 +241,13 @@ export function bodyTexture(def: CharacterDef): THREE.CanvasTexture {
   ctx.moveTo(0, H * PANTS_V)
   ctx.lineTo(W, H * PANTS_V)
   ctx.stroke()
+  // 허리띠 + 버클(앞)
+  ctx.fillStyle = 'rgba(20,16,12,0.85)'
+  ctx.fillRect(0, H * PANTS_V + 2, W, 11)
+  ctx.fillStyle = '#d9b04a'
+  ctx.fillRect(W * FRONT_U - 11, H * PANTS_V + 1, 22, 13)
+  ctx.fillStyle = 'rgba(20,16,12,0.85)'
+  ctx.fillRect(W * FRONT_U - 6, H * PANTS_V + 5, 12, 5)
   // 넥타이 / 나비넥타이
   const cx = W * FRONT_U
   const top = collarY(FRONT_U)

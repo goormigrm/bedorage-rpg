@@ -6,7 +6,11 @@ import * as THREE from 'three'
 import { CharacterDef, Look } from '../core/characters'
 import { WEAPONS, WeaponDef } from '../core/weapons'
 import { bodyTexture, labelTexture } from './faceTexture'
-import { toonMat } from './toon'
+import { ToonFx, toonMat } from './toon'
+import { Bake, Tint, V3, at, ball, hoop, limb } from './bake'
+import { buildGun } from './weapon3d'
+
+export { buildGun }
 
 const OUTLINE = 0x2b2412
 
@@ -20,10 +24,10 @@ const LEG_H = 0.14
 /** 손에 든 총의 배율 */
 const GUN_HOLD = 1.4
 
-/** 계란 캐릭터 재질: 툰 명암 + 먹선 (2026-10-08 G8) */
-function mat(color: number, opts: Partial<THREE.MeshToonMaterialParameters> = {}): THREE.MeshToonMaterial {
-  return toonMat({ color, ...opts })
-}
+/** 계란 캐릭터 재질: 툰 명암 + 먹선 (2026-10-08 G8) + 림 빛 (2026-11-12 — 위에서 받는 빛의 밝은 테 · 둥근 몸에 입체가 생긴다) */
+const RIG_FX: ToonFx = { rim: 0.6 }
+/** 등급 색 (items.ts RARITY_COLORS) — 투구 · 갑옷 장식 */
+const RARITY_HEX = [0xd8d8d8, 0x6c9cff, 0xffd84a, 0xff8a2a, 0xe060ff]
 
 /** 몸 반지름: 대두·덩치가 둘 다 달걀 크기에 반영된다 */
 export function eggRadius(L: Look): number {
@@ -53,44 +57,6 @@ function eggRadiusAt(r: number, y: number): number {
   return r * Math.sqrt(Math.max(0, 1 - t * t)) * k
 }
 
-/** 이보다 작은 부품(눈 · 단추 · 코 · 총의 작은 장식)은 그림자를 드리우지 않는다 — 넷이면 그림자 패스에 백 번 가까이 그렸다 (2026-10-25 검토 · 그림자에서 안 보인다) */
-const SHADOW_MIN = 0.06
-
-function sphere(r: number, m: THREE.Material, x = 0, y = 0, z = 0, ws = 16, hs = 12): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), m)
-  mesh.position.set(x, y, z)
-  mesh.castShadow = r >= SHADOW_MIN
-  return mesh
-}
-
-/** 달걀 표면을 따라가는 캡(머리카락·모자). thetaLength 는 정수리부터의 각도 */
-function eggCap(r: number, scale: number, thetaLength: number, m: THREE.Material, phiStart = 0, phiLength = Math.PI * 2): THREE.Mesh {
-  const g = new THREE.SphereGeometry(r * scale, 28, 14, phiStart, phiLength, 0, thetaLength)
-  eggify(g, r * scale)
-  const mesh = new THREE.Mesh(g, m)
-  mesh.castShadow = true
-  return mesh
-}
-
-/** 축이 +z 를 향하는 캡슐. 원점은 뒤쪽 끝 */
-function capsuleZ(r: number, len: number, m: THREE.Material): THREE.Mesh {
-  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, len - r * 2), 3, 10)
-  g.rotateX(Math.PI / 2)
-  g.translate(0, 0, len / 2)
-  const mesh = new THREE.Mesh(g, m)
-  mesh.castShadow = true
-  return mesh
-}
-
-/** 축이 -y 를 향하는 캡슐. 원점은 위쪽 끝 */
-function capsuleDown(r: number, len: number, m: THREE.Material): THREE.Mesh {
-  const g = new THREE.CapsuleGeometry(r, Math.max(0.001, len - r * 2), 3, 10)
-  g.translate(0, -len / 2, 0)
-  const mesh = new THREE.Mesh(g, m)
-  mesh.castShadow = true
-  return mesh
-}
-
 export interface CharacterRig {
   /** 무적 보호막 (렌더러가 처음 필요할 때 만든다) */
   shield?: THREE.Mesh
@@ -117,8 +83,24 @@ export interface CharacterRig {
   flashMats: THREE.MeshToonMaterial[]
   /** 피격 플래시. tint 는 색(기본 흰색) — 몸통은 빨강, 머리는 금색 */
   setFlash(k: number, tint?: number): void
-  /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 … · 고기 악기는 고기가 바뀌어도) */
-  setWeapon(w: WeaponDef, meat?: number): void
+  /** 무기 바꿔 끼우기 (무기 칸에 변형 무기를 끼면 — 리볼버 · 석궁 … · 고기 악기는 고기가 바뀌어도 · 등급이 바뀌어도) */
+  setWeapon(w: WeaponDef, meat?: number, rarity?: number): void
+  /** 낀 무기의 등급 (장식 — weapon3d trim) */
+  rarity: number
+  /** 투구 · 갑옷 등급을 겉모습에 (2026-11-12): 투구 = 머리띠와 보석 · 갑옷 = 어깨 보호대. 0 이면 없음 */
+  setGear(helm: number, armor: number): void
+  /** 눈 깜빡임 (감은 얼굴 그림으로 잠깐 바꾼다 — 뜬 눈인 캐릭터만) */
+  setBlink(on: boolean): void
+}
+
+/**
+ * 무기 · 장식을 바꿔 낄 때 옛 재질을 지우는 때 (2026-11-12): 장면을 비동기로 컴파일하는 중에 그 장면의 재질을 지우면 three 의 컴파일 확인이
+ * "Cannot read properties of undefined (reading 'isReady')" 로 죽고 그 컴파일은 끝나지 않는다 — 싸운 뒤 봇이 장비를 갈아 끼는 것과 지역 이동 · 3인칭 전환이 겹칠 때 났다.
+ * 렌더러가 "도는 컴파일이 끝난 뒤에" 로 바꿔 건다. 로비처럼 비동기 컴파일이 없는 곳은 바로 지운다
+ */
+let laterDispose: (f: () => void) => void = (f) => f()
+export function setRigDisposer(fn: (f: () => void) => void): void {
+  laterDispose = fn
 }
 
 export function buildCharacter(def: CharacterDef): CharacterRig {
@@ -131,6 +113,8 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
     flashMats.push(m)
     return m
   }
+  // 부품은 모두 정점 색으로 칠해 이 재질 하나로 그린다 (bake.ts — 머리 장식 · 팔 · 다리가 메시 하나씩)
+  const rigM = track(toonMat({ vertexColors: true }, 0.7, RIG_FX))
 
   const R = eggRadius(L)
   // 가로(마름)·세로(키) 배율. 몸통 그룹에 걸어 두면 구르기 회전에도 같이 따라 돈다
@@ -141,27 +125,34 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   const legStretch = Math.max(0.35, 1 + (tall - 1) * 2.2)
   const legLen = (LEG_H + R * 0.25) * legStretch
   const centerY = LEG_H * legStretch + R * EGG_Y
+  const top = R * EGG_Y
+  const cloth = L.coat !== undefined ? L.coat : L.shirt
 
-  // ---- 다리 (작은 캡슐) + 신발 ----
-  const pantsM = track(mat(0x34405a))
-  const legR0 = 0.06
-  const legL = capsuleDown(legR0, legLen, pantsM)
-  const legR = capsuleDown(legR0, legLen, pantsM)
+  // ---- 다리: 바지 통 · 바짓단 · 운동화(몸 · 앞코 · 흰 밑창) — 다리 하나가 메시 하나 ----
+  const pants = L.pants ?? 0x34405a
+  const legR0 = 0.062
+  const mkLeg = () => {
+    const b = new Bake()
+    b.add(limb(V3(0, 0, 0), V3(0, -legLen + 0.06, 0), legR0 * 1.18, legR0, 10), pants)
+    b.add(ball(legR0 * 1.18), pants)
+    b.add(at(new THREE.CylinderGeometry(legR0 * 1.2, legR0 * 1.2, 0.024, 10), 0, -legLen + 0.07, 0), pants, () => -0.3)
+    const sy = -legLen + legR0 * 0.9
+    b.add(ball(legR0 * 1.75, 0, sy, legR0 * 1.0, 1, 0.62, 1.55, 14, 10), 0x2a2622)
+    b.add(ball(legR0 * 1.25, 0, sy + 0.002, legR0 * 2.25, 1.08, 0.56, 0.9, 10, 8), def.accentColor, () => 0.12)
+    b.add(at(new THREE.CylinderGeometry(legR0 * 1.78, legR0 * 1.78, 0.02, 14), 0, -legLen + 0.01, legR0 * 1.0, 0, 0, 0, 1, 1, 1.55), 0xf2efe6)
+    return b.mesh(rigM)
+  }
+  const legL = mkLeg()
+  const legR = mkLeg()
   legL.position.set(-R * 0.36, legLen, 0)
   legR.position.set(R * 0.36, legLen, 0)
   body.add(legL, legR)
-  const shoeM = track(mat(0x2a2622))
-  for (const leg of [legL, legR]) {
-    const shoe = sphere(legR0 * 1.7, shoeM, 0, -legLen + legR0 * 0.9, legR0 * 0.9, 14, 10)
-    shoe.scale.set(1, 0.55, 1.5)
-    leg.add(shoe)
-  }
 
   // ---- 몸통 (달걀, 얼굴·옷 텍스처) ----
   const head = new THREE.Group() // 머리 장식이 붙는 그룹 (몸통 중심)
   head.position.y = centerY
   body.add(head)
-  const bodyM = track(toonMat({ map: bodyTexture(def) }))
+  const bodyM = track(toonMat({ map: bodyTexture(def) }, 0.7, RIG_FX))
   const egg = new THREE.Mesh(eggify(new THREE.SphereGeometry(R, 40, 28), R), bodyM)
   egg.castShadow = true
   head.add(egg)
@@ -187,40 +178,114 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   xray.visible = false
   egg.add(xray)
 
-  // 귀: 눈 높이 옆
-  const earY = R * EGG_Y * 0.48
+  // ---- 머리 장식: 귀 · 머리카락 · 모자 · 옷깃 · 후드 … 를 메시 하나로 ----
+  const deco = new Bake()
+  const earY = top * 0.48
   const earS = (L.earScale ?? 1) * R * 0.2
-  const skinM = track(mat(L.skin))
-  for (const side of [-1, 1]) {
-    const ear = sphere(earS, skinM, side * (eggRadiusAt(R, earY) - earS * 0.2), earY, R * 0.02, 12, 10)
-    ear.scale.set(0.45, 1, 0.75)
-    head.add(ear)
+  if (L.animal === 'cat') {
+    // 고양이: 뾰족한 귀(안쪽 분홍) · 등 뒤로 말아 올린 꼬리(끝이 짙다)
+    const fur = L.furColor ?? L.skin
+    for (const side of [-1, 1]) {
+      const ex = side * R * 0.5
+      const ey = top * 0.82
+      deco.add(at(new THREE.ConeGeometry(R * 0.26, R * 0.5, 4), ex, ey + R * 0.16, R * 0.02, 0, Math.PI / 4, -side * 0.42, 1, 1, 0.55), fur)
+      deco.add(at(new THREE.ConeGeometry(R * 0.15, R * 0.32, 4), ex * 1.01, ey + R * 0.13, R * 0.075, 0, Math.PI / 4, -side * 0.42, 1, 1, 0.4), 0xffb8b0)
+    }
+    const ty = -top * 0.55
+    const curve = new THREE.CatmullRomCurve3([V3(0, ty, -eggRadiusAt(R, ty) * 0.9), V3(R * 0.1, ty - R * 0.05, -R * 1.05), V3(R * 0.28, ty + R * 0.3, -R * 1.3), V3(R * 0.2, ty + R * 0.75, -R * 1.22), V3(R * 0.02, ty + R * 0.95, -R * 1.02)])
+    deco.add(new THREE.TubeGeometry(curve, 14, R * 0.085, 7), fur, (_x, y) => (y > ty + R * 0.62 ? -0.35 : 0))
+    deco.add(ball(R * 0.085, R * 0.02, ty + R * 0.95, -R * 1.02), fur, () => -0.35)
+  } else {
+    // 귀: 눈 높이 옆 — 귓바퀴 + 안쪽 그늘
+    for (const side of [-1, 1]) {
+      const ex = side * (eggRadiusAt(R, earY) - earS * 0.2)
+      deco.add(ball(earS, ex, earY, R * 0.02, 0.45, 1, 0.75, 12, 10), L.skin)
+      deco.add(ball(earS * 0.55, ex + side * earS * 0.28, earY - earS * 0.05, R * 0.02 + earS * 0.16, 0.4, 0.9, 0.6, 8, 6), L.skin, () => -0.22)
+    }
   }
-  const hairM = track(mat(L.hairColor))
-  buildHair(head, L, def, R, hairM, track)
+  buildHair(deco, L, def, R)
+  // 옷깃: 그림 한 줄이던 목선을 도톰한 띠로 (앞은 낮고 뒤는 높다 — faceTexture 의 옷깃 선과 같은 기울기). V넥은 그림 그대로 · 후드는 굵게
+  if (L.neck !== 'v') {
+    const yf = Math.cos(0.7 * Math.PI) * top
+    const yb = Math.cos(0.58 * Math.PI) * top
+    const rf = eggRadiusAt(R, yf)
+    const rb = eggRadiusAt(R, yb)
+    const rho = Math.hypot(yf - yb, rf + rb) / 2
+    const tilt = -Math.atan2(yf - yb, rf + rb)
+    const yc = (yf + yb) / 2
+    const hooded = L.hood !== undefined
+    const tube = R * (hooded ? 0.085 : 0.04)
+    const g = new THREE.TorusGeometry(rho * 1.0, tube, 7, 30)
+    g.rotateX(Math.PI / 2)
+    deco.add(at(g, 0, yc, (rf - rb) / 2, tilt, 0, 0, (eggRadiusAt(R, yc) / rho) * 1.01, 1, 1), hooded ? L.hood! : cloth, () => (hooded ? 0 : L.coat !== undefined ? 0.14 : -0.14))
+    if (hooded) {
+      // 등에 늘어진 후드 주머니 + 앞의 끈 둘
+      deco.add(ball(R * 0.42, 0, yb - R * 0.12, -rb * 0.92, 1.25, 0.8, 0.5, 14, 10), L.hood!)
+      for (const side of [-1, 1]) deco.add(limb(V3(side * R * 0.14, yf + R * 0.02, rf * 1.0), V3(side * R * 0.17, yf - R * 0.2, eggRadiusAt(R, yf - R * 0.2) * 1.02), R * 0.022, R * 0.022, 6), 0xf4f0e6)
+    }
+  }
+  // 나비넥타이 (단군란): 그림 위에 도톰하게
+  if (L.bowTie !== undefined) {
+    const y = Math.cos(0.7 * Math.PI) * top - R * 0.02
+    const z = eggRadiusAt(R, y) * 1.03
+    for (const side of [-1, 1]) deco.add(at(new THREE.ConeGeometry(R * 0.11, R * 0.2, 4), side * R * 0.1, y, z, 0, 0, side * Math.PI / 2, 1, 1, 0.5), L.bowTie)
+    deco.add(ball(R * 0.045, 0, y, z + R * 0.01), 0x333333)
+  }
+  const decoMesh = deco.mesh(rigM)
+  head.add(decoMesh)
+  // 모자 라벨 ("침착") — 글자 그림이라 따로
+  if (L.extra === 'cap' && L.capText) {
+    const brimY = Math.cos(Math.PI * 0.34) * top * 1.08
+    const labelM = toonMat({ map: labelTexture(L.capText, L.capBand ?? 0xf4f4f0, def.accentColor) }, 0.7, RIG_FX)
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(R * 0.62, R * 0.31), labelM)
+    const ly = brimY + R * 0.28
+    label.position.set(0, ly, eggRadiusAt(R * 1.08, ly / 1.0) + 0.012)
+    label.rotation.x = -0.35
+    head.add(label)
+  }
 
-  // ---- 팔 + 총 (옆구리에서 앞으로, 하나의 그룹) ----
+  // ---- 팔 + 무기 (옆구리에서 앞으로, 하나의 그룹) ----
   const arms = new THREE.Group()
   // 팔은 얼굴 아래(옷깃 높이)에서 앞으로 — 총이 입을 가리지 않게
-  const armY = -R * EGG_Y * 0.3
+  const armY = -top * 0.3
   arms.position.set(0, centerY + armY, eggRadiusAt(R, armY) * 0.5)
   body.add(arms)
-  const sleeveM = track(mat(L.coat !== undefined ? L.coat : L.shirt))
   const armLen = R * 0.9
-  const armR = R * 0.13
-  const mkArm = (side: -1 | 1) => {
-    const g = new THREE.Group()
-    g.position.set(side * eggRadiusAt(R, armY) * 0.82, 0, -R * 0.15)
-    const sleeve = capsuleZ(armR, armLen * 0.55, sleeveM)
-    const fore = capsuleZ(armR * 0.9, armLen * 0.5, skinM)
-    fore.position.z = armLen * 0.5
-    const hand = sphere(armR * 1.2, skinM, 0, 0, armLen * 1.0, 10, 8)
-    g.add(sleeve, fore, hand)
-    g.rotation.y = -side * 0.5
-    return g
+  const armR = R * 0.15
+  const gs = Math.max(0.8, R / 0.42)
+  /**
+   * 두 팔을 메시 하나로 (2026-11-12): 전에는 두 팔이 나란히 앞으로 뻗은 막대였다 — 팔꿈치를 옆으로 벌려(뒤 · 위에서 보인다)
+   * 오른손은 손잡이를, 왼손은 총열 덮개를 받친다. 겉옷이 있으면 긴소매 + 흰 소매 끝, 없으면 반소매 + 맨 팔
+   */
+  const mkArms = (melee: boolean): THREE.Mesh => {
+    const b = new Bake()
+    const rs = eggRadiusAt(R, armY) * 0.82
+    const long = L.coat !== undefined || L.hood !== undefined
+    for (const side of [-1, 1]) {
+      const S = V3(side * rs, 0, -R * 0.15)
+      const E = V3(side * (rs + R * 0.1), -R * 0.2, R * 0.24)
+      const rear = side < 0
+      const H = melee
+        ? V3(side * R * 0.07, -0.015, armLen * 0.55 + (rear ? 0.0 : 0.075))
+        : rear
+          ? V3(-0.012, -0.02 - 0.085 * GUN_HOLD * gs, armLen * 0.55 + 0.01)
+          : V3(0.035, -0.02 - 0.045 * GUN_HOLD * gs, armLen * 0.55 + R * 0.52)
+      b.add(ball(armR * 1.25, S.x, S.y, S.z, 1, 1, 1, 10, 8), cloth)
+      b.add(limb(S, E, armR * 1.15, armR, 10), cloth)
+      b.add(ball(armR * 1.02, E.x, E.y, E.z, 1, 1, 1, 10, 8), long ? cloth : L.skin)
+      const W = E.clone().lerp(H, 0.8)
+      b.add(limb(E, W, armR, armR * 0.86, 10), long ? cloth : L.skin)
+      if (long) b.add(limb(W, E.clone().lerp(H, 0.9), armR * 0.98, armR * 0.98, 8), L.coat !== undefined ? L.shirt : cloth, () => (L.coat !== undefined ? 0 : -0.2))
+      else b.add(at(new THREE.TorusGeometry(armR * 1.02, armR * 0.2, 5, 10), E.x, E.y, E.z, 0, side * 0.9, 0), cloth, () => -0.2)
+      // 손: 벙어리 손 + 엄지
+      b.add(ball(armR * 1.3, H.x, H.y, H.z, 1, 0.9, 1.1, 10, 8), L.skin)
+      b.add(ball(armR * 0.6, H.x - side * armR * 0.9, H.y + armR * 0.55, H.z + armR * 0.3, 1, 1, 1, 8, 6), L.skin)
+    }
+    return b.mesh(rigM)
   }
-  arms.add(mkArm(-1), mkArm(1))
   const weapon = WEAPONS[def.weapon]
+  let armsMesh = mkArms(!!weapon.melee)
+  arms.add(armsMesh)
   // 총은 몸에 비해 작아 모양이 안 보였다 — 손에 든 총만 키운다 (근접 무기는 이미 크다 · 1인칭 손 총은 따로 · 2026-10-24)
   const hold = (w: WeaponDef, gg: THREE.Group) => {
     gg.position.set(0.02, -0.02, armLen * 0.55)
@@ -230,480 +295,253 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   let gun = buildGun(weapon, R)
   hold(weapon, gun.group)
 
+  // ---- 투구 · 갑옷 등급 장식 (끼면 겉모습에 드러난다) ----
+  let gear: THREE.Group | null = null
+  let gearKey = 0
+  let blinkTex: THREE.Texture | null = null
+
   body.scale.set(wide, tall, wide)
   const height = (centerY + R * EGG_Y + R * 0.35) * tall
+  const dropGroup = (g: THREE.Object3D) => {
+    // 재질은 도는 셰이더 컴파일이 끝난 뒤에 지운다 (rigDisposer — 렌더러가 건다)
+    laterDispose(() =>
+      g.traverse((o) => {
+        const m = o as THREE.Mesh
+        if (!m.isMesh) return
+        m.geometry.dispose()
+        if (m.material !== rigM) (m.material as THREE.Material).dispose()
+      }),
+    )
+  }
   const rig: CharacterRig = {
-    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, meat: 0, height, centerY, xray,
+    root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, meat: 0, rarity: 0, height, centerY, xray,
     stride: Math.max(0.7, Math.min(1.55, legStretch)),
     flashMats,
     setFlash(k: number, tint = 0xffffff) {
       const e = k > 0 ? new THREE.Color(tint).multiplyScalar(k) : new THREE.Color(0, 0, 0)
       for (const m of flashMats) m.emissive.copy(e)
     },
-    setWeapon(w: WeaponDef, meat = 0) {
-      if (rig.weapon.id === w.id && rig.meat === meat) return
+    setWeapon(w: WeaponDef, meat = 0, rarity = 0) {
+      if (rig.weapon.id === w.id && rig.meat === meat && rig.rarity === rarity) return
       arms.remove(gun.group)
-      gun.group.traverse((o) => {
-        const m = o as THREE.Mesh
-        if (!m.isMesh) return
-        m.geometry.dispose()
-        ;(m.material as THREE.Material).dispose()
-      })
-      gun = buildGun(w, R, meat)
+      dropGroup(gun.group)
+      gun = buildGun(w, R, meat, rarity)
       hold(w, gun.group)
+      if (!!w.melee !== !!rig.weapon.melee) {
+        // 근접 ↔ 총: 손 자리가 다르다
+        arms.remove(armsMesh)
+        const oldArms = armsMesh.geometry
+        laterDispose(() => oldArms.dispose())
+        armsMesh = mkArms(!!w.melee)
+        arms.add(armsMesh)
+        if (xray.visible) markStencil(armsMesh)
+      }
       if (xray.visible) markStencil(gun.group)
+      // 쓰러져 흐려지는 중에 바뀐 무기도 같은 짙기로
+      if (rigM.opacity < 1) setRigOpacity(rig, rigM.opacity)
       rig.gunTip = gun.tip
       rig.weapon = w
       rig.meat = meat
+      rig.rarity = rarity
+    },
+    setGear(helm: number, armor: number) {
+      const key = helm * 8 + armor
+      if (key === gearKey) return
+      gearKey = key
+      if (gear) {
+        head.remove(gear)
+        dropGroup(gear)
+        gear = null
+      }
+      if (helm <= 0 && armor <= 0) return
+      gear = buildGear(L, R, helm, armor, rigM, armY)
+      head.add(gear)
+      if (xray.visible) markStencil(gear)
+      if (rigM.opacity < 1) setRigOpacity(rig, rigM.opacity)
+    },
+    setBlink(on: boolean) {
+      if (!canBlink(def)) return
+      const want = on ? (blinkTex ??= bodyTexture(def, true)) : bodyTexture(def)
+      if (bodyM.map !== want) bodyM.map = want
     },
   }
   return rig
 }
 
-/**
- * 손에 든 무기 (2026-10-24 사용자: "무기 외형이 개선됐으면 · 무기를 바꿔 꼈을 때 외형이 바뀌었으면 — 석궁을 들어도 그대로라 뭐가 바뀐 건지 몰랐다"):
- * 예전에는 총이 모두 원통 하나 + 총열(길이 · 색만 달랐다). 이제 무기마다 위(쿼터뷰) · 뒤(3인칭)에서 알아보는 모양 —
- * 석궁 = 가로 활대 · 시위 · 화살 / 더블배럴 = 나란한 총열 둘 / 저격총 = 큰 조준경 / 레일건 = 빛나는 코일 / 화염방사기 = 붉은 연료통 · 불씨 …
- * 로컬: 손 자리 원점 · 앞 = +z · 위 = +y. 재질은 모두 툰(맵 없음 — 셰이더가 늘지 않는다)
- */
-export function buildGun(w: WeaponDef, R: number, meat = 0): { group: THREE.Group; tip: THREE.Object3D } {
-  const len = (0.26 + w.length / 120) * Math.max(0.8, R / 0.42)
-  if (w.melee) {
-    if (w.family === 'violin') return buildViolin(len, w.id === 'cello', meat)
-    if (w.family === 'rapier') return buildSword(len, w.id === 'katana')
-    if (w.id === 'wok') return buildWok(len)
-    return buildPan(len, mat(w.color), mat(0x2b2b2b))
-  }
-  const g = new THREE.Group()
-  const s = Math.max(0.8, R / 0.42)
-  const M: GunMats = { body: mat(w.color), dark: mat(0x2f3136), metal: mat(0x9aa2ab), wood: mat(0x8a5a32) }
-  const t = (GUNS[w.id] ?? (GUNS.rifle as GunShape))(g, len, s, M)
-  // 권총처럼 쥐는 손잡이 (모든 총)
-  box(g, 0.036 * s, 0.12 * s, 0.05 * s, M.dark, 0, -0.065 * s, t.grip ?? len * 0.06, 0.3)
-  const tip = new THREE.Object3D()
-  tip.position.set(0, t.y, t.z)
-  g.add(tip)
-  return { group: g, tip }
-}
-
-type GunMats = { body: THREE.MeshToonMaterial; dark: THREE.MeshToonMaterial; metal: THREE.MeshToonMaterial; wood: THREE.MeshToonMaterial }
-/** 총 모양 하나: 그룹에 부품을 넣고 총구 자리(y · z)와 손잡이 z 를 돌려준다. L = 길이 · s = 굵기 배율 */
-type GunShape = (g: THREE.Group, L: number, s: number, M: GunMats) => { y: number; z: number; grip?: number }
-
-function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0): THREE.Mesh {
-  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
-  b.position.set(x, y, z)
-  b.rotation.set(rx, ry, 0)
-  b.castShadow = Math.max(w, h, d) >= SHADOW_MIN * 2
-  g.add(b)
-  return b
-}
-/** +z 로 뻗는 원통: 뒤 끝 z0 · 길이 l · 뒤 반지름 r0 · 앞 반지름 r1 */
-function tube(g: THREE.Group, r0: number, l: number, m: THREE.Material, x: number, y: number, z0: number, r1 = r0, seg = 12): THREE.Mesh {
-  const c = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, l, seg), m)
-  c.rotation.x = Math.PI / 2
-  c.position.set(x, y, z0 + l / 2)
-  c.castShadow = l >= SHADOW_MIN * 2
-  g.add(c)
-  return c
-}
-/** 두 점을 잇는 가는 막대 (시위 · 호스 · 양각대) */
-function rod(g: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, r: number, m: THREE.Material): void {
-  const d = b.clone().sub(a)
-  const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), m)
-  c.position.copy(a).add(b).multiplyScalar(0.5)
-  c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())
-  g.add(c)
-}
-const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
-
-const GUNS: Partial<Record<WeaponDef['id'], GunShape>> = {
-  // 소총: 나무 개머리 · 덮개 · 앞으로 휜 탄창
-  rifle(g, L, s, M) {
-    box(g, 0.065 * s, 0.08 * s, L * 0.42, M.body, 0, 0, L * 0.18)
-    box(g, 0.058 * s, 0.095 * s, L * 0.3, M.wood, 0, -0.012 * s, -L * 0.17)
-    box(g, 0.062 * s, 0.06 * s, L * 0.26, M.wood, 0, -0.005 * s, L * 0.52)
-    tube(g, 0.016 * s, L * 0.36, M.dark, 0, 0.012 * s, L * 0.62)
-    box(g, 0.036 * s, 0.13 * s, 0.05 * s, M.dark, 0, -0.085 * s, L * 0.3, -0.35)
-    box(g, 0.02 * s, 0.03 * s, 0.03 * s, M.dark, 0, 0.055 * s, L * 0.05)
-    box(g, 0.012 * s, 0.035 * s, 0.015 * s, M.dark, 0, 0.05 * s, L * 0.92)
-    return { y: 0.012 * s, z: L * 0.98 + 0.02 }
-  },
-  // 석궁: 나무 몸대 · 뒤로 휜 활대 둘 · 당긴 시위 · 얹힌 화살
-  crossbow(g, L, s, M) {
-    box(g, 0.055 * s, 0.06 * s, L * 0.95, M.wood, 0, 0, L * 0.3)
-    box(g, 0.062 * s, 0.1 * s, L * 0.22, M.body, 0, -0.02 * s, -L * 0.12)
-    const fz = L * 0.72
-    const span = L * 0.5
-    const bend = 0.28
-    const tips: THREE.Vector3[] = []
-    for (const sd of [-1, 1]) {
-      box(g, span, 0.028 * s, 0.04 * s, M.dark, sd * span * 0.5, 0.012 * s, fz, 0, sd * bend)
-      tips.push(V(sd * span * 0.5 * (1 + Math.cos(bend)), 0.012 * s, fz - span * 0.5 * Math.sin(bend)))
-    }
-    const nock = V(0, 0.035 * s, L * 0.42)
-    const string = mat(0xf1e8cc)
-    for (const tp of tips) rod(g, tp, nock, 0.006 * s, string)
-    tube(g, 0.008 * s, L * 0.5, mat(0xd8c49a), 0, 0.042 * s, L * 0.42)
-    tube(g, 0.017 * s, 0.05 * s, M.metal, 0, 0.042 * s, L * 0.92, 0.002)
-    const feather = mat(0xd8452a)
-    box(g, 0.036 * s, 0.004, 0.05 * s, feather, 0, 0.042 * s, L * 0.46)
-    box(g, 0.004, 0.036 * s, 0.05 * s, feather, 0, 0.042 * s, L * 0.46)
-    return { y: 0.042 * s, z: L * 0.92 + 0.05 * s, grip: L * 0.02 }
-  },
-  // SMG: 짧은 몸통 · 앞의 곧은 긴 탄창 · 철사 개머리 · 소염기
-  smg(g, L, s, M) {
-    box(g, 0.068 * s, 0.085 * s, L * 0.55, M.body, 0, 0, L * 0.25)
-    tube(g, 0.02 * s, L * 0.3, M.dark, 0, 0.01 * s, L * 0.5)
-    tube(g, 0.029 * s, 0.05 * s, M.dark, 0, 0.01 * s, L * 0.8)
-    box(g, 0.035 * s, 0.16 * s, 0.045 * s, M.dark, 0, -0.1 * s, L * 0.32)
-    box(g, 0.016 * s, 0.016 * s, L * 0.28, M.dark, 0, 0, -L * 0.14)
-    box(g, 0.05 * s, 0.07 * s, 0.018 * s, M.dark, 0, -0.01 * s, -L * 0.28)
-    box(g, 0.026 * s, 0.03 * s, L * 0.24, M.dark, 0, 0.055 * s, L * 0.22)
-    return { y: 0.01 * s, z: L * 0.8 + 0.05 * s, grip: L * 0.04 }
-  },
-  // 화염방사기: 쇠 몸통 · 옆의 붉은 연료통 · 벌어진 노즐 · 노즐 아래 불씨
-  flamer(g, L, s, M) {
-    tube(g, 0.038 * s, L * 0.6, M.metal, 0, 0, 0)
-    tube(g, 0.062 * s, L * 0.42, M.body, 0.075 * s, -0.03 * s, L * 0.05)
-    tube(g, 0.064 * s, 0.02 * s, M.dark, 0.075 * s, -0.03 * s, L * 0.25)
-    tube(g, 0.03 * s, L * 0.2, M.dark, 0, 0, L * 0.6, 0.056 * s)
-    rod(g, V(0.075 * s, -0.03 * s, L * 0.47), V(0, -0.02 * s, L * 0.55), 0.012 * s, M.dark)
-    const pilot = new THREE.Mesh(new THREE.SphereGeometry(0.018 * s, 10, 8), mat(0xffc060, { emissive: 0xff7a10 }))
-    pilot.position.set(0, -0.048 * s, L * 0.76)
-    g.add(pilot)
-    box(g, 0.03 * s, 0.09 * s, 0.04 * s, M.dark, 0, -0.06 * s, L * 0.42, 0.2)
-    return { y: 0, z: L * 0.8 + 0.02, grip: L * 0.1 }
-  },
-  // 산탄총: 굵은 총열 · 아래 탄창관 · 나무 펌프 · 나무 개머리
-  shotgun(g, L, s, M) {
-    box(g, 0.07 * s, 0.085 * s, L * 0.3, M.dark, 0, 0, L * 0.12)
-    tube(g, 0.027 * s, L * 0.62, M.dark, 0, 0.018 * s, L * 0.27)
-    tube(g, 0.02 * s, L * 0.5, M.dark, 0, -0.025 * s, L * 0.27)
-    tube(g, 0.035 * s, L * 0.2, M.body, 0, -0.025 * s, L * 0.48)
-    box(g, 0.062 * s, 0.1 * s, L * 0.32, M.body, 0, -0.02 * s, -L * 0.17, 0.12)
-    box(g, 0.02 * s, 0.02 * s, 0.02 * s, M.metal, 0, 0.05 * s, L * 0.86)
-    return { y: 0.018 * s, z: L * 0.89 + 0.02 }
-  },
-  // 더블배럴: 나란한 쇠 총열 둘 · 금빛 경첩 · 큰 나무 개머리
-  doublebarrel(g, L, s, M) {
-    for (const sd of [-1, 1]) tube(g, 0.026 * s, L * 0.66, M.metal, sd * 0.027 * s, 0.012 * s, L * 0.26)
-    box(g, 0.09 * s, 0.05 * s, L * 0.3, M.body, 0, -0.03 * s, L * 0.42)
-    box(g, 0.085 * s, 0.08 * s, L * 0.18, mat(0xc9a24a), 0, -0.005 * s, L * 0.14)
-    box(g, 0.07 * s, 0.11 * s, L * 0.36, M.body, 0, -0.03 * s, -L * 0.15, 0.15)
-    return { y: 0.012 * s, z: L * 0.92 + 0.02 }
-  },
-  // 저격총: 긴 총열 · 큰 조준경(빛나는 렌즈) · 볼받침 · 노리쇠 · 접은 양각대
-  sniper(g, L, s, M) {
-    box(g, 0.065 * s, 0.08 * s, L * 0.42, M.body, 0, 0, L * 0.12)
-    box(g, 0.06 * s, 0.1 * s, L * 0.3, M.body, 0, -0.015 * s, -L * 0.2, 0.08)
-    box(g, 0.05 * s, 0.03 * s, L * 0.14, M.body, 0, 0.055 * s, -L * 0.2)
-    tube(g, 0.017 * s, L * 0.62, M.dark, 0, 0.01 * s, L * 0.33)
-    box(g, 0.04 * s, 0.035 * s, 0.06 * s, M.dark, 0, 0.01 * s, L * 0.95 + 0.03 * s)
-    tube(g, 0.03 * s, L * 0.36, M.dark, 0, 0.088 * s, 0)
-    tube(g, 0.043 * s, 0.05 * s, M.dark, 0, 0.088 * s, L * 0.36)
-    tube(g, 0.037 * s, 0.006, mat(0x7ad8ff, { emissive: 0x1a5a7a }), 0, 0.088 * s, L * 0.36 + 0.05 * s)
-    for (const z of [L * 0.08, L * 0.26]) box(g, 0.02 * s, 0.04 * s, 0.02 * s, M.dark, 0, 0.055 * s, z)
-    box(g, 0.05 * s, 0.012 * s, 0.012 * s, M.metal, 0.05 * s, 0.02 * s, L * 0.05)
-    for (const sd of [-1, 1]) box(g, 0.012 * s, 0.012 * s, L * 0.25, M.dark, sd * 0.02 * s, -0.03 * s, L * 0.62)
-    return { y: 0.01 * s, z: L * 0.95 + 0.06 * s }
-  },
-  // 레일건: 짙은 몸통 · 나란한 레일 둘 · 빛나는 코일 셋 · 옆 에너지 칸
-  railgun(g, L, s, M) {
-    const shell = mat(0x2a2f3a)
-    const glow = mat(0x8af6ff, { emissive: 0x2ad0ff })
-    box(g, 0.08 * s, 0.085 * s, L * 0.42, shell, 0, 0, L * 0.1)
-    box(g, 0.06 * s, 0.1 * s, L * 0.24, shell, 0, -0.02 * s, -L * 0.2)
-    for (const sd of [-1, 1]) box(g, 0.022 * s, 0.05 * s, L * 0.62, M.body, sd * 0.036 * s, 0.01 * s, L * 0.62)
-    for (let k = 0; k < 3; k++) {
-      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.062 * s, 0.011 * s, 6, 16), glow)
-      coil.position.set(0, 0.01 * s, L * (0.42 + k * 0.16))
-      g.add(coil)
-    }
-    box(g, 0.03 * s, 0.03 * s, L * 0.18, glow, 0.05 * s, 0.02 * s, L * 0.1)
-    return { y: 0.01 * s, z: L * 0.93 }
-  },
-  // 기관총: 굵은 몸통 · 방열 덮개 · 옆 탄통 · 위 손잡이 · 양각대
-  mg(g, L, s, M) {
-    box(g, 0.085 * s, 0.1 * s, L * 0.42, M.body, 0, 0, L * 0.12)
-    tube(g, 0.033 * s, L * 0.42, M.dark, 0, 0.01 * s, L * 0.33)
-    tube(g, 0.016 * s, L * 0.18, M.dark, 0, 0.01 * s, L * 0.75)
-    box(g, 0.1 * s, 0.1 * s, 0.09 * s, M.body, 0.085 * s, -0.05 * s, L * 0.12)
-    box(g, 0.02 * s, 0.04 * s, L * 0.2, M.dark, 0, 0.075 * s, L * 0.12)
-    for (const sd of [-1, 1]) rod(g, V(0, -0.02 * s, L * 0.6), V(sd * 0.05 * s, -0.12 * s, L * 0.72), 0.008 * s, M.dark)
-    box(g, 0.065 * s, 0.1 * s, L * 0.26, M.dark, 0, -0.01 * s, -L * 0.17)
-    return { y: 0.01 * s, z: L * 0.93 + 0.02 }
-  },
-  // 유탄발사기: 굵은 총열(검은 구멍) · 뒤의 회전 탄창 · 앞 손잡이
-  launcher(g, L, s, M) {
-    tube(g, 0.05 * s, L * 0.55, M.body, 0, 0.01 * s, L * 0.3)
-    tube(g, 0.04 * s, 0.008, mat(0x111111), 0, 0.01 * s, L * 0.85)
-    tube(g, 0.075 * s, L * 0.2, M.dark, 0, -0.005 * s, L * 0.08, 0.075 * s, 8)
-    box(g, 0.06 * s, 0.09 * s, L * 0.26, M.dark, 0, -0.01 * s, -L * 0.15)
-    box(g, 0.03 * s, 0.09 * s, 0.04 * s, M.dark, 0, -0.07 * s, L * 0.5, 0.2)
-    return { y: 0.01 * s, z: L * 0.86 }
-  },
-  // 권총 · 리볼버 (지금은 안 쓰는 계열)
-  pistol(g, L, s, M) {
-    box(g, 0.05 * s, 0.06 * s, L * 0.7, M.body, 0, 0.01 * s, L * 0.3)
-    return { y: 0.01 * s, z: L * 0.66 }
-  },
-  revolver(g, L, s, M) {
-    tube(g, 0.045 * s, 0.07 * s, M.dark, 0, 0.005 * s, L * 0.1, 0.045 * s, 6)
-    tube(g, 0.016 * s, L * 0.55, M.body, 0, 0.015 * s, L * 0.18)
-    return { y: 0.015 * s, z: L * 0.74 }
-  },
+/** 스스로 빛나는 장식 재질 (전설 · 신화 보석과 테) — 캐릭터 재질과 같은 셰이더 */
+function glowMat(c: number): THREE.MeshToonMaterial {
+  const m = toonMat({ vertexColors: true }, 0.7, RIG_FX)
+  m.emissive.set(c).multiplyScalar(0.75)
+  return m
 }
 
 /**
- * 후라이팬. 총과 같은 막대 모양으로 만들면 위에서 보면 그냥 검은 막대다(2026-09-06 제보).
- * 판을 **바닥과 나란히 눕혀** 쿼터뷰에서 둥근 판이 보이게 한다: 손잡이 끝에 넓은 원판 + 테두리 + 안쪽 밝은 면.
+ * 투구 · 갑옷 등급 장식 (2026-11-12 — 전에는 무엇을 끼든 겉모습이 같았다): 투구 = 이마의 머리띠 + 등급 색 보석(희귀부터 금테 · 전설부터 빛나고 깃 둘 · 신화는 뿔 셋),
+ * 갑옷 = 어깨 보호대(등급 색 테 · 전설부터 빛난다 · 신화는 가시). 메시 하나(빛나는 것이 있으면 둘)
  */
-function buildPan(len: number, bodyM: THREE.MeshToonMaterial, darkM: THREE.MeshToonMaterial): { group: THREE.Group; tip: THREE.Object3D } {
+function buildGear(L: Look, R: number, helm: number, armor: number, rigM: THREE.Material, armY: number): THREE.Group {
   const g = new THREE.Group()
-  const handleLen = len * 0.62
-  const handle = capsuleZ(0.028, handleLen, darkM)
-  handle.position.set(0, 0.01, 0)
-  g.add(handle)
-  const r = len * 0.42
-  const cz = handleLen * 0.5 + r * 0.92
-  // 판: 얇은 원기둥(축이 Y 라 그대로 두면 바닥과 나란하다)
-  const pan = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.9, 0.035, 28), bodyM)
-  pan.position.set(0, 0.012, cz)
-  pan.castShadow = true
-  g.add(pan)
-  // 테두리: 위로 살짝 올라온 벽
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, 0.022, 8, 28), darkM)
-  rim.rotation.x = Math.PI / 2
-  rim.position.set(0, 0.04, cz)
-  g.add(rim)
-  // 안쪽 면: 밝은 회색이라 "판" 으로 읽힌다
-  const inner = new THREE.Mesh(new THREE.CircleGeometry(r * 0.8, 24), mat(0x6f767c))
-  inner.rotation.x = -Math.PI / 2
-  inner.position.set(0, 0.031, cz)
-  g.add(inner)
-  // 계란후라이 하나 (요청). 흰자는 살짝 찌그러진 납작한 원, 노른자는 도톰한 반구
-  const white = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.54, 0.018, 18), mat(0xfaf6ee))
-  white.scale.set(1.15, 1, 0.88)
-  white.position.set(r * 0.06, 0.045, cz - r * 0.05)
-  white.rotation.y = 0.5
-  g.add(white)
-  const yolk = new THREE.Mesh(new THREE.SphereGeometry(r * 0.2, 14, 10), mat(0xffb300, { emissive: 0x3a2600 }))
-  yolk.scale.set(1, 0.5, 1)
-  yolk.position.set(r * 0.02, 0.055, cz - r * 0.08)
-  g.add(yolk)
-  const tip = new THREE.Object3D()
-  tip.position.set(0, 0.03, cz)
-  g.add(tip)
-  return { group: g, tip }
-}
-
-/** 대형 웍: 깊은 쇠 냄비(반구) · 안쪽 면 · 테 · 나무 손잡이 · 반대편 고리 · 볶음 거리 — 납작한 후라이팬과 한눈에 다르게 */
-function buildWok(len: number): { group: THREE.Group; tip: THREE.Object3D } {
-  const g = new THREE.Group()
-  const iron = mat(0x2e2e33)
-  const handleLen = len * 0.55
-  const grip = capsuleZ(0.03, handleLen * 0.6, mat(0x8a5a32))
-  g.add(grip)
-  const neck = capsuleZ(0.02, handleLen * 0.5, iron)
-  neck.position.z = handleLen * 0.5
-  g.add(neck)
-  const r = len * 0.5
-  const cz = handleLen + r * 0.9
-  const bowl = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), iron)
-  bowl.scale.y = 0.55
-  bowl.position.set(0, 0.07, cz)
-  bowl.castShadow = true
-  g.add(bowl)
-  const inner = new THREE.Mesh(new THREE.CircleGeometry(r * 0.94, 24), mat(0x5a5f66))
-  inner.rotation.x = -Math.PI / 2
-  inner.position.set(0, 0.064, cz)
-  g.add(inner)
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.98, 0.02, 8, 28), iron)
-  rim.rotation.x = Math.PI / 2
-  rim.position.set(0, 0.07, cz)
-  g.add(rim)
-  const loop = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 12), iron)
-  loop.rotation.x = Math.PI / 2
-  loop.position.set(0, 0.07, cz + r * 1.05)
-  g.add(loop)
-  for (const [x, z, c] of [[-0.3, -0.1, 0x6fbf4a], [0.25, 0.15, 0xff8a3a], [0.05, 0.35, 0xf2d050], [-0.1, -0.4, 0x6fbf4a]] as const) {
-    const bit = new THREE.Mesh(new THREE.BoxGeometry(r * 0.22, 0.02, r * 0.14), mat(c))
-    bit.position.set(r * x, 0.075, cz + r * z)
-    bit.rotation.y = x * 3
-    g.add(bit)
+  const b = new Bake()
+  const glows = new Map<number, Bake>()
+  const glow = (c: number) => {
+    let x = glows.get(c)
+    if (!x) glows.set(c, (x = new Bake()))
+    return x
   }
-  const tip = new THREE.Object3D()
-  tip.position.set(0, 0.05, cz)
-  g.add(tip)
-  return { group: g, tip }
-}
-
-/** 고기 악기의 고기 (items.ts MEATS 순서): 소고기 · 닭고기 · 오리고기 — 위에서 보면 붉은 살 / 금빛 튀김 / 진갈색 구이 */
-const MEAT_LOOK = [
-  { meat: 0xa8392c, mark: 0xf2d8c8, bone: 0xe8e0cc, bumps: false },
-  { meat: 0xe0a040, mark: 0xb8742a, bone: 0xf6efe0, bumps: true },
-  { meat: 0x8e3e1c, mark: 0xf08a30, bone: 0xe8e0cc, bumps: false },
-]
-
-/**
- * 딱딱한 고기 바이올린 (철면란, 2026-09-19 사용자): 붉은 살코기 몸통 + 흰 지방 줄무늬 + 뼈 목(스크롤). 첼로는 더 크다.
- * 손잡이(목)를 쥐고 몸통으로 후려친다 — 몸통이 앞(+z).
- */
-function buildViolin(len: number, big: boolean, kind = 0): { group: THREE.Group; tip: THREE.Object3D } {
-  const g = new THREE.Group()
-  // 몸집이 큰 철면란 손에서 스테이크가 아니라 악기로 읽히도록 크게 (2026-09-19 확인)
-  const k = (big ? 1.35 : 1) * 1.6
-  const look = MEAT_LOOK[kind] ?? MEAT_LOOK[0]
-  const meat = mat(look.meat)
-  const fat = mat(look.mark)
-  const bone = mat(look.bone)
-  const neckLen = len * 0.7 * k
-  const neck = capsuleZ(0.022 * k, neckLen, bone)
-  neck.position.set(0, 0.01, neckLen * 0.2)
-  g.add(neck)
-  if (look.bumps) {
-    // 닭고기: 손잡이 끝이 닭다리 뼈 마디 (동그라미 둘)
-    for (const sd of [-1, 1]) g.add(sphere(0.026 * k, bone, sd * 0.02 * k, 0.02, -neckLen * 0.26, 10, 8))
-  } else {
-    // 스크롤(목 끝 돌돌 말린 부분): 손 쪽
-    const scroll = new THREE.Mesh(new THREE.TorusGeometry(0.03 * k, 0.012 * k, 6, 12), bone)
-    scroll.position.set(0, 0.02, -neckLen * 0.28)
-    scroll.rotation.y = Math.PI / 2
-    g.add(scroll)
-  }
-  // 몸통: 아래 · 위 두 덩이 (바이올린 허리)
-  const cz = neckLen * 0.62 + 0.13 * k
-  const lower = new THREE.Mesh(new THREE.SphereGeometry(0.12 * k, 14, 10), meat)
-  lower.scale.set(1, 0.36, 1.05)
-  lower.position.set(0, 0.012, cz + 0.07 * k)
-  lower.castShadow = true
-  g.add(lower)
-  const upper = new THREE.Mesh(new THREE.SphereGeometry(0.095 * k, 14, 10), meat)
-  upper.scale.set(1, 0.36, 1)
-  upper.position.set(0, 0.012, cz - 0.08 * k)
-  upper.castShadow = true
-  g.add(upper)
-  if (look.bumps) {
-    // 닭고기: 바삭한 튀김 알갱이
-    for (const [x, dz] of [[-0.06, -0.1], [0.05, -0.06], [-0.02, 0.0], [0.07, 0.05], [-0.07, 0.08], [0.01, 0.13], [0.04, -0.13]] as const) {
-      const bump = new THREE.Mesh(new THREE.SphereGeometry(0.018 * k, 8, 6), fat)
-      bump.position.set(x * k, 0.04 * k, cz + dz * k)
-      g.add(bump)
-    }
-  } else {
-    // 소고기 = 흰 지방 줄무늬(마블링) · 오리고기 = 주황 소스 줄
-    for (const [dz, w] of [[-0.09, 0.14], [0.02, 0.18], [0.11, 0.17]] as const) {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(w * k, 0.012, 0.014 * k), fat)
-      stripe.position.set(0, 0.05 * k, cz + dz * k)
-      stripe.rotation.y = 0.25
-      g.add(stripe)
-    }
-  }
-  // 줄받침 · 현 (뼈 색 가는 줄)
-  const strings = new THREE.Mesh(new THREE.BoxGeometry(0.03 * k, 0.006, neckLen * 0.9 + 0.2 * k), bone)
-  strings.position.set(0, 0.052 * k, cz * 0.62)
-  g.add(strings)
-  const tip = new THREE.Object3D()
-  tip.position.set(0, 0.03, cz)
-  g.add(tip)
-  return { group: g, tip }
-}
-
-/** 길고 얇은 검 (우재란 장검 · 태도, 2026-09-19 사용자): 가죽 손잡이 · 금빛 코등이 · 가늘고 긴 칼날. 칼날이 앞(+z) */
-function buildSword(len: number, katana: boolean): { group: THREE.Group; tip: THREE.Object3D } {
-  const g = new THREE.Group()
-  const steel = mat(0xd8dde3, { emissive: 0x1a1d22 })
-  const grip = capsuleZ(0.02, 0.13, mat(katana ? 0x1c1c1f : 0x3a2418))
-  grip.position.set(0, 0.01, -0.02)
-  g.add(grip)
-  const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.024, 10, 8), mat(0xd9b04a))
-  pommel.position.set(0, 0.01, -0.1)
-  g.add(pommel)
-  const guard = new THREE.Mesh(katana ? new THREE.CylinderGeometry(0.045, 0.045, 0.012, 16) : new THREE.BoxGeometry(0.16, 0.022, 0.022), mat(0xd9b04a))
-  if (katana) guard.rotation.x = Math.PI / 2
-  guard.position.set(0, 0.01, 0.06)
-  g.add(guard)
-  const bladeLen = len * (katana ? 2.3 : 2.1)
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(katana ? 0.028 : 0.018, 0.008, bladeLen), steel)
-  blade.position.set(0, 0.012, 0.07 + bladeLen / 2)
-  blade.castShadow = true
-  g.add(blade)
-  const tip = new THREE.Object3D()
-  tip.position.set(0, 0.012, 0.07 + bladeLen)
-  g.add(tip)
-  return { group: g, tip }
-}
-
-function buildHair(
-  head: THREE.Group,
-  L: Look,
-  def: CharacterDef,
-  R: number,
-  hairM: THREE.MeshToonMaterial,
-  track: (m: THREE.MeshToonMaterial) => THREE.MeshToonMaterial,
-): void {
   const top = R * EGG_Y
+  const STEEL = 0x8a93a0
+  const GOLD = 0xe0b548
+  if (helm > 0) {
+    const c = RARITY_HEX[helm] ?? RARITY_HEX[1]
+    const y = top * 0.6
+    const rr = eggRadiusAt(R, y) * 1.12
+    b.add(hoop(rr, R * 0.04, y), helm >= 2 ? GOLD : STEEL)
+    const to = helm >= 3 ? glow(c) : b
+    to.add(at(new THREE.OctahedronGeometry(R * 0.085), 0, y + R * 0.02, rr + R * 0.02, 0, 0, 0, 0.8, 1.25, 0.6), c)
+    if (helm >= 3) {
+      for (const side of [-1, 1]) b.add(at(new THREE.ConeGeometry(R * 0.075, R * 0.34, 4), side * rr * 0.98, y + R * 0.15, -R * 0.06, -0.5, 0, -side * 0.3, 0.5, 1, 1.3), GOLD)
+    }
+    if (helm >= 4) {
+      for (const a of [-0.5, 0, 0.5]) b.add(at(new THREE.ConeGeometry(R * 0.05, R * (a === 0 ? 0.26 : 0.18), 4), Math.sin(a) * rr, y + R * (a === 0 ? 0.2 : 0.14), Math.cos(a) * rr), GOLD)
+    }
+  }
+  if (armor > 0) {
+    const c = RARITY_HEX[armor] ?? RARITY_HEX[1]
+    const rs = eggRadiusAt(R, armY) * 0.95
+    const to = armor >= 3 ? glow(c) : b
+    for (const side of [-1, 1]) {
+      const x = side * rs
+      const y = armY + R * 0.16
+      b.add(ball(R * 0.25, x, y, -R * 0.06, 1, 0.62, 1.15, 12, 8), armor >= 2 ? 0x6a7280 : STEEL)
+      const ring = new THREE.TorusGeometry(R * 0.235, R * 0.028, 5, 14)
+      ring.rotateX(Math.PI / 2)
+      to.add(at(ring, x, y - R * 0.03, -R * 0.06, 0, 0, 0, 1, 1, 1.15), c)
+      if (armor >= 4) b.add(at(new THREE.ConeGeometry(R * 0.06, R * 0.22, 5), x + side * R * 0.08, y + R * 0.2, -R * 0.06, 0, 0, -side * 0.5), GOLD)
+    }
+    // 가슴 보석 (희귀부터)
+    if (armor >= 2) {
+      const y = Math.cos(0.7 * Math.PI) * top - R * 0.16
+      to.add(at(new THREE.OctahedronGeometry(R * 0.07), 0, y, eggRadiusAt(R, y) * 1.02, 0, 0, 0, 1, 1.2, 0.5), c)
+    }
+  }
+  if (!b.empty) g.add(b.mesh(rigM))
+  for (const [c, x] of glows) g.add(x.mesh(glowMat(c), false))
+  void L
+  return g
+}
+
+/** 눈 감은 얼굴 그림 (깜빡이는 캐릭터만 — 렌더러가 미리 올려 둔다) */
+export function blinkTexture(def: CharacterDef): THREE.Texture | null {
+  return canBlink(def) ? bodyTexture(def, true) : null
+}
+
+/** 뜬 눈으로 그려진 캐릭터만 깜빡인다 (웃는 눈 · 실눈은 늘 감은 모양) */
+function canBlink(def: CharacterDef): boolean {
+  const e = def.look.eyes
+  return def.look.glasses !== 'sunglasses' && (e === 'normal' || e === 'angry' || e === 'calm' || e === 'sharp' || e === 'lidded')
+}
+
+/** 달걀 표면을 따라가는 캡(머리카락 · 모자). thetaLength 는 정수리부터의 각도 */
+function capGeo(r: number, scale: number, thetaLength: number, phiStart = 0, phiLength = Math.PI * 2): THREE.BufferGeometry {
+  return eggify(new THREE.SphereGeometry(r * scale, 28, 14, phiStart, phiLength, 0, thetaLength), r * scale)
+}
+
+/** 캡 아래 끝의 도톰한 단 (얇은 껍질 끝이 칼로 자른 듯했다 — 머리카락 · 모자에 두께가 생긴다) */
+function capRim(r: number, scale: number, theta: number, tube: number, phi0 = 0, phiLen = Math.PI * 2): THREE.BufferGeometry {
+  const c = Math.cos(theta)
+  const rr = Math.sin(theta) * r * scale * (1 - EGG_TAPER * Math.max(0, c))
+  return hoop(rr, tube, c * r * scale * EGG_Y, phi0, phiLen, Math.max(8, Math.round((28 * phiLen) / (Math.PI * 2))))
+}
+
+function buildHair(d: Bake, L: Look, def: CharacterDef, R: number): void {
+  const top = R * EGG_Y
+  const hc = L.hairColor
+  // 윤기 띠: 정수리 아래 한 바퀴가 조금 밝다 (검은 머리가 한 색 덩어리였다) · 아래 끝은 조금 짙게
+  // + 머리카락 결: 정수리에서 내려오는 가닥을 한 줄 걸러 조금 다른 밝기로 (매끈하면 헬멧처럼 보였다)
+  const hcC = new THREE.Color(hc)
+  const strand = hcC.r + hcC.g + hcC.b < 0.25 ? 0.03 : -0.07
+  const sheen: Tint = (x, y, z) => {
+    const t = (top * 1.05 - y) / (top * 0.6)
+    const col = Math.round((Math.atan2(z, x) / (Math.PI * 2)) * 28)
+    return 0.09 * Math.exp(-(((t - 0.33) / 0.16) ** 2)) + (t > 0.12 && col % 2 === 0 ? strand : 0)
+  }
+  const rimT = R * 0.04
   switch (L.hair) {
     case 'spiky': {
       // 회색 옆머리 띠: 눈 위 높이, 앞(얼굴)은 비우고 옆·뒤로만
       if (L.sideColor !== undefined) {
-        const g = new THREE.SphereGeometry(R * 1.03, 28, 10, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.25, Math.PI * 0.14)
-        eggify(g, R * 1.03)
-        const band = new THREE.Mesh(g, track(mat(L.sideColor)))
-        band.castShadow = true
-        head.add(band)
+        d.add(eggify(new THREE.SphereGeometry(R * 1.03, 28, 10, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.25, Math.PI * 0.14), R * 1.03), L.sideColor)
       }
-      head.add(eggCap(R, 1.04, Math.PI * 0.24, hairM))
-      const spikes = 11
-      for (let i = 0; i < spikes; i++) {
-        const a = (i / spikes) * Math.PI * 2
-        const ring = i % 2 === 0 ? 0.5 : 0.26
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(R * 0.13, R * (0.55 + (i % 3) * 0.16), 6), hairM)
-        cone.position.set(Math.cos(a) * R * ring, top * 0.92, Math.sin(a) * R * ring)
-        cone.rotation.z = -Math.cos(a) * 0.6
-        cone.rotation.x = Math.sin(a) * 0.6
-        cone.castShadow = true
-        head.add(cone)
+      d.add(capGeo(R, 1.04, Math.PI * 0.24), hc)
+      // 가시 머리: 바깥 줄(크게 · 밖으로 눕는다) + 안쪽 줄 + 가운데 하나
+      const spike = (a: number, ring: number, len: number, lean: number) => {
+        d.add(at(new THREE.ConeGeometry(R * 0.14, R * len, 6), Math.cos(a) * R * ring, top * 0.9 + R * len * 0.25, Math.sin(a) * R * ring, Math.sin(a) * lean, 0, -Math.cos(a) * lean), hc, (_x, y) => (y > top * 1.12 ? 0.16 : 0))
       }
+      for (let i = 0; i < 8; i++) spike((i / 8) * Math.PI * 2 + 0.2, 0.52, 0.62 + (i % 3) * 0.12, 0.75)
+      for (let i = 0; i < 5; i++) spike((i / 5) * Math.PI * 2 + 0.7, 0.26, 0.7 + (i % 2) * 0.14, 0.35)
+      spike(0, 0, 0.8, 0)
       if (L.crown === 'star') {
-        const star = new THREE.Mesh(new THREE.OctahedronGeometry(R * 0.17), track(mat(0xffffff, { emissive: 0x444444 })))
-        star.position.set(0, top * 1.22, R * 0.42)
-        head.add(star)
+        // 흰 별 (철면수심 마스코트): 다섯 꼭짓점 별을 이마 위에 세운다
+        const sh = new THREE.Shape()
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2 + Math.PI / 2
+          const rr = R * (i % 2 === 0 ? 0.24 : 0.1)
+          if (i === 0) sh.moveTo(Math.cos(a) * rr, Math.sin(a) * rr)
+          else sh.lineTo(Math.cos(a) * rr, Math.sin(a) * rr)
+        }
+        sh.closePath()
+        const star = new THREE.ExtrudeGeometry(sh, { depth: R * 0.05, bevelEnabled: true, bevelThickness: R * 0.02, bevelSize: R * 0.02, bevelSegments: 1 })
+        d.add(at(star, 0, top * 1.2, R * 0.4, -0.35), 0xffffff)
       }
       break
     }
     case 'bowl': {
-      // 바가지: 눈썹 위까지 덮는 둥근 캡
-      head.add(eggCap(R, 1.06, Math.PI * 0.4, hairM))
+      // 바가지: 눈썹 위까지 덮는 둥근 캡 + 도톰한 끝단
+      d.add(capGeo(R, 1.06, Math.PI * 0.4), hc, sheen)
+      d.add(capRim(R, 1.06, Math.PI * 0.4, R * 0.03), hc)
       break
     }
     case 'short':
     case 'flat':
     case 'side': {
-      head.add(eggCap(R, 1.05, Math.PI * 0.26, hairM))
+      d.add(capGeo(R, 1.05, Math.PI * 0.26), hc, sheen)
       // 뒷머리: 뒤쪽만 더 내려온다
-      head.add(eggCap(R, 1.045, Math.PI * 0.42, hairM, Math.PI * 1.1, Math.PI * 0.8))
+      d.add(capGeo(R, 1.045, Math.PI * 0.42, Math.PI * 1.1, Math.PI * 0.8), hc, sheen)
+      d.add(capRim(R, 1.045, Math.PI * 0.42, rimT, Math.PI * 1.1, Math.PI * 0.8), hc)
+      d.add(capRim(R, 1.05, Math.PI * 0.26, rimT, Math.PI * 0.05, Math.PI * 0.9), hc)
+      // 앞머리 볼륨: 이마 위로 넘긴 덩이 셋 (모자를 쓰면 안 보인다)
+      if (L.extra !== 'cap') {
+        const y = Math.cos(Math.PI * 0.2) * top * 1.05
+        for (const [x, s] of [[-0.26, 0.2], [0.02, 0.25], [0.3, 0.19]] as const) d.add(ball(R * s, R * x, y + R * 0.02, eggRadiusAt(R, y) * 0.92, 1.15, 0.7, 0.9, 10, 8), hc)
+      }
       break
     }
     case 'fringe': {
       // 짧은 머리 + 이마 한쪽을 덮는 옆으로 넘긴 앞머리 (보는 사람 기준 왼쪽으로 쏠림)
-      head.add(eggCap(R, 1.05, Math.PI * 0.25, hairM))
-      head.add(eggCap(R, 1.045, Math.PI * 0.42, hairM, Math.PI * 1.1, Math.PI * 0.8))
+      d.add(capGeo(R, 1.05, Math.PI * 0.25), hc, sheen)
+      d.add(capGeo(R, 1.045, Math.PI * 0.42, Math.PI * 1.1, Math.PI * 0.8), hc, sheen)
+      d.add(capRim(R, 1.045, Math.PI * 0.42, rimT, Math.PI * 1.1, Math.PI * 0.8), hc)
       // 앞머리: 안경 위(이마)까지만, 보는 사람 기준 오른쪽으로 쏠린 조각
-      head.add(eggCap(R, 1.05, Math.PI * 0.29, hairM, Math.PI * 0.44, Math.PI * 0.34))
+      d.add(capGeo(R, 1.055, Math.PI * 0.29, Math.PI * 0.44, Math.PI * 0.34), hc)
+      d.add(capRim(R, 1.055, Math.PI * 0.29, rimT * 1.2, Math.PI * 0.44, Math.PI * 0.34), hc)
+      d.add(capRim(R, 1.05, Math.PI * 0.25, rimT, Math.PI * 0.05, Math.PI * 0.39), hc)
+      // 가르마 옆으로 뻗친 머리 한 가닥
+      d.add(at(new THREE.ConeGeometry(R * 0.07, R * 0.3, 5), -R * 0.12, top * 1.07, -R * 0.1, -0.5, 0, 0.5), hc)
       break
     }
     case 'buzz': {
-      head.add(eggCap(R, 1.02, Math.PI * 0.3, hairM))
+      d.add(capGeo(R, 1.02, Math.PI * 0.3), hc)
       break
     }
     case 'bob': {
       // 단발(통천란): 정수리 캡 + 볼 옆·뒤로 턱까지 내려오는 커튼 + 일자 앞머리.
       // 얼굴은 +Z 쪽(phi = pi/2)이라 커튼은 그 앞을 비워 둔다.
-      head.add(eggCap(R, 1.05, Math.PI * 0.32, hairM))
-      head.add(eggCap(R, 1.05, Math.PI * 0.64, hairM, Math.PI * 0.82, Math.PI * 1.36))
-      head.add(eggCap(R, 1.058, Math.PI * 0.36, hairM, Math.PI * 0.27, Math.PI * 0.46))
+      d.add(capGeo(R, 1.05, Math.PI * 0.32), hc, sheen)
+      d.add(capGeo(R, 1.05, Math.PI * 0.64, Math.PI * 0.82, Math.PI * 1.36), hc, sheen)
+      d.add(capGeo(R, 1.058, Math.PI * 0.36, Math.PI * 0.27, Math.PI * 0.46), hc)
+      // 안으로 말린 머리끝 · 일자 앞머리 끝단
+      d.add(capRim(R, 1.05, Math.PI * 0.64, R * 0.06, Math.PI * 0.82, Math.PI * 1.36), hc)
+      d.add(capRim(R, 1.058, Math.PI * 0.36, rimT, Math.PI * 0.27, Math.PI * 0.46), hc)
       break
     }
     case 'none':
@@ -711,32 +549,21 @@ function buildHair(
       break
   }
   if (L.extra === 'cap') {
-    const capM = track(mat(def.accentColor))
-    const bandM = track(mat(L.capBand ?? 0xf4f4f0))
-    head.add(eggCap(R, 1.08, Math.PI * 0.34, capM))
-    // 챙: 납작한 타원, 앞으로
-    const brimY = Math.cos(Math.PI * 0.34) * R * EGG_Y * 1.08
-    const brim = sphere(R * 0.62, bandM, 0, brimY, eggRadiusAt(R, brimY) * 0.85, 16, 10)
-    brim.scale.set(1.15, 0.08, 1.05)
-    head.add(brim)
-    // 라벨 ("침착")
-    if (L.capText) {
-      const labelM = toonMat({ map: labelTexture(L.capText, L.capBand ?? 0xf4f4f0, def.accentColor) })
-      const label = new THREE.Mesh(new THREE.PlaneGeometry(R * 0.62, R * 0.31), labelM)
-      const ly = brimY + R * 0.28
-      label.position.set(0, ly, eggRadiusAt(R * 1.08, ly / 1.0) + 0.01)
-      label.rotation.x = -0.35
-      head.add(label)
-    }
+    // 야구 모자: 통 · 끝단 · 꼭대기 단추 · 납작한 챙 · 앞 핀
+    const band = L.capBand ?? 0xf4f4f0
+    d.add(capGeo(R, 1.08, Math.PI * 0.34), def.accentColor, (x, y, z) => (Math.abs(Math.atan2(z, x) % (Math.PI / 3)) < 0.03 && y < top ? -0.18 : 0))
+    d.add(capRim(R, 1.08, Math.PI * 0.34, R * 0.03), def.accentColor, () => -0.15)
+    d.add(ball(R * 0.07, 0, top * 1.08, 0, 1, 0.5, 1, 8, 6), def.accentColor, () => -0.15)
+    const brimY = Math.cos(Math.PI * 0.34) * top * 1.08
+    d.add(ball(R * 0.62, 0, brimY, eggRadiusAt(R, brimY) * 0.85, 1.15, 0.08, 1.05, 16, 10), band)
+    if (L.capPin !== undefined) d.add(ball(R * 0.07, R * 0.3, brimY + R * 0.26, eggRadiusAt(R * 1.08, brimY + R * 0.26) * 0.99, 1, 1, 0.5, 8, 6), L.capPin)
   }
   if (L.extra === 'mic') {
-    const micM = track(mat(0x8f8f8f))
+    // 손 마이크: 자루 · 고리 · 그물 머리
     const my = -R * 0.12
-    const stick = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, R * 0.6, 3, 8), track(mat(0x2b2b2b)))
-    stick.position.set(R * 0.4, my - R * 0.3, eggRadiusAt(R, my) * 0.95)
-    stick.rotation.z = -0.5
-    head.add(stick)
-    head.add(sphere(R * 0.15, micM, R * 0.26, my, eggRadiusAt(R, my) * 0.98, 12, 10))
+    d.add(at(new THREE.CapsuleGeometry(0.02, R * 0.6, 3, 8), R * 0.4, my - R * 0.3, eggRadiusAt(R, my) * 0.95, 0, 0, -0.5), 0x2b2b2b)
+    d.add(ball(R * 0.15, R * 0.26, my, eggRadiusAt(R, my) * 0.98, 1, 1, 1, 12, 10), 0x8f8f8f, (_x, y) => (Math.round((y - my) / (R * 0.05)) % 2 === 0 ? 0.25 : 0))
+    d.add(at(new THREE.TorusGeometry(R * 0.11, R * 0.025, 5, 12), R * 0.3, my - R * 0.1, eggRadiusAt(R, my) * 0.97, Math.PI / 2, -0.5, 0), 0xd0d0d0)
   }
 }
 

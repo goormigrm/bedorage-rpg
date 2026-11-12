@@ -28,7 +28,14 @@ interface Sprite {
   spin: number
 }
 
+/**
+ * 3인칭 카메라 코앞 알갱이 옅게 (2026-11-12 검토 — 궁극기 직후 연기 · 빛 알갱이가 화면을 덮었다): 카메라에서 이 거리(칸) 안이면
+ * 가까울수록 옅다(0.3배 거리에서 0). 0 = 끔(쿼터뷰 · 정조준). 렌더러가 프레임마다 정한다 — 두 묶음(빛 · 연기)이 같이 본다
+ */
+export const SPRITE_NEAR = { value: 0 }
+
 const VERT = /* glsl */ `
+uniform float uNear;
 attribute vec3 aCenter;
 attribute vec4 aColor;
 attribute float aSize;
@@ -41,6 +48,7 @@ void main() {
   vColor = aColor;
   vSeed = aRot;
   vec4 mv = modelViewMatrix * vec4(aCenter, 1.0);
+  if (uNear > 0.0) vColor.a *= smoothstep(uNear * 0.3, uNear, -mv.z);
   float c = cos(aRot);
   float s = sin(aRot);
   mv.xy += vec2(c * position.x - s * position.y, s * position.x + c * position.y) * aSize;
@@ -108,7 +116,7 @@ export class SpriteFx {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: { uSoft: { value: additive ? 1.6 : 1.2 }, uCore: { value: additive ? 0.55 : 0 }, uCloud: { value: additive ? 0 : 1 } },
+      uniforms: { uSoft: { value: additive ? 1.6 : 1.2 }, uCore: { value: additive ? 0.55 : 0 }, uCloud: { value: additive ? 0 : 1 }, uNear: SPRITE_NEAR },
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
