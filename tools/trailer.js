@@ -1382,16 +1382,18 @@ function patch24Scenes() {
     }
     // ☀ 후원 전투 (1막 묘지 길 — 운동장처럼 트였다. 4막 균열은 좁은 길 · 2막 숲은 큰 솜사탕 나무 · 4막 들판은 생울타리가 3인칭 카메라 곁을 덮었다):
     // 쿼터뷰로 시작 → 후원이 몰려오는 중에 3인칭으로. dark 면 끝에 그 자리에서 🌙 로 바꿔 조금 더
-    const seqDonation = ({ dark = false } = {}) => {
+    const seqDonation = ({ dark = false, title = null } = {}) => {
       at(0, () => goto(3, 'bright'))
       at(1.2, () => {
         place()
         equipWeapon('smg')
         quarter(3, 26, 0.8)
         for (let k = 0; k < 4; k++) M.stream.fakeChat(false)
+        if (title) ov.title = { ...title, at: now() - 1300 }
         holding = false
       })
       const s4 = tl.t
+      if (title) every(s4 + 2.2, s4 + 2.3, 1, () => ov.title && !ov.title.out && (ov.title.out = now()))
       every(s4 + 0.3, s4 + 10.6 + (dark ? 6 : 0), 0.45, () => M.stream.fakeChat(false))
       every(s4 + 1, s4 + 4.6, 0.6, () => alive() < 32 && spawn(K(3), 10, 6, 12))
       at(0.8, () => don(1000, '좀비 떼 갑니다'))
@@ -1589,7 +1591,7 @@ function patch24Scenes() {
       seqBosses()
       seqLoot()
       seqSplit(SPLIT_DUR_REL, { text: '같이 하기 · 최대 4명', sub: '같은 판 · 분위기와 시점은 사람마다' })
-      seqDonation({ dark: true })
+      seqDonation({ dark: true, title: { text: '방송 연동 · 치지직', sub: '채팅은 괴물의 입으로 · 후원은 판 위의 사건으로' } })
       endCard(tl, 0, 700)
       return tl.done()
     }
@@ -2906,7 +2908,7 @@ export async function start(opts = {}) {
         // 모드 영상은 🌙 장면이 압축이 안 돼 1.9 Mbps 도 23.5 MB 였다 — 더 낮은 후보까지
         // 모드 영상은 🌙 장면이 압축이 안 돼 VP8 은 비트레이트를 낮춰도 22 MB 였다 → 720 도 VP9
         // 트레일러는 11 MB 안에서 가장 큰 것 — 짧은 편(30초)은 3 Mbps 까지 쓴다
-        ...(REL === 4 ? [2_300_000, 2_000_000, 1_700_000, 1_400_000] : REL ? [3_000_000, 2_600_000, 2_300_000, 2_000_000, 1_700_000] : MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        ...(REL === 4 ? [3_100_000, 2_800_000, 2_300_000, 2_000_000] : REL ? [3_000_000, 2_600_000, 2_300_000, 2_000_000, 1_700_000] : MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
         (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
           ? { name: P24NAME + '_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
           : { name: P24NAME + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
