@@ -405,7 +405,7 @@ export class BonfireScene {
       const cx = lo.x
       const hi = this.tmpB.set(rp.x, rp.y + sel.rig.height + 0.1, rp.z).project(this.camera)
       const y1 = hi.y
-      const w = Math.abs(this.tmpB.set(rp.x, rp.y, rp.z).addScaledVector(right, 0.6).project(this.camera).x - cx)
+      const w = Math.abs(this.tmpB.set(rp.x, rp.y, rp.z).addScaledVector(right, 0.48).project(this.camera).x - cx)
       box = { x0: cx - w, x1: cx + w, y0, y1 }
     }
     let seatN = 0
