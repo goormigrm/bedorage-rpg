@@ -2446,7 +2446,8 @@ export class Session {
     // 후원 글의 "!응원"(돕는 후원 — 회복 구슬 · 아군 괴물)은 뺐다 (2026-10-24 사용자: "아무도 안 쓴다 — 그냥 빼") — 금액대로 방해 이벤트
     const e = eventForAmount(d.amount)
     // 후원이 한꺼번에 몰려도 소리는 0.25초에 하나 (큰 것은 늘)
-    const big = !!e && e.id >= 6
+    // 큰 소리는 공개 가격표의 등급으로 — 번호(6 ~)로 보던 것이 여기만 남아 8천 원 시야 축소(3번)가 받을 때 작은 소리였다 (2026-10-25 검토 7번이 빠뜨린 곳)
+    const big = !!e && donTier(e.id) >= 1
     const now = performance.now()
     if (big || now - this.lastDonSfx > 250) {
       this.lastDonSfx = now
@@ -2560,7 +2561,7 @@ export class Session {
    * 추첨은 방송하는 사람 화면에서만(후보가 거기에만 있다) · 정예 이름 차례(NAMED_MAX · 3초 쉬기)와 따로 센다 — 고블린은 한 지역에 하나뿐이다
    */
   private onGoblinSeen(x: number, y: number): void {
-    if (this.joinPool.length === 0 || this.arena || !loadStreamCfg().named) return
+    if (this.joinPool.length === 0 || this.arena || this.joiningIn || !loadStreamCfg().named) return
     let best = -1
     let bestD = 96
     for (const m of this.view().monsters) {
