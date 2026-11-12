@@ -1222,6 +1222,8 @@ body { background: var(--bg); }
 .czx:hover { color: #fff; border-color: var(--cz); }
 .czlead { margin: 8px 0 10px; color: #a8c0b6; line-height: 1.55; }
 .czlead b { color: #e8fff4; }
+.czwhat { margin: 0 0 10px; padding: 8px 12px 8px 28px; border: 1px solid rgba(125,255,196,.18); border-radius: 6px; background: rgba(125,255,196,.05); color: #a8c0b6; font-size: 13px; line-height: 1.55; }
+.czwhat b { color: #8fd8ff; }
 .czpanel .czrow { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
 .czpanel .btn.czgo { background: var(--cz); color: #04130d; border-color: var(--cz); font-weight: 900; padding: 9px 22px; }
 .czpanel .btn.czgo:hover { background: #5affc6; }
@@ -1502,6 +1504,7 @@ body.drag-item, body.drag-item * { cursor: grabbing !important; }
 .cr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .cr-row span { text-align: right; color: #e8dcc4; }
 .cr-row em { text-align: left; font-style: normal; color: #b8aa90; }
+.cr-cast { margin: 0; color: #8fd8ff; font: 700 15px/1.9 "IBM Plex Sans KR", sans-serif; word-break: keep-all; }
 .cr-end { margin-top: 60px; font: 800 22px "Nanum Myeongjo", serif; color: #ffcf6a; }
 .ending-skip { position: absolute; right: 28px; bottom: 28px; opacity: 0.75; }
 .ending-skip:hover { opacity: 1; }

@@ -33,14 +33,22 @@ const MODEL_CREDITS: [string, string, string][] = [
   ['강령술사', 'PBR Shadowkin Mage (Rigged)', 'Ferocious Industries'],
 ]
 
-function creditsHtml(): string {
+/** 크레딧에 올리는 시청자 이름의 끝 — 30초에 흐르는 길이라 너무 길면 못 읽게 빨라진다 */
+const CAST_MAX = 60
+/** 시청자 닉네임은 남이 지은 글이다 — 태그가 되지 않게 */
+const esc = (s: string): string => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] ?? ch)
+
+function creditsHtml(viewers: string[] = []): string {
   const sec = (title: string, rows: string) => `<div class="cr-sec"><h4>${title}</h4>${rows}</div>`
+  // 방송 (2026-11-12): 이번 판에 채팅 !참여 로 괴물이 된 시청자들 (👑 = 사람을 쓰러뜨렸거나 보물을 들고 달아났다)
+  const guests = viewers.length > 0 ? sec('출연 — 괴물이 된 시청자', `<p class="cr-cast">${viewers.slice(-CAST_MAX).map(esc).join(' · ')}</p>`) : ''
   const cast = PLAYABLE.map((id) => `<div class="cr-row"><span>${CHARACTERS[id].name}</span><em>${CHARACTERS[id].basedOn ?? ''}</em></div>`).join('')
   const models = MODEL_CREDITS.map(([who, model, by]) => `<div class="cr-row"><span>${who}</span><em>"${model}" — ${by}</em></div>`).join('')
   return `<div class="cr-title">배도라지 <span class="egg">알</span>PG</div>
     <p class="cr-note">비공식 · 비상업 팬 게임</p>
     <div class="cr-maker"><h4>제작 · 기획 · 개발 · 유지보수</h4><div class="cr-who">구르미소미</div><p>혼자 만든 1인 개발 게임</p></div>
     ${sec('출연 — 계란이 된 크루', cast)}
+    ${guests}
     ${sec('괴물 모델 (Sketchfab · CC BY 4.0)', models)}
     ${sec('무료 자료 (CC0)', '<div class="cr-row"><span>귀여운 괴물</span><em>Quaternius "Ultimate Monsters"</em></div><div class="cr-row"><span>옮겨 붙인 동작</span><em>Quaternius "Universal Animation Library"</em></div>')}
     ${sec('목소리 · 소리', '<div class="cr-row"><span>보스 대사</span><em>Microsoft Heami 음성 합성</em></div><div class="cr-row"><span>음악 · 총소리</span><em>코드로 만든 소리 — 방송에 마음껏</em></div><div class="cr-row"><span>효과음 일부</span><em>Kenney "Impact · RPG Audio · Interface Sounds" (CC0)</em></div>')}
@@ -69,7 +77,7 @@ const NEXT = ['악몽 난이도가 열렸다 — 같은 세계, 더 깊은 어�
  * 엔딩: 이야기 줄 → 크레딧이 아래에서 위로(약 30초) → 끝맺음 · 다음 난이도 · 시련 안내 · 계속하기.
  * music = 엔딩 곡을 켜고 끄기 (audio/sfx.ts endingMusic — 창이 닫히면 원래 곡으로)
  */
-export function showEnding(parent: HTMLElement, tier: number, onClose: () => void, music?: (on: boolean) => void): void {
+export function showEnding(parent: HTMLElement, tier: number, onClose: () => void, music?: (on: boolean) => void, viewers?: string[]): void {
   if (parent.querySelector('.ending')) return
   const el = document.createElement('div')
   el.className = 'ending'
@@ -79,7 +87,7 @@ export function showEnding(parent: HTMLElement, tier: number, onClose: () => voi
     <h2>${b ? '도장판을 다 채웠다' : '종이 울렸다'}</h2>
     ${lines.map((t, i) => `<p style="animation-delay:${1 + i * 1.6}s">${t}</p>`).join('')}
   </div>
-  <div class="credits" hidden><div class="cr-roll">${creditsHtml()}</div></div>
+  <div class="credits" hidden><div class="cr-roll">${creditsHtml(viewers)}</div></div>
   <div class="ending-box final" hidden>
     <p class="ending-sub" style="animation-delay:0.2s">배도라지 <span class="egg">알</span>PG · 끝 — 끝까지 함께해 줘서 고마워요.</p>
     <p class="ending-hint" style="animation-delay:0.8s">${(b ? NEXT_BRIGHT : NEXT)[Math.max(0, Math.min(2, tier))]} · 캐릭터와 전리품은 그대로 남는다<br>마을의 <b>${NPC_NAMES.trial}</b>이 열렸다 — 끝없이 깊어지는 ${RIFT_TEXT.name} · 레벨 ${LEVEL_CAP} 뒤에는 숙련 점수</p>

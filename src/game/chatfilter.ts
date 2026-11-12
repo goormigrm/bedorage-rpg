@@ -53,8 +53,8 @@ export function squeezeRepeats(text: string): string {
   return text.replace(/(.)\1{8,}/gsu, (_m, ch: string) => ch.repeat(8))
 }
 
-/** 같은 말인지 볼 때: 띄어쓰기 · 대소문자 · 길게 늘인 것을 없앤다 */
-function norm(text: string): string {
+/** 같은 말인지 볼 때: 띄어쓰기 · 대소문자 · 길게 늘인 것을 없앤다 (도배 거르기 · 채팅 합창이 같이 쓴다) */
+export function norm(text: string): string {
   return squeezeRepeats(text.toLowerCase().replace(/\s+/g, '')).replace(/(.)\1+/gsu, '$1')
 }
 
