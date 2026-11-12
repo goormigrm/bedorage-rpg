@@ -272,6 +272,136 @@ async function openGame(skin) {
   await page.close()
 }
 
+// ---------------------------------------------------------------- 흐름 (2026-11-12 버그 검사 — ☀ 판)
+// 지역 옮김과 시점 바꾸기(B)가 겹칠 때(같은 날 "Cannot read properties of undefined (reading 'isReady')" 가 한 번 났다 — 싸운 직후 마을로
+// 넘어가며 B) · 창을 연 채 지역 옮김 · 분위기(G) 왕복 · 쓰러졌다 일어나기 · 함정 상자 · 설정 바꾸고 새로 고침 — 잡히지 않은 오류 0
+{
+  const { page, errors } = await openGame('bright')
+  const me = () =>
+    page.evaluate(() => {
+      const p = window.__bd.state().players[window.__bd.me()]
+      return { area: p.area, alive: p.alive, downed: p.downed, hp: Math.round(p.hp), tick: window.__bd.tick() }
+    })
+  /** 덮개 · 3인칭 준비가 끝날 때까지 */
+  const settle = async (ms = 60_000) => {
+    await page.waitForTimeout(400)
+    await page.waitForFunction(() => !window.__session.renderer.covering && window.__session.renderer.fpsPrep !== 'busy', null, { timeout: ms }).catch(() => {})
+    await page.waitForTimeout(400)
+  }
+  /** 판 입력 키는 틱에 잡히게 잠깐 눌러 둔다 */
+  const hold = async (code, ms = 300) => {
+    await page.keyboard.down(code)
+    await page.waitForTimeout(ms)
+    await page.keyboard.up(code)
+  }
+  /** 지금 지역의 k 번째 출구에 서서 F — with 가 있으면 F 와 같이 그 키도 (덮개가 내려오는 동안) */
+  const useExit = async (k, withKey) => {
+    await page.evaluate((k) => {
+      const p = window.__bd.state().players[window.__bd.me()]
+      const e = window.__bd.layout().exits[k]
+      p.x = e.x
+      p.y = e.y
+      p.exitLock = 0
+    }, k)
+    await page.waitForTimeout(300)
+    await page.keyboard.down('KeyF')
+    if (withKey) {
+      await page.waitForTimeout(120)
+      await page.keyboard.press(withKey)
+    }
+    await page.waitForTimeout(300)
+    await page.keyboard.up('KeyF')
+  }
+  const town = (await me()).area
+
+  // 1. 마을 → 들판, 덮개가 내려오는 동안 B(3인칭)
+  await useExit(0, 'KeyB')
+  await settle()
+  const f1 = await me()
+  check(f1.area !== town, `마을 문에서 F — 들판으로 간다 (지역 ${town} → ${f1.area}) · 옮기는 중 B`)
+
+  // 2. 싸운다(쏜다 — 탄 · 이펙트 재질이 만들어진다) → 창을 연 채 → 마을로 넘어가며 B
+  for (let round = 0; round < 2; round++) {
+    await page.mouse.move(900, 380)
+    await page.mouse.down()
+    await page.waitForTimeout(1500)
+    await page.mouse.up()
+    await page.keyboard.press('KeyI')
+    await page.waitForTimeout(300)
+    const back = await page.evaluate((town) => window.__bd.layout().exits.findIndex((e) => e.to === town), town)
+    await useExit(Math.max(0, back), 'KeyB')
+    await settle()
+    const t1 = await me()
+    check(t1.area === town, `싸운 직후 가방을 연 채 마을로 — 넘어가며 B (${round + 1}번째 · 지역 ${t1.area})`)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    if (await page.evaluate(() => !document.getElementById('overlay').hidden)) await page.keyboard.press('Escape')
+    await useExit(0, round === 0 ? 'KeyB' : undefined)
+    await settle()
+  }
+  const f2 = await me()
+  check(f2.area !== town, `다시 들판 (지역 ${f2.area})`)
+
+  // 3. 분위기 바꾸기(G) 왕복 — 렌더러를 새로 만든다
+  for (const want of [false, true]) {
+    await page.keyboard.press('KeyG')
+    await page.waitForFunction((want) => !!document.querySelector('.skin-bright') === want && !!window.__session.renderer && !window.__session.renderer.covering, want, { timeout: 90_000 }).catch(() => {})
+    await page.waitForTimeout(800)
+    check((await page.evaluate(() => !!document.querySelector('.skin-bright'))) === want, `G — ${want ? '☀ 로 돌아온다' : '🌙 로 바뀐다'}`)
+  }
+  const t0 = (await me()).tick
+  await page.waitForTimeout(1000)
+  check((await me()).tick > t0, '분위기를 바꾼 뒤에도 판이 돈다')
+
+  // 4. 함정 상자가 터진 상태(v1.10.41 — 저주받은 상자의 마지막 물결 · state.ts OBJ_CURSED = 4 · CURSE_WAVES = 3)를 곁에 놓는다 — 정예 무리가 덮친다
+  const pack0 = await page.evaluate(() => {
+    const s = window.__bd.state()
+    const p = s.players[window.__bd.me()]
+    s.objects.push({ id: 99001, kind: 4, x: p.x + 24, y: p.y, used: false, v: 3, t: -1, trap: true })
+    return window.__bd.view().monsters.filter((m) => m.pack === 7000 + 99001).length
+  })
+  await page.waitForTimeout(1200)
+  const pack1 = await page.evaluate(() => window.__bd.view().monsters.filter((m) => m.pack === 7000 + 99001).length)
+  check(pack0 === 0 && pack1 > 0, `함정 상자가 터지면 무리가 덮친다 (${pack0} → ${pack1}마리)`)
+
+  // 5. 쓰러졌다 일어나기: 혼자면 쓰러진 뒤 마을에서 일어난다
+  await page.evaluate(() => {
+    const p = window.__bd.state().players[window.__bd.me()]
+    p.invuln = 0
+    p.hp = 0
+    p.downed = true
+    p.downTimer = 60
+  })
+  await page.waitForFunction(() => {
+    const p = window.__bd.state().players[window.__bd.me()]
+    return p.alive && !p.downed && p.hp > 0
+  }, null, { timeout: 60_000 }).catch(() => {})
+  await settle()
+  const up = await me()
+  check(up.alive && !up.downed && up.hp > 0, `쓰러졌다 일어난다 (지역 ${up.area} · 체력 ${up.hp})`)
+
+  // 6. 설정을 바꾸고 새로 고침 — 값이 남고 대기실이 다시 열린다
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(500)
+  const set = await page.evaluate(() => {
+    const before = JSON.stringify(Object.entries(localStorage).filter(([k]) => !k.startsWith('brpg.save')))
+    const b = [...document.querySelectorAll('.srow .seg[data-set] button')].find((x) => x.offsetParent && !x.classList.contains('on') && x.parentElement.dataset.set !== '소리')
+    if (!b) return null
+    const name = b.parentElement.dataset.set
+    b.click()
+    const after = Object.entries(localStorage).filter(([k]) => !k.startsWith('brpg.save'))
+    return { name, changed: JSON.stringify(after) !== before, after: JSON.stringify(after) }
+  })
+  check(!!set && set.changed, `메뉴의 설정을 바꾸면 저장된다 (${set?.name ?? '설정 칸 없음'})`)
+  await page.reload({ waitUntil: 'load' })
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '게임 만들기'), null, { timeout: 60_000 }).catch(() => {})
+  const kept = await page.evaluate(() => JSON.stringify(Object.entries(localStorage).filter(([k]) => !k.startsWith('brpg.save'))))
+  check(!!set && kept === set.after, '새로 고쳐도 설정이 그대로다 · 대기실이 다시 열린다')
+
+  check(errors.length === 0, `잡히지 않은 오류 없음 (흐름 — 지역 옮김 + B · G 왕복 · 함정 상자 · 쓰러짐 · 새로 고침)${errors.length ? '\n    ' + errors.slice(0, 3).join('\n    ') : ''}`)
+  await page.close()
+}
+
 await browser.close()
 if (fails.length) {
   console.log(`\n화면 시험 실패 ${fails.length}개 — 배포하지 않는다`)

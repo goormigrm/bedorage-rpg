@@ -90,11 +90,32 @@ describe('락스텝 자리 비움·채움', () => {
     expect(ls.hasAll(103)).toBe(false)
   })
 
-  it('경기 도중 합류(startTick)해도 그 앞은 기다리지 않는다', () => {
+  it('경기 도중 합류(startTick)해도 그 앞은 기다리지 않는다 · 합류 틱부터는 남들의 실제 입력을 기다린다', () => {
     const start = 500
     const ls = new Lockstep(fakeLink(), 3, 0, new Map(), 2, start)
     ls.rejoin(1, start)
-    for (let t = start; t < start + 3; t++) expect(ls.hasAll(t)).toBe(true)
+    ls.drop(0)
+    for (let t = start - 3; t < start; t++) expect(ls.hasAll(t)).toBe(true)
+    // 2026-11-12: 전에는 합류 틱부터 delay 틱을 빈 입력으로 미리 채워, 그 틱에 남들이 실제로 누른 입력을 버렸다(들어오자마자 어긋남)
+    expect(ls.hasAll(start)).toBe(false)
+  })
+
+  it('도중에 들어온 사람은 합류 틱의 입력도 남들이 실제로 누른 것을 쓴다 (빈 입력으로 덮지 않는다)', () => {
+    const bus = makeBus()
+    const idx = new Map([['a', 0], ['b', 1]])
+    const a = new Lockstep(bus.link('a'), 3, 0, idx, 2)
+    a.drop(1)
+    for (let t = 0; t < 100; t++) a.pushLocal(t, IN(1))
+    // b 가 틱 100 의 판을 받아 들어온다 (자기 자리는 아직 비어 있다)
+    const b = new Lockstep(bus.link('b'), 3, 1, idx, 2, 100)
+    for (let i = 0; i < 2; i++) b.rejoin(i, 100)
+    b.drop(1)
+    a.resendTo('b')
+    for (let t = 100; t < 103; t++) {
+      expect(b.hasAll(t)).toBe(true)
+      expect(b.get(t)[0].mx).toBe(a.get(t)[0].mx)
+      expect(b.get(t)[0].mx).toBe(1)
+    }
   })
 })
 
@@ -392,16 +413,16 @@ describe('난입자는 준비될 때까지 아무도 기다리게 하지 않는�
     idxA.set('c', 2)
     idxB.set('c', 2)
     // a·b 는 계속 돌고(c 는 아직 활성화 전), c 는 a 의 입력만 받아 b 것이 없어 멈춘다
-    // (처음 delay 틱은 모두 빈 입력으로 미리 채워지므로 103 에서 선다)
+    // (합류 틱 100 부터 b 의 실제 입력을 기다린다 — 빈 입력으로 미리 채우지 않는다 · 2026-11-12)
     run(ab, 160)
-    expect(run([{ ls: c, tick: 100 }], 200)).toBe(100 + DELAY)
+    expect(run([{ ls: c, tick: 100 }], 200)).toBe(100)
     // 60틱 뒤에 b·c 가 붙는다. 8틱 넘게 늦었으므로 평소 패킷만으로는 100~152 가 영영 빈다
     connect('b', 'c')
     b.resendTo('c')
     c.resendTo('b')
     // 이제 셋이 같이 활성화하고 돌린다
     for (const ls of [a, b, c]) ls.activate(2, 200)
-    const all = [{ ls: a, tick: 160 }, { ls: b, tick: 160 }, { ls: c, tick: 100 + DELAY }]
+    const all = [{ ls: a, tick: 160 }, { ls: b, tick: 160 }, { ls: c, tick: 100 }]
     expect(run(all, 300)).toBe(300)
   })
 

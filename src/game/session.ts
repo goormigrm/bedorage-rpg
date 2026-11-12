@@ -38,7 +38,7 @@ import { activeSlot, commitSheet, playerSheet } from './save'
 import { Inventory } from '../ui/inventory'
 import { WEAPONS } from '../core/weapons'
 import { drawPortrait } from '../render/character'
-import { Lockstep } from '../net/lockstep'
+import { Lockstep, wantDelay } from '../net/lockstep'
 import { CtlMessage, LobbyLink, RoomLink, levelBlock } from '../net/room'
 import { banPeer, isBanned } from '../net/bans'
 import { UiRect, VIEW_H, VIEW_W, setStageScale, setViewSize } from '../render/hud'
@@ -229,6 +229,9 @@ export class Session {
   /** 0.4초 넘는 멈춤 횟수·누적 시간 (운영 로그용) */
   private stallCount = 0
   private stallMs = 0
+  /** 입력을 기다린 모든 멈춤(길이와 상관없이)의 횟수 · 합(ms) — 멀티 계측 (`__bd.stalls()`) */
+  private waitCount = 0
+  private waitMs = 0
   private lockstep: Lockstep | null = null
   /** 받은 리싱크 횟수 (어긋남 — 시험·운영 확인용) */
   private resyncs = 0
@@ -280,14 +283,22 @@ export class Session {
     sent: boolean
     /** 난입자가 "모두와 연결됐다" 고 했는가 */
     ready: boolean
+    /** 준비됐다는 것을 처음 본 시각 (serveJoin) */
+    readyAt?: number
+    /** 그 사람 입력이 내 틱을 앞서 오고 덮개도 걷힌 채로 이어진 틱 수 (serveJoin) */
+    steady?: number
     /** 이 시각(performance.now)까지 준비가 안 되면 끊는다 */
     deadline: number
   } | null = null
   /** 난입자 쪽: 아직 판에 들어가지 않은 관전 상태 (자리 배정 확정 전) */
   private joiningIn = false
+  /** 난입자 쪽: 내리 고르게(0.1초 안) 그려진 프레임 수 · 세션을 연 시각 (checkJoinReady) */
+  private joinWarm = 0
+  private joinOpenAt = performance.now()
   private joinReadySent = false
   /** 난입 준비 제한. 이 안에 모두와 연결되지 않으면 호스트가 끊고 자리를 되돌린다 */
-  private static readonly JOIN_TIMEOUT_MS = 8000
+  // 2026-11-12: 8초 → 12초 — 난입자가 화면이 고르게 그려질 때까지(최대 5초) 준비를 미루게 됐다. 기다리는 동안 기존 사람들은 멈추지 않는다
+  private static readonly JOIN_TIMEOUT_MS = 12000
   /** joinLive 를 방송하고 실제로 자리를 채우기까지의 여유 (메시지가 모두에게 닿을 시간) */
   private static readonly JOIN_LEAD_TICKS = 40
   /** 정해진 틱에 자리를 채울 사람들 (난입) */
@@ -580,6 +591,7 @@ export class Session {
     }
 
     window.addEventListener('keydown', this.onKey)
+    window.addEventListener('pagehide', this.onPageHide)
     document.addEventListener('pointerlockchange', this.onLockChange)
     window.addEventListener('resize', this.fit)
     this.fit()
@@ -605,7 +617,13 @@ export class Session {
       others: () => this.state.players.filter((p, i) => i !== this.cfg.localPlayer && !p.left && !p.vacant && !this.cfg.bots?.[i]).length,
       names: () => this.names,
       bots: () => this.cfg.bots ?? [],
-      stalls: () => ({ count: this.stallCount, ms: Math.round(this.stallMs), now: this.stallSince >= 0 ? Math.round(performance.now() - this.stallSince) : 0 }),
+      stalls: () => ({ count: this.stallCount, ms: Math.round(this.stallMs), now: this.stallSince >= 0 ? Math.round(performance.now() - this.stallSince) : 0, waits: this.waitCount, waitMs: Math.round(this.waitMs) }),
+      /** 멀티 계측: 지금 입력 지연(틱) · 방 통로 누적 수 · 피어별 왕복 시간 */
+      delay: () => this.lockstep?.delay ?? 0,
+      /** 지금 틱에서 입력을 기다리는 자리 번호들 · 자리마다 받은 가장 앞선 틱 */
+      waitingOn: () => this.lockstep?.missing(this.state.tick) ?? [],
+      latest: () => this.state.players.map((_, i) => this.lockstep?.latestFrom(i) ?? -1),
+      net: () => ({ ...(this.cfg.link?.stats ?? {}), rtt: this.cfg.link?.rtt ?? 0, peers: this.cfg.link?.peers.size ?? 0 }),
       // P2P 확인용: 60틱마다의 상태 해시(틱 → 해시)와 받은 리싱크 수 — 탭끼리 같은 틱의 해시가 같으면 어긋나지 않은 것
       hashes: () => Object.fromEntries(this.hashes),
       // 난입 진행 (호스트): 판 보냄 · 준비 · 그 자리 입력을 받았나 · 가장 앞선 입력 틱 vs 지금 틱
@@ -990,6 +1008,14 @@ export class Session {
    * 내 캐릭터를 세이브에 적는다. **하드코어는 마을에 있을 때만** — 던전에서 적으면 탈락해도 얻은 것이 남는다(GUIDE 5.3).
    * 탈락했으면 적지 않는다(마지막으로 마을에 들어온 뒤 얻은 것을 잃는다).
    */
+  /**
+   * 탭을 닫거나 새로 고칠 때 저장한다 (2026-11-12 멀티 검토): 자동 저장은 30초에 한 번이라 새로 고치면(방장 · 손님 누구든 — 멀티에서는 곧
+   * 난입으로 돌아온다) 그 사이에 주운 것 · 경험치를 잃었다. 저장 규칙(하드코어는 마을에서만 · 난입 관전 중에는 안 함)은 saveMine 그대로
+   */
+  private onPageHide = (): void => {
+    if (!this.disposed && this.state.phase !== 'over') this.saveMine(false)
+  }
+
   private saveMine(final: boolean): void {
     const me = this.state.players[this.cfg.localPlayer]
     if (!me || me.vacant || this.joiningIn) return
@@ -1568,6 +1594,8 @@ export class Session {
     if (idx === 0) {
       // 호스트가 나가면 방은 끝. 던전이면 **지금 판 그대로 혼자 이어하기**를 고를 수 있다(2026-09-19 M8) —
       // 판은 모두가 똑같이 들고 있으므로(락스텝) 내 것을 그대로 쓰면 된다
+      // 여기서 창을 닫아 버려도 지금까지 키운 것이 남게 먼저 저장한다 (2026-11-12 — 멈춘 동안에는 30초 자동 저장이 돌지 않는다)
+      this.saveMine(false)
       const buttons = [{ label: '로비로', primary: !this.canContinueSolo(), onClick: () => this.exit() }]
       if (this.canContinueSolo()) buttons.unshift({ label: '혼자 이어하기', primary: true, onClick: () => this.continueSolo() })
       this.showOverlay(
@@ -1897,6 +1925,9 @@ export class Session {
     this.saveMine(true)
     // 판 상태에서 통째로 (모두가 같은 답) — 전에는 레벨 · 돈 · 장비 · 가방만 넘겨 스킬 · 능력치 · 숙련 · 퀘스트 · 창고가 비었고 그대로 세이브에 적혔다 (2026-10-25 검토)
     this.cfg.sheets = this.state.players.map((p) => (p.vacant ? undefined : playerSheet(p)))
+    // 난입으로 들어온 사람도 새 판은 틱 0 부터다 — 받았던 판 · 틱을 남기면 락스텝이 그 틱부터 세어 0 틱 입력이 영영 비고 방이 멈췄다 (2026-11-12 버그 검사)
+    this.cfg.resumeTick = undefined
+    this.cfg.resumeState = undefined
     // 맵도 시드로 새로 생성한다 (매 판 구조물이 달라진다)
     this.cfg.seed = seed
     this.maps.clear()
@@ -1927,6 +1958,8 @@ export class Session {
   private tick(): void {
     if (this.disposed) return
     const now = performance.now()
+    // 가려진 탭은 화면 신호(frame)가 없다 — 난입 준비 알림의 5초 상한은 여기서도 본다
+    if (this.joiningIn && !this.joinReadySent) this.checkJoinReady()
     const dt = Math.max(0, Math.min(0.25, (now - this.lastTick) / 1000))
     this.lastTick = Math.max(this.lastTick, now)
     if (this.paused || this.state.phase === 'over') return
@@ -1937,6 +1970,7 @@ export class Session {
     const me = this.state.players[lp]
     const n = this.state.players.length
     this.acc += dt * 1000
+    this.tuneDelay(now)
     let steps = 0
     // 멈췄다 풀리면 밀린 틱을 몰아서 처리한다. 너무 많이 몰면 화면이 튀므로
     // 한 번에 최대 4틱만 따라잡는다(나머지는 다음 호출에서). 렌더 쪽 스무딩과 짝이다.
@@ -1975,12 +2009,18 @@ export class Session {
         if (!this.lockstep.hasAll(t)) {
           if (this.stallSince < 0) this.stallSince = now
           this.watchSilent(t, now)
+          // 남의 입력을 기다린 시간은 **몰아서 되찾지 않는다** (2026-11-12 멀티 계측): 되찾으면 내 판이 늘 "입력이 막 닿는 틱"에 붙어
+          // 틱마다 몇 ms 씩 기다렸다(핑 270ms 에서 방장이 1초에 44번 · 화면이 망 흔들림대로 떨렸다 — 입력 지연에 여유가 130ms 나 있는데도).
+          // 기다린 만큼 내 판을 늦추면 여유 한가운데로 들어가 기다림이 사라진다. 내가 느려서 밀린 틱(입력은 와 있다)은 그대로 몰아 돈다
+          if (!this.joiningIn) this.acc = Math.min(this.acc, TICK_MS)
           break
         }
         if (this.silentSince.length) this.silentSince.length = 0
         if (this.stallSince >= 0) {
           // 0.4초 넘게 멈춘 것만 '끊김' 으로 센다 (화면에 "상대 입력 대기 중…" 이 뜨는 기준과 같다). 방 지키기 로그가 읽는다
           const d = now - this.stallSince
+          this.waitCount++
+          this.waitMs += d
           if (d > 400 && this.state.phase === 'playing') {
             // 카운트다운(시작 직후 상대 입력이 처음 오기까지 기다리는 것)은 세지 않는다 — 판 중의 끊김만
             this.stallCount++
@@ -2103,6 +2143,33 @@ export class Session {
     else if (now - this.playedAt > 5000) this.notePlayed()
   }
 
+  private delayAt = 0
+  private delayLowSince = -1
+  /**
+   * 입력 지연을 핑에 맞춘다 (2026-11-12 멀티 최적화): 전에는 **시작할 때 방장이 잰 핑**으로 한 번 정하고 끝이었다 — 혼자 시작한 방(지연 3틱)에
+   * 핑 230ms 손님이 난입하면 지연(3틱)이 한쪽 길(7틱)보다 짧아 판이 (3 + 1) / 7 속도로 느려졌고(tests/netdelay — 느린 화면 · 끊김),
+   * 반대로 핑이 좋아져도 처음 값에 묶였다. 이제 저마다 **자기가 잰 가장 느린 상대**에 맞춘다: 모자라면 0.5초에 한 틱씩 곧바로 올리고,
+   * 남으면 5초 지켜본 뒤 1초에 한 틱씩 내린다(흔들리는 망에서 오르내리지 않게). 지연은 사람마다 달라도 판은 같다(lockstep setDelay)
+   */
+  private tuneDelay(now: number): void {
+    const ls = this.lockstep
+    const link = this.cfg.link
+    // `?fixdelay=1`(개발 서버만): 조절을 꺼 예전처럼 시작 값에 묶는다 — 전후 계측용
+    if (!ls || !link || now - this.delayAt < 500 || (import.meta.env.DEV && location.search.includes('fixdelay=1'))) return
+    this.delayAt = now
+    const want = wantDelay(link.peers.size, link.rtt)
+    if (want > ls.delay) {
+      ls.setDelay(want)
+      this.delayLowSince = -1
+    } else if (want < ls.delay) {
+      if (this.delayLowSince < 0) this.delayLowSince = now
+      else if (now - this.delayLowSince >= 5000) {
+        ls.setDelay(want)
+        this.delayLowSince = now - 4000
+      }
+    } else this.delayLowSince = -1
+  }
+
   /** 화면 신호(rAF)의 간격 (부드럽게 잰 값 — shouldDraw) */
   private rafIv = 1000 / 60
   private lastRaf = 0
@@ -2126,6 +2193,11 @@ export class Session {
     if (this.disposed) return
     this.lastFrameAt = performance.now()
     this.autoQuality(now - this.last)
+    // 난입: 화면이 고르게 그려진 뒤에 "준비" 를 알린다 (checkJoinReady)
+    if (this.joiningIn && !this.joinReadySent) {
+      this.joinWarm = now - this.last < 100 ? this.joinWarm + 1 : 0
+      this.checkJoinReady()
+    }
     // 프레임 간격은 0 아래로 내려가지 않는다 (2026-09-23): rAF 의 시각과 직접 부른 frame(performance.now()) 이 섞이면
     // 앞선 시각 뒤에 더 이른 시각이 와 dt 가 음수가 됐고, 카메라 따라가기(1 - 0.002^dt)가 폭발해 화면이 몇 초씩 까매졌다
     const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
@@ -3136,7 +3208,7 @@ export class Session {
         seed: this.cfg.seed,
         map: this.cfg.mapId ?? DEFAULT_MAP,
         scale: this.arena ? this.mapOf(0).scale : 1,
-        delay: this.cfg.delay ?? 3,
+        delay: this.lockstep?.delay ?? this.cfg.delay ?? 3,
         peerIds: this.cfg.peerIds ?? [],
         bots: this.cfg.bots,
         difficulty: this.cfg.difficulty,
@@ -3147,7 +3219,15 @@ export class Session {
     }
     // 준비됐고, 그 사람 입력 패킷이 실제로 오고 있고, **판도 거의 따라잡았다** → 조금 뒤 틱에 모두 같이 자리를 채운다.
     // 따라잡기 전에 활성화하면 활성화 틱에서 모두가 그 사람 입력을 기다린다 (실측 0.45초 멈춤).
-    const caughtUp = (this.lockstep?.latestFrom(r.p) ?? -1) >= this.state.tick - 10
+    // 2026-11-12 멀티 계측: "10틱 뒤처져도 된다" 로는 핑이 큰 손님(왕복 270ms)이 앉는 틱에 모두가 0.4 ~ 1.1초 멈췄다 — 손님은 판을 받고
+    // 세계를 처음 그리는 몇 초 동안 화면이 덮여 있고(셰이더 준비) 그동안 입력이 뭉텅뭉텅 온다. 그 사람 입력이 내 틱을 **0.5초 내리 앞서 오고**
+    // (두 사람의 입력 지연이 핑에 맞춰진 뒤 — tuneDelay) **덮개가 걷힌 뒤**(BTN_LOADING 이 꺼진 입력)에 앉힌다.
+    // 준비되고 4초가 지나도 그렇게 안 되면(핑이 아주 큰 망 · 느린 PC) 예전 기준으로 — 기다리다 시간 초과(JOIN_TIMEOUT_MS)로 돌려보내지 않게
+    if (r.ready && r.readyAt === undefined) r.readyAt = performance.now()
+    const lead = (this.lockstep?.latestFrom(r.p) ?? -1) - this.state.tick
+    const covered = ((this.lockstep?.latestInput(r.p)?.buttons ?? 0) & BTN_LOADING) !== 0
+    r.steady = lead >= 0 && !covered ? (r.steady ?? 0) + 1 : 0
+    const caughtUp = r.steady >= 30 || (lead >= -10 && performance.now() - (r.readyAt ?? Infinity) > 4000)
     if (r.ready && caughtUp && this.lockstep?.heardFrom(r.p)) {
       const tick = this.state.tick + Session.JOIN_LEAD_TICKS
       const live = { t: 'joinLive' as const, p: r.p, tick, char: r.char, team: r.team, name: r.name, id: r.peerId, sheet: r.sheet }
@@ -3199,6 +3279,10 @@ export class Session {
     if (!this.joiningIn || this.joinReadySent) return
     const link = this.cfg.link
     if (!link) return
+    // 세계를 처음 그리는 동안은 셰이더 준비로 메인 스레드가 한 번에 0.8 ~ 1.2초씩 막힌다(2026-11-12 계측 — 세션을 연 0.6초 뒤 839ms).
+    // 그때 앉으면 내 입력이 끊겨 방의 모두가 그만큼 멈췄다 → 화면이 1.5초(90프레임) 내리 고르게 그려진 뒤에 준비를 알린다.
+    // 가려진 탭(화면 신호가 없다) · 아주 느린 PC 는 5초 뒤 그냥 알린다 (방장은 12초를 기다린다 — JOIN_TIMEOUT_MS)
+    if (this.joinWarm < 90 && performance.now() - this.joinOpenAt < 5000) return
     const ids = this.cfg.peerIds ?? []
     const need = this.state.players.map((p, i) => (p.left || p.merc >= 0 ? '' : ids[i] ?? '')).filter((id) => id && id !== link.selfId)
     if (need.some((id) => !link.peers.has(id))) return
@@ -3355,6 +3439,7 @@ export class Session {
     this.touch?.dispose()
     this.sfx.dispose()
     window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('pagehide', this.onPageHide)
     document.removeEventListener('pointerlockchange', this.onLockChange)
     document.removeEventListener('fullscreenchange', this.syncFs)
     window.removeEventListener('resize', this.fit)

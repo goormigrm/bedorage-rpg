@@ -373,6 +373,10 @@ export function buildAreaMap(seed: number, area: number): GameMap {
   const m = buildMap(def.map, 1, areaSeed(seed, area))
   // 던전 구조물은 모래주머니처럼 (map.ts crateIdx) — 마을 상자는 그대로
   if (def.kind !== 'town') m.crateIdx = m.tiles.reduce<number[]>((out, t, i) => (t === TILE_CRATE && out.push(i), out), [])
+  // 자리(출구 · 웨이포인트 · 우두머리)는 **구조물이 멀쩡한 맵**에서 지금 정해 둔다 (2026-11-12 버그 검사): areaLayout 은 처음 물을 때의
+  // 타일로 걸음 수를 재는데, 구조물은 부서지면 바닥이 된다 — 난입 · 리싱크로 맵을 새로 만든 사람은 부서진 뒤의 타일로 재서
+  // 출구 자리가 방장과 달랐고, 지역을 옮길 때마다 판이 어긋났다
+  areaLayout(area, m)
   return m
 }
 
