@@ -829,7 +829,7 @@ export class D4Hud {
         c.font = `800 14px ${SERIF}`
         c.textAlign = 'center'
         c.textBaseline = 'alphabetic'
-        const msg = `${bt('저주받은 상자')} · 물결 ${cur.v} / ${CURSE_WAVES} · 남은 괴물 ${left}`
+        const msg = cur.trap ? `함정 상자 · 남은 괴물 ${left}` : `${bt('저주받은 상자')} · 물결 ${cur.v} / ${CURSE_WAVES} · 남은 괴물 ${left}`
         const tw = c.measureText(msg).width + 28
         c.fillStyle = 'rgba(14,6,20,0.75)'
         rr(c, h.W / 2 - tw / 2, 16, tw, 24, 7)

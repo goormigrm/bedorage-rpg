@@ -258,7 +258,8 @@ function fillArea(state: GameState, map: GameMap, id: number, seed: number): voi
         const x = tx * TILE + TILE / 2
         const y = ty * TILE + TILE / 2
         if (safeSpots(l).some((q) => (q.x - x) ** 2 + (q.y - y) ** 2 < (10 * TILE) ** 2)) continue
-        state.monsters.push(makeMonster(state, GOBLIN_KIND, x, y, 9997, 1 + 0.6 * Math.max(0, seats - 1), 100, lvl))
+        // 체력도 지역 레벨 · 난이도를 따른다 — 인원 보정만 곱해 2막부터는 범위 스킬 한 번에 죽었다 (2026-11-12 검토)
+        state.monsters.push(makeMonster(state, GOBLIN_KIND, x, y, 9997, (1 + 0.6 * Math.max(0, seats - 1)) * levelHp(lvl) * tierOf(state.tier).hp, 100, lvl))
         state.monstersTotal++
         break
       }
@@ -438,7 +439,7 @@ function stepCurses(state: GameState, map: GameMap): void {
       const by = state.players.find((q) => isActive(q) && len(q.x - o.x, q.y - o.y) <= SHARE_RANGE)
       if (by) openObject(state, o, by)
       else o.used = true
-      state.events.push({ type: 'curse', x: o.x, y: o.y, wave: CURSE_WAVES + 1 })
+      state.events.push(o.trap ? { type: 'curse', x: o.x, y: o.y, wave: CURSE_WAVES + 1, trap: true } : { type: 'curse', x: o.x, y: o.y, wave: CURSE_WAVES + 1 })
     }
   }
 }
@@ -1141,11 +1142,27 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
     state.events.push({ type: 'curse', x: o.x, y: o.y, wave: 1 })
     return
   }
+  // 함정 상자 (2026-11-12 검토): 보통 상자 열넷에 하나는 열면 저주받은 상자의 마지막 물결(정예 하나 + 다섯)이 덮친다 —
+  // 깜짝 사건이 모두 미리 보이고 고르는 것뿐이라, 열어 보기 전에는 모르는 것을 하나. 보스 방 · 시련은 뺀다
+  if (o.kind === OBJ_CHEST && state.mode === 'dungeon' && areaDef(state.curArea).kind !== 'boss' && !(state.rift && state.rift.area === state.curArea) && rand(state.rng) < TRAP_CHEST) {
+    o.kind = OBJ_CURSED
+    o.trap = true
+    o.v = CURSE_WAVES
+    o.t = -1
+    state.events.push({ type: 'trap', x: o.x, y: o.y })
+    return
+  }
   o.used = true
   if (o.kind === OBJ_SHRINE) {
-    by.shrine = o.v
-    by.shrineT = SHRINE_TICKS
-    state.events.push({ type: 'shrine', p: by.id, kind: o.v, x: o.x, y: o.y })
+    // 축복은 상자처럼 곁의 파티 모두에게 — 한 사람만 받으면 넷이 할 때 "누가 먹나"만 남는다 (2026-11-12 검토)
+    let to = 0
+    for (const q of state.players) {
+      if (q !== by && (!q.alive || q.left || q.out || len(q.x - o.x, q.y - o.y) > SHARE_RANGE)) continue
+      q.shrine = o.v
+      q.shrineT = SHRINE_TICKS
+      to |= 1 << q.id
+    }
+    state.events.push({ type: 'shrine', p: by.id, kind: o.v, x: o.x, y: o.y, to })
     return
   }
   state.events.push({ type: 'objOpen', p: by.id, kind: o.kind, x: o.x, y: o.y })
@@ -1158,6 +1175,8 @@ function openObject(state: GameState, o: MapObj, by: PlayerState): void {
     if (o.kind === OBJ_GOLDCHEST) spill(state, q, o.x, o.y, lvl, 4, 2, 3 + (rand(state.rng) < 0.5 ? 1 : 0), 'goldchest', up, 2)
     // 숨은 보물: 금화 더미 + 희귀 이상 하나 · 저주받은 상자(물결을 다 막았다): 금빛 상자보다 조금 더
     else if (o.kind === OBJ_SECRET) spill(state, q, o.x, o.y, lvl, 6, 3, 2, 'goldchest', up, 2)
+    // 함정 상자는 물결 하나라 금화 넷 + 아이템 둘(정예 표 — 희귀 확정 없음)
+    else if (o.kind === OBJ_CURSED && o.trap) spill(state, q, o.x, o.y, lvl, 4, 2, 2, 'elite', up, 0)
     else if (o.kind === OBJ_CURSED) spill(state, q, o.x, o.y, lvl, 6, 2.5, 3 + (rand(state.rng) < 0.6 ? 1 : 0), 'goldchest', up + 0.05, 2)
     else if (o.kind === OBJ_CHEST) spill(state, q, o.x, o.y, lvl, 2, 1.5, 1 + (rand(state.rng) < 0.35 ? 1 : 0), 'chest', up, 0)
     else spill(state, q, o.x, o.y, lvl, rand(state.rng) < 0.5 ? 1 : 0, 0.6, rand(state.rng) < 0.04 ? 1 : 0, 'chest', up, 0)
@@ -1482,6 +1501,8 @@ function makePlayer(id: number, char: CharacterId, team: number, sheet?: Sheet):
     dmgTaken: 0,
     bestStreak: 0,
     killStreak: 0,
+    ks: 0,
+    ksT: -9999,
     revives: 0,
     cd: [0, 0, Math.round(ult.cd * ULT_START_FRAC), 0, 0],
     fx: new Array(FX_COUNT).fill(0),
@@ -2146,6 +2167,7 @@ function stepDowned(state: GameState, inputs: Input[]): void {
       if (p.revive >= REVIVE_TICKS) {
         raise(state, p, Math.round(p.maxHp * REVIVE_HP_FRAC), 90)
         helper.revives++
+        if (state.mode === 'dungeon') helper.stats.revives++
         state.events.push({ type: 'revive', p: p.id, by: helper.id, x: p.x, y: p.y })
       }
       continue
@@ -3655,6 +3677,14 @@ function killMonster(state: GameState, m: Monster, by: number, suicide: boolean)
       killer.stats.kills++
       if (m.elite > 0) killer.stats.elites++
       if (m.kind === GOBLIN_KIND) killer.stats.goblins++
+      // 연속 처치 보상: 화면의 ×N(2.5초 규칙)과 같은 셈 — 10 · 25 · 50 을 넘는 순간 금화 더미 (사람만 · 봇 몫은 아무도 못 줍는다)
+      killer.ks = state.tick - killer.ksT <= STREAK_GAP ? killer.ks + 1 : 1
+      killer.ksT = state.tick
+      const si = STREAK_STEPS.indexOf(killer.ks)
+      if (si >= 0 && !killer.bot) {
+        spill(state, killer, m.x, m.y, Math.max(1, areaLevel(state.curArea, state.tier)), 3 + si * 2, 2 * tierOf(state.tier).gold, 0, 'normal', 0, 0)
+        state.events.push({ type: 'streak', p: killer.id, n: killer.ks, x: m.x, y: m.y })
+      }
     }
     if (killer) {
       killer.kills++
@@ -3917,6 +3947,11 @@ function knockMul(m: Monster): number {
 
 /** 괴물이 쓰러지면 가까운 파티원 **모두**에게 경험치·골드, 그리고 각자 몫의 전리품을 굴린다 (디아블로 3·4 개인 전리품) */
 const SHARE_RANGE = 30 * TILE
+/** 연속 처치가 이어지는 틱(2.5초 — 렌더러 combo 와 같게) · 금화를 주는 문턱 */
+/** 보통 상자가 함정일 확률 (한 바퀴 상자 73개 → 5개쯤) */
+const TRAP_CHEST = 0.07
+const STREAK_GAP = 150
+const STREAK_STEPS = [10, 25, 50]
 function reward(state: GameState, m: Monster, def: MonsterDef): void {
   if (state.mode !== 'dungeon') return
   for (const p of state.players) {
@@ -3940,7 +3975,8 @@ function reward(state: GameState, m: Monster, def: MonsterDef): void {
     const fountain = boss || unique || m.kind === GOBLIN_KIND
     // 졸개는 마릿수가 MOB_COUNT 배라 한 마리 몫은 1/MOB_COUNT (monsters.ts — 벌이 그대로)
     const golds = m.kind === GOBLIN_KIND ? 8 : fountain ? 5 : m.elite ? 2 : rand(state.rng) < 0.35 / MOB_COUNT ? 1 : 0
-    const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot / MOB_COUNT ? 1 : 0
+    // 보물 고블린은 아이템 셋 (GUIDE 9장 — 가지가 빠져 def.loot 0 으로 떨어져 금화만 나왔다 · 2026-11-12 검토)
+    const items = boss ? 5 + (rand(state.rng) < 0.5 ? 1 : 0) : m.kind === GOBLIN_KIND ? 3 : unique ? 3 + (rand(state.rng) < 0.5 ? 1 : 0) : m.elite ? 1 + (rand(state.rng) < 0.4 ? 1 : 0) : rand(state.rng) < def.loot / MOB_COUNT ? 1 : 0
     const tier = tierOf(state.tier)
     const src: LootSource = fountain ? 'boss' : m.elite ? 'elite' : 'normal'
     // 첫 아이템 희귀 이상 확정은 막 보스만 (우두머리 · 보물 고블린은 뺐다 — 2026-09-24 "저렙에서도 희귀 · 전설이 너무 쉽다")

@@ -559,6 +559,13 @@ export class Sfx {
           if (e.p === localPlayer) this.coins(4, 0.1)
           break
         // ---- 저주받은 상자 (2026-10-08 D4): 물결마다 북 두 번 + 낮은 울림 · 풀리면 짤랑 ----
+        case 'trap': {
+          // 함정 상자: 저주받은 상자 마지막 물결과 같은 북
+          const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
+          for (let i = 0; i < 2; i++) this.tone(b.node, b.t0 + i * 0.22, 0.35, 'sine', 70, 40, 0.6, 0.004)
+          this.tone(b.node, b.t0, 1.0, 'sawtooth', 86, 66, 0.12, 0.05)
+          break
+        }
         case 'curse': {
           const b = this.bus({ gain: 1, pan: 0, far: 0 }, 0.85)
           if (e.wave <= 3) {

@@ -18,9 +18,11 @@ export type Stats = {
   mythics: number
   /** 주운 골드 */
   gold: number
+  /** 쓰러진 동료를 일으킨 횟수 (2026-11-12 — 협동 기록) */
+  revives: number
 }
 
-export const emptyStats = (): Stats => ({ kills: 0, elites: 0, goblins: 0, bosses: 0, deaths: 0, legends: 0, mythics: 0, gold: 0 })
+export const emptyStats = (): Stats => ({ kills: 0, elites: 0, goblins: 0, bosses: 0, deaths: 0, legends: 0, mythics: 0, gold: 0, revives: 0 })
 
 /** 받은 기록을 말이 되게 (세이브를 손댔거나 예전 세이브) */
 export function sanitizeStats(o: unknown): Stats {
@@ -60,6 +62,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'legend25', name: '전설 수집가', desc: '전설 아이템 25개를 줍는다', goal: (s) => [s.legends + s.mythics, 25] },
   { id: 'mythic1', name: '신화', desc: '신화 아이템을 줍는다', goal: (s) => [s.mythics, 1] },
   { id: 'gold100k', name: '금고지기', desc: '골드 100,000 을 줍는다', goal: (s) => [s.gold, 100000] },
+  { id: 'revive20', name: '든든한 동료', desc: '쓰러진 동료를 20번 일으킨다', goal: (s) => [s.revives, 20] },
   { id: 'lv30', name: '정점', desc: '레벨 30', goal: (_s, lv) => [lv, 30] },
 ]
 

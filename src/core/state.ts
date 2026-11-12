@@ -201,6 +201,9 @@ export interface PlayerState {
   dmgTaken: number
   bestStreak: number
   killStreak: number
+  /** 던전 연속 처치(2.5초 안에 이어 잡은 수) · 마지막으로 잡은 틱 — 10 · 25 · 50 에 금화 (2026-11-12) */
+  ks: number
+  ksT: number
   /** 동료를 일으킨 횟수 */
   revives: number
   /** 스킬 재사용 대기 [Q, E, X] (틱) */
@@ -542,6 +545,8 @@ export interface MapObj {
   v: number
   /** 저주받은 상자: 이번 물결이 시작된 뒤 흐른 틱 (-1 = 다음 틱에 물결을 부른다) */
   t?: number
+  /** 함정 상자였다 (보통 상자를 열자 물결이 덮쳤다 — 보상은 저주받은 상자보다 적게) */
+  trap?: boolean
 }
 export const OBJ_CHEST = 0
 export const OBJ_GOLDCHEST = 1
@@ -666,8 +671,9 @@ export type SimEvent =
   /** 상자를 열었다 · 항아리가 깨졌다 · 제단의 축복 */
   | { type: 'objOpen'; p: number; kind: number; x: number; y: number }
   /** 저주받은 상자: 물결 시작 (1 ~ 3) · 끝 (4 — 상자가 열렸다) */
-  | { type: 'curse'; x: number; y: number; wave: number }
-  | { type: 'shrine'; p: number; kind: number; x: number; y: number }
+  | { type: 'curse'; x: number; y: number; wave: number; trap?: boolean }
+  | { type: 'trap'; x: number; y: number }
+  | { type: 'shrine'; p: number; kind: number; x: number; y: number; to: number } // to = 받은 사람 비트
   /** 마을 NPC 와 거래했다 (what: sell · buy · gamble · stash · stashAll · bagUp · stashUp · shopNew) */
   | { type: 'trade'; p: number; what: string; gold: number; uid: number }
   /** 도박꾼에게서 뽑았다 — 뭐가 나왔는지 창에 카드로 (2026-09-25 요청). uids = 나온 차례대로 */
@@ -676,6 +682,7 @@ export type SimEvent =
   | { type: 'forge'; p: number; uid: number; rarity: number; up: boolean }
   /** 보물 고블린이 문을 열고 사라졌다 · 연쇄 번개 (from → to) */
   | { type: 'goblinGone'; x: number; y: number }
+  | { type: 'streak'; p: number; n: number; x: number; y: number }
   /** 보물 고블린을 사람이 처음 보았다 (그때부터 도망 시계가 돈다) */
   | { type: 'goblinSeen'; x: number; y: number }
   /** 용병 고용 · 내보냄 */

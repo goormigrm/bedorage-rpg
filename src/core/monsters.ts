@@ -260,7 +260,8 @@ export const MONSTER_LIST: MonsterDef[] = [
 /** 보물 고블린: 깨어 있는 틱 상한(20초) · 골드를 흘리는 간격 · 지역에 나올 확률 */
 /** 보물 고블린: 들킨 뒤 사라지기까지(틱) · 골드 흘리는 간격 · 지역에 나올 확률 · 들켰다고 보는 거리(px — 화면 시야 안) */
 // 들킨 뒤 20 → 30초 (2026-09-25 사용자: "난 보이지도 않았는데 이미 도망갔대") · 그림은 1.8배(GOBLIN_VIEW — 우두머리만큼)
-export const GOBLIN = { escape: 60 * 30, trail: 70, chance: 0.14, seen: 14 * 32 }
+// 지역에 나올 확률 0.14 → 0.25 (2026-11-12 검토 · 임의 결정): 한 바퀴 2.8마리(사람 시간 45분에 한 번)는 가장 큰 깜짝 사건치고 너무 드물었다
+export const GOBLIN = { escape: 60 * 30, trail: 70, chance: 0.25, seen: 14 * 32 }
 export const GOBLIN_VIEW = 1.8
 export const GOBLIN_KIND = 4
 

@@ -501,6 +501,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; justif
 .keys { font: 700 17px "IBM Plex Sans KR", sans-serif; color: #e8dcc0; padding: 6px 20px; background: rgba(8,7,6,.72); }
 .keys .kr { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 22px; }
 .keys .kh { white-space: nowrap; }
+/* 창(가방 · 상점 · 스킬 …)이 열려 있으면 싸움 키 띠를 숨긴다 — 창 아래로 잘려 비쳤다 (2026-11-12 검토) */
+.game-root.ui-open .keys { visibility: hidden; }
 .game-ui .top-right { right: auto !important; left: 16px; top: 16px; align-items: flex-start; }
 
 /* 캐릭터 레벨 · 세이브 버튼 */

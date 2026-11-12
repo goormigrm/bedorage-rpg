@@ -3,6 +3,8 @@
 // 적은 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 탄·이펙트는 그대로 보인다(총성이 나는 곳을 알 수 있게).
 
 import * as THREE from 'three'
+import { isBright } from '../game/skin'
+import { capPointLights } from './toon'
 import { GameMap, TILE, TILE_CRATE, TILE_SANDBAG, TILE_WALL, blocksSight, rayBlocked } from '../core/map'
 import { CRATE_H, SANDBAG_H, WALL_H } from './world3d'
 
@@ -87,11 +89,16 @@ export const setNearFade = (d: number): void => {
 
 /** 세계(벽 · 상자 · 소품) 재질에 구조물 안개를 붙인다 — 바닥(userData.noVisFog)은 덮개가 맡는다. 무서운 판에서는 visOn 0 이라 그대로 */
 export function fogStructures(group: THREE.Object3D): void {
+  const bright = isBright()
   group.traverse((o) => {
     const m = o as THREE.Mesh
     if (!m.isMesh || m.userData.noVisFog) return
     const mats = Array.isArray(m.material) ? m.material : [m.material]
-    for (const mat of mats) addVisFog(mat)
+    for (const mat of mats) {
+      addVisFog(mat)
+      // ☀ 는 벽 · 랜드마크도 점광원에 하얗게 날아가지 않게 (toon.ts capPointLights)
+      if (bright) capPointLights(mat)
+    }
   })
 }
 

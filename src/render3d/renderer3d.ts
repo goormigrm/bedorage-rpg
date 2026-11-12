@@ -1647,6 +1647,12 @@ export class Renderer3D {
           this.hud.banner(bt('보물 고블린!'), '도망치기 전에 잡아라 — 30초 뒤면 문을 열고 사라진다', '#ffd84a')
           this.spawnRing(e.x * U, e.y * U, 0.2, 2.2, 0.8, 0xffd84a)
           break
+        case 'streak':
+          if (e.p === localPlayer) {
+            this.spawnRing(e.x * U, e.y * U, 0.2, 1.8 + e.n * 0.02, 0.7, 0xffd84a)
+            this.hud.notice(`연속 처치 ${e.n}! 금화가 쏟아진다`, '#ffd86a')
+          }
+          break
         case 'goblinGone':
           this.spawnRing(e.x * U, e.y * U, 0.2, 2, 0.8, 0xffd84a)
           this.hud.notice(bt('보물 고블린이 도망쳤다…'), '#ffd86a')
@@ -1698,9 +1704,14 @@ export class Renderer3D {
           if (localPlayer >= 0 && state.players[e.p]?.area === state.players[localPlayer]?.area) this.hud.notice('상인 진열에 새 물건이 들어왔다', '#ffd86a')
           break
         // ---- 저주받은 상자 (2026-10-08 D4) ----
+        case 'trap':
+          this.hud.banner(bt('함정 상자!'), '괴물이 덮친다 — 다 잡으면 상자가 열린다', '#c88aff')
+          this.spawnRing(e.x * U, e.y * U, 0.4, 4.5, 0.9, 0xb47aff)
+          break
         case 'curse':
           if (e.wave === 1) this.hud.banner(bt('저주받은 상자!'), `괴물 물결 ${CURSE_WAVES}개를 막아라 — 다 잡으면 상자가 열린다`, '#c88aff')
           else if (e.wave <= CURSE_WAVES) this.hud.notice(`물결 ${e.wave} / ${CURSE_WAVES}`, '#c88aff')
+          else if (e.trap) this.hud.notice('함정을 넘겼다 — 상자가 열렸다', '#ffd86a')
           else this.hud.banner(bt('저주가 풀렸다'), '상자가 열렸다 — 희귀 이상 하나는 꼭 들어 있다', '#ffd86a')
           this.spawnRing(e.x * U, e.y * U, 0.4, e.wave > CURSE_WAVES ? 3 : 4.5, 0.9, e.wave > CURSE_WAVES ? 0xffd86a : 0xb47aff)
           break
@@ -1758,7 +1769,7 @@ export class Renderer3D {
           break
         case 'shrine':
           this.spawnRing(e.x * U, e.y * U, 0.3, 2.8, 0.8, [0xff5a3a, 0x5aa8ff, 0xd8a8ff, 0x7aff9a][e.kind] ?? 0xffffff)
-          if (e.p === localPlayer) this.hud.notice(`${SHRINE_NAMES[e.kind]} — ${['피해 +25%', '받는 피해 -25%', '경험치 +50%', '이동 +20%'][e.kind]} (30초)`, '#d8c8ff')
+          if ((e.to >> localPlayer) & 1) this.hud.notice(`${SHRINE_NAMES[e.kind]} — ${['피해 +25%', '받는 피해 -25%', '경험치 +50%', '이동 +20%'][e.kind]} (30초)`, '#d8c8ff')
           break
         case 'wpFound':
           if (e.p === localPlayer) {
@@ -1875,13 +1886,14 @@ export class Renderer3D {
             }
           }
           if (!hidden && mine && dmgNumbersOn()) {
-            // 잇달아 맞힌 같은 괴물의 숫자는 하나로 합쳐 커진다 (연사 무기 숫자가 화면을 덮지 않게 · 쌓이는 맛) — 치명타는 따로
-            const prev = head ? undefined : this.texts.find((t) => t.m === e.m && t.sum !== undefined && t.max - t.life < 0.3)
+            // 잇달아 맞힌 같은 괴물의 숫자는 하나로 합쳐 커진다 (연사 무기 숫자가 화면을 덮지 않게 · 쌓이는 맛) — 치명타는 치명타끼리
+            // (근접 한 번에 "치명 128" 서넛이 같은 자리에 포개져 못 읽었다 — 2026-11-12 검토)
+            const prev = this.texts.find((t) => t.m === e.m && t.sum !== undefined && !!t.big === head && t.max - t.life < 0.3)
             if (prev) {
               prev.sum! += e.dmg
-              prev.text = `${prev.sum}`
+              prev.text = head ? `치명 ${prev.sum}` : `${prev.sum}`
               prev.life = prev.max
-              prev.pop = Math.min(1.3, 0.5 + prev.sum! / 300)
+              prev.pop = head ? 1.4 : Math.min(1.3, 0.5 + prev.sum! / 300)
               prev.x = e.x * U
               prev.z = e.y * U
             } else {
@@ -1890,7 +1902,7 @@ export class Renderer3D {
                 text: head ? `치명 ${e.dmg}` : `${e.dmg}`,
                 life: head ? 0.9 : 0.6, max: head ? 0.9 : 0.6,
                 color: head ? '#ffd84a' : '#ffffff', big: head, pop: head ? 1.4 : 0.5,
-                dx: (Math.random() - 0.5) * 0.7, m: head ? undefined : e.m, sum: head ? undefined : e.dmg,
+                dx: (Math.random() - 0.5) * 0.7, m: e.m, sum: e.dmg,
               })
             }
             if (this.texts.length > 80) this.texts.splice(0, this.texts.length - 80)
@@ -3010,6 +3022,34 @@ export class Renderer3D {
       ctx.fillStyle = pass === 0 ? '#7a3a34' : '#ff5a4a'
       ctx.fill()
     }
+    // 정예 · 우두머리는 주황 큰 점 — 무리 속에서 고비가 어디인지 (2026-11-12 검토)
+    ctx.beginPath()
+    for (const m of curr.monsters) {
+      if (m.elite <= 0 || m.hp <= 0 || (this.hiddenM.has(m.id) && lp >= 0)) continue
+      ctx.rect(m.x / TILE - 2.4 * rp, m.y / TILE - 2.4 * rp, 4.8 * rp, 4.8 * rp)
+    }
+    ctx.fillStyle = '#ffa53a'
+    ctx.fill()
+    // 아직 안 쓴 제단(보라 마름모) · 저주받은 상자(보라 네모) · 금빛 상자(금 네모) — 몰려가다 지나치지 않게. 숨은 보물은 찾는 재미라 뺀다
+    for (const o of curr.objects) {
+      if (o.used || (o.kind !== OBJ_SHRINE && o.kind !== OBJ_CURSED && o.kind !== OBJ_GOLDCHEST)) continue
+      const ox = o.x / TILE
+      const oy = o.y / TILE
+      const r = 3.4 * rp
+      ctx.fillStyle = o.kind === OBJ_GOLDCHEST ? '#ffd84a' : o.kind === OBJ_CURSED ? '#b47aff' : '#e8d8ff'
+      ctx.strokeStyle = '#1a1208'
+      ctx.lineWidth = 1 * rp
+      ctx.beginPath()
+      if (o.kind === OBJ_SHRINE) {
+        ctx.moveTo(ox, oy - r * 1.25)
+        ctx.lineTo(ox + r, oy)
+        ctx.lineTo(ox, oy + r * 1.25)
+        ctx.lineTo(ox - r, oy)
+        ctx.closePath()
+      } else ctx.rect(ox - r, oy - r * 0.8, r * 2, r * 1.6)
+      ctx.fill()
+      ctx.stroke()
+    }
     for (const m of curr.monsters) {
       if (m.hp <= 0 || (this.hiddenM.has(m.id) && lp >= 0)) continue
       if (MONSTER_LIST[m.kind].attack === 'flee') {
@@ -3346,7 +3386,7 @@ export class Renderer3D {
     const pulse = 0.6 + 0.4 * Math.sin(this.t * 5)
     const inside = px > x + 6 && px < x + S - 6 && py > y + 6 && py < y + S - 6
     ctx.save()
-    ctx.font = '700 9px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
+    ctx.font = '700 11px "IBM Plex Sans KR", "Malgun Gothic", sans-serif'
     ctx.textAlign = 'center'
     ctx.lineWidth = 3
     const GOLD = '#ffd84a'
@@ -4282,8 +4322,15 @@ export class Renderer3D {
       if (o.kind === OBJ_URN && o.used) continue
       live.add(o.id)
       let g = this.objMeshes.get(o.id)
+      // 함정 상자: 보통 상자가 판 도중에 저주받은 상자로 바뀐다 → 그림을 새로 만든다
+      if (g && g.userData.kind !== o.kind) {
+        this.scene.remove(g)
+        this.objMeshes.delete(o.id)
+        g = undefined
+      }
       if (!g) {
         g = new THREE.Group()
+        g.userData.kind = o.kind
         if (o.kind === OBJ_CURSED) {
           // 저주받은 상자 (2026-10-08 D4): 검보라 궤짝 + 쇠사슬 띠 + 둘레를 도는 보랏빛 룬 고리 (물결 중에는 빨라지고 붉어진다)
           const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.46, 0.52), new THREE.MeshLambertMaterial({ color: 0x2e1e36 }))

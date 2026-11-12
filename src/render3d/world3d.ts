@@ -13,6 +13,7 @@
 //   마을 천막 → 숙소(돼지 저금통 · 큰 시계 · 이층 침대). 바닥엔 분필 ♡ ☆ ◇. 판정(sim)은 그대로.
 
 import { isBright } from '../game/skin'
+import { capPointLights } from './toon'
 import { BRIGHT_FLOOR, applyGrain, grainTexture, hash, paintBrightBand } from './brightFloor'
 import { BRIGHT_PROPS, BRIGHT_WALL, ballTexture, vc } from './brightWalls'
 import { buildLandmarks, planLandmarks } from './brightLandmarks'
@@ -173,6 +174,7 @@ function buildDark(map: GameMap, style: WorldStyle, painted?: THREE.CanvasTextur
   const fdef = bright ? BRIGHT_FLOOR[map.id] : undefined
   if (fdef) disposables.push(applyGrain(floorMat, map, fdef))
   else if (!bright) disposables.push(nearGrain(floorMat))
+  if (bright) capPointLights(floorMat)
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(map.w, map.h), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.position.set(map.w / 2, 0, map.h / 2)

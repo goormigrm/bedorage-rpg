@@ -289,7 +289,8 @@ export function affixValue(it: Item, k: number): number {
 export type LootSource = 'normal' | 'elite' | 'boss' | 'chest' | 'goldchest' | 'gamble' | 'shop' | 'forge'
 export const DROP_TABLE: Record<LootSource, number[]> = {
   normal: [0.7, 0.3, 0, 0, 0],
-  elite: [0.35, 0.53, 0.1, 0.02, 0],
+  // 2026-11-12 검토(임의 결정): 정예의 26 ~ 28% 가 흰 것만 떨어뜨렸다(흰 것은 벼리기 재료도 아니고 자동 줍기에서도 빠진다) → 일반 몫을 마법으로. 희귀 · 전설은 그대로
+  elite: [0, 0.88, 0.1, 0.02, 0],
   boss: [0, 0.55, 0.36, 0.08, 0.01],
   chest: [0.55, 0.45, 0, 0, 0],
   goldchest: [0.2, 0.6, 0.18, 0.02, 0],

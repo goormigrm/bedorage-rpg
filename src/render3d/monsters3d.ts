@@ -982,6 +982,7 @@ export class MonsterView {
   private root = new THREE.Matrix4()
   private tmp = new THREE.Matrix4()
   private col = new THREE.Color()
+  private readonly bright = isBright()
   private prevPos = new Map<number, { x: number; y: number; f: number }>()
   /** 프레임 번호 — 자리 맵의 객체를 다시 쓰고, 이번 프레임에 안 나온 것(f 가 다름)만 가끔 지운다 */
   private posStamp = 0
@@ -1486,6 +1487,8 @@ export class MonsterView {
     const w = a.wind
     if (f > 0) this.col.setRGB(1 + f * 1.6, 1 + f * (a.crit ? 1.2 : -0.4), 1 + f * (a.crit ? -0.4 : -0.5))
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
+    // 시체: 정예 금빛 맥박은 끈다(죽어서도 뛰었다) · ☀ 는 산 괴물과 같은 색이라 누운 것이 안 갈렸다 → 빛바랜 색으로 (2026-11-12 검토 — 🌙 는 그대로)
+    else if (a.dead > 0) this.col.setScalar(this.bright ? 1 - a.dead * 0.38 : 1)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
     if (this.edgeShade) this.col.multiplyScalar(this.edgeShade(x, z))

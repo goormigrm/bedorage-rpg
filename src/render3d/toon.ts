@@ -18,6 +18,29 @@ const LIGHTS_CAPPED = THREE.ShaderChunk.lights_fragment_begin.replace(
 		directLight.color = min( directLight.color, vec3( ${POINT_CAP.toFixed(2)} ) );`,
 )
 
+/**
+ * ☀ 바닥 · 벽 · 랜드마크용 점광원 상한 (2026-11-12 그래픽 검토): 파스텔 바닥은 해 빛만으로 거의 1 이라 총구 섬광 · 스킬 빛(세기 6 ~ 40) · 횃불이 얹히면
+ * 무늬가 씻겨 흰 판이 됐다(3인칭에서는 유리 징검다리 윗면 · 먼 벽 위가 화면을 가로지르는 흰 띠). 점광원 하나가 더하는 빛을 낮게 묶는다 — 색 기운만 남는다
+ */
+export function capPointLights(mat: THREE.Material, cap = 0.16): void {
+  if (mat.userData.pcap || !(mat as THREE.MeshLambertMaterial).isMeshLambertMaterial) return
+  mat.userData.pcap = true
+  const prev = mat.onBeforeCompile
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <lights_fragment_begin>',
+      THREE.ShaderChunk.lights_fragment_begin.replace(
+        'getPointLightInfo( pointLight, geometryPosition, directLight );',
+        `getPointLightInfo( pointLight, geometryPosition, directLight );
+		directLight.color = min( directLight.color * 0.25, vec3( ${cap.toFixed(2)} ) );`,
+      ),
+    )
+  }
+  const key = mat.customProgramCacheKey.bind(mat)
+  mat.customProgramCacheKey = () => `${key()}|floorcap`
+}
+
 /** 명암 계단: 그늘 · 중간 · 밝음 (가장 어두운 단도 너무 까맣지 않게 — 어두운 던전이라) */
 export function toonGradient(): THREE.DataTexture {
   if (gradient) return gradient
