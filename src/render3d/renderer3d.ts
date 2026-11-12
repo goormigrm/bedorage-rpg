@@ -685,14 +685,21 @@ export class Renderer3D {
         for (const o of objs) this.queueWarm(o)
         this.prepJobs.push({ t: 'run', run: show })
       },
-      (objs) => {
-        // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
-        const was = objs.map((o) => o.visible)
-        for (const o of objs) o.visible = true
-        const jobs = objs.map((o) => this.compileAsync(o, this.scene))
-        objs.forEach((o, i) => (o.visible = was[i]))
-        return Promise.all(jobs).then(() => {})
-      },
+      (objs) =>
+        // 빛 수를 맞춘 뒤에(afterPad) 컴파일한다 — 이 콜백은 그리기 도중(padLights 앞)에 불려, 그 프레임에 켜지고 꺼진 빛 때문에
+        // 어중간한 빛 수로 컴파일하고는 보이는 프레임에 다시 만들며 멈췄다 (2026-11-12 계측: 직행 첫 싸움 30 ~ 120ms 다섯 번)
+        new Promise<void>((res) =>
+          this.afterPad.push(() => {
+            // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
+            const was = objs.map((o) => o.visible)
+            for (const o of objs) o.visible = true
+            const jobs = objs.map((o) => this.compileAsync(o, this.scene))
+            objs.forEach((o, i) => (o.visible = was[i]))
+            // 이 모델은 지금 빛 수로만 컴파일된다 — 다른 빛 단계는 갈 때 다시 컴파일하게 (stageReady)
+            this.stageOk.clear()
+            void Promise.all(jobs).then(() => res())
+          }),
+        ),
     )
     this.partMesh = new THREE.InstancedMesh(this.particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), PART_MAX)
     this.partMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PART_MAX * 3), 3)
@@ -733,8 +740,8 @@ export class Renderer3D {
       l.userData.pad = true
       return l
     }
-    // 빈 빛: 한 단계 늦게 내려가므로(padLights) 두 단계 몫
-    for (let i = 0; i < 2 * LIGHT_STEP - 1; i++) {
+    // 빈 빛: 내려갈 단계의 컴파일을 기다리는 동안(stageReady) 16 → 4 처럼 여러 단계를 채워야 한다 — 모자라면 어중간한 빛 수의 셰이더를 새로 만든다
+    for (let i = 0; i < LIGHT_MAX; i++) {
       const l = pad()
       this.lightPads.push(l)
       this.scene.add(l)
@@ -910,6 +917,7 @@ export class Renderer3D {
       if (this.areaJob === job) this.areaCompiling = false
     }
     this.splitDepth(this.scene)
+    this.stageOk.clear()
     this.padLights()
     void Promise.race([this.compileAsync(this.scene, this.scene), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
   }
@@ -1173,11 +1181,87 @@ export class Renderer3D {
     return out
   }
 
+  /**
+   * 이 지역에서 장면 전체를 그 빛 단계로 컴파일해 둔 단계 (true = 써도 된다 · false = 컴파일 중). 지역이 바뀌면 비운다.
+   * 2026-11-12: 싸움 중 처음 뜬 괴물 모델(마을을 안 거친 직행 · 난입 · 후원 소환)과 숨어 있던 재질(몬스터 탄 점)은 그때의 빛 수로만
+   * 컴파일돼 있어, 빛 단계가 바뀌는 프레임에 그 자리에서 컴파일하며 100 ~ 250ms 멈췄다(락스텝이라 모두가 기다린다).
+   * → 처음 가는 단계는 먼저 비동기로 컴파일하고, 다 될 때까지 지금 단계에 머문다(오를 때는 먼 빛 몇 개가 잠깐 안 켜진다)
+   */
+  private stageOk = new Map<number, boolean>()
+  /** 이번 프레임 빛 수를 맞춘 뒤(padLights)에 할 컴파일 */
+  private afterPad: (() => void)[] = []
+
+  /** 빛 단계 n 을 지금 써도 되나 — 처음이면 장면을 그 빛 수로 비동기 컴파일하고(real = 지금 켜진 진짜 빛 수), 다 되면 true */
+  private stageReady(n: number, real: number): boolean {
+    const st = this.stageOk.get(n)
+    if (st !== undefined) return st
+    // 덮개 뒤 · 시작 전에는 기다릴 까닭이 없다 (그 단계로 장면을 컴파일한다 — setMap · prepareStart)
+    if (!this.ready || this.covering) {
+      this.stageOk.set(n, true)
+      return true
+    }
+    // 빈 빛으로 그 순간만 빛 수를 맞춘다 (compile 은 부르는 동안 동기로 빛 · 재질을 훑는다). 진짜 빛이 더 많으면(오를 때는 없다) 그대로 둔다
+    const vis = this.lightPads.map((l) => l.visible)
+    this.lightPads.forEach((l, i) => (l.visible = i < n - real))
+    const programs = this.gl.info.programs as { isReady(): boolean }[] | null
+    const p0 = programs?.length ?? 0
+    // 빛을 안 받는 재질은 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다(three) — compile 이 바꿔 놓은 "지금 셰이더"(아직 링크 중)를 그대로 써서
+    // 다음 그리기가 링크를 기다리며 멈췄다(계측 70ms). 쓰던 것으로 되돌린다
+    type Props = { currentProgram?: unknown; needsLights?: boolean; uniformsList?: unknown }
+    const keep: [Props, unknown][] = []
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material
+      if (!m) return
+      for (const one of Array.isArray(m) ? m : [m]) {
+        const pr = this.gl.properties.get(one) as Props
+        if (pr.currentProgram && !pr.needsLights) keep.push([pr, pr.currentProgram])
+      }
+    })
+    void this.compileAsync(this.scene, this.scene)
+    for (const [pr, prog] of keep) {
+      if (pr.currentProgram === prog) continue
+      pr.currentProgram = prog
+      pr.uniformsList = null
+    }
+    this.lightPads.forEach((l, i) => (l.visible = vis[i]))
+    // three 의 compileAsync 는 재질의 "지금 셰이더"가 됐는지만 본다 — 그 사이 그리면 옛 단계 셰이더로 돌아가 곧바로 끝난 것처럼 보인다.
+    // 그래서 이번에 새로 생긴 셰이더를 직접 본다 (없으면 모두 데워 둔 것 — 바로 쓴다)
+    const fresh = programs?.slice(p0) ?? []
+    if (fresh.length === 0) {
+      this.stageOk.set(n, true)
+      return true
+    }
+    this.stageOk.set(n, false)
+    const job = this.areaJob
+    const t0 = performance.now()
+    const tick = (): void => {
+      if (this.areaJob !== job) return
+      // 병렬 컴파일이 안 되는 브라우저는 isReady 가 늘 거짓일 수 있다 — 1.5초면 그냥 넘어간다
+      if (fresh.every((q) => q.isReady()) || performance.now() - t0 > 1500) this.stageOk.set(n, true)
+      else setTimeout(tick, 16)
+    }
+    setTimeout(tick, 16)
+    return false
+  }
+
   /** 켜진 점광원 수를 LIGHT_STEP 의 배수로 맞춘다 — 빛 수가 몇 가지로만 나와 미리 컴파일한 셰이더를 다시 쓴다 */
   private padLights(): void {
-    // 빛 상한: 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
     let lights = this.realLights()
-    if (lights.length > LIGHT_BUDGET) {
+    const real0 = Math.min(lights.length, LIGHT_BUDGET)
+    const want = real0 >= LIGHT_MAX ? real0 : Math.ceil(real0 / LIGHT_STEP) * LIGHT_STEP
+    // 빛 수가 경계(4 · 8 …)에서 오르내리면(총구 섬광 · 맞은 빛) 그때마다 빛 받는 재질 모두가 셰이더를 다시 골랐다(2026-10-22 계측 —
+    // 싸움 중 세 프레임에 한 번). 오를 때는 바로, 내려갈 때는 한 단계까지 1초 늦게
+    if (want >= this.lightSlots || want + LIGHT_STEP < this.lightSlots || ++this.slotsLow > 60) {
+      // 처음 가는 단계는 컴파일이 끝난 뒤에 (stageReady) — 그동안은 지금 단계
+      if (want === this.lightSlots || this.stageReady(want, real0)) {
+        this.lightSlots = want
+        this.slotsLow = 0
+      }
+    }
+    // 빛 상한(· 아직 못 오른 단계): 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
+    // 켜진 수는 늘 단계와 같아야 한다 — 어중간한 수(5 · 6 …)는 그 수의 셰이더를 새로 만든다
+    const cap = Math.min(LIGHT_BUDGET, this.lightSlots)
+    if (lights.length > cap) {
       // 3인칭은 시선 앞(lightRef) — 몸 둘레로 고르면 등 뒤 빛이 앞의 빛보다 먼저 남았다
       const cx = this.lightRef.x
       const cz = this.lightRef.z
@@ -1188,20 +1272,12 @@ export class Renderer3D {
         dist.set(l, (wp.x - cx) ** 2 + (wp.z - cz) ** 2)
       }
       lights = [...lights].sort((a, b) => (dist.get(a) ?? 0) - (dist.get(b) ?? 0))
-      for (let i = LIGHT_BUDGET; i < lights.length; i++) {
+      for (let i = cap; i < lights.length; i++) {
         lights[i].visible = false
         this.capped.push(lights[i])
       }
     }
-    const real = Math.min(lights.length, LIGHT_BUDGET)
-    const want = real >= LIGHT_MAX ? real : Math.ceil(real / LIGHT_STEP) * LIGHT_STEP
-    // 빛 수가 경계(4 · 8 …)에서 오르내리면(총구 섬광 · 맞은 빛) 그때마다 빛 받는 재질 모두가 셰이더를 다시 골랐다(2026-10-22 계측 —
-    // 싸움 중 세 프레임에 한 번). 오를 때는 바로, 내려갈 때는 한 단계까지 1초 늦게
-    if (want >= this.lightSlots || want + LIGHT_STEP < this.lightSlots || ++this.slotsLow > 60) {
-      this.lightSlots = want
-      this.slotsLow = 0
-    }
-    const need = this.lightSlots - real
+    const need = this.lightSlots - Math.min(lights.length, cap)
     for (let i = 0; i < this.lightPads.length; i++) {
       const on = i < need
       if (this.lightPads[i].visible !== on) this.lightPads[i].visible = on
@@ -2584,6 +2660,7 @@ export class Renderer3D {
     }
     this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
+    for (const f of this.afterPad.splice(0)) f()
 
     // 시작 준비 중에는 그리지 않는다 (물체 만들기 · 갱신은 했다 — 준비가 그것들의 셰이더를 컴파일한다)
     if (!this.ready) return
@@ -6125,9 +6202,11 @@ export class Renderer3D {
       this.fpsPrep = 'busy'
       this.uploadSceneTextures()
       const job = this.areaJob
-      void this.compileAsync(this.scene, this.scene).then(() => {
-        if (this.areaJob === job) this.fpsPrep = 'done'
-        else this.fpsPrep = 'none'
+      this.afterPad.push(() => {
+        void this.compileAsync(this.scene, this.scene).then(() => {
+          if (this.areaJob === job) this.fpsPrep = 'done'
+          else this.fpsPrep = 'none'
+        })
       })
     }
     if (wantFps && this.fpsPrep === 'done') {
