@@ -10,6 +10,26 @@
 > **같은 폴더에서 세션 둘이 동시에 고치지 말 것** — 커밋 안 된 변경이 있으면 누가 만든 것인지(`ListAgents`) 먼저 보고 사용자에게 누가 이어받을지 묻는다.
 > 정리 전 원문(지난 세션 인계 · 플레이 피드백 · 계측 · 옛 할 일)은 [docs/HANDOVER-지난기록.md](docs/HANDOVER-지난기록.md) — 2026-10-17 정리.
 
+## 🔖 세션 옮김 인계 (2026-11-12 · 원격 개발 PC — v1.10.40 그대로 · 마지막 커밋 d214f7f)
+
+> 새 세션은 이 절 → 아래 "현재 상태" · "주의" · "다음 할 일" 순서로 읽으면 이어갈 수 있다. 메모리 `bedorage-rpg-devpc` 도 같이 본다.
+
+- **세션**: 이 주제는 Remote Control 환경 `devpc-115.89` 의 주제별 대화 세션 "배도라지 알PG"(작업 폴더 `~/work/bedorage-rpg`, 문서 정본 = 이 저장소). 다른 세션과 대화는 공유되지 않으니 이어 갈 것은 여기에 적는다.
+- **지금까지 한 일(10/26 ~ 11/03)**:
+  - v1.10.39 멀티: 방장이 이끈다(`partyLeader` · `leaderOver` · `memberMayGo` · 손님 끌어가기 `led` · 웨이포인트 "👑 방장 곁으로" `WP_TO_LEADER=255`) · 난입은 방장 곁으로 · 방 만들 때 레벨 제한(`LV_LIMITS [5,10,0]` · `levelBlock`).
+  - v1.10.40 멀티 점검(브라우저 여러 개 · `.frames/mp*.mjs`): 게임 중 비콘에 `ver` 가 없어 난입이 막히던 것 · 방 목록 정보 · 👑 표시 · 따라갈 때 알림. 분위기(G) · 시점(B)은 사람마다 따로임을 확인(`.frames/mp5.mjs`).
+  - 영상: 4분할 "같은 판 · 네 화면"(`tools/splitcap.mjs` — 실제 멀티 판을 브라우저 넷으로 각자 다른 모드) · 패치 영상에 넣음(9d43047).
+  - **11/03 새로 올리는 곳 트레일러 셋**(d214f7f · 배포 성공): `docs/img/release-2026-11-03/` — `trailer1_intro.webm` 39초 10.3 MB · `trailer2_together.webm` 31초 10.0 MB(4분할) · `trailer3_world.webm` 29초 10.5 MB · `thumbnail.jpg` · 고화질 `*_hq.webm`(60 ~ 86 MB). 그 사이트 규칙(소리 있는 영상 45초 이내 · 11 ~ 40 MB 는 11 MB 로 자동 변환 · 글 하나 50 MB · 쪼개 올리기 삭제 · 영상 3개 이내 · 사용자가 10 MB mp4 하나를 이미 올림)에 맞춰 편마다 11 MB 안 · 합쳐 30.8 MB. 공지 `docs/공지글-모음.md` "첫 배포 공지 — 새로 올리는 곳" 본문 · 첨부 줄도 갱신. `docs/img` 는 git 에 안 올라가니 영상은 이 PC 에만 있다.
+- **진행 중이던 일**: 없다. 11/03 트레일러 보고까지 끝났고 그 뒤 새 요청은 없었다(로그인 만료로 끊긴 작업도 이 주제에는 없음 — `git status` 깨끗 · main = origin/main · 마지막 Actions 성공).
+- **남은 일 · 사용자 답 기다림**:
+  - 트레일러 셋을 사용자가 보고 올렸는지 · 고칠 곳(사용자의 기존 10 MB mp4 내용은 모름 — 장면이 겹칠 수 있다). 3편은 소리가 조금 작다.
+  - 패치 영상 경로(`MODE=patch24 TPPV=1`)는 장면 부품으로 나눈 뒤 다시 뽑아 보지 않았다 — 다음에 패치 영상을 뽑을 때 한 번 확인.
+  - 업데이트 공지(맨 위 "5 · 6차 합침")는 **사용자가 "패치 배포 완료" 라고 할 때까지** 그 하나에 더한다(아직 그 말 없음).
+  - 아래 "다음 할 일"(사람 3 · 4막 플레이 · 다른 PC 4인 P2P · 치지직 실제 방송 확인 등)은 그대로. 알려진 한계: 방장이 나가면 방이 닫히고 손님은 각자 혼자 이어 한다.
+- **영상 다시 뽑기**: 개발 서버 5173 을 띄우고 2편 · 패치 영상은 먼저 `node tools/splitcap.mjs`(4분할 사진 `.frames/split` · 약 2분) → `export PATH=$HOME/work/node/bin:$PATH; timeout 1200 env MODE=patch24 REL=1|2|3 node tools/patchvideo.mjs`(트레일러) 또는 `MODE=patch24 TPPV=1`(패치 영상). 괴물 배치가 판마다 달라 장면을 보고 다시 뽑을 수 있다. 점검 도구(로컬만): `.frames/vidcheck.mjs`(장면 사진) · `.frames/loud.mjs`(소리 크기) · `.frames/tojpg.mjs`.
+- **주의**: 푸시 = 배포 — 푸시 전 이 PC 에서 `npx tsc --noEmit` · `npx vitest run`(442개) · `node tools/uicheck.mjs`(모든 크기 0건) · `npm run build` · `node tools/uitest.mjs`(preview 4173). 게임이 바뀌면 판 번호(package.json 4줄 · package-lock.json 3 · 9줄 · CHANGELOG 맨 위)를 올리고, 도구 · 문서만이면 안 올린다. 커밋 끝은 Co-Authored-By 줄 · 모델 이름은 커밋 · 문서에 넣지 않는다. 영상에 보스 등장 장면 · 경직 · 즉사기 금지(보스는 잠든 채만) · 공지에도 그 말 금지. `patch_1024_play*` · `patch_1024_modes*` 영상은 손대지 않는다. 치지직 Client Secret · 토큰은 다루거나 출력하지 않는다. prettier 돌리지 않는다. 창 크기 키우기 제안 금지(글씨만). 원격 PC 메모리 — OWMS · BTMP 컨테이너가 떠 있으면 브라우저 여러 개 띄우기 전 `free -g` 확인.
+- **관련 파일**: `tools/trailer.js`(REL · `seq*` 장면 부품 · 준비 기다림은 진짜 시계) · `tools/patchvideo.mjs` · `tools/splitcap.mjs` · `docs/공지글-모음.md` · `CHANGELOG.md` · 멀티 코드 `src/core/sim.ts` · `src/net/room.ts` · `src/ui/lobby.ts` · `src/game/session.ts` · 시험 `tests/partylead.test.ts` · `tests/arenastart.test.ts`. 윈도우즈 경로: `\\wsl.localhost\Ubuntu-24.04\home\dev\work\bedorage-rpg\`.
+
 ## 🔖 타격감 · 아이템 · 대장장이 모루 · 3인칭 · 무기 모양 · 설정 정리 · 패치 플레이 영상 (2026-10-24 ~ 25 · 원격 개발 PC — v1.10.8 ~ v1.10.40 배포)
 
 - **멈춘 자리(2026-10-26)**: v1.10.40 까지 main 에 올렸다(v1.10.40 멀티 점검 — 게임 중 난입이 막히던 것 · 방 목록 · 👑 · v1.10.39 멀티: 방장이 이끈다 · 난입은 방장 곁 · 방 레벨 제한 · v1.10.36 투기장 검토 · 게임 만들기 · 대기실 정리 · v1.10.37 무기 드랍 1/3 · 창에서 Esc · v1.10.38 시점 바꾸기 카메라 이어짐 · 시점 · 모드 영상). 같은 날 요청은 모두 끝(`gh run list -L 3`). 최신 패치 플레이 영상은 **시점 · 모드 판** `docs/img/patch-2026-10-25/patch_1025_views(_hq).webm`(55초 · 720p60 14.5 MB · 1080p60 128.4 MB · **먼저 `node tools/splitcap.mjs`**(4분할 사진 — `.frames/split` · 2분 · 개발 서버 5173 · 없으면 4분할 장면을 건너뛴다) **그다음 `MODE=patch24 TPPV=1 node tools/patchvideo.mjs`** 3분 남짓 — 멈추면 `timeout 1200` 으로 감싸 돌린다 · ☀ 1 쿼터뷰 제목 → 3인칭(`session.toggleView` · 카메라 이어짐) → 정조준 머리 맞히기 → 같은 자리 🌙(`goto(1, 'dark')` · `faceMoon` 이 달 쪽이 트인 가까운 자리로 · 시선 -0.12 까지) → 🌙 쿼터뷰 → 무기 모아 보기 → **4분할**(`splitStart` · `splitPrep` · `drawSplit` — 칸마다 진짜 시각으로 가장 가까운 앞 장 · 🌙 칸은 밝기 1.4 · 방장 화면 판 이벤트를 소리 단서로) → ☀ 3 쿼터뷰 후원 전투 → 3인칭 → 🌙 34 보스 예고(달) · 괴물 배치가 `Math.random` 이라 판마다 다르다 — 장면 확인 후 마음에 안 들면 다시) · 동료 기열 · 주펄 · 침착 · `botsBehind(3, true)` 양옆 · `tppYaw` · 처음 11초 소리 거르기(`sfx.onEvents` · 로그 "처음 10초 소리 단서") · 소리 크기 `.frames/loud.mjs` · 카메라 이어짐 `.frames/camblend.mjs`). 예전 모두 3인칭 판 `patch_1025_tpp` 는 그대로. 화염 장면이 벽에 등을 대 화면 반이 벽이던 것은 `mover` 가 뒤가 트였을 때만 물러서게 고쳤다. 사용자: "추천 순서대로 모두 개선 진행해" → `docs/개선-검토-2026-10.md` **1 ~ 4단계 모두 끝**(1 방송 · 3인칭 화살표 · 전설 v1.10.30 · 2 3인칭 완성도 v1.10.31 · 3 성능 v1.10.32 · 4 게임성 v1.10.33). 남긴 것(그 문서 "진행"): 판 해시(그대로가 맞다) · HUD 철판 패널 굽기 · 군주 난이도(사용자 — 그대로). **공지는 사용자가 "패치 배포 완료" 라고 할 때까지 맨 위 공지(5 · 6차 합침) 하나에 더한다**(2026-10-25 사용자). 쿼터뷰 🌙 · ☀ 영상 `docs/img/patch-2026-10-24/patch_1024_modes(_hq).webm`(`MODE=patch24 MODES=1 node tools/patchvideo.mjs` — v1.10.28 판 · 그 뒤 바뀐 화면(길 안내 화살표 · 하늘 · 맵 밖 나무)은 영상에 없다) · 예전 ☀ 만의 `patch_1024_play` 는 그대로 둔다.
@@ -216,7 +236,7 @@ npm test           # vitest
 npm run build      # tsc --noEmit + vite build → dist/
 ```
 
-## 현재 상태 (2026-10-26 · v1.10.40 배포)
+## 현재 상태 (2026-11-12 확인 · v1.10.40 배포)
 
 > 판 번호마다의 변경은 [CHANGELOG.md](CHANGELOG.md) 가 정본이다(예전에 여기 한 줄로 길게 적던 판 번호 이력은 CHANGELOG 와 겹쳐 지웠다 — 원문은 지난 기록).
 
