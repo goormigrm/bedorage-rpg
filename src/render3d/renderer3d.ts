@@ -767,7 +767,7 @@ export class Renderer3D {
   /** 팀 신호를 찍는다 (sim 밖이라 결정론과 무관하다) */
   addMark(x: number, y: number): void {
     const geo = new THREE.RingGeometry(0.5, 0.72, 24)
-    const mat = new THREE.MeshBasicMaterial({ color: 0x7ee0a0, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, depthTest: false })
+    const mat = new THREE.MeshBasicMaterial({ color: 0x7ee0a0, transparent: true, opacity: 0.95, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, depthTest: false })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.rotation.x = -Math.PI / 2
     mesh.position.set(x * U, 0.06, y * U)
@@ -1044,15 +1044,17 @@ export class Renderer3D {
     tex.needsUpdate = true
     const plane = new THREE.PlaneGeometry(1, 1)
     // 계측에서 본 갈래만 (하나 만들 때마다 끝나길 기다려 견본이 많으면 덮개가 길어졌다): 양면 투명(뒷면 · 앞면 둘) 그림 없음 · 있음 · 앞면 투명 · 앞면 불투명 · 스프라이트 · 법선 없는 양면 투명
-    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
-    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true })))
+    // 양면 투명은 모두 forceSinglePass(2026-11-12): three 가 뒷면 · 앞면 두 번 그리며 그때마다 셰이더를 다시 골랐다(싸움 중 43 ~ 77회/프레임).
+    // 셰이더 열쇠가 달라지므로 견본도 같은 값이어야 한다 — 양면 투명 재질을 새로 만들면 forceSinglePass: true 를 같이 넣을 것
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
     g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ transparent: true })))
     g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial()))
     g.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })))
     // 법선 없는 도형(꼭짓점만 짠 이펙트) — three 는 법선 유무(vertexNormals)로 셰이더를 가른다 (2026-10-23 계측: 덮개 뒤 양면 투명 둘)
     const bare = new THREE.BufferGeometry()
     bare.setAttribute('position', plane.getAttribute('position'))
-    g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
+    g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
     // 3인칭 끊김 (2026-10-25 계측 — 처음 그릴 때 20 ~ 49ms 씩): ① 쓰러진 캐릭터가 흐려질 때 재질이 투명으로 바뀌면(setRigOpacity) three 는
     // 불투명과 다른 셰이더를 만든다 ② 봇 · 내가 무기를 바꿔 끼면 처음 보는 무기 모양(부품 · 재질 갈래)을 그 자리에서 만들었다 → 견본을 둔다
     const rig = buildCharacter(CHARACTERS.cheolmyeon)
@@ -2227,7 +2229,7 @@ export class Renderer3D {
 
   private streakMat(color: number): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
-      map: this.streakTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      map: this.streakTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true,
     })
   }
 
@@ -2348,7 +2350,7 @@ export class Renderer3D {
     if (this.rings.length >= RING_MAX) this.endRing(0)
     // 도형은 하나를 같이 쓰고, 재질(색 · 투명도가 고리마다 다르다)은 고리와 같이 모아 둔다
     const pool = thin ? this.thinPool : this.ringPool
-    const mesh = pool.pop() ?? new THREE.Mesh(thin ? this.thinRingGeo : this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+    const mesh = pool.pop() ?? new THREE.Mesh(thin ? this.thinRingGeo : this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
     const rm = mesh.material as THREE.MeshBasicMaterial
     rm.color.setHex(color)
     rm.opacity = peak
@@ -2375,7 +2377,7 @@ export class Renderer3D {
       const idx: number[] = []
       for (let i = 0; i < TRAIL_N; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2)
       g.setIndex(idx)
-      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
       mesh.frustumCulled = false
     }
     const mat = mesh.material as THREE.MeshBasicMaterial
@@ -2422,7 +2424,7 @@ export class Renderer3D {
           g.rotateX(-Math.PI / 2)
           this.slashGeo.set(key, g)
         }
-        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
         mesh.geometry = g
         const mat = mesh.material as THREE.MeshBasicMaterial
         mat.color.setHex(j === 1 ? 0xffb07a : 0xff7a5a)
@@ -2449,7 +2451,7 @@ export class Renderer3D {
     const color = w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
     // 재질은 모아 두었다가 다시 쓴다 (2026-09-23): 휘두를 때마다 만들고 0.14초 뒤 해제했더니, 그 셰이더를 쓰는 재질이
     // 하나도 안 남는 순간 three 가 셰이더 프로그램까지 지워 다음 휘두르기에서 다시 컴파일했다(한 번에 100~150ms 멈춤)
-    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
     mesh.geometry = geo
     const mat = mesh.material as THREE.MeshBasicMaterial
     mat.color.setHex(color)
@@ -4180,10 +4182,10 @@ export class Renderer3D {
         // 마을 들판 문 (2026-10-08): 서 있는 고리 문 + 바닥 고리 — 다음 막 문(보라)과 같은 꼴, 들판 출구 빛깔(주황)
         const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.11, 10, 40), new THREE.MeshBasicMaterial({ color: 0xffb060 }))
         ring.position.y = 1.05
-        const sheet = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const sheet = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, forceSinglePass: true, blending: THREE.AdditiveBlending, depthWrite: false }))
         sheet.position.y = 1.05
         sheet.userData.pulse = true
-        const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.1, 36), new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+        const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.1, 36), new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.5, side: THREE.DoubleSide, forceSinglePass: true }))
         disc.rotation.x = -Math.PI / 2
         disc.position.y = 0.05
         const light = new THREE.PointLight(0xff9a4a, 10, 7, 1.5)
@@ -4198,7 +4200,7 @@ export class Renderer3D {
       const hole = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color: 0x010101 }))
       hole.rotation.x = -Math.PI / 2
       hole.position.y = 0.03
-      const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 36), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide }))
+      const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 36), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true }))
       rim.rotation.x = -Math.PI / 2
       rim.position.y = 0.04
       rim.userData.pulse = true
@@ -4215,9 +4217,9 @@ export class Renderer3D {
       const gate = new THREE.Group()
       const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.13, 10, 40), new THREE.MeshBasicMaterial({ color: 0xc86aff }))
       ring.position.y = 1.25
-      const sheet = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x6a2aa8, transparent: true, opacity: 0.55, side: THREE.DoubleSide }))
+      const sheet = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x6a2aa8, transparent: true, opacity: 0.55, side: THREE.DoubleSide, forceSinglePass: true }))
       sheet.position.y = 1.25
-      const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.3, 36), new THREE.MeshBasicMaterial({ color: 0xc86aff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+      const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.3, 36), new THREE.MeshBasicMaterial({ color: 0xc86aff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, forceSinglePass: true }))
       disc.rotation.x = -Math.PI / 2
       disc.position.y = 0.05
       disc.userData.pulse = true
@@ -4243,7 +4245,7 @@ export class Renderer3D {
       const wp = new THREE.Group()
       const stone = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x4a4e5a }))
       stone.position.y = 0.06
-      const rune = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }))
+      const rune = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, forceSinglePass: true }))
       rune.rotation.x = -Math.PI / 2
       rune.position.y = 0.14
       rune.userData.pulse = true
@@ -4284,7 +4286,7 @@ export class Renderer3D {
         const col = exit ? (bright ? 0x8a3cff : 0xb47aff) : bright ? 0x2a5cff : 0x3a6cff
         const door = new THREE.Mesh(
           new THREE.CircleGeometry(0.62, 32),
-          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
         )
         door.scale.set(1, 1.55, 1)
         door.position.y = 1.05
@@ -4297,7 +4299,7 @@ export class Renderer3D {
         if (exit) {
           const beam = new THREE.Mesh(
             new THREE.CylinderGeometry(0.42, 0.62, 9, 20, 1, true),
-            new THREE.MeshBasicMaterial({ color: bright ? 0x9a4cff : 0xc89aff, transparent: true, opacity: bright ? 0.35 : 0.28, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+            new THREE.MeshBasicMaterial({ color: bright ? 0x9a4cff : 0xc89aff, transparent: true, opacity: bright ? 0.35 : 0.28, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
           )
           beam.position.y = 4.5
           g.add(beam)
@@ -4349,7 +4351,7 @@ export class Renderer3D {
           lid.userData.lid = true
           const skull = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xd8c8ff }))
           skull.position.set(0, 0.3, 0.27)
-          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 24, 1), new THREE.MeshBasicMaterial({ color: 0xb47aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 24, 1), new THREE.MeshBasicMaterial({ color: 0xb47aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }))
           ring.rotation.x = -Math.PI / 2
           ring.position.y = 0.05
           ring.userData.curseRing = true
@@ -4618,7 +4620,7 @@ export class Renderer3D {
         const h = 0.8 + r * 0.7
         // 등급마다 하나씩 만들어 같이 쓴다 (빛기둥의 깜빡임도 등급마다 같이)
         R.beams[r] ??= new THREE.CylinderGeometry(0.04 + r * 0.02, 0.1 + r * 0.03, h, 8, 1, true)
-        R.beamMats[r] ??= new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+        R.beamMats[r] ??= new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
         R.boxMats[r] ??= new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 })
         const beam = new THREE.Mesh(R.beams[r], R.beamMats[r])
         beam.position.y = h / 2
@@ -4802,7 +4804,7 @@ export class Renderer3D {
         const cRim = burn ? 0xffa040 : acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
         const disc = new THREE.Mesh(this.zoneDisc, new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
         // 무대(스포트라이트) 빛 10 → 6: 빛 번짐(후처리)이 들어온 뒤로 무대 바닥이 하얗게 날아갔다 (2026-10-08 영상 확인).
@@ -4897,12 +4899,12 @@ export class Renderer3D {
     if (!g) {
       g = new THREE.Group()
       const fillMat = kill
-        ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
+        ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
         : bright
-          ? new THREE.MeshBasicMaterial({ color: 0xd8102e, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide })
-          : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : bright ? 0xc4001c : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
-      const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
+          ? new THREE.MeshBasicMaterial({ color: 0xd8102e, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
+          : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
+      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : bright ? 0xc4001c : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
+      const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
       let fill: THREE.Object3D
       let rim: THREE.Object3D
       if (shape === ZS_LINE) {
@@ -4927,7 +4929,7 @@ export class Renderer3D {
       fill.userData.fill = true
       g.add(fill, rim)
       if (bright && shape !== ZS_LINE) {
-        const outMat = new THREE.MeshBasicMaterial({ color: 0x2a0612, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
+        const outMat = new THREE.MeshBasicMaterial({ color: 0x2a0612, transparent: true, opacity: 0.7, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
         const arc = ((zn.arc ?? 0) / 1024) * Math.PI * 2
         const out = new THREE.Mesh(shape === ZS_CONE ? new THREE.RingGeometry(1, 1.07, 28, 1, -arc, arc * 2) : this.zoneOutline, outMat)
         out.rotation.x = -Math.PI / 2
@@ -5055,7 +5057,7 @@ export class Renderer3D {
       if (col < 0) continue
       let m = this.auras[n]
       if (!m) {
-        m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32, 1, 0, Math.PI * 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32, 1, 0, Math.PI * 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
         m.rotation.x = -Math.PI / 2
         this.auras[n] = m
         this.scene.add(m)

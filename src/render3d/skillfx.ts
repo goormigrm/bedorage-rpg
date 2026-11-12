@@ -136,7 +136,7 @@ export class SkillFx {
   }
 
   private mat(map: THREE.Texture, color: number, k: number): THREE.MeshBasicMaterial {
-    const m = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })
+    const m = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, blending: THREE.AdditiveBlending })
     m.color.setHex(color).multiplyScalar(k)
     return m
   }

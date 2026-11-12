@@ -136,7 +136,7 @@ function trialGate(f: THREE.Group, bright: boolean): void {
   f.add(mesh(new THREE.BoxGeometry(2.1, 0.26, 0.42), cap, 0, 2.36, 0))
   const sw = new THREE.Mesh(
     new THREE.CircleGeometry(0.62, 40),
-    new THREE.MeshBasicMaterial({ map: swirlTexture(bright ? '#ff9ad8' : '#b47aff', bright ? '#7ad8ff' : '#3a1a8a'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ map: swirlTexture(bright ? '#ff9ad8' : '#b47aff', bright ? '#7ad8ff' : '#3a1a8a'), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
   )
   sw.scale.set(1, 1.45, 1)
   sw.position.set(0, 1.08, 0)
@@ -144,7 +144,7 @@ function trialGate(f: THREE.Group, bright: boolean): void {
   f.userData.swirl = sw
   const rune = new THREE.Mesh(
     new THREE.RingGeometry(1.0, 1.18, 6),
-    new THREE.MeshBasicMaterial({ color: bright ? 0xff8fd0 : 0x9a5aff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: bright ? 0xff8fd0 : 0x9a5aff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
   )
   rune.rotation.x = -Math.PI / 2
   rune.position.y = 0.04

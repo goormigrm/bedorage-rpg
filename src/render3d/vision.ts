@@ -242,6 +242,7 @@ export class Vision {
         transparent: true,
         depthWrite: false,
         side: side ? THREE.DoubleSide : THREE.FrontSide,
+        forceSinglePass: true,
       })
     this.mat = cover(false)
     this.sideMat = cover(true)
