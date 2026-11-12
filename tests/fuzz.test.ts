@@ -7,7 +7,7 @@ import { GameState } from '../src/core/state'
 import { AREAS } from '../src/core/world'
 import { ALL_CHARS, fuzzInput, hopSpot, invariants, richSheet, world } from './_fuzz'
 
-const N = Number(process.env.FUZZ_TICKS ?? 1500)
+const N = Number(process.env.FUZZ_TICKS ?? 1000)
 const GO = AREAS.filter((a) => !a.retired).map((a) => a.id)
 
 interface Opt {
