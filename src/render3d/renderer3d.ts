@@ -51,7 +51,7 @@ import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText,
 import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
-import { CharacterRig, blinkTexture, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
+import { CharacterRig, blinkTexture, buildCharacter, buildGun, enableXray, setRigDisposer, setRigOpacity, makeShield } from './character3d'
 import { gunMat } from './weapon3d'
 import { Bake } from './bake'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures, setNearFade } from './vision'
@@ -737,6 +737,8 @@ export class Renderer3D {
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
+    // 캐릭터가 무기 · 장식을 바꿔 낄 때 옛 재질은 도는 컴파일이 끝난 뒤에 지운다 (character3d setRigDisposer)
+    setRigDisposer((f) => this.afterCompiles(f))
     // ☀ 은 Neutral — ACES 는 파스텔 · 흰색을 회색 쪽으로 바래게 했다(2026-10-17 그래픽 개편 A). Neutral 은 같은 노출에서 어두워 노출을 올린다
     this.gl.toneMapping = isBright() ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping
     this.gl.toneMappingExposure = isBright() ? 1.2 : 1.05
@@ -998,7 +1000,8 @@ export class Renderer3D {
     // 데워 둔 것을 못 쓰고 첫 싸움에서 다시 만들며 0.7초 멈췄다 (2026-10-23 계측 — ☀ 판)
     const rt = this.gl.getRenderTarget()
     this.gl.setRenderTarget(this.post.target)
-    const p = this.gl.compileAsync(o, this.camera, scene).catch(() => {})
+    // 늦어도 6초: 컴파일 확인이 죽으면(위 afterCompiles 설명) three 의 약속은 영영 끝나지 않는다 — 그러면 3인칭 준비(fpsPrep) · 미뤄 둔 정리가 다음 지역까지 멈췄다
+    const p = Promise.race([this.gl.compileAsync(o, this.camera, scene).catch(() => {}), new Promise((r) => setTimeout(r, 6000))])
     this.gl.setRenderTarget(rt)
     this.compiling.add(p)
     void p.finally(() => this.compiling.delete(p))
@@ -5422,11 +5425,15 @@ export class Renderer3D {
   private dropViewGun(): void {
     if (!this.viewGun) return
     this.scene.remove(this.viewGun.group)
-    this.viewGun.group.traverse((o) => {
-      const m = o as THREE.Mesh
-      m.geometry?.dispose()
-      ;(m.material as THREE.Material | undefined)?.dispose?.()
-    })
+    const old = this.viewGun.group
+    // 도는 컴파일(3인칭 준비 · 지역 이동)이 끝난 뒤에 지운다 — 그 전에 지우면 컴파일 확인이 죽는다
+    this.afterCompiles(() =>
+      old.traverse((o) => {
+        const m = o as THREE.Mesh
+        m.geometry?.dispose()
+        ;(m.material as THREE.Material | undefined)?.dispose?.()
+      }),
+    )
     this.viewGun = null
   }
   private updateViewGun(p: PlayerState | undefined): void {
@@ -6542,6 +6549,7 @@ export class Renderer3D {
 
   /** keepGl: GL 맥락 · 캔버스는 다음 렌더러가 쓴다 (constructor prev) */
   dispose(keepGl = false): void {
+    setRigDisposer((f) => f())
     this.retired?.dispose(true)
     this.dropViewGun()
     this.skillFx.dispose()

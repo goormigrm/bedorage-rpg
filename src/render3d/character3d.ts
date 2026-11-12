@@ -93,6 +93,16 @@ export interface CharacterRig {
   setBlink(on: boolean): void
 }
 
+/**
+ * 무기 · 장식을 바꿔 낄 때 옛 재질을 지우는 때 (2026-11-12): 장면을 비동기로 컴파일하는 중에 그 장면의 재질을 지우면 three 의 컴파일 확인이
+ * "Cannot read properties of undefined (reading 'isReady')" 로 죽고 그 컴파일은 끝나지 않는다 — 싸운 뒤 봇이 장비를 갈아 끼는 것과 지역 이동 · 3인칭 전환이 겹칠 때 났다.
+ * 렌더러가 "도는 컴파일이 끝난 뒤에" 로 바꿔 건다. 로비처럼 비동기 컴파일이 없는 곳은 바로 지운다
+ */
+let laterDispose: (f: () => void) => void = (f) => f()
+export function setRigDisposer(fn: (f: () => void) => void): void {
+  laterDispose = fn
+}
+
 export function buildCharacter(def: CharacterDef): CharacterRig {
   const L = def.look
   const root = new THREE.Group()
@@ -293,12 +303,15 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   body.scale.set(wide, tall, wide)
   const height = (centerY + R * EGG_Y + R * 0.35) * tall
   const dropGroup = (g: THREE.Object3D) => {
-    g.traverse((o) => {
-      const m = o as THREE.Mesh
-      if (!m.isMesh) return
-      m.geometry.dispose()
-      if (m.material !== rigM) (m.material as THREE.Material).dispose()
-    })
+    // 재질은 도는 셰이더 컴파일이 끝난 뒤에 지운다 (rigDisposer — 렌더러가 건다)
+    laterDispose(() =>
+      g.traverse((o) => {
+        const m = o as THREE.Mesh
+        if (!m.isMesh) return
+        m.geometry.dispose()
+        if (m.material !== rigM) (m.material as THREE.Material).dispose()
+      }),
+    )
   }
   const rig: CharacterRig = {
     root, body, head, arms, legL, legR, gunTip: gun.tip, def, weapon, meat: 0, rarity: 0, height, centerY, xray,
@@ -317,7 +330,8 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
       if (!!w.melee !== !!rig.weapon.melee) {
         // 근접 ↔ 총: 손 자리가 다르다
         arms.remove(armsMesh)
-        armsMesh.geometry.dispose()
+        const oldArms = armsMesh.geometry
+        laterDispose(() => oldArms.dispose())
         armsMesh = mkArms(!!w.melee)
         arms.add(armsMesh)
         if (xray.visible) markStencil(armsMesh)
