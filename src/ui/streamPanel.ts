@@ -7,6 +7,7 @@ import { DONATE_EVENTS, DON_CAP_CHOICES } from '../core/donate'
 import { BUBBLE_FLOW, BubbleAmount, StreamStatus, TEXT_SCALES, loadStreamCfg, saveStreamCfg, stream, won } from '../game/stream'
 import { keyLabel } from '../game/keymap'
 import { isDev, onDevChange } from '../game/devmode'
+import { bt } from '../game/skin'
 import { connect as chzzkConnect, disconnect as chzzkDisconnect, hasToken, logout as chzzkLogout, redirectUri, startLogin } from '../net/chzzk'
 
 /** 치지직 · 프록시가 준 오류 글을 칸에 넣을 때 (태그가 되지 않게) */
@@ -153,15 +154,16 @@ function settingsHtml(c: ReturnType<typeof loadStreamCfg>, dev: boolean): string
     toggle('bubbles', '채팅 말풍선', c.bubbles) +
     seg('bub', '말풍선 양', [['few', '적게'], ['normal', '보통'], ['many', '많이']], c.bubbleAmount) +
     toggle('bubbleBossLess', '보스전 중에는 말풍선 적게', c.bubbleBossLess) +
+    toggle('chorus', '채팅 합창 (같은 말을 넷이 치면)', c.chorus) +
     toggle('table', '후원 이벤트 표 (왼쪽 아래)', c.table, '보이기', '숨기기') +
     seg('tsc', '방송 글자 크기', TEXT_SCALES.map((k, i) => [String(k), ['보통', '크게', '아주 크게'][i] ?? `${k}배`]), String(c.textScale)) +
     toggle('hold', `방해 이벤트 잠깐 멈춤 (${keyLabel('donHold')})`, stream.hold, '멈춤', '진행') +
     toggle('holdBoss', '보스전 중에는 방해 이벤트 대기', c.holdBoss) +
     `<div class="cztg"><b>같은 방해 효과 최대</b><div class="seg small" data-capseg>${caps}</div></div>` +
     toggle('named', '시청자 이름 괴물 (채팅 !참여)', c.named) +
-    `<p class="czn">멈추거나 넘친 방해 후원은 버리지 않고 기다렸다가 차례로 일어납니다 · !참여한 시청자 이름이 정예 · 우두머리 머리 위에 붙습니다 · 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다.</p>` +
+    `<p class="czn">멈추거나 넘친 방해 후원은 버리지 않고 기다렸다가 차례로 일어납니다 · 채팅 · 후원의 개수와 합계는 어디에도 보이지 않습니다.</p>` +
     (dev
-      ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button></div>` +
+      ? `<div class="czbtns"><button type="button" class="btn secondary sm" data-cz="chat">채팅 시험</button><button type="button" class="btn secondary sm" data-cz="join">참여 시험</button><button type="button" class="btn secondary sm" data-cz="sing">합창 시험</button></div>` +
         `<p class="czn">시험은 던전에서(괴물이 보이는 곳) · 여럿이 하는 판에서는 방장만.</p>`
       : '')
   )
@@ -192,6 +194,10 @@ function panelHtml(): string {
     `<div class="czhead"><i class="czdot" data-st="${st}"></i><h3>치지직 방송 연동</h3><span class="czs" data-st="${st}">${STATUS_LABEL[st]}</span>` +
     `<button type="button" class="czx" data-cz="close" title="닫기 (Esc)">✕</button></div>` +
     `<p class="czlead">채팅은 <b>괴물 말풍선</b>으로, 후원은 금액에 따라 <b>판에 이벤트</b>로 들어갑니다. 같은 방 사람들 화면에도 똑같이 일어납니다.</p>` +
+    // 시청자가 할 수 있는 것 (2026-11-12 — 방송인이 시청자에게 그대로 읽어 줄 수 있게 한 줄씩)
+    `<ul class="czwhat"><li><b>채팅</b> — 화면의 괴물이 그 말을 합니다</li><li><b>같은 말을 넷이</b> — 괴물들이 한꺼번에 외치는 합창</li>` +
+    `<li><b>!참여</b> — 추첨으로 정예 · 우두머리 · ${bt('보물 고블린')}에 내 이름. 쓰러진 자리에는 이름과 마지막 말이 남고, 방장을 쓰러뜨리거나 보물을 들고 달아나면 👑 · 엔딩 크레딧에도 오릅니다</li>` +
+    `<li><b>후원</b> — 금액표의 이벤트 (괴물 머리 위에 후원자 이름)</li></ul>` +
     `<div class="czrow">${main}${login ? `<button type="button" class="lnk" data-cz="logout">로그아웃</button>` : ''}<span class="czd">${esc(stream.detail)}</span></div>` +
     `<div class="czcols">` +
     `<div class="czcol">${settingsHtml(c, dev)}</div>` +
@@ -241,7 +247,7 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         saveStreamCfg(c)
         chzzkDisconnect()
       } else if (a === 'logout') chzzkLogout()
-      else if ((a === 'chat' || a === 'join') && stream.testBlock?.()) {
+      else if ((a === 'chat' || a === 'join' || a === 'sing') && stream.testBlock?.()) {
         flashBtn(b, stream.testBlock!()!)
         return
       } else if (a === 'chat') {
@@ -259,6 +265,16 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
         // 창은 닫지 않는다 — 여러 번 눌러 볼 수 있게 (2026-09-26 사용자: "버튼 눌렀다고 창이 꺼지게 하지 마")
         stream.fakeChat()
         flashBtn(b, why === 'wait' ? '보냄 — 괴물이 보이면 뜹니다' : '보냄 ✓')
+        return
+      }
+      else if (a === 'sing') {
+        const why = !stream.inGame ? '게임 안에서 됩니다' : !loadStreamCfg().chorus ? '합창이 꺼져 있습니다' : stream.sayBlock?.()
+        if (why) {
+          flashBtn(b, why === 'wait' ? '괴물이 보여야 됩니다' : why)
+          return
+        }
+        stream.fakeChorus()
+        flashBtn(b, '합창 보냄 ✓')
         return
       }
       else if (a === 'join') {
@@ -295,6 +311,7 @@ function bindPanel(box: HTMLElement, redraw: () => void, close: () => void): voi
       else if (tg === 'holdBoss') c.holdBoss = on
       else if (tg === 'named') c.named = on
       else if (tg === 'bubbleBossLess') c.bubbleBossLess = on
+      else if (tg === 'chorus') c.chorus = on
       else c.table = on
       saveStreamCfg(c)
       redraw()

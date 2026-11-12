@@ -59,6 +59,7 @@ import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
+import type { Tomb } from '../game/stream'
 import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName, meatOf } from '../core/items'
 import { drawFlashBar, drawGhostBar, hpGhost } from '../render/hpGhost'
 
@@ -501,6 +502,27 @@ export class Renderer3D {
 
   setViewerLabel(fn: (id: number) => string | undefined): void {
     this.viewerLabel = fn
+  }
+  /** 시청자 비석 (2026-11-12 — game/stream.ts Tomb): 지금 보는 지역에 남은 이름들 (세션이 넣는다 — 이름은 sim 밖) */
+  private tombSource: (() => Tomb[] | undefined) | null = null
+  /** 시야 안개가 켜져 있으면 그 반경(sim px) — 비석도 안 보이는 곳에서는 그리지 않는다. 0 = 안개 없음 */
+  private fogR = 0
+
+  setTombSource(fn: () => Tomb[] | undefined): void {
+    this.tombSource = fn
+  }
+  /**
+   * 채팅 합창 (2026-11-12): 같이 친 시청자들의 "닉네임 글"이 화면을 오른쪽에서 왼쪽으로 가로지른다(탄막) — 괴물들의 말풍선은 세션이 따로 띄운다.
+   * 가운데 큰 글로 띄우면 위쪽 배너 · 알림과 겹쳤다. 줄마다 높이가 달라 한곳을 오래 가리지 않는다
+   */
+  private chorusFx: { nick: string; text: string; t0: number }[] = []
+
+  /** 줄을 더한다 — 합창 중에 끼어든 사람은 뒤이어 떠난다 (줄 사이 0.12초) */
+  chorus(text: string, nicks: string[]): void {
+    const now = performance.now()
+    const t = text.length > 16 ? `${text.slice(0, 15)}…` : text
+    const last = this.chorusFx.length > 0 ? this.chorusFx[this.chorusFx.length - 1].t0 : 0
+    nicks.forEach((n, i) => this.chorusFx.push({ nick: n.slice(0, 12), text: t, t0: Math.max(now, last + 120) + i * 120 }))
   }
 
   /** 이 괴물이 지금 화면 안(가장자리 · 아래 HUD 빼고)에 그려지고 있나 */
@@ -2641,8 +2663,10 @@ export class Renderer3D {
     if (opts.showHud) this.drawFloorNav(curr, opts.localPlayer)
     this.drawMonsterBars(curr)
     this.drawKillXs(dt)
+    this.drawTombs()
     this.drawUltWarn()
     this.drawDonWarn()
+    this.drawChorus()
     this.drawOrphanSays(curr)
     // 바닥 이름표: 자리 이름(멈춰 있는 것)이 먼저 자리를 잡고, 아이템 이름이 그것을 비킨다 (placeLabel)
     this.uiRects = opts.uiRects ?? []
@@ -2787,6 +2811,7 @@ export class Renderer3D {
       this.hidden.fill(false)
       this.hiddenM.clear()
       this.monsterView.edgeShade = null
+      this.fogR = 0
       return
     }
     const me = curr.players[lp]
@@ -2816,6 +2841,7 @@ export class Renderer3D {
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
     const rpx = radius * 32
+    this.fogR = rpx
     const live = new Set<number>()
     for (const m of curr.monsters) {
       live.add(m.id)
@@ -5787,6 +5813,108 @@ export class Renderer3D {
     ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw, 6 * VIEW_K)
     ctx.fillStyle = '#ff3a2a'
     ctx.fillRect(VIEW_W / 2 - bw / 2, y + 48 * VIEW_K, bw * left, 6 * VIEW_K)
+    ctx.restore()
+  }
+
+  /**
+   * 시청자 비석: 바닥에 선 작은 돌(☀ 는 파스텔 팻말) + 이름 한 줄 + 마지막 말 · 사연 한 줄. 재질 · 도형 없이 HUD 캔버스에 그린다(그리기 호출이 늘지 않는다).
+   * shortcut: 캔버스라 캐릭터 · 벽에 가려지지 않고 위에 겹친다 — 거슬리면 InstancedMesh 돌 + 캔버스 이름으로 바꾼다
+   */
+  private drawTombs(): void {
+    const list = this.tombSource?.()
+    if (!list || list.length === 0) return
+    const ctx = this.hud.ctx
+    const bright = isBright()
+    for (const t of list) {
+      if (this.fogR > 0 && this.lastViewer && !canSee(this.map, [this.lastViewer], t.x, t.y, this.fogR)) continue
+      const foot = this.worldToScreen(t.x * U, 0, t.y * U)
+      if (foot.x < -60 || foot.x > VIEW_W + 60 || foot.y < 0 || foot.y > VIEW_H + 40) continue
+      const h = foot.y - this.worldToScreen(t.x * U, 1, t.y * U).y
+      // 3인칭에서 아주 멀면(몇 픽셀) 글씨만 떠다닌다 · 코앞이면 화면을 덮는다(캔버스라 내 캐릭터 위에 그려진다) — 가까울수록 옅게, 아주 가까우면 그리지 않는다
+      if (h < 9 || h >= 150) continue
+      const w = h * 0.7
+      const won = t.kind !== 'rip'
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, (150 - h) / 60)
+      // 돌: 둥근 머리의 판 (이긴 자리 · 달아난 자리는 금빛)
+      ctx.beginPath()
+      ctx.moveTo(foot.x - w / 2, foot.y)
+      ctx.lineTo(foot.x - w / 2, foot.y - h + w / 2)
+      ctx.arc(foot.x, foot.y - h + w / 2, w / 2, Math.PI, 0)
+      ctx.lineTo(foot.x + w / 2, foot.y)
+      ctx.closePath()
+      ctx.fillStyle = won ? (bright ? '#ffe28a' : '#b9973a') : bright ? '#ffd3ea' : '#7d828c'
+      ctx.fill()
+      ctx.lineWidth = Math.max(1.5, h * 0.07)
+      ctx.strokeStyle = won ? (bright ? '#c9952a' : '#4a3a10') : bright ? '#c77aa8' : '#2c2f36'
+      ctx.stroke()
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.font = `${Math.round(h * 0.42)}px ${SAY_FONT}`
+      ctx.fillStyle = ctx.strokeStyle
+      ctx.fillText(t.kind === 'win' ? '👑' : t.kind === 'ran' ? '💰' : bright ? '★' : '✝', foot.x, foot.y - h * 0.5)
+      // 이름 · 사연
+      const k = this.sayScale
+      const line1 = t.kind === 'win' ? `${t.nick} 승리` : t.kind === 'ran' ? `${t.nick} 승리` : bright ? `${t.nick} 여기서 퐁!` : `${t.nick} 여기 잠들다`
+      const line2 = t.kind === 'win' ? `${t.who ?? ''} 쓰러진 자리` : t.kind === 'ran' ? '보물을 들고 달아난 자리' : t.say ? `“${t.say.length > 18 ? `${t.say.slice(0, 17)}…` : t.say}”` : ''
+      ctx.textBaseline = 'alphabetic'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+      const y1 = foot.y - h - (line2 ? 21 : 6) * k
+      ctx.font = `800 ${Math.round(14 * k)}px ${SAY_FONT}`
+      ctx.lineWidth = 3.5
+      ctx.strokeText(line1, foot.x, y1)
+      ctx.fillStyle = won ? '#ffd84a' : VIEWER_TAG
+      ctx.fillText(line1, foot.x, y1)
+      if (line2) {
+        ctx.font = `700 ${Math.round(12 * k)}px ${SAY_FONT}`
+        ctx.lineWidth = 3
+        ctx.strokeText(line2, foot.x, y1 + 15 * k)
+        ctx.fillStyle = '#e8ecf2'
+        ctx.fillText(line2, foot.x, y1 + 15 * k)
+      }
+      ctx.restore()
+    }
+  }
+
+  /** 채팅 합창의 탄막: 줄마다 3초 동안 화면을 건넌다 · 높이는 여덟 줄(CHORUS_VOICES)을 돌려 쓴다. 즉사기 경고가 떠 있으면 그리지 않는다(피하는 법을 가린다) */
+  private drawChorus(): void {
+    if (this.chorusFx.length === 0) return
+    const FLY = 3000
+    const now = performance.now()
+    if (now - this.chorusFx[this.chorusFx.length - 1].t0 > FLY) {
+      this.chorusFx.length = 0
+      return
+    }
+    if (this.ultWarn) return
+    const ctx = this.hud.ctx
+    const px = Math.round(30 * VIEW_K * this.sayScale)
+    const nickFont = `800 ${Math.round(px * 0.62)}px ${SAY_FONT}`
+    const textFont = `900 ${px}px ${SAY_FONT}`
+    ctx.save()
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
+    ctx.lineJoin = 'round'
+    ctx.lineWidth = 6
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)'
+    ctx.globalAlpha = 0.92
+    this.chorusFx.forEach((c, i) => {
+      const t = (now - c.t0) / FLY
+      if (t <= 0 || t >= 1) return
+      // 줄 높이: 위 14% ~ 62% 를 여덟으로 나누고 세 칸씩 건너뛰어 이웃 줄이 붙지 않게 (3 과 8 은 서로소 — 여덟 줄이 다 다른 높이)
+      const y = VIEW_H * (0.14 + (0.48 * (((i * 3) % 8) + 0.5)) / 8)
+      ctx.font = nickFont
+      const nw = ctx.measureText(c.nick).width + px * 0.3
+      ctx.font = textFont
+      const x = VIEW_W + 20 - t * (VIEW_W + 40 + nw + ctx.measureText(c.text).width)
+      ctx.strokeText(c.text, x + nw, y)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(c.text, x + nw, y)
+      ctx.font = nickFont
+      ctx.strokeText(c.nick, x, y)
+      ctx.fillStyle = VIEWER_TAG
+      ctx.fillText(c.nick, x, y)
+    })
     ctx.restore()
   }
 

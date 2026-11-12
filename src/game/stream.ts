@@ -4,7 +4,7 @@
 // 설정 창의 "시험" 단추도 이 길로 가짜 채팅 · 후원을 넣는다(치지직 없이도 방송 전에 미리 볼 수 있게).
 
 import { DONATE_EVENTS, DON_CAP_CHOICES, DON_CAP_DEFAULT, DonateEvent } from '../core/donate'
-import { maskText } from './chatfilter'
+import { maskText, norm } from './chatfilter'
 
 export type StreamStatus = 'off' | 'connecting' | 'on' | 'error'
 
@@ -49,6 +49,8 @@ export interface StreamCfg {
   bubbleBossLess: boolean
   /** 방송 화면 글자 크기 배율 (2026-10-17 방송 개선 ⑤): 말풍선 · 후원 표 · 방송 알림 — TEXT_SCALES */
   textScale: number
+  /** 채팅 합창 (2026-11-12): 여러 시청자가 같은 말을 치면 화면의 괴물들이 한꺼번에 외친다 — Chorus */
+  chorus: boolean
 }
 
 export type BubbleAmount = 'few' | 'normal' | 'many'
@@ -100,6 +102,7 @@ export function defaultStreamCfg(): StreamCfg {
     bubbleAmount: 'normal',
     bubbleBossLess: false,
     textScale: 1,
+    chorus: true,
   }
 }
 
@@ -130,6 +133,7 @@ export function loadStreamCfg(): StreamCfg {
       bubbleAmount: typeof v.bubbleAmount === 'string' && Object.hasOwn(BUBBLE_FLOW, v.bubbleAmount) ? v.bubbleAmount : d.bubbleAmount,
       bubbleBossLess: v.bubbleBossLess ?? d.bubbleBossLess,
       textScale: TEXT_SCALES.includes(Number(v.textScale)) ? Number(v.textScale) : d.textScale,
+      chorus: v.chorus ?? d.chorus,
     }
   } catch {
     return d
@@ -277,6 +281,77 @@ export function drawJoiner(pool: Joiner[], winners: Map<string, number>, now: nu
   return pick.nick
 }
 
+/**
+ * 채팅 합창 (2026-11-12 사용자: "치지직 연동으로 사람들이 신기해할 만한 기능"): **서로 다른 시청자 CHORUS_MIN 명**이 CHORUS_WINDOW 안에
+ * 같은 말(띄어쓰기 · 늘인 글자는 같게 본다 — chatfilter norm)을 치면 한 번 일어난다. 한 사람이 거듭 쳐서는 안 된다(도배로 못 일으킨다).
+ * 일어나면 CHORUS_COOL 동안 쉰다 — "ㅋㅋㅋ" 가 끊이지 않는 방송에서 화면이 합창으로 덮이지 않게.
+ * 들고 있는 것은 방금 몇 초의 글뿐이고(창 밖은 버린다) 몇 명이 쳤는지는 어디에도 내보내지 않는다 — 수는 수입 · 시청자 규모를 드러낸다
+ */
+export const CHORUS_MIN = 4
+export const CHORUS_WINDOW = 6000
+export const CHORUS_COOL = 20_000
+/** 합창에 이름이 나오는 시청자 수(= 한꺼번에 말하는 괴물 · 화면을 가로지르는 줄 수)의 끝 */
+export const CHORUS_VOICES = 8
+
+/** 합창이 일어난 뒤 이 동안 같은 말을 친 사람은 그 합창에 끼어든다 (쉬는 동안이라도 — 다 같이 치는 중에 넷째까지만 나오면 서운하다) */
+export const CHORUS_JOIN = 2000
+
+export class Chorus {
+  private lines: { key: string; nick: string; at: number }[] = []
+  private coolUntil = 0
+  /** 방금 일어난 합창: 무슨 말 · 누가 이미 나왔나 · 언제까지 끼어들 수 있나 */
+  private live: { key: string; nicks: string[]; until: number } | null = null
+
+  /**
+   * 채팅 한 줄(가릴 말을 가린 뒤의 글). 합창이 이뤄졌으면 외칠 글과 같이 친 시청자들(먼저 친 차례), 아니면 null.
+   * more = 방금 일어난 합창에 끼어든 한 사람 (모두 CHORUS_VOICES 명까지)
+   */
+  add(nick: string, text: string, now: number): { text: string; nicks: string[]; more?: boolean } | null {
+    const key = norm(text)
+    if (!key) return null
+    if (now < this.coolUntil) {
+      const l = this.live
+      if (!l || l.key !== key || now >= l.until || l.nicks.length >= CHORUS_VOICES || l.nicks.includes(nick)) return null
+      l.nicks.push(nick)
+      return { text, nicks: [nick], more: true }
+    }
+    this.lines = this.lines.filter((l) => now - l.at < CHORUS_WINDOW && !(l.key === key && l.nick === nick))
+    this.lines.push({ key, nick, at: now })
+    // 빠른 방송에서도 들고 있는 줄은 이만큼까지 (오래된 것부터 버린다)
+    if (this.lines.length > 200) this.lines.shift()
+    const nicks = this.lines.filter((l) => l.key === key).map((l) => l.nick)
+    if (nicks.length < CHORUS_MIN) return null
+    this.lines = []
+    this.coolUntil = now + CHORUS_COOL
+    this.live = { key, nicks, until: now + CHORUS_JOIN }
+    return { text, nicks: [...nicks] }
+  }
+}
+
+/**
+ * 시청자 비석 (2026-11-12): 시청자 이름 괴물이 쓰러진 자리 · 이름 괴물이 사람을 쓰러뜨린 자리에 이름이 남는다 — 그 지역에 다시 와도 그대로.
+ * kind 'rip' = 이름 괴물이 쓰러졌다(say = 마지막으로 한 채팅) · 'win' = 이름 괴물이 who 를 쓰러뜨렸다 · 'ran' = 이름 붙은 보물 고블린이 달아났다.
+ * 자리는 sim px. 후원으로 부른 괴물은 남기지 않는다 — 지도에 쌓이면 받은 후원 수가 드러난다
+ */
+export interface Tomb {
+  x: number
+  y: number
+  kind: 'rip' | 'win' | 'ran'
+  nick: string
+  say?: string
+  who?: string
+}
+/** 한 지역에 남는 비석 수 (넘으면 오래된 것부터 사라진다 — 이름이 화면을 덮지 않게) */
+export const TOMB_MAX = 8
+
+/** 비석을 세운다: 거의 같은 자리(한 칸 안)에 이미 있으면 그것을 갈아 끼운다 — 글씨가 겹쳐 못 읽게 되지 않게 */
+export function addTomb(list: Tomb[], t: Tomb): void {
+  const near = list.findIndex((o) => Math.hypot(o.x - t.x, o.y - t.y) < 32)
+  if (near >= 0) list.splice(near, 1)
+  list.push(t)
+  if (list.length > TOMB_MAX) list.shift()
+}
+
 type Fn<T> = (v: T) => void
 
 /**
@@ -408,6 +483,12 @@ class StreamHub {
     this.chat({ nick: `${r(this.nicks)}${Math.floor(Math.random() * 90) + 10}`, text: '!참여', test: true })
   }
 
+  /** 합창 시험: 가짜 시청자 CHORUS_MIN 명이 같은 말을 친다 */
+  fakeChorus(): void {
+    this.tried = true
+    const text = this.samples[Math.floor(Math.random() * 3)]
+    for (let i = 0; i < CHORUS_MIN; i++) this.chat({ nick: this.nicks[i], text, test: true })
+  }
 
   fakeDonation(amount: number): void {
     this.tried = true
