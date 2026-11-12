@@ -1492,11 +1492,14 @@ function patch24Scenes() {
       endCard(tl, 0, 700)
       return tl.done()
     }
-    if (REL === 3) {
-      // 3편 세계 · 막 보스: 1막 마을(제목) → 막 보스 넷 예고(깨우지 않는다) → 운동장 우두머리 전리품
+    // 1막 마을(제목)을 3인칭으로 천천히 돈다 · 운동장 우두머리 전리품 — 3편과 한 편짜리(REL 4)가 같이 쓴다
+    const seqTown = (title) => {
       at(0, () => {
         S().autopilot = false
         document.querySelector('.ending.intro .ending-go')?.click()
+        perFrame = null
+        ov.showcase = false
+        inp().mouseDown.clear()
         inp().fps = true
         goto(0, 'bright')
       })
@@ -1520,15 +1523,19 @@ function patch24Scenes() {
           inp().yaw = base0 + t * 0.14
         }, botsBehind(3, true))
         cue('calm')
-        ov.title = { text: '배도라지 알PG', sub: '걸어서 이어지는 4막 · 막 보스 넷', at: now() - 1300 }
+        if (title) ov.title = { ...title, at: now() - 1300 }
         holding = false
       })
       at(2.2, () => ov.title && (ov.title.out = now()))
       at(1.6, () => {})
+    }
+    const seqBosses = () => {
       seqBoss(9, 'bright', { dist: 6.5, show: 3.6 })
       seqBoss(18, 'bright', { dist: 7, show: 3.6 })
       seqBoss(27, 'bright', { dist: 7, show: 3.6 })
       seqBoss(34, 'dark', { dist: 7.5, show: 4.2, moon: true })
+    }
+    const seqLoot = () => {
       // 전리품: 사람마다 따로 · 등급마다 빛기둥 (희귀 · 전설 · 신화 · 세트) — 싸우는 둘레로 쏟아진다 (자동 줍기는 꺼 둔 채라 바닥에 남는다)
       at(0, () => goto(1, 'bright'))
       at(1.2, () => {
@@ -1563,6 +1570,26 @@ function patch24Scenes() {
       })
       every(sl + 0.5, sl + 5, 0.7, () => alive() < 18 && spawn(K(1), 5, 6, 10))
       at(5.2, () => {})
+    }
+    if (REL === 3) {
+      // 3편 세계 · 막 보스: 1막 마을(제목) → 막 보스 넷 예고(깨우지 않는다) → 운동장 우두머리 전리품
+      seqTown({ text: '배도라지 알PG', sub: '걸어서 이어지는 4막 · 막 보스 넷' })
+      seqBosses()
+      seqLoot()
+      endCard(tl, 0, 700)
+      return tl.done()
+    }
+    if (REL === 4) {
+      // 한 편짜리(2026-11-13 사용자: "2분 이내 webm 하나 · 네이버 카페 · 게임의 특성과 흥미 요소가 잘 보이게"):
+      // (고르는 화면) → 운동장 쿼터뷰 → 3인칭 → 정조준 → 🌙 → 무기 → 마을 → 막 보스 넷 → 전리품 → 4분할 같이 하기 → 후원 전투
+      seqPlayground(null)
+      seqMoon()
+      seqShowcase()
+      seqTown({ text: '걸어서 이어지는 4막', sub: '막마다 마을 · 들판 · 던전 · 막 보스' })
+      seqBosses()
+      seqLoot()
+      seqSplit(SPLIT_DUR_REL, { text: '같이 하기 · 최대 4명', sub: '같은 판 · 분위기와 시점은 사람마다' })
+      seqDonation({ dark: true })
       endCard(tl, 0, 700)
       return tl.done()
     }
@@ -2846,7 +2873,7 @@ export async function start(opts = {}) {
   NOTES = opts.mode === 'notes'
   P24 = opts.mode === 'patch24'
   MODES = P24 && !!opts.modes
-  REL = P24 ? Math.max(0, Math.min(3, opts.rel | 0)) : 0
+  REL = P24 ? Math.max(0, Math.min(4, opts.rel | 0)) : 0
   TPPV = P24 && (!!opts.tppv || REL > 0)
   FPS = opts.fps ?? (P24 ? 60 : 30)
   perFrame = null
@@ -2861,7 +2888,7 @@ export async function start(opts = {}) {
   }
   PART = Math.max(1, Math.min(3, opts.part ?? 1))
   // 트레일러 1편은 캐릭터 고르는 화면(모닥불 앞 12명)부터 — 처음 보는 사람용
-  SELECT = REL === 1 || (!ULT && !NOTES && !P24 && PART !== 2 && opts.select !== false)
+  SELECT = REL === 1 || REL === 4 || (!ULT && !NOTES && !P24 && PART !== 2 && opts.select !== false)
   // 패치 플레이 영상 (2026-10-17 사용자: "트레일러 영상도 이제 이름을 패치 플레이 영상으로 · 어두운 버전 · 철면수심 버전 2개 다") — patch1_dark · patch1_bright …
   const BASE = ULT ? 'boss_voice' + (BRIGHT ? '_bright' : '') : `${PART === 3 ? 'intro' : 'patch' + PART}_${BRIGHT ? 'bright' : 'dark'}`
   // 한 편 소개(part 3 · 49초)는 새 사이트 한도(파일당 20 MB) 안에서 — 2026-10-22 계측: 3.6 → 21.7 MB · 3.1 → 18.9 MB · 2.6 → 16.1 MB
@@ -2871,15 +2898,15 @@ export async function start(opts = {}) {
   // 10월 23일 이후 패치 영상: 공지용 720(20 MB 안 — 셋 중 가장 큰 것) + 고화질 1080
   if (P24 && !opts.lowMax) LOW_MAX = 19_500_000
   // 새로 올리는 곳: 11 ~ 40 MB 는 11 MB 로 자동 변환(화질 손실)된다 — 11 MB 안에서 가장 큰 것
-  if (REL && !opts.lowMax) LOW_MAX = 10_900_000
-  const P24NAME = REL ? `trailer${REL}_${['', 'intro', 'together', 'world'][REL]}` : TPPV ? 'patch_1025_views' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
+  if (REL && !opts.lowMax) LOW_MAX = REL === 4 ? 38_000_000 : 10_900_000 // 한 편짜리(REL 4)는 네이버 카페 — 파일당 40 MB
+  const P24NAME = REL ? (REL === 4 ? 'trailer_final' : `trailer${REL}_${['', 'intro', 'together', 'world'][REL]}`) : TPPV ? 'patch_1025_views' : MODES ? 'patch_1024_modes' : 'patch_1024_play'
   const encs = P24
     ? [
         // 720p60 은 20 MB 안에서 가장 큰 것 · 고화질은 1080p60 VP9 고비트레이트(용량 상관없이 — 사용자) — VP9 를 못 쓰면 VP8 40 Mbps
         // 모드 영상은 🌙 장면이 압축이 안 돼 1.9 Mbps 도 23.5 MB 였다 — 더 낮은 후보까지
         // 모드 영상은 🌙 장면이 압축이 안 돼 VP8 은 비트레이트를 낮춰도 22 MB 였다 → 720 도 VP9
         // 트레일러는 11 MB 안에서 가장 큰 것 — 짧은 편(30초)은 3 Mbps 까지 쓴다
-        ...(REL ? [3_000_000, 2_600_000, 2_300_000, 2_000_000, 1_700_000] : MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
+        ...(REL === 4 ? [2_300_000, 2_000_000, 1_700_000, 1_400_000] : REL ? [3_000_000, 2_600_000, 2_300_000, 2_000_000, 1_700_000] : MODES || TPPV ? [2_000_000, 1_600_000, 1_300_000] : [3_000_000, 2_400_000, 1_900_000]).map((bitrate) => ({ name: P24NAME, ...(MODES || TPPV ? { codec: 'vp09.00.40.08' } : {}), w: 1280, h: 720, bitrate, mode: 'constant', low: true, key: FPS * 8, chunks: [] })),
         (await VideoEncoder.isConfigSupported({ codec: 'vp09.00.41.08', width: W, height: H, bitrate: 24_000_000, framerate: FPS })).supported
           ? { name: P24NAME + '_hq', codec: 'vp09.00.41.08', w: W, h: H, bitrate: opts.hqBitrate ?? 24_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] }
           : { name: P24NAME + '_hq', w: W, h: H, bitrate: opts.hqBitrate ?? 40_000_000, mode: 'variable', low: false, key: FPS * 2, chunks: [] },
@@ -3246,7 +3273,7 @@ export async function start(opts = {}) {
   }
   const au = await encodeAudio(abuf)
   // 저장 폴더: 패치 영상은 그날 폴더 · start({ dir: 'release-<날짜>' }) 면 그 폴더 (예전 공지에 붙은 같은 이름 영상을 덮지 않게)
-  const saveDir = opts.outDir ?? (P24 ? (REL ? 'release-2026-11-03' : TPPV ? 'patch-2026-10-25' : P24_DIR) : NOTES ? NOTES_DIR : opts.dir)
+  const saveDir = opts.outDir ?? (P24 ? (REL === 4 ? 'release-2026-11-13' : REL ? 'release-2026-11-03' : TPPV ? 'patch-2026-10-25' : P24_DIR) : NOTES ? NOTES_DIR : opts.dir)
   const mux = (e) => muxWebM({ width: e.w, height: e.h, video: e.chunks, audio: au.chunks, opusHead: au.head, durationMs: dur * 1000, codec: e.codec?.startsWith('vp09') ? 'V_VP9' : 'V_VP8' })
   // 게시판용: 38 MB 안에서 가장 큰 것 — 같은 크기대면 1080 을 먼저 (모두 넘으면 가장 작은 것)
   const lows = encs.filter((e) => e.low).map((e) => { const file = mux(e); return { e, file, size: file.byteLength ?? file.size } })
