@@ -5831,11 +5831,11 @@ export class Renderer3D {
       if (foot.x < -60 || foot.x > VIEW_W + 60 || foot.y < 0 || foot.y > VIEW_H + 40) continue
       const h = foot.y - this.worldToScreen(t.x * U, 1, t.y * U).y
       // 3인칭에서 아주 멀면(몇 픽셀) 글씨만 떠다닌다 · 코앞이면 화면을 덮는다(캔버스라 내 캐릭터 위에 그려진다) — 가까울수록 옅게, 아주 가까우면 그리지 않는다
-      if (h < 9 || h >= 150) continue
+      if (h < 9 || h >= 120) continue
       const w = h * 0.7
       const won = t.kind !== 'rip'
       ctx.save()
-      ctx.globalAlpha = Math.min(1, (150 - h) / 60)
+      ctx.globalAlpha = Math.min(1, (120 - h) / 50)
       // 돌: 둥근 머리의 판 (이긴 자리 · 달아난 자리는 금빛)
       ctx.beginPath()
       ctx.moveTo(foot.x - w / 2, foot.y)
