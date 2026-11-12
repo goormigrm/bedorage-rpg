@@ -50,7 +50,7 @@ import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText,
 import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
-import { CharacterRig, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
+import { CharacterRig, blinkTexture, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures, setNearFade } from './vision'
 import { Sky } from './sky'
 import { NEAR_GRAIN, U, World3D, buildWorld, paintFloorSteps } from './world3d'
@@ -59,7 +59,7 @@ import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
-import { RARITY_COLORS, RARITY_NAMES, itemColor, itemName, meatOf } from '../core/items'
+import { RARITY_COLORS, RARITY_NAMES, SLOT_ARMOR, SLOT_HELM, itemColor, itemName, meatOf } from '../core/items'
 import { drawFlashBar, drawGhostBar, hpGhost } from '../render/hpGhost'
 
 export { VIEW_W, VIEW_H }
@@ -177,6 +177,14 @@ interface DuckVis {
   swing: number
   /** 재장전 중 총을 몸 앞으로 끌어당긴 각도(팔 y 회전). 휘두르기와 같은 축이라 따로 둔다 */
   reloadSwing: number
+  /** 쏜 직후 총의 반동 (1 → 0 · 팔이 뒤로 밀리고 총구가 들린다 — 2026-11-12) */
+  gunKick: number
+  /** 움직이는 쪽으로 기우는 몸 (조준 방향 기준 앞 · 옆 — 부드럽게 따라간다) */
+  leanF: number
+  leanS: number
+  /** 지난 프레임 자리 (기울기 계산) */
+  px: number
+  pz: number
 }
 
 interface Flash {
@@ -1421,6 +1429,12 @@ export class Renderer3D {
     return (this.rigs[i]?.height ?? 1.6) + 0.75
   }
 
+  /** 눈 감은 얼굴 그림을 미리 올려 둔다 — 첫 깜빡임에 그림을 만들고 올리느라 멈칫하지 않게 */
+  private warmBlink(c: keyof typeof CHARACTERS): void {
+    const t = blinkTexture(CHARACTERS[c])
+    if (t) this.gl.initTexture(t)
+  }
+
   private ensureRigs(state: GameState): void {
     const chars = state.players.map((p) => p.char)
     if (chars.length !== this.rigChars.length) {
@@ -1428,6 +1442,7 @@ export class Renderer3D {
       this.rigs = chars.map((c) => {
         const r = buildCharacter(CHARACTERS[c])
         enableXray(r)
+        this.warmBlink(c)
         return r
       })
       this.rigChars = [...chars]
@@ -1443,6 +1458,7 @@ export class Renderer3D {
       this.scene.remove(this.rigs[i].root)
       const rig = buildCharacter(CHARACTERS[chars[i]])
       enableXray(rig)
+      this.warmBlink(chars[i])
       this.scene.add(rig.root)
       this.rigs[i] = rig
       this.rigChars[i] = chars[i]
@@ -1493,6 +1509,7 @@ export class Renderer3D {
           if (e.p === localPlayer && !w.melee && w.id !== 'flamer') this.spawnPuff(tip.x, tip.y, tip.z, 0, 0.008, 0, 0.55, 0xb8b0a0, big ? 0.3 : 0.17, big ? 0.35 : 0.22)
           v.vsx -= big ? 0.3 : 0.12
           v.vsy += big ? 0.2 : 0.08
+          v.gunKick = Math.max(v.gunKick, big ? 1 : w.pellets > 1 ? 0.85 : w.family === 'smg' || w.family === 'mg' ? 0.4 : 0.6)
           if (e.p === localPlayer) {
             if (w.scope) {
               // 저격: 크게 흔들리고, 카메라가 반동으로 뒤로 밀리며, 조준경이 번쩍인다
@@ -3973,7 +3990,10 @@ export class Renderer3D {
     const rig = this.rigs[i]
     // 고기 악기는 낀 아이템의 고기로 (소고기 · 닭고기 · 오리고기)
     const meat = WEAPONS[p.weapon].family === 'violin' ? meatOf(p.equip?.[0]) : 0
-    if (rig.weapon.id !== p.weapon || rig.meat !== meat) rig.setWeapon(WEAPONS[p.weapon], meat)
+    // 낀 장비의 등급이 겉모습에 (2026-11-12): 무기 = 옆줄 · 총구 고리 · 보석(전설부터 빛난다) / 투구 = 머리띠 / 갑옷 = 어깨 보호대
+    const rar = p.equip?.[0]?.rarity ?? 0
+    if (rig.weapon.id !== p.weapon || rig.meat !== meat || rig.rarity !== rar) rig.setWeapon(WEAPONS[p.weapon], meat, rar)
+    rig.setGear(p.equip?.[SLOT_HELM]?.rarity ?? 0, p.equip?.[SLOT_ARMOR]?.rarity ?? 0)
     const v = this.vis[i]
     const root = rig.root
     root.position.set(pos.x, 0, pos.z)
@@ -4044,6 +4064,8 @@ export class Renderer3D {
     v.sy = Math.max(0.62, Math.min(1.5, v.sy + v.vsy * dt))
     v.flash = Math.max(0, v.flash - dt)
     rig.setFlash(v.flash > 0 ? Math.min(1, v.flash * 8) : 0, v.flashColor)
+    // 눈 깜빡임 (사람마다 다른 박자) · 맞으면 질끈 감는다
+    rig.setBlink(v.flash > 0 || (this.t + i * 1.7) % (3.1 + i * 0.6) < 0.12)
 
     // 걷기: 다리 스윙 + 달걀 몸 뒤뚱(좌우 기울기) + 통통 튀기
     if (p.moving) v.walk += dt * (p.sprinting ? 17 : 13) // 달리면 다리도 빨리 움직인다
@@ -4054,8 +4076,21 @@ export class Renderer3D {
     rig.legR.rotation.x = -swing
     const bob = p.moving ? Math.abs(Math.sin(v.walk)) * 0.05 * rig.stride : 0
     rig.body.position.set(0, bob, 0)
-    rig.body.rotation.z = p.moving ? Math.sin(v.walk) * 0.07 : 0
-    rig.arms.rotation.x = p.moving ? Math.sin(v.walk * 2) * 0.05 : 0
+    // 움직이는 쪽으로 몸이 기운다 (2026-11-12 — 전에는 어디로 가든 꼿꼿이 선 채 미끄러졌다): 조준 방향 기준 앞 · 옆 속도를 부드럽게 따라간다. 달리면 더 깊게
+    {
+      const vx = Number.isNaN(v.px) || dt <= 0 ? 0 : (pos.x - v.px) / dt
+      const vz = Number.isNaN(v.pz) || dt <= 0 ? 0 : (pos.z - v.pz) / dt
+      v.px = pos.x
+      v.pz = pos.z
+      const a = this.aimSmooth[i]
+      const sp = Math.min(1, Math.hypot(vx, vz) / 7)
+      const k = p.moving && sp > 0.05 ? (p.sprinting ? 0.2 : 0.12) / Math.max(0.05, Math.hypot(vx, vz)) : 0
+      const e = Math.min(1, dt * 9)
+      v.leanF += ((vx * Math.cos(a) + vz * Math.sin(a)) * k * sp - v.leanF) * e
+      v.leanS += ((-vx * Math.sin(a) + vz * Math.cos(a)) * k * sp - v.leanS) * e
+    }
+    rig.body.rotation.z = (p.moving ? Math.sin(v.walk) * 0.07 : 0) + v.leanS
+    rig.arms.rotation.x = p.moving ? Math.sin(v.walk * 2) * 0.05 : Math.sin(this.t * 2.4 + i * 1.3) * 0.02
     // 재장전: 총을 아래로 내렸다가(탄창을 갈아 끼우듯 까딱이고) 다시 올린다 — 왼쪽 아래 카드를 안 봐도
     // 재장전 중인 줄 알 수 있게 (2026-09-05 요청). 처음 18% 에 내리고, 마지막 18% 에 올린다
     if (p.reloadTimer > 0 && rig.weapon.reloadTicks > 0) {
@@ -4079,7 +4114,7 @@ export class Renderer3D {
       rig.body.scale.set(1 - b * 0.5, 1 + b, 1 - b * 0.5)
       rig.head.rotation.x = 0
     }
-    rig.body.rotation.x = 0
+    rig.body.rotation.x = v.leanF
     // 대시 = 구르기: 대시 방향으로 한 바퀴 구르며 살짝 뜬다 (몸통 중심을 축으로)
     if (p.dashTimer > 0) {
       const dashMax = p.char === 'juwoojae' ? Math.round(DASH_TICKS * 1.5) : DASH_TICKS
@@ -4095,8 +4130,10 @@ export class Renderer3D {
       const hop = Math.sin(k * Math.PI) * 0.18
       rig.body.position.set(-c.x, rig.centerY - c.y + hop, -c.z)
     }
-    // 정조준: 팔을 조금 더 앞으로
-    rig.arms.position.z = p.ads ? 0.18 : 0.1
+    // 정조준: 팔을 조금 더 앞으로 · 쏘면 반동으로 총이 뒤로 밀리고 총구가 들린다 (2026-11-12 — 전에는 카메라만 밀리고 손의 총은 가만히 있었다)
+    v.gunKick = Math.max(0, v.gunKick - dt * 9)
+    rig.arms.position.z = (p.ads ? 0.18 : 0.1) - v.gunKick * 0.07
+    rig.arms.rotation.x -= v.gunKick * 0.2
     // 휘두르기: 옆으로 쓸어 친다. (2026-09-20 철면란만 파리채처럼 내려치게 해 봤지만
     // 게임 안에서 보기 나빠 원래대로 되돌렸다 — 사용자 "그냥 원래처럼 옆으로 휘두르도록 해 줘")
     const wd = WEAPONS[p.weapon]
@@ -5279,15 +5316,16 @@ export class Renderer3D {
       if (this.viewGun) this.viewGun.group.visible = false
       return
     }
-    if (this.viewGun?.id !== p.weapon) {
+    const vid = `${p.weapon}:${p.equip?.[0]?.rarity ?? 0}`
+    if (this.viewGun?.id !== vid) {
       this.dropViewGun()
-      const group = buildGun(w, 0.42).group
+      const group = buildGun(w, 0.42, 0, p.equip?.[0]?.rarity ?? 0).group
       group.traverse((o) => (o.castShadow = o.receiveShadow = false))
       // 몸에 들린 크기 그대로면 눈앞에서 화면 아래를 다 가렸다. 0.6 → 0.3 · 자리도 절반(화면에 보이는 크기 · 자리는 같다):
       // 앞 0.46 + 총 길이가 몸 반지름(0.44칸)을 넘어 벽에 붙으면 총구가 벽 속에 박혔다 (2026-10-25 검토)
       group.scale.setScalar(0.3)
       this.scene.add(group)
-      this.viewGun = { id: p.weapon, group }
+      this.viewGun = { id: vid, group }
     }
     const g = this.viewGun!.group
     g.visible = true
@@ -6409,7 +6447,7 @@ export class Renderer3D {
 }
 
 function newVis(): DuckVis {
-  return { sx: 1, sy: 1, vsx: 0, vsy: 0, walk: 0, flash: 0, flashColor: 0xffffff, deadT: -1, fall: 0, hitCd: 0, swing: 0, reloadSwing: 0 }
+  return { sx: 1, sy: 1, vsx: 0, vsy: 0, walk: 0, flash: 0, flashColor: 0xffffff, deadT: -1, fall: 0, hitCd: 0, swing: 0, reloadSwing: 0, gunKick: 0, leanF: 0, leanS: 0, px: NaN, pz: NaN }
 }
 
 export { hex, PLAYER_RADIUS }
