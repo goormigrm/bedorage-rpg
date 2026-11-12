@@ -639,6 +639,9 @@ export class Renderer3D {
   private blood: BloodDecals | null = null
   /** 보스 등장 장면 (2026-10-08 퀄리티 5단계): 카메라가 보스 쪽으로 잠깐 다가갔다 돌아온다 (월드 자리 · 지난 초) */
   private bossCut: { x: number; z: number; t: number } | null = null
+  /** 등장 배너가 걷히면 "보스는 먼저 공격하기 전에는…" 알림을 띄운다 · 배너를 띄운 때(렌더러 시계) */
+  private bossTip = false
+  private bossIntroAt = -99
   /** 느린 화면 (보스 처치 — 연출만 느려진다, 판은 그대로) 남은 초 */
   private slowMo = 0
   /** 연속 처치 (2026-10-08 손맛): 2.5초 안에 다음을 잡으면 이어진다 — HUD 숫자 · 처치음 높이 */
@@ -2657,6 +2660,10 @@ export class Renderer3D {
     setNearFade(this.fpsCam && !this.fpsFirst ? 1.3 : 0)
     // 3인칭: 카메라 코앞의 연기 · 빛 알갱이 · 기호도 옅게 (화면을 덮지 않게 — spritefx SPRITE_NEAR · skillfx nearCam)
     SPRITE_NEAR.value = this.fpsCam && !this.fpsFirst ? 3 : 0
+    if (this.bossTip && this.t - this.bossIntroAt > 3.7) {
+      this.bossTip = false
+      this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
+    }
     this.skillFx.nearCam = this.fpsCam && !this.fpsFirst ? this.camera.position : null
     NEAR_GRAIN.value = this.fpsCam ? 1 : 0
     this.updateViewGun(opts.localPlayer >= 0 ? curr.players[opts.localPlayer] : undefined)
@@ -2845,13 +2852,24 @@ export class Renderer3D {
     }
   }
 
+  /** 등장 장면 시간 (2초) */
+  private endBossCut(dt: number): void {
+    const c = this.bossCut
+    if (!c) return
+    c.t += dt
+    if (c.t < 2) return
+    this.bossCut = null
+  }
+
   private announce(m: Monster): void {
     const def = MONSTER_LIST[m.kind]
     if (this.bossSeen.has(m.id)) return
     this.bossSeen.add(m.id)
     this.hud.banner(def.name, BOSS_INTRO[def.id] ?? '', '#ff8a5a')
     // 보스 방의 보스는 먼저 맞기 전에는 가만히 있다(v0.61.0) — 처음 온 사람은 모른다 (2026-09-25 사용자 고른 개선 2)
-    if (isGiant(m) && m.hitTick < 0) this.hud.notice('보스는 먼저 공격하기 전에는 움직이지 않는다 — 자리를 잡고, 준비되면 공격', '#ffcf6a', 5)
+    // 알림은 등장 배너(3.2초 떠 있다 걷힌다)가 옅어진 뒤에 — 같이 띄우면 배너 글 바로 아래에 겹쳤다 (2026-11-12 검토). 머리 이름표도 그동안 숨긴다(drawBossPlate 부르는 곳)
+    this.bossIntroAt = this.t
+    if (isGiant(m) && m.hitTick < 0) this.bossTip = true
     this.shake = Math.max(this.shake, 0.3)
     this.punch = Math.max(this.punch, 0.5)
     // 등장 장면: 카메라가 보스 쪽으로 다가갔다 돌아온다 (2초). 위아래 검은 띠는 없고 그동안 시야 안개도 걷는다(updateVision) —
@@ -5559,7 +5577,8 @@ export class Renderer3D {
       if (this.fpsCam && !isBossLike(m) && camD > 14) continue
       const goblin = def.attack === 'flee'
       if (isBossLike(m)) {
-        this.drawBossPlate(ctx, curr, m, at, def)
+        // 등장 배너가 떠 있는 동안은 숨긴다 (배너가 이름을 말한다 — 같은 이름이 둘 겹쳤다)
+        if (this.t - this.bossIntroAt > 3.5) this.drawBossPlate(ctx, curr, m, at, def)
         continue
       }
       if (!m.elite && !goblin && curr.tick - m.hitTick > 180) continue
@@ -6331,6 +6350,8 @@ export class Renderer3D {
       const hl = Math.hypot(fx, fz) || 1
       this.lightRef.set(p.x + (fx / hl) * 7, 0, p.z + (fz / hl) * 7)
       this.placeSun(p.x + (fx / hl) * 11, p.z + (fz / hl) * 11)
+      // 3인칭 · 정조준: 등장 장면의 카메라 움직임은 없지만 시간은 흐른다 — 전에는 여기서 끝나지 않아 등장 상태(안개 걷힘 · 보스 빛)가 쿼터뷰로 돌아갈 때까지 남았다
+      this.endBossCut(dt)
       return
     }
     if (this.fpsCam) {
@@ -6405,7 +6426,7 @@ export class Renderer3D {
       tx += (c.x - tx) * e * 0.65
       tz += (c.z - tz) * e * 0.65
       dist *= 1 + e * 0.12
-      if (c.t >= 2) this.bossCut = null
+      this.endBossCut(0)
     }
     // 저격 반동: 조준 반대쪽으로 밀렸다가 돌아온다
     if (this.kick > 0) {

@@ -102,3 +102,41 @@ export function addInk(mat: THREE.Material, strength = 0.7, fx: ToonFx = {}): vo
   const key = mat.customProgramCacheKey.bind(mat)
   mat.customProgramCacheKey = () => `${key()}|ink|pcap${rim > 0 ? '|rim' : ''}${spec > 0 ? '|spec' : ''}`
 }
+
+/**
+ * ☀ 귀여운 괴물의 몸 무늬 (2026-11-12 그래픽 최종 — 한 색 덩어리라 4배로 커진 보스는 무늬 없는 색 판이었다):
+ * 배(아래를 보는 면)는 밝게 · 발치로 갈수록 조금 짙게, spots 면 등(위를 보는 면)에 짙은 물방울 무늬. 모델 좌표라 움직여도 무늬가 몸에 붙어 있다.
+ * 프레임 셰이더(괴물) · 먹선과 이어 붙는다 — 첫 컴파일 전에 단다
+ */
+export function addBodyShade(mat: THREE.Material, spots: boolean): void {
+  if (mat.userData.bodyShade) return
+  mat.userData.bodyShade = true
+  const prev = mat.onBeforeCompile
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
+    sh.vertexShader = 'varying vec3 vBodyP;\nvarying vec3 vBodyN;\n' + sh.vertexShader.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      vBodyP = transformed;
+      vBodyN = normalize( objectNormal );`,
+    )
+    sh.fragmentShader = 'varying vec3 vBodyP;\nvarying vec3 vBodyN;\n' + sh.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      {
+        vec3 bn = normalize( vBodyN );
+        float belly = smoothstep( 0.1, -0.7, bn.y );
+        diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * 1.3 + vec3( 0.06 ), belly * 0.6 );
+        diffuseColor.rgb *= 0.86 + 0.14 * smoothstep( 0.0, 0.45, vBodyP.y );
+        ${spots ? `vec2 q = vBodyP.xz * 8.0 + vec2( 0.0, floor( vBodyP.x * 8.0 ) * 0.5 );
+        float dotR = length( fract( q ) - 0.5 );
+        float back = smoothstep( 0.3, 0.8, bn.y );
+        diffuseColor.rgb *= 1.0 - 0.34 * back * ( 1.0 - smoothstep( 0.27, 0.33, dotR ) );
+        float band = smoothstep( 0.4, 0.5, abs( fract( vBodyP.y * 2.6 ) - 0.5 ) );
+        diffuseColor.rgb *= 1.0 - 0.14 * band * ( 1.0 - back ) * ( 1.0 - belly );` : ''}
+      }`,
+    )
+  }
+  const key = mat.customProgramCacheKey.bind(mat)
+  mat.customProgramCacheKey = () => `${key()}|body${spots ? 's' : ''}`
+}
