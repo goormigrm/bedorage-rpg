@@ -1351,6 +1351,7 @@ export class MonsterView {
    * prev 는 보간용 이전 틱 상태 (몬스터 배열이 줄어들 수 있어 id 로 찾는다)
    */
   /** inView(x, z, 반지름): 카메라 시야에 드나 — 밖이면 그리지 않는다(위치 shown 은 그대로 — 이름표 · 조준이 쓴다) */
+  private countsBuf: number[] = []
   update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean, inView: (x: number, z: number, r: number) => boolean = () => true): void {
     this.rankN = 0
     // 자리 맵은 비우지 않고 객체를 다시 쓴다 — 프레임마다 괴물 수만큼 객체를 새로 만들어 쓰레기 수거가 잦았다 (2026-10-25 계측: 12초에 40 ~ 64MB)
@@ -1363,15 +1364,17 @@ export class MonsterView {
         o.f = stamp
       } else this.prevPos.set(m.id, { x: m.x, y: m.y, f: stamp })
     }
-    for (const [id, o] of this.prevPos) if (o.f !== stamp) this.prevPos.delete(id)
-    const counts = this.kinds.map(() => 0)
+    // 맵 훑기는 forEach 로 — for…of 는 칸마다 [열쇠, 값] 배열을 새로 만든다(괴물 수백 × 맵 셋 × 60번/초 — 2026-11-12 계측 2.7 MB/초)
+    this.prevPos.forEach((o, id) => {
+      if (o.f !== stamp) this.prevPos.delete(id)
+    })
+    if (this.countsBuf.length !== this.kinds.length) this.countsBuf = this.kinds.map(() => 0)
+    const counts = this.countsBuf.fill(0)
     this.mcounts.fill(0)
     this.blobN = 0
     this.clock += dt
-    const live = new Set<number>()
     for (const m of curr.monsters) {
       if (m.hp <= 0) continue
-      live.add(m.id)
       let v = this.vis.get(m.id)
       const yawTarget = ((m.aim & 1023) / 1024) * Math.PI * 2
       if (!v) {
@@ -1417,9 +1420,13 @@ export class MonsterView {
       if (hidden(m) || !inView(x, z, v.giant ? 9 : 2.5)) continue
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
-    for (const id of this.vis.keys()) if (!live.has(id)) this.vis.delete(id)
-    // 이번 프레임에 안 나온 괴물(쓰러짐 · 지역 옮김)의 자리는 지운다 — 예전처럼 산 괴물만 남는다
-    for (const [id, o] of this.shown) if (o.f !== stamp) this.shown.delete(id)
+    // 이번 프레임에 안 나온 괴물(쓰러짐 · 지역 옮김)의 동작 · 자리는 지운다 — 산 괴물은 위에서 자리(shown)에 이번 도장을 찍었다
+    this.vis.forEach((_v, id) => {
+      if (this.shown.get(id)?.f !== stamp) this.vis.delete(id)
+    })
+    this.shown.forEach((o, id) => {
+      if (o.f !== stamp) this.shown.delete(id)
+    })
     // 시체: 뒤로 넘어져 한동안 누워 있다가 가라앉는다
     const still: Corpse[] = []
     const dead: Anim = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }

@@ -194,7 +194,7 @@ export class BonfireScene {
       this.scene.add(ped)
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.34, 0.46, 32),
-        new THREE.MeshBasicMaterial({ color: 0xe8b85a, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: 0xe8b85a, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
       )
       ring.rotation.x = -Math.PI / 2
       ring.position.set(x, h + 0.012, z)

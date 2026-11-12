@@ -71,6 +71,14 @@ const FRAME_BUDGET = 6
 const OTHER_PER_SEC = 36
 /** 이보다 멀면(px) 남의 소리는 내지 않는다 — 화면 밖 멀리서 나는 소리는 어차피 작다 */
 const FAR_CULL = 760
+/**
+ * 몰아 도는 틱의 묶음 폭(초 — 소리 시계). 프레임이 밀리면(셰이더 컴파일 · 느린 PC · OBS) tick() 이 밀린 걸음을 한꺼번에 돈다
+ * (한 번에 4걸음 · 쌓인 타이머 신호로 잇달아 12걸음까지 — 2026-11-12 계측). 그 걸음들의 소리가 모두 같은 순간에 예약돼
+ * 같은 총소리가 서너 겹으로 터지고(크기 ↑ · 뭉개짐) 노드가 한꺼번에 생겨 오디오 스레드가 밀렸다.
+ * → 이 폭 안에 다시 불리면 같은 묶음: 앞 걸음에서 이미 낸 소리(종류 · 사람)는 다시 내지 않고, 남의 소리 몫(FRAME_BUDGET)도 이어 쓴다.
+ * 한 틱(16.7ms)보다 짧아 제때 도는 판에서는 아무것도 버리지 않는다
+ */
+const STEP_WIN = 0.012
 /** 버리지 않는 소리 (드물고 중요하다) */
 const KEEP = new Set(['start', 'over', 'levelup', 'death', 'down', 'revive', 'respawn', 'loot', 'pickup', 'equip', 'drop', 'questDone', 'portalOpen', 'stagger', 'riftOpen', 'riftBoss', 'riftDone', 'mastery', 'curse'])
 /**
@@ -110,6 +118,11 @@ export class Sfx {
   /** 남의 소리 토큰 (초당 OTHER_PER_SEC 만큼 찬다) */
   private tokens = OTHER_PER_SEC
   private tokenAt = 0
+  /** 몰아 도는 틱 묶음 (STEP_WIN): 묶음이 시작된 소리 시각 · 앞 걸음들이 낸 소리(종류 → 사람 비트) · 바로 앞 걸음 것 · 남은 몫 */
+  private lastStepAt = -1
+  private stepKinds = new Map<string, number>()
+  private stepNext = new Map<string, number>()
+  private stepBudget = 0
   /** 몬스터 소리 되풀이 제한 (무리 전투에서 같은 소리가 수십 번 겹치면 귀가 아프다) */
   private lastMHit = 0
   private lastMDeath = 0
@@ -394,6 +407,19 @@ export class Sfx {
     if (this.ctx && this.ctx.state === 'suspended' && !this.mutedFlag) void this.ctx.resume().catch(() => {})
     if (!this.ready()) return
     let budget = this.lite ? 4 : FRAME_BUDGET
+    // 몰아 도는 틱 (STEP_WIN): 같은 묶음이면 앞 걸음들이 낸 소리를 모으고 몫을 이어 쓴다
+    const ct = this.ctx!.currentTime
+    const again = ct >= this.lastStepAt && ct - this.lastStepAt < STEP_WIN
+    if (again) {
+      for (const [k, v] of this.stepNext) this.stepKinds.set(k, (this.stepKinds.get(k) ?? 0) | v)
+      budget = Math.min(budget, this.stepBudget)
+    } else {
+      this.lastStepAt = ct
+      this.stepKinds.clear()
+    }
+    this.stepNext.clear()
+    const who = (e: SimEvent): number => 1 << (((('p' in e ? (e.p as number) : -1) | 0) + 1) & 31)
+    for (const e of events) this.stepNext.set(e.type, (this.stepNext.get(e.type) ?? 0) | who(e))
     const maxLive = this.lite ? 32 : MAX_LIVE
     const perSec = this.lite ? 20 : OTHER_PER_SEC
     // 듣는 위치: 나, 관전이면 산 사람들의 중심
@@ -425,6 +451,10 @@ export class Sfx {
     if (this.tokenAt > 0) this.tokens = Math.min(perSec, this.tokens + ((tnow - this.tokenAt) / 1000) * perSec)
     this.tokenAt = tnow
     for (const e of events) {
+      if (again && (this.stepKinds.get(e.type) ?? 0) & who(e)) {
+        this.dropped++
+        continue
+      }
       // 남의 소리는 한 프레임 6개 · 초당 36개 · 동시에 56개까지 (내 소리와 드문 중요한 소리는 늘 낸다)
       const mineEv = 'p' in e && e.p === localPlayer
       if (!mineEv && MONSTER_VOICE.has(e.type)) {
@@ -864,6 +894,7 @@ export class Sfx {
           break
       }
     }
+    this.stepBudget = budget
   }
 
   // ---------- 기본 부품 ----------
@@ -907,7 +938,10 @@ export class Sfx {
       pan.connect(this.master!)
       this.busRef.set(g, { n: 0, parts: [g, pan] })
     }
-    return { node: g, t0: ctx.currentTime }
+    // 예약은 한 버퍼(baseLatency — 보통 10ms) 뒤로 (2026-11-12): 딱 지금(currentTime)으로 걸면 오디오 스레드가 이미 그 버퍼를 만들기 시작한
+    // 때에는 다음 버퍼로 밀려, 시작이 들쭉날쭉 늦고 짧은 어택(2 ~ 4ms)이 지나간 채 꼭짓점부터 시작했다(딸깍). 영상 도구(오프라인)는 0
+    const lead = Math.min(0.02, (ctx as AudioContext).baseLatency || 0)
+    return { node: g, t0: ctx.currentTime + lead }
   }
 
   private env(g: GainNode, t0: number, peak: number, attack: number, decay: number): void {
@@ -2615,6 +2649,9 @@ export class Sfx {
   private scheduleBgm(): void {
     const ctx = this.ctx
     if (!ctx || !this.bgmGain || ctx.state !== 'running') return
+    // 메인 스레드가 예약 여유(0.3 ~ 0.4초)보다 오래 멈췄으면(지역 옮김 컴파일 · 가려진 창의 느린 타이머) 밀린 박을 지난 시각으로 걸어
+    // 한꺼번에 쏟지 않는다 — 그 박부터 지금 잇는다 (2026-11-12)
+    if (this.bgmNextBeat < ctx.currentTime) this.bgmNextBeat = ctx.currentTime + 0.05
     if (this.ending) {
       this.scheduleEnding(ctx)
       return

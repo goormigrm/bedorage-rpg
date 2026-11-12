@@ -161,6 +161,9 @@ function carveArena(map: GameMap): void {
   map.arena = { x: cx * TILE + TILE / 2, y: cy * TILE + TILE / 2, r: r * TILE }
 }
 
+// walkField 의 이웃 여덟 (값 · 순서는 예전 그대로 — 칸마다 배열 넷을 새로 만들던 것만 밖으로 뺐다 · 2026-11-12 계측 2.3 MB/초)
+const WALK_DX = [1, -1, 0, 0, 1, 1, -1, -1]
+const WALK_DY = [0, 0, 1, -1, 1, -1, 1, -1]
 /** 8방향 걸음 수 거리 (실제 이동이 8방향이라 4방향으로 재면 대각선을 과대평가한다). 몬스터 흐름장(flow.ts)도 이것을 쓴다 */
 export function walkField(map: GameMap, start: number): Float64Array {
   const total = map.w * map.h
@@ -174,8 +177,8 @@ export function walkField(map: GameMap, start: number): Float64Array {
     const cx = cur % map.w
     const cy = (cur / map.w) | 0
     for (let k = 0; k < 8; k++) {
-      const dx = k < 4 ? [1, -1, 0, 0][k] : [1, 1, -1, -1][k - 4]
-      const dy = k < 4 ? [0, 0, 1, -1][k] : [1, -1, 1, -1][k - 4]
+      const dx = WALK_DX[k]
+      const dy = WALK_DY[k]
       const nx = cx + dx
       const ny = cy + dy
       if (nx < 0 || ny < 0 || nx >= map.w || ny >= map.h) continue

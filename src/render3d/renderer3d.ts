@@ -734,6 +734,9 @@ export class Renderer3D {
         // 스크린샷을 뜰 때만 켠다(기본은 성능 우선). 주소 뒤 ?shot=1
         preserveDrawingBuffer: typeof location !== 'undefined' && location.search.includes('shot=1'),
       })
+    // 셰이더 오류 확인은 개발 · 화면 시험(?shot=1 — tools/uitest.mjs 가 빌드한 판에서 콘솔의 셰이더 오류를 잡는다)에서만 (2026-11-12):
+    // 켜 두면 처음 쓰는 셰이더마다 컴파일 로그를 동기로 물어 10 ~ 35ms 멈추고, 락스텝이라 모두가 기다린다
+    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1'))
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
@@ -764,14 +767,21 @@ export class Renderer3D {
         for (const o of objs) this.queueWarm(o)
         this.prepJobs.push({ t: 'run', run: show })
       },
-      (objs) => {
-        // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
-        const was = objs.map((o) => o.visible)
-        for (const o of objs) o.visible = true
-        const jobs = objs.map((o) => this.compileAsync(o, this.scene))
-        objs.forEach((o, i) => (o.visible = was[i]))
-        return Promise.all(jobs).then(() => {})
-      },
+      (objs) =>
+        // 빛 수를 맞춘 뒤에(afterPad) 컴파일한다 — 이 콜백은 그리기 도중(padLights 앞)에 불려, 그 프레임에 켜지고 꺼진 빛 때문에
+        // 어중간한 빛 수로 컴파일하고는 보이는 프레임에 다시 만들며 멈췄다 (2026-11-12 계측: 직행 첫 싸움 30 ~ 120ms 다섯 번)
+        new Promise<void>((res) =>
+          this.afterPad.push(() => {
+            // 숨겨 둔 모델도 컴파일되게 그 순간만 보이게 (compile 은 보이는 것만 훑는다 — 부르는 동안 동기로 훑고 끝난다)
+            const was = objs.map((o) => o.visible)
+            for (const o of objs) o.visible = true
+            const jobs = objs.map((o) => this.compileAsync(o, this.scene))
+            objs.forEach((o, i) => (o.visible = was[i]))
+            // 이 모델은 지금 빛 수로만 컴파일된다 — 다른 빛 단계는 갈 때 다시 컴파일하게 (stageReady)
+            this.stageOk.clear()
+            void Promise.all(jobs).then(() => res())
+          }),
+        ),
     )
     this.partMesh = new THREE.InstancedMesh(this.particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), PART_MAX)
     this.partMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(PART_MAX * 3), 3)
@@ -812,8 +822,8 @@ export class Renderer3D {
       l.userData.pad = true
       return l
     }
-    // 빈 빛: 한 단계 늦게 내려가므로(padLights) 두 단계 몫
-    for (let i = 0; i < 2 * LIGHT_STEP - 1; i++) {
+    // 빈 빛: 내려갈 단계의 컴파일을 기다리는 동안(stageReady) 16 → 4 처럼 여러 단계를 채워야 한다 — 모자라면 어중간한 빛 수의 셰이더를 새로 만든다
+    for (let i = 0; i < LIGHT_MAX; i++) {
       const l = pad()
       this.lightPads.push(l)
       this.scene.add(l)
@@ -849,7 +859,7 @@ export class Renderer3D {
   /** 팀 신호를 찍는다 (sim 밖이라 결정론과 무관하다) */
   addMark(x: number, y: number): void {
     const geo = new THREE.RingGeometry(0.5, 0.72, 24)
-    const mat = new THREE.MeshBasicMaterial({ color: 0x7ee0a0, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, depthTest: false })
+    const mat = new THREE.MeshBasicMaterial({ color: 0x7ee0a0, transparent: true, opacity: 0.95, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, depthTest: false })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.rotation.x = -Math.PI / 2
     mesh.position.set(x * U, 0.06, y * U)
@@ -989,6 +999,7 @@ export class Renderer3D {
       if (this.areaJob === job) this.areaCompiling = false
     }
     this.splitDepth(this.scene)
+    this.stageOk.clear()
     this.padLights()
     void Promise.race([this.compileAsync(this.scene, this.scene), new Promise((r) => setTimeout(r, 2500))]).then(done, done)
   }
@@ -1127,15 +1138,17 @@ export class Renderer3D {
     tex.needsUpdate = true
     const plane = new THREE.PlaneGeometry(1, 1)
     // 계측에서 본 갈래만 (하나 만들 때마다 끝나길 기다려 견본이 많으면 덮개가 길어졌다): 양면 투명(뒷면 · 앞면 둘) 그림 없음 · 있음 · 앞면 투명 · 앞면 불투명 · 스프라이트 · 법선 없는 양면 투명
-    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
-    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true })))
+    // 양면 투명은 모두 forceSinglePass(2026-11-12): three 가 뒷면 · 앞면 두 번 그리며 그때마다 셰이더를 다시 골랐다(싸움 중 43 ~ 77회/프레임).
+    // 셰이더 열쇠가 달라지므로 견본도 같은 값이어야 한다 — 양면 투명 재질을 새로 만들면 forceSinglePass: true 를 같이 넣을 것
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
+    g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
     g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ transparent: true })))
     g.add(new THREE.Mesh(plane, new THREE.MeshBasicMaterial()))
     g.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })))
     // 법선 없는 도형(꼭짓점만 짠 이펙트) — three 는 법선 유무(vertexNormals)로 셰이더를 가른다 (2026-10-23 계측: 덮개 뒤 양면 투명 둘)
     const bare = new THREE.BufferGeometry()
     bare.setAttribute('position', plane.getAttribute('position'))
-    g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true })))
+    g.add(new THREE.Mesh(bare, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, forceSinglePass: true, transparent: true })))
     // 3인칭 끊김 (2026-10-25 계측 — 처음 그릴 때 20 ~ 49ms 씩): ① 쓰러진 캐릭터가 흐려질 때 재질이 투명으로 바뀌면(setRigOpacity) three 는
     // 불투명과 다른 셰이더를 만든다 ② 봇 · 내가 무기를 바꿔 끼면 처음 보는 무기 모양(부품 · 재질 갈래)을 그 자리에서 만들었다 → 견본을 둔다
     const rig = buildCharacter(CHARACTERS.cheolmyeon)
@@ -1251,11 +1264,87 @@ export class Renderer3D {
     return out
   }
 
+  /**
+   * 이 지역에서 장면 전체를 그 빛 단계로 컴파일해 둔 단계 (true = 써도 된다 · false = 컴파일 중). 지역이 바뀌면 비운다.
+   * 2026-11-12: 싸움 중 처음 뜬 괴물 모델(마을을 안 거친 직행 · 난입 · 후원 소환)과 숨어 있던 재질(몬스터 탄 점)은 그때의 빛 수로만
+   * 컴파일돼 있어, 빛 단계가 바뀌는 프레임에 그 자리에서 컴파일하며 100 ~ 250ms 멈췄다(락스텝이라 모두가 기다린다).
+   * → 처음 가는 단계는 먼저 비동기로 컴파일하고, 다 될 때까지 지금 단계에 머문다(오를 때는 먼 빛 몇 개가 잠깐 안 켜진다)
+   */
+  private stageOk = new Map<number, boolean>()
+  /** 이번 프레임 빛 수를 맞춘 뒤(padLights)에 할 컴파일 */
+  private afterPad: (() => void)[] = []
+
+  /** 빛 단계 n 을 지금 써도 되나 — 처음이면 장면을 그 빛 수로 비동기 컴파일하고(real = 지금 켜진 진짜 빛 수), 다 되면 true */
+  private stageReady(n: number, real: number): boolean {
+    const st = this.stageOk.get(n)
+    if (st !== undefined) return st
+    // 덮개 뒤 · 시작 전에는 기다릴 까닭이 없다 (그 단계로 장면을 컴파일한다 — setMap · prepareStart)
+    if (!this.ready || this.covering) {
+      this.stageOk.set(n, true)
+      return true
+    }
+    // 빈 빛으로 그 순간만 빛 수를 맞춘다 (compile 은 부르는 동안 동기로 빛 · 재질을 훑는다). 진짜 빛이 더 많으면(오를 때는 없다) 그대로 둔다
+    const vis = this.lightPads.map((l) => l.visible)
+    this.lightPads.forEach((l, i) => (l.visible = i < n - real))
+    const programs = this.gl.info.programs as { isReady(): boolean }[] | null
+    const p0 = programs?.length ?? 0
+    // 빛을 안 받는 재질은 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다(three) — compile 이 바꿔 놓은 "지금 셰이더"(아직 링크 중)를 그대로 써서
+    // 다음 그리기가 링크를 기다리며 멈췄다(계측 70ms). 쓰던 것으로 되돌린다
+    type Props = { currentProgram?: unknown; needsLights?: boolean; uniformsList?: unknown }
+    const keep: [Props, unknown][] = []
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material
+      if (!m) return
+      for (const one of Array.isArray(m) ? m : [m]) {
+        const pr = this.gl.properties.get(one) as Props
+        if (pr.currentProgram && !pr.needsLights) keep.push([pr, pr.currentProgram])
+      }
+    })
+    void this.compileAsync(this.scene, this.scene)
+    for (const [pr, prog] of keep) {
+      if (pr.currentProgram === prog) continue
+      pr.currentProgram = prog
+      pr.uniformsList = null
+    }
+    this.lightPads.forEach((l, i) => (l.visible = vis[i]))
+    // three 의 compileAsync 는 재질의 "지금 셰이더"가 됐는지만 본다 — 그 사이 그리면 옛 단계 셰이더로 돌아가 곧바로 끝난 것처럼 보인다.
+    // 그래서 이번에 새로 생긴 셰이더를 직접 본다 (없으면 모두 데워 둔 것 — 바로 쓴다)
+    const fresh = programs?.slice(p0) ?? []
+    if (fresh.length === 0) {
+      this.stageOk.set(n, true)
+      return true
+    }
+    this.stageOk.set(n, false)
+    const job = this.areaJob
+    const t0 = performance.now()
+    const tick = (): void => {
+      if (this.areaJob !== job) return
+      // 병렬 컴파일이 안 되는 브라우저는 isReady 가 늘 거짓일 수 있다 — 1.5초면 그냥 넘어간다
+      if (fresh.every((q) => q.isReady()) || performance.now() - t0 > 1500) this.stageOk.set(n, true)
+      else setTimeout(tick, 16)
+    }
+    setTimeout(tick, 16)
+    return false
+  }
+
   /** 켜진 점광원 수를 LIGHT_STEP 의 배수로 맞춘다 — 빛 수가 몇 가지로만 나와 미리 컴파일한 셰이더를 다시 쓴다 */
   private padLights(): void {
-    // 빛 상한: 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
     let lights = this.realLights()
-    if (lights.length > LIGHT_BUDGET) {
+    const real0 = Math.min(lights.length, LIGHT_BUDGET)
+    const want = real0 >= LIGHT_MAX ? real0 : Math.ceil(real0 / LIGHT_STEP) * LIGHT_STEP
+    // 빛 수가 경계(4 · 8 …)에서 오르내리면(총구 섬광 · 맞은 빛) 그때마다 빛 받는 재질 모두가 셰이더를 다시 골랐다(2026-10-22 계측 —
+    // 싸움 중 세 프레임에 한 번). 오를 때는 바로, 내려갈 때는 한 단계까지 1초 늦게
+    if (want >= this.lightSlots || want + LIGHT_STEP < this.lightSlots || ++this.slotsLow > 60) {
+      // 처음 가는 단계는 컴파일이 끝난 뒤에 (stageReady) — 그동안은 지금 단계
+      if (want === this.lightSlots || this.stageReady(want, real0)) {
+        this.lightSlots = want
+        this.slotsLow = 0
+      }
+    }
+    // 빛 상한(· 아직 못 오른 단계): 넘치면 카메라가 보는 곳에서 먼 것부터 이번 프레임만 끈다 (다음 프레임 draw 처음에 되살린다)
+    // 켜진 수는 늘 단계와 같아야 한다 — 어중간한 수(5 · 6 …)는 그 수의 셰이더를 새로 만든다
+    const cap = Math.min(LIGHT_BUDGET, this.lightSlots)
+    if (lights.length > cap) {
       // 3인칭은 시선 앞(lightRef) — 몸 둘레로 고르면 등 뒤 빛이 앞의 빛보다 먼저 남았다
       const cx = this.lightRef.x
       const cz = this.lightRef.z
@@ -1266,20 +1355,12 @@ export class Renderer3D {
         dist.set(l, (wp.x - cx) ** 2 + (wp.z - cz) ** 2)
       }
       lights = [...lights].sort((a, b) => (dist.get(a) ?? 0) - (dist.get(b) ?? 0))
-      for (let i = LIGHT_BUDGET; i < lights.length; i++) {
+      for (let i = cap; i < lights.length; i++) {
         lights[i].visible = false
         this.capped.push(lights[i])
       }
     }
-    const real = Math.min(lights.length, LIGHT_BUDGET)
-    const want = real >= LIGHT_MAX ? real : Math.ceil(real / LIGHT_STEP) * LIGHT_STEP
-    // 빛 수가 경계(4 · 8 …)에서 오르내리면(총구 섬광 · 맞은 빛) 그때마다 빛 받는 재질 모두가 셰이더를 다시 골랐다(2026-10-22 계측 —
-    // 싸움 중 세 프레임에 한 번). 오를 때는 바로, 내려갈 때는 한 단계까지 1초 늦게
-    if (want >= this.lightSlots || want + LIGHT_STEP < this.lightSlots || ++this.slotsLow > 60) {
-      this.lightSlots = want
-      this.slotsLow = 0
-    }
-    const need = this.lightSlots - real
+    const need = this.lightSlots - Math.min(lights.length, cap)
     for (let i = 0; i < this.lightPads.length; i++) {
       const on = i < need
       if (this.lightPads[i].visible !== on) this.lightPads[i].visible = on
@@ -2319,7 +2400,7 @@ export class Renderer3D {
 
   private streakMat(color: number, solid = false): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
-      map: this.streakTex, color, transparent: true, blending: solid ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      map: this.streakTex, color, transparent: true, blending: solid ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true,
     })
   }
 
@@ -2442,7 +2523,7 @@ export class Renderer3D {
     if (this.rings.length >= RING_MAX) this.endRing(0)
     // 도형은 하나를 같이 쓰고, 재질(색 · 투명도가 고리마다 다르다)은 고리와 같이 모아 둔다
     const pool = thin ? this.thinPool : this.ringPool
-    const mesh = pool.pop() ?? new THREE.Mesh(thin ? this.thinRingGeo : this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+    const mesh = pool.pop() ?? new THREE.Mesh(thin ? this.thinRingGeo : this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
     const rm = mesh.material as THREE.MeshBasicMaterial
     rm.color.setHex(color)
     rm.opacity = peak
@@ -2469,7 +2550,7 @@ export class Renderer3D {
       const idx: number[] = []
       for (let i = 0; i < TRAIL_N; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2)
       g.setIndex(idx)
-      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }))
+      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
       mesh.frustumCulled = false
     }
     const mat = mesh.material as THREE.MeshBasicMaterial
@@ -2516,7 +2597,7 @@ export class Renderer3D {
           g.rotateX(-Math.PI / 2)
           this.slashGeo.set(key, g)
         }
-        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
         mesh.geometry = g
         const mat = mesh.material as THREE.MeshBasicMaterial
         // ☀ 밝은 바닥 · 벽 위에서는 더하기 빛 부채꼴이 흰 판으로 날아갔다 → 궤적 띠처럼 보통 섞기 + 진한 장난감 색 (2026-11-12)
@@ -2546,7 +2627,7 @@ export class Renderer3D {
     const color = w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
     // 재질은 모아 두었다가 다시 쓴다 (2026-09-23): 휘두를 때마다 만들고 0.14초 뒤 해제했더니, 그 셰이더를 쓰는 재질이
     // 하나도 안 남는 순간 three 가 셰이더 프로그램까지 지워 다음 휘두르기에서 다시 컴파일했다(한 번에 100~150ms 멈춤)
-    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
     mesh.geometry = geo
     const mat = mesh.material as THREE.MeshBasicMaterial
     const bright = isBright()
@@ -2686,6 +2767,12 @@ export class Renderer3D {
     }
     this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
+    for (const f of this.afterPad.splice(0)) f()
+    // 빈 묶음(파편 · 빛 알갱이 · 연기 · 핏자국 0개)은 숨긴다 — three 는 0개여도 패스마다 셰이더 고르기 · 유니폼 올리기를 한다 (괴물 묶음과 같은 규칙 · 2026-11-12)
+    this.partMesh.visible = this.partMesh.count > 0
+    this.glow.mesh.visible = this.glow.count > 0
+    this.puff.mesh.visible = this.puff.count > 0
+    if (this.blood) this.blood.mesh.visible = this.blood.mesh.count > 0
 
     // 시작 준비 중에는 그리지 않는다 (물체 만들기 · 갱신은 했다 — 준비가 그것들의 셰이더를 컴파일한다)
     if (!this.ready) return
@@ -2934,9 +3021,9 @@ export class Renderer3D {
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
     const rpx = radius * 32
-    const live = new Set<number>()
+    // 괴물마다 클로저 · 프레임마다 Set 을 만들지 않는다 (2026-11-12 계측: 여기서 2.6 MB/초)
+    const seeAt = (x: number, y: number, br: number) => canSee(this.map, viewers, x, y, rpx + br)
     for (const m of curr.monsters) {
-      live.add(m.id)
       let near = false
       // 거대한 보스는 몸 가장자리 넷도 본다 — 가운데만 보면 결투장 둘레 벽 뒤로 가운데가 숨는 순간 온몸이 사라졌다
       // (2026-09-24 사용자: "도살자가 갑자기 맵에서 없어진다")
@@ -2947,20 +3034,23 @@ export class Renderer3D {
           break
         }
       }
-      const seeAt = (x: number, y: number) => canSee(this.map, viewers, x, y, rpx + br)
       const vis =
         m.mark > 0 ||
-        (near && (seeAt(m.x, m.y) || (br > 0 && (seeAt(m.x + br, m.y) || seeAt(m.x - br, m.y) || seeAt(m.x, m.y + br) || seeAt(m.x, m.y - br)))))
+        (near && (seeAt(m.x, m.y, br) || (br > 0 && (seeAt(m.x + br, m.y, br) || seeAt(m.x - br, m.y, br) || seeAt(m.x, m.y + br, br) || seeAt(m.x, m.y - br, br)))))
       const t = vis ? 0.22 : Math.max(0, (this.seenM.get(m.id) ?? 0) - this.lastDt)
       this.seenM.set(m.id, t)
       if (t > 0) this.hiddenM.delete(m.id)
       else this.hiddenM.add(m.id)
     }
-    for (const id of this.seenM.keys()) {
-      if (!live.has(id)) {
+    // 사라진 괴물의 기억은 수가 어긋날 때만 훑어 지운다 (위에서 지금 괴물마다 한 칸씩 적었다 — 수가 같으면 남은 것이 없다)
+    if (this.seenM.size !== curr.monsters.length) {
+      const live = new Set<number>()
+      for (const m of curr.monsters) live.add(m.id)
+      this.seenM.forEach((_t, id) => {
+        if (live.has(id)) return
         this.seenM.delete(id)
         this.hiddenM.delete(id)
-      }
+      })
     }
     for (let i = 0; i < n; i++) {
       const p = curr.players[i]
@@ -3065,10 +3155,10 @@ export class Renderer3D {
    * 지금은 월드 방향 → 화면 방향과 같은 회전(카메라 요)을 미니맵에도 걸고, 나를 가운데 둔다.
    * 관전 중이면 보고 있는 사람이 가운데.
    */
-  private drawMinimap(curr: GameState, opts: RenderOptions): void {
+  private drawMinimap(curr: GameState, opts: RenderOptions, bake?: CanvasRenderingContext2D): void {
     const map = this.map
     if (!this.miniCanvas) this.miniCanvas = renderMapTiles(map)
-    const ctx = this.hud.ctx
+    const ctx = bake ?? this.hud.ctx
     const S = MINIMAP_SIZE
     // 디아블로 4 처럼 오른쪽 위 (그 아래에 목표 추적이 붙는다)
     const x = VIEW_W - 16 - S
@@ -3084,6 +3174,14 @@ export class Renderer3D {
     // 화면 방향과 맞추는 회전: 월드 +x 가 화면에서 어느 쪽인지
     const d = worldDirToScreen(1, 0)
     const rot = Math.atan2(d.y, d.x)
+    if (!bake) {
+      // 바탕 · 점은 구워 두고 1초에 30번만 다시 그린다 (hud.baked — 2026-11-12: 괴물 수백을 프레임마다 세 번 훑어 그렸다).
+      // 동료 이름 · 목표 화살표는 창 밖(가장자리)에도 그리므로 그 위에 프레임마다
+      this.hud.baked('mini', x - 12, y - 12, S + 24, S + 24, 33, (c) => this.drawMinimap(curr, opts, c))
+      this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
+      this.drawMiniGoal(curr, opts, x, y, S, mx, my, rot)
+      return
+    }
     ctx.save()
     // 테두리: 쇠 바탕 + 금선 두 겹 (한 줄짜리 얇은 테는 싸구려로 보인다 — 2026-09-20)
     const frame = ctx.createLinearGradient(0, y - 6, 0, y + S + 6)
@@ -3331,8 +3429,6 @@ export class Renderer3D {
     ctx.lineTo(cx, cy + 6)
     ctx.stroke()
     ctx.restore()
-    this.drawMiniMates(curr, opts, x, y, S, mx, my, rot)
-    this.drawMiniGoal(curr, opts, x, y, S, mx, my, rot)
   }
 
   /**
@@ -4318,10 +4414,10 @@ export class Renderer3D {
         // 마을 들판 문 (2026-10-08): 서 있는 고리 문 + 바닥 고리 — 다음 막 문(보라)과 같은 꼴, 들판 출구 빛깔(주황)
         const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.11, 10, 40), new THREE.MeshBasicMaterial({ color: 0xffb060 }))
         ring.position.y = 1.05
-        const sheet = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }))
+        const sheet = new THREE.Mesh(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, forceSinglePass: true, blending: THREE.AdditiveBlending, depthWrite: false }))
         sheet.position.y = 1.05
         sheet.userData.pulse = true
-        const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.1, 36), new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+        const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.1, 36), new THREE.MeshBasicMaterial({ color: 0xff9a4a, transparent: true, opacity: 0.5, side: THREE.DoubleSide, forceSinglePass: true }))
         disc.rotation.x = -Math.PI / 2
         disc.position.y = 0.05
         const light = new THREE.PointLight(0xff9a4a, 10, 7, 1.5)
@@ -4336,7 +4432,7 @@ export class Renderer3D {
       const hole = new THREE.Mesh(new THREE.CircleGeometry(0.95, 28), new THREE.MeshBasicMaterial({ color: 0x010101 }))
       hole.rotation.x = -Math.PI / 2
       hole.position.y = 0.03
-      const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 36), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide }))
+      const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.12, 36), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true }))
       rim.rotation.x = -Math.PI / 2
       rim.position.y = 0.04
       rim.userData.pulse = true
@@ -4353,9 +4449,9 @@ export class Renderer3D {
       const gate = new THREE.Group()
       const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.13, 10, 40), new THREE.MeshBasicMaterial({ color: 0xc86aff }))
       ring.position.y = 1.25
-      const sheet = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x6a2aa8, transparent: true, opacity: 0.55, side: THREE.DoubleSide }))
+      const sheet = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x6a2aa8, transparent: true, opacity: 0.55, side: THREE.DoubleSide, forceSinglePass: true }))
       sheet.position.y = 1.25
-      const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.3, 36), new THREE.MeshBasicMaterial({ color: 0xc86aff, transparent: true, opacity: 0.5, side: THREE.DoubleSide }))
+      const disc = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.3, 36), new THREE.MeshBasicMaterial({ color: 0xc86aff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, forceSinglePass: true }))
       disc.rotation.x = -Math.PI / 2
       disc.position.y = 0.05
       disc.userData.pulse = true
@@ -4381,7 +4477,7 @@ export class Renderer3D {
       const wp = new THREE.Group()
       const stone = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.12, 8), new THREE.MeshLambertMaterial({ color: 0x4a4e5a }))
       stone.position.y = 0.06
-      const rune = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }))
+      const rune = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 8), new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, forceSinglePass: true }))
       rune.rotation.x = -Math.PI / 2
       rune.position.y = 0.14
       rune.userData.pulse = true
@@ -4422,7 +4518,7 @@ export class Renderer3D {
         const col = exit ? (bright ? 0x8a3cff : 0xb47aff) : bright ? 0x2a5cff : 0x3a6cff
         const door = new THREE.Mesh(
           new THREE.CircleGeometry(0.62, 32),
-          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.75, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
         )
         door.scale.set(1, 1.55, 1)
         door.position.y = 1.05
@@ -4435,7 +4531,7 @@ export class Renderer3D {
         if (exit) {
           const beam = new THREE.Mesh(
             new THREE.CylinderGeometry(0.42, 0.62, 9, 20, 1, true),
-            new THREE.MeshBasicMaterial({ color: bright ? 0x9a4cff : 0xc89aff, transparent: true, opacity: bright ? 0.35 : 0.28, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+            new THREE.MeshBasicMaterial({ color: bright ? 0x9a4cff : 0xc89aff, transparent: true, opacity: bright ? 0.35 : 0.28, blending: bright ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
           )
           beam.position.y = 4.5
           g.add(beam)
@@ -4487,7 +4583,7 @@ export class Renderer3D {
           lid.userData.lid = true
           const skull = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xd8c8ff }))
           skull.position.set(0, 0.3, 0.27)
-          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 24, 1), new THREE.MeshBasicMaterial({ color: 0xb47aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
+          const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 24, 1), new THREE.MeshBasicMaterial({ color: 0xb47aff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }))
           ring.rotation.x = -Math.PI / 2
           ring.position.y = 0.05
           ring.userData.curseRing = true
@@ -4759,8 +4855,8 @@ export class Renderer3D {
         R.beams[r] ??= new THREE.CylinderGeometry(0.04 + r * 0.02, 0.1 + r * 0.03, h, 8, 1, true)
         // ☀ 모래 바닥에서는 더하기 빛기둥이 하얗게 묻혔다 (2026-11-12 검토) → 보통 섞기 + 진한 등급색 · 바닥 고리
         R.beamMats[r] ??= bright
-          ? new THREE.MeshBasicMaterial({ color: r === 0 ? 0x7f8794 : col.clone().multiplyScalar(0.82), transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide })
-          : new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+          ? new THREE.MeshBasicMaterial({ color: r === 0 ? 0x7f8794 : col.clone().multiplyScalar(0.82), transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
+          : new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
         if (!R.itemMats[r]) {
           // 손에 든 무기와 같은 셰이더(정점 색 툰) — 전설부터는 등급 색이 은은하게 돈다
           const m = gunMat()
@@ -4966,7 +5062,7 @@ export class Renderer3D {
         const cRim = burn ? 0xffa040 : acid ? 0xff5a3a : fuse ? 0xff5a2a : vortex ? 0xa0e8ff : trap ? 0xd0a060 : stage
         const disc = new THREE.Mesh(this.zoneDisc, new THREE.MeshBasicMaterial({ color: cDisc, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }))
         disc.rotation.x = -Math.PI / 2
-        const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+        const rim = new THREE.Mesh(this.zoneRim, new THREE.MeshBasicMaterial({ color: cRim, transparent: true, opacity: 0.8, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
         rim.rotation.x = -Math.PI / 2
         g.add(disc, rim)
         // 무대(스포트라이트) 빛 10 → 6: 빛 번짐(후처리)이 들어온 뒤로 무대 바닥이 하얗게 날아갔다 (2026-10-08 영상 확인).
@@ -5061,12 +5157,12 @@ export class Renderer3D {
     if (!g) {
       g = new THREE.Group()
       const fillMat = kill
-        ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
+        ? new THREE.MeshBasicMaterial({ color: 0x5a0008, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
         : bright
-          ? new THREE.MeshBasicMaterial({ color: 0xd8102e, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide })
-          : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : bright ? 0xc4001c : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
-      const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
+          ? new THREE.MeshBasicMaterial({ color: 0xd8102e, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
+          : new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true })
+      const rimMat = new THREE.MeshBasicMaterial({ color: kill ? 0xff1a0a : bright ? 0xc4001c : 0xff5a2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
+      const safeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
       let fill: THREE.Object3D
       let rim: THREE.Object3D
       if (shape === ZS_LINE) {
@@ -5091,7 +5187,7 @@ export class Renderer3D {
       fill.userData.fill = true
       g.add(fill, rim)
       if (bright && shape !== ZS_LINE) {
-        const outMat = new THREE.MeshBasicMaterial({ color: 0x2a0612, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
+        const outMat = new THREE.MeshBasicMaterial({ color: 0x2a0612, transparent: true, opacity: 0.7, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false })
         const arc = ((zn.arc ?? 0) / 1024) * Math.PI * 2
         const out = new THREE.Mesh(shape === ZS_CONE ? new THREE.RingGeometry(1, 1.07, 28, 1, -arc, arc * 2) : this.zoneOutline, outMat)
         out.rotation.x = -Math.PI / 2
@@ -5219,7 +5315,7 @@ export class Renderer3D {
       if (col < 0) continue
       let m = this.auras[n]
       if (!m) {
-        m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32, 1, 0, Math.PI * 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
+        m = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.68, 32, 1, 0, Math.PI * 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
         m.rotation.x = -Math.PI / 2
         this.auras[n] = m
         this.scene.add(m)
@@ -6293,9 +6389,11 @@ export class Renderer3D {
       this.fpsPrep = 'busy'
       this.uploadSceneTextures()
       const job = this.areaJob
-      void this.compileAsync(this.scene, this.scene).then(() => {
-        if (this.areaJob === job) this.fpsPrep = 'done'
-        else this.fpsPrep = 'none'
+      this.afterPad.push(() => {
+        void this.compileAsync(this.scene, this.scene).then(() => {
+          if (this.areaJob === job) this.fpsPrep = 'done'
+          else this.fpsPrep = 'none'
+        })
       })
     }
     if (wantFps && this.fpsPrep === 'done') {
