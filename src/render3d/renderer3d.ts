@@ -2,6 +2,7 @@
 // 카메라: 고정 피치 55°, 요 45° 고정(camera.ts). HUD 는 2D 캔버스 오버레이. 인원 2~4명.
 
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { CHARACTERS, headHitScale } from '../core/characters'
 import { inZone, zoneEscape } from '../core/bosszone'
 import { angleToRad } from '../core/fixedmath'
@@ -37,7 +38,7 @@ registerText(BOSS_INTRO, 'warden', '규칙을 지키는 진행요원 반장 — 
 registerText(BOSS_INTRO, 'lord', '마지막 게임의 주최자 — 파티 드래곤이 기다린다')
 import { ACTS, AREAS, NPC_NAMES, QUESTS, RIFT_TEXT, RIFT_TICKS, actBossQuest, areaDef, areaLayout, areaPath, elderMarks, gateTarget, isRift, isTown, questGuide, townNpcs } from '../core/world'
 import { gateOpen, townPortalSpot } from '../core/sim'
-import { SpriteFx } from './spritefx'
+import { SPRITE_NEAR, SpriteFx } from './spritefx'
 import { allyGood } from '../core/palette'
 import { dmgNumbersOn, shakeScale } from '../ui/settings'
 import { PostFx, gradeFor } from './post'
@@ -51,6 +52,8 @@ import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
 import { CharacterRig, blinkTexture, buildCharacter, buildGun, enableXray, setRigOpacity, makeShield } from './character3d'
+import { gunMat } from './weapon3d'
+import { Bake } from './bake'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures, setNearFade } from './vision'
 import { Sky } from './sky'
 import { NEAR_GRAIN, U, World3D, buildWorld, paintFloorSteps } from './world3d'
@@ -59,7 +62,7 @@ import { MonsterView, isQuadruped, monsterTop } from './monsters3d'
 import { BloodDecals, SPLAT_DROPS, SPLAT_POOL, SPLAT_SPRAY } from './blood'
 import { DARK_VIEW_TILES, DON_DARK, DON_SHAKE } from '../core/donate'
 import { bt, isBright, registerText } from '../game/skin'
-import { RARITY_COLORS, RARITY_NAMES, SLOT_ARMOR, SLOT_HELM, itemColor, itemName, meatOf } from '../core/items'
+import { Item, RARITY_COLORS, RARITY_NAMES, SLOT_ARMOR, SLOT_HELM, SLOT_RING, SLOT_WEAPON, WEAPON_IDS, itemColor, itemName, meatOf } from '../core/items'
 import { drawFlashBar, drawGhostBar, hpGhost } from '../render/hpGhost'
 
 export { VIEW_W, VIEW_H }
@@ -433,6 +436,58 @@ export class Renderer3D {
     beams: [] as THREE.CylinderGeometry[],
     beamMats: [] as THREE.MeshBasicMaterial[],
     boxMats: [] as THREE.MeshLambertMaterial[],
+    /** 떨어진 아이템 모양 (2026-11-12 — 전에는 모두 작은 색 상자): 무기는 그 무기 모양 · 투구 · 갑옷 · 반지 · 목걸이는 작은 모형. 종류마다 하나를 만들어 같이 쓴다 */
+    items: new Map<string, THREE.BufferGeometry>(),
+    itemMats: [] as THREE.Material[],
+    ring: new THREE.RingGeometry(0.3, 0.38, 28).rotateX(-Math.PI / 2),
+    ringMats: [] as THREE.MeshBasicMaterial[],
+  }
+  /** 떨어진 아이템의 모양: 무기 = 손에 드는 모양 그대로(등급 장식 빼고) · 나머지 = 칸마다 작은 모형(등급 색 테 · 보석) */
+  private dropShape(it: Item): THREE.BufferGeometry {
+    const R = this.dropRes
+    const wid = it.slot === SLOT_WEAPON ? (WEAPON_IDS[it.wt] ?? 'rifle') : ''
+    const key = it.slot === SLOT_WEAPON ? `w${wid}:${meatOf(it)}` : `s${it.slot}:${it.rarity}`
+    let g = R.items.get(key)
+    if (g) return g
+    if (it.slot === SLOT_WEAPON) {
+      const w = WEAPONS[wid as keyof typeof WEAPONS]
+      const b = buildGun(w, 0.42, meatOf(it))
+      const ms = b.group.children.filter((o) => (o as THREE.Mesh).isMesh) as THREE.Mesh[]
+      g = ms[0].geometry
+      // 손 자리(원점)가 아니라 가운데를 축으로 돈다 · 근접 무기는 길어서 줄인다
+      g.computeBoundingBox()
+      const c = g.boundingBox!.getCenter(new THREE.Vector3())
+      g.translate(-c.x, -c.y, -c.z)
+      const len = g.boundingBox!.max.z - g.boundingBox!.min.z
+      g.scale(...(new Array(3).fill(Math.min(1.5, 0.62 / len)) as [number, number, number]))
+      for (const m of ms) {
+        if (m !== ms[0]) m.geometry.dispose()
+        ;(m.material as THREE.Material).dispose()
+      }
+    } else {
+      const c = new THREE.Color(itemColor(it)).getHex()
+      const STEEL = 0x8a93a0
+      const b = new Bake()
+      if (it.slot === SLOT_HELM) {
+        b.add(new THREE.SphereGeometry(0.15, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), STEEL)
+        b.add(new THREE.TorusGeometry(0.152, 0.022, 6, 18).rotateX(Math.PI / 2), c)
+        b.add(new THREE.BoxGeometry(0.03, 0.1, 0.2).translate(0, 0.12, 0), c)
+      } else if (it.slot === SLOT_ARMOR) {
+        b.add(new THREE.CylinderGeometry(0.13, 0.1, 0.22, 10).scale(1, 1, 0.6), STEEL)
+        for (const sd of [-1, 1]) b.add(new THREE.SphereGeometry(0.065, 8, 6).translate(sd * 0.14, 0.09, 0), c)
+        b.add(new THREE.TorusGeometry(0.105, 0.016, 5, 14).rotateX(Math.PI / 2).scale(1, 1, 0.6).translate(0, -0.1, 0), c)
+        b.add(new THREE.OctahedronGeometry(0.04).scale(1, 1.2, 0.5).translate(0, 0.02, 0.075), c)
+      } else if (it.slot === SLOT_RING) {
+        b.add(new THREE.TorusGeometry(0.09, 0.022, 6, 18), 0xe0b548)
+        b.add(new THREE.OctahedronGeometry(0.05).translate(0, 0.12, 0), c)
+      } else {
+        b.add(new THREE.TorusGeometry(0.11, 0.012, 5, 18).translate(0, 0.06, 0), 0xe0b548)
+        b.add(new THREE.OctahedronGeometry(0.06).scale(0.8, 1.2, 0.5).translate(0, -0.08, 0), c)
+      }
+      g = b.geometry()
+    }
+    R.items.set(key, g)
+    return g
   }
   private zoneDisc = new THREE.CircleGeometry(1, 40)
   private zoneRim = new THREE.RingGeometry(0.94, 1, 48)
@@ -443,8 +498,16 @@ export class Renderer3D {
   private zoneLineEdge = new THREE.EdgesGeometry(this.zoneLine)
   private ringPool: THREE.Mesh[] = []
   private impactPool: THREE.Sprite[] = []
-  private flashGeo = new THREE.SphereGeometry(0.12, 6, 4)
-  private flashMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0 })
+  /**
+   * 총구 섬광 (2026-11-12 — 전에는 작은 노란 공): 앞으로 뻗은 불꽃 심 + 옆으로 퍼진 별 모양. 앞 = +x(쏜 쪽으로 돌린다) · 쏠 때마다 축으로 돌려 매번 달라 보인다
+   */
+  private flashGeo = mergeGeometries([
+    new THREE.OctahedronGeometry(1).scale(0.3, 0.075, 0.075).translate(0.2, 0, 0),
+    new THREE.OctahedronGeometry(1).scale(0.05, 0.19, 0.035),
+    new THREE.OctahedronGeometry(1).scale(0.05, 0.035, 0.19),
+    new THREE.OctahedronGeometry(1).scale(0.09, 0.09, 0.09),
+  ])
+  private flashMat = new THREE.MeshBasicMaterial({ color: isBright() ? 0xffa030 : 0xfff0b0 })
   private flashMeshPool: THREE.Mesh[] = []
   private lightPool: THREE.PointLight[] = []
   /** 빛 상한으로 잠깐 끈 빛 (다음 프레임 처음에 되살리고 다시 잰다) */
@@ -615,11 +678,17 @@ export class Renderer3D {
   private streakGeo = new THREE.PlaneGeometry(1, 1)
   private streakTex = makeStreakTexture()
   private glowTex = makeGlowTexture()
-  private streakMats = {
-    default: this.streakMat(0xffe28a),
-    sniper: this.streakMat(0xffffff),
-    shotgun: this.streakMat(0xffb060),
-  }
+  // ☀ 밝은 바닥에서는 더하기 빛이 하얗게 묻힌다 → 보통 섞기 + 진한 색 (2026-11-12 — 꼬리만 그랬고 탄 머리는 그대로 묻혔다).
+  // 무기마다 탄이 다르게: 레일건 = 푸른 빛줄 · 석궁 = 짧은 나무 화살 · 유탄 = 굵은 덩이 · 화염 = 붉은 불길
+  private streakMats = isBright()
+    ? {
+        default: this.streakMat(0xff8a1a, true), sniper: this.streakMat(0xe8452a, true), shotgun: this.streakMat(0xff6a2a, true),
+        rail: this.streakMat(0x1aa8ff, true), bolt: this.streakMat(0x7a4a20, true), boom: this.streakMat(0x3a6a1a, true), flame: this.streakMat(0xff5a1a, true),
+      }
+    : {
+        default: this.streakMat(0xffe28a), sniper: this.streakMat(0xffffff), shotgun: this.streakMat(0xffb060),
+        rail: this.streakMat(0x6adcff), bolt: this.streakMat(0xe8d8b0), boom: this.streakMat(0xb8e060), flame: this.streakMat(0xff8a3a),
+      }
   private tracerMat = this.streakMat(0xffc070)
   private particleGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1)
   private raycaster = new THREE.Raycaster()
@@ -1503,7 +1572,7 @@ export class Renderer3D {
           const tip = new THREE.Vector3()
           rig.gunTip.getWorldPosition(tip)
           const big = w.family === 'sniper' || w.boom !== undefined
-          this.spawnFlash(tip, big ? 2.6 : w.pellets > 1 ? 1.6 : 1)
+          this.spawnFlash(tip, big ? 2.6 : w.pellets > 1 ? 1.6 : 1, (e.aim / 1024) * Math.PI * 2)
           if (!this.hidden[e.p]) this.quarks.burst('muzzle', tip.x, tip.y, tip.z, big ? 8 : w.pellets > 1 ? 6 : 3, { dir: (e.aim / 1024) * Math.PI * 2 })
           // 총구 연기 한 줄기 (내 총만 — 2026-10-08 퀄리티 2차 1단계)
           if (e.p === localPlayer && !w.melee && w.id !== 'flamer') this.spawnPuff(tip.x, tip.y, tip.z, 0, 0.008, 0, 0.55, 0xb8b0a0, big ? 0.3 : 0.17, big ? 0.35 : 0.22)
@@ -2242,9 +2311,9 @@ export class Renderer3D {
     }
   }
 
-  private streakMat(color: number): THREE.MeshBasicMaterial {
+  private streakMat(color: number, solid = false): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
-      map: this.streakTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      map: this.streakTex, color, transparent: true, blending: solid ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
     })
   }
 
@@ -2288,13 +2357,15 @@ export class Renderer3D {
     this.impacts.push({ sprite, life: 0.14, max: 0.14, size })
   }
 
-  private spawnFlash(pos: THREE.Vector3, size: number): void {
+  private spawnFlash(pos: THREE.Vector3, size: number, aim = 0): void {
     const light = this.takeLight(0xffc860, 6 * size, 5, 2)
     light.position.copy(pos)
     // 구 도형 · 재질은 하나를 같이 쓴다 (예전에는 한 발마다 새로 만들고 해제하지 않았다)
     const mesh = this.flashMeshPool.pop() ?? new THREE.Mesh(this.flashGeo, this.flashMat)
     mesh.position.copy(pos)
-    mesh.scale.setScalar(size)
+    mesh.rotation.order = 'YXZ'
+    mesh.rotation.set(Math.random() * Math.PI, -aim, 0)
+    mesh.scale.setScalar(size * (0.85 + Math.random() * 0.4))
     this.scene.add(mesh)
     this.flashes.push({ light, mesh, life: 0.06 })
   }
@@ -2584,6 +2655,9 @@ export class Renderer3D {
     this.updateCamera(curr, pos, dt, opts)
     // 3인칭(정조준 아님)만 카메라 코앞의 벽 · 나무 · 풀을 점무늬로 비운다
     setNearFade(this.fpsCam && !this.fpsFirst ? 1.3 : 0)
+    // 3인칭: 카메라 코앞의 연기 · 빛 알갱이 · 기호도 옅게 (화면을 덮지 않게 — spritefx SPRITE_NEAR · skillfx nearCam)
+    SPRITE_NEAR.value = this.fpsCam && !this.fpsFirst ? 3 : 0
+    this.skillFx.nearCam = this.fpsCam && !this.fpsFirst ? this.camera.position : null
     NEAR_GRAIN.value = this.fpsCam ? 1 : 0
     this.updateViewGun(opts.localPlayer >= 0 ? curr.players[opts.localPlayer] : undefined)
     this.world.update(this.t, this.lightRef.x, this.lightRef.z)
@@ -4654,20 +4728,45 @@ export class Renderer3D {
         const col = new THREE.Color(itemColor(d.item))
         const h = 0.8 + r * 0.7
         // 등급마다 하나씩 만들어 같이 쓴다 (빛기둥의 깜빡임도 등급마다 같이)
+        const bright = isBright()
         R.beams[r] ??= new THREE.CylinderGeometry(0.04 + r * 0.02, 0.1 + r * 0.03, h, 8, 1, true)
-        R.beamMats[r] ??= new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-        R.boxMats[r] ??= new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 })
+        // ☀ 모래 바닥에서는 더하기 빛기둥이 하얗게 묻혔다 (2026-11-12 검토) → 보통 섞기 + 진한 등급색 · 바닥 고리
+        R.beamMats[r] ??= bright
+          ? new THREE.MeshBasicMaterial({ color: r === 0 ? 0x7f8794 : col.clone().multiplyScalar(0.82), transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide })
+          : new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+        if (!R.itemMats[r]) {
+          // 손에 든 무기와 같은 셰이더(정점 색 툰) — 전설부터는 등급 색이 은은하게 돈다
+          const m = gunMat()
+          if (r >= 3) m.emissive.copy(col).multiplyScalar(0.22)
+          R.itemMats[r] = m
+        }
         const beam = new THREE.Mesh(R.beams[r], R.beamMats[r])
         beam.position.y = h / 2
-        const box = new THREE.Mesh(R.box, R.boxMats[r])
-        box.position.y = 0.08
+        const box = new THREE.Mesh(this.dropShape(d.item), R.itemMats[r])
         box.castShadow = true
         g.add(beam, box)
+        if (bright) {
+          R.ringMats[r] ??= new THREE.MeshBasicMaterial({ color: r === 0 ? 0x7f8794 : col.clone().multiplyScalar(0.82), transparent: true, opacity: 0.75, depthWrite: false })
+          const ring = new THREE.Mesh(R.ring, R.ringMats[r])
+          ring.position.y = 0.03
+          g.add(ring)
+        }
+        g.userData.born = this.t
+        g.userData.r = r
         this.scene.add(g)
         this.dropMeshes.set(d.id, g)
       }
       g.position.set(d.x * U, 0, d.y * U)
-      ;(g.children[1] as THREE.Mesh).rotation.y = this.t * 1.5 + d.id
+      // 떠서 천천히 돈다 · 막 떨어졌을 때 튀어 오른다(희귀부터 크게 두 번)
+      const item = g.children[1] as THREE.Mesh
+      const age = this.t - (g.userData.born as number)
+      const rr = g.userData.r as number
+      const hop = age < 0.7 ? Math.abs(Math.sin((age / 0.7) * Math.PI * (rr >= 2 ? 2 : 1))) * (1 - age / 0.7) * (rr >= 2 ? 0.7 : 0.3) : 0
+      item.position.y = 0.34 + Math.sin(this.t * 2.2 + d.id) * 0.04 + hop
+      item.rotation.set(0.35, this.t * 1.5 + d.id, 0)
+      item.scale.setScalar(1.35)
+      const ring = g.children[2] as THREE.Mesh | undefined
+      if (ring) ring.scale.setScalar(1 + 0.12 * Math.sin(this.t * 3 + d.id))
     }
     const cm = this.coins!
     cm.count = this.coinN
@@ -4675,7 +4774,8 @@ export class Renderer3D {
     if (this.coinN > 0) cm.instanceMatrix.needsUpdate = true
     for (let r = 0; r < this.dropRes.beamMats.length; r++) {
       const m = this.dropRes.beamMats[r]
-      if (m) m.opacity = 0.35 + 0.15 * Math.sin(this.t * 3 + r * 1.7)
+      // ☀ 는 보통 섞기라 같은 짙기면 3인칭에서 기둥이 앞을 막는다 → 조금 옅게
+      if (m) m.opacity = (isBright() ? 0.3 : 0.35) + (isBright() ? 0.1 : 0.15) * Math.sin(this.t * 3 + r * 1.7)
     }
     for (const [id, g] of this.dropMeshes) {
       if (live.has(id)) continue
@@ -5935,10 +6035,13 @@ export class Renderer3D {
       // 무기마다 줄기 길이·색이 다르다: 저격은 길고 하얗게, 산탄은 짧고 주황
       const w = WEAPONS[b.weapon]
       const sn = w.family === 'sniper'
-      const mat = sn ? this.streakMats.sniper : w.pellets > 1 ? this.streakMats.shotgun : this.streakMats.default
+      const M = this.streakMats
+      const rail = w.id === 'railgun'
+      const bolt = w.id === 'crossbow'
+      const mat = rail ? M.rail : bolt ? M.bolt : w.boom ? M.boom : w.id === 'flamer' ? M.flame : sn ? M.sniper : w.pellets > 1 ? M.shotgun : M.default
       for (const child of streak.children) (child as THREE.Mesh).material = mat
-      const len = speed * U * (sn ? 3.4 : w.pellets > 1 ? 1.3 : 2.1)
-      const wid = sn ? 0.14 : w.boom ? 0.2 : 0.1
+      const len = bolt ? 0.95 : w.boom ? 0.45 : speed * U * (rail ? 4.6 : sn ? 3.4 : w.pellets > 1 ? 1.3 : 2.1)
+      const wid = rail ? 0.2 : bolt ? 0.07 : sn ? 0.14 : w.boom ? 0.34 : w.id === 'flamer' ? 0.3 : 0.1
       // 머리(밝은 끝)가 탄 위치, 꼬리는 뒤로
       streak.position.set(x - dx * len * 0.5, GUN_H, z - dz * len * 0.5)
       streak.rotation.y = -Math.atan2(dz, dx)
@@ -5958,7 +6061,7 @@ export class Renderer3D {
         tl = Math.min(tl, flown - 1.5)
         streak.visible = flown > 1.5
       }
-      tr.visible = tl > len
+      tr.visible = tl > len && !bolt
       tr.position.set(x - dx * tl * 0.5, GUN_H - 0.01, z - dz * tl * 0.5)
       tr.rotation.set(-Math.PI / 2, -Math.atan2(dz, dx), 0)
       tr.scale.set(tl, sn ? 0.055 : 0.04, 1)

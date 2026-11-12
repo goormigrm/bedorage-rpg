@@ -69,6 +69,8 @@ const ss = (e0: number, e1: number, x: number) => {
 }
 
 export class SkillFx {
+  /** 3인칭 카메라 자리 (없으면 끔): 코앞 2.6칸 안의 기호(♪ ✚ ★)는 가까울수록 옅게 — 화면을 덮었다 (2026-11-12 검토) */
+  nearCam: THREE.Vector3 | null = null
   private readonly live: Live[] = []
   private readonly pools = new Map<string, THREE.Object3D[]>()
   private readonly tex: Record<'ring' | 'fan' | 'beam' | 'pillar', THREE.Texture>
@@ -539,6 +541,7 @@ export class SkillFx {
         l.obj.position.y += l.vy * dt
         l.obj.scale.setScalar(l.s0 + (l.s1 - l.s0) * t)
         l.mat.opacity = Math.min(1, t * 8) * (1 - t)
+        if (this.nearCam) l.mat.opacity *= ss(0.9, 2.6, l.obj.position.distanceTo(this.nearCam))
       }
     }
   }
