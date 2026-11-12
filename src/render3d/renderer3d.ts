@@ -2661,6 +2661,11 @@ export class Renderer3D {
     this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
     for (const f of this.afterPad.splice(0)) f()
+    // 빈 묶음(파편 · 빛 알갱이 · 연기 · 핏자국 0개)은 숨긴다 — three 는 0개여도 패스마다 셰이더 고르기 · 유니폼 올리기를 한다 (괴물 묶음과 같은 규칙 · 2026-11-12)
+    this.partMesh.visible = this.partMesh.count > 0
+    this.glow.mesh.visible = this.glow.count > 0
+    this.puff.mesh.visible = this.puff.count > 0
+    if (this.blood) this.blood.mesh.visible = this.blood.mesh.count > 0
 
     // 시작 준비 중에는 그리지 않는다 (물체 만들기 · 갱신은 했다 — 준비가 그것들의 셰이더를 컴파일한다)
     if (!this.ready) return
@@ -2898,9 +2903,9 @@ export class Renderer3D {
     if (this.seenT.length !== n) this.seenT = curr.players.map(() => 0)
     // 몬스터: 시야 안(벽에 가리지 않고 반경 안)일 때만 그린다. 경계에서 깜빡이지 않게 0.22초 남긴다
     const rpx = radius * 32
-    const live = new Set<number>()
+    // 괴물마다 클로저 · 프레임마다 Set 을 만들지 않는다 (2026-11-12 계측: 여기서 2.6 MB/초)
+    const seeAt = (x: number, y: number, br: number) => canSee(this.map, viewers, x, y, rpx + br)
     for (const m of curr.monsters) {
-      live.add(m.id)
       let near = false
       // 거대한 보스는 몸 가장자리 넷도 본다 — 가운데만 보면 결투장 둘레 벽 뒤로 가운데가 숨는 순간 온몸이 사라졌다
       // (2026-09-24 사용자: "도살자가 갑자기 맵에서 없어진다")
@@ -2911,20 +2916,23 @@ export class Renderer3D {
           break
         }
       }
-      const seeAt = (x: number, y: number) => canSee(this.map, viewers, x, y, rpx + br)
       const vis =
         m.mark > 0 ||
-        (near && (seeAt(m.x, m.y) || (br > 0 && (seeAt(m.x + br, m.y) || seeAt(m.x - br, m.y) || seeAt(m.x, m.y + br) || seeAt(m.x, m.y - br)))))
+        (near && (seeAt(m.x, m.y, br) || (br > 0 && (seeAt(m.x + br, m.y, br) || seeAt(m.x - br, m.y, br) || seeAt(m.x, m.y + br, br) || seeAt(m.x, m.y - br, br)))))
       const t = vis ? 0.22 : Math.max(0, (this.seenM.get(m.id) ?? 0) - this.lastDt)
       this.seenM.set(m.id, t)
       if (t > 0) this.hiddenM.delete(m.id)
       else this.hiddenM.add(m.id)
     }
-    for (const id of this.seenM.keys()) {
-      if (!live.has(id)) {
+    // 사라진 괴물의 기억은 수가 어긋날 때만 훑어 지운다 (위에서 지금 괴물마다 한 칸씩 적었다 — 수가 같으면 남은 것이 없다)
+    if (this.seenM.size !== curr.monsters.length) {
+      const live = new Set<number>()
+      for (const m of curr.monsters) live.add(m.id)
+      this.seenM.forEach((_t, id) => {
+        if (live.has(id)) return
         this.seenM.delete(id)
         this.hiddenM.delete(id)
-      }
+      })
     }
     for (let i = 0; i < n; i++) {
       const p = curr.players[i]
