@@ -9,9 +9,9 @@ import * as THREE from 'three'
 import { addNearFade } from './vision'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GIANT_VIEW, GOBLIN_KIND, GOBLIN_VIEW, MONSTER_LIST, isGiant } from '../core/monsters'
-import { GameState, MS_WINDUP, Monster } from '../core/state'
+import { GameState, MS_RECOVER, MS_WINDUP, Monster } from '../core/state'
 import { U } from './world3d'
-import { AnchorName, BakedModel, loadMonsterModel, specOf } from './monsterModels'
+import { AnchorName, BakedModel, CUTE_SPECS, loadMonsterModel, specOf } from './monsterModels'
 import { isBright } from '../game/skin'
 import { toonMat } from './toon'
 
@@ -183,6 +183,13 @@ interface Anim {
   boss?: boolean
   /** 보스 방의 거대한 막 보스 (그림 4배 — core/monsters isGiant) */
   giant?: boolean
+  /** 숨쉬기 위상 (마리마다 달라야 떼가 한 박자로 부풀지 않는다) */
+  ph?: number
+  /** 맞아서 밀린 만큼 (MVis 것 — 밀린 쪽으로 몸이 젖혀진다) */
+  kx?: number
+  kz?: number
+  /** ☀ 쓰러진 뒤 지난 시간(초) — 퐁 터지고 납작해졌다 사라진다 (cutePop). 없으면 예전 시체 */
+  pop?: number
 }
 
 interface Part {
@@ -218,6 +225,8 @@ interface MVis extends Anim {
   /** 맞아서 밀린 만큼 (그림만 — sim 위치와 따로, 곧 돌아온다) */
   kx: number
   kz: number
+  /** 지난 프레임의 판 상태 (예고 → 쉼으로 넘어간 순간 = 쏜 순간) */
+  pst: number
 }
 
 const CAP = 220
@@ -247,6 +256,14 @@ const FALL_LIFT: Record<number, number> = { 5: 0.13, 6: 0.22, 8: 0.45, 14: 0.3, 
 /** 시체가 바닥에 남는 시간 (초) — 디아블로 2 처럼 싸운 자리에 시체가 쌓인다. 끝 1초 동안 가라앉는다 */
 const CORPSE_LIFE = 24
 const CORPSE_MAX = 90
+/**
+ * ☀ 귀여운 괴물이 쓰러진 뒤 사라지기까지 (초 · 정예는 1.25배 — 2026-11-13 2차): 누운 시체가 24초 쌓이는 것은 🌙 의 맛이고,
+ * ☀ 에서는 퐁 터져 납작해졌다 사라지는 쪽이 그림체에 맞다(막 보스는 예전대로 남는다)
+ */
+const POP_LIFE = 2.2
+/** ☀ 모델 꼴 (monsterModels big · blob · fly) — 쓰러지는 모습이 꼴마다 다르다: 0 사람 꼴 · 1 동글이 · 2 날개 */
+const CUTE_FAM: number[] = CUTE_SPECS.map((sp) => (sp?.clips.idle?.clip === 'Flying_Idle' ? 2 : sp?.clips.attack?.clip === 'Bite_Front' ? 1 : 0))
+const smooth = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t))
 /** 도형 괴물 부품: 툰 명암 + 먹선 (2026-10-08 G8 — 실사 모델 · 계란과 한 그림체) */
 const lambert = (color: number) => toonMat({ color })
 const glow = (color: number) => new THREE.MeshBasicMaterial({ color })
@@ -1343,7 +1360,10 @@ export class MonsterView {
   /** 휘두름(공격 직후) */
   swiped(id: number): void {
     const v = this.vis.get(id)
-    if (v) v.swing = 1
+    if (!v) return
+    v.swing = 1
+    // 내지르는 순간 몸이 길게 늘어났다가 출렁이며 돌아온다 (2026-11-13 2차)
+    v.squashV -= 3.5
   }
 
   /**
@@ -1352,6 +1372,7 @@ export class MonsterView {
    */
   /** inView(x, z, 반지름): 카메라 시야에 드나 — 밖이면 그리지 않는다(위치 shown 은 그대로 — 이름표 · 조준이 쓴다) */
   private countsBuf: number[] = []
+  private deadAnim: Anim = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }
   update(prev: GameState, curr: GameState, alpha: number, dt: number, hidden: (m: Monster) => boolean, inView: (x: number, z: number, r: number) => boolean = () => true): void {
     this.rankN = 0
     // 자리 맵은 비우지 않고 객체를 다시 쓴다 — 프레임마다 괴물 수만큼 객체를 새로 만들어 쓰레기 수거가 잦았다 (2026-10-25 계측: 12초에 40 ~ 64MB)
@@ -1378,7 +1399,7 @@ export class MonsterView {
       let v = this.vis.get(m.id)
       const yawTarget = ((m.aim & 1023) / 1024) * Math.PI * 2
       if (!v) {
-        v = { walk: Math.random() * 6, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: yawTarget, seen: 0, kx: 0, kz: 0 }
+        v = { walk: Math.random() * 6, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: yawTarget, seen: 0, kx: 0, kz: 0, pst: m.st, ph: Math.random() * 6.28 }
         this.vis.set(m.id, v)
       }
       const p = this.prevPos.get(m.id) ?? m
@@ -1406,6 +1427,9 @@ export class MonsterView {
       const wlen = (m.pat ?? -1) >= 0 && m.wmax ? m.wmax : def.windup
       v.wind = m.st === MS_WINDUP ? Math.max(0, Math.min(1, 1 - m.t / Math.max(1, wlen))) : Math.max(0, v.wind - dt * 6)
       v.swing = Math.max(0, v.swing - dt * 5)
+      // 쏘는 괴물은 휘두름 신호(swipe)가 없다 — 예고가 끝나 쉼으로 넘어간 순간이 쏜 순간이다(반동 · 공격 동작의 뒷부분 — 2026-11-13 2차)
+      if (v.pst === MS_WINDUP && m.st === MS_RECOVER && def.attack !== 'melee' && v.swing < 0.2) v.swing = 1
+      v.pst = m.st
       v.flash = Math.max(0, v.flash - dt * 7)
       v.squashV += (-120 * v.squash - 10 * v.squashV) * dt
       v.squash = Math.max(-0.4, Math.min(0.4, v.squash + v.squashV * dt))
@@ -1428,11 +1452,13 @@ export class MonsterView {
       if (o.f !== stamp) this.shown.delete(id)
     })
     // 시체: 뒤로 넘어져 한동안 누워 있다가 가라앉는다
-    const still: Corpse[] = []
-    const dead: Anim = { walk: 0, move: 0, wind: 0, swing: 0, flash: 0, crit: false, dead: 0, squash: 0, squashV: 0, yaw: 0 }
+    const dead = this.deadAnim
+    let keep = 0
     for (const c of this.corpses) {
       c.t += dt
-      if (c.t > CORPSE_LIFE) continue
+      // ☀ 졸개 · 정예 · 우두머리는 퐁 터져 사라진다 (막 보스 · 🌙 는 예전대로 24초 누워 있다)
+      const pop = this.bright && MONSTER_LIST[c.kind].boss === undefined
+      if (c.t > (pop ? POP_LIFE * (c.elite ? 1.25 : 1) : CORPSE_LIFE)) continue
       // 날아가다 멈춘다
       if (c.vx !== 0 || c.vz !== 0) {
         c.x += c.vx * dt
@@ -1454,15 +1480,16 @@ export class MonsterView {
       dead.elite = c.elite
       dead.unique = c.unique
       dead.giant = c.giant
-      still.push(c)
+      dead.pop = pop ? c.t / (c.elite ? 1.25 : 1) : undefined
+      this.corpses[keep++] = c
       if (!inView(c.x, c.z, c.giant ? 9 : 2.5)) continue
       // 죽음 동작이 있는 모델은 동작을 0.8초에 걸쳐 튼다 (없으면 0.35초 만에 넘어진다)
       const mk = this.real ? this.models[c.kind] : undefined
       dead.dead = Math.min(1, c.t / (mk && typeof mk !== 'string' && mk.baked.seg.death ? 0.8 : 0.35))
       dead.flash = Math.max(0, 1 - c.t * 6)
-      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, Math.max(0, c.t - (CORPSE_LIFE - 1.5)), c.y)
+      this.put(c.kind, counts, c.x, c.z, c.yaw, dead, pop ? 0 : Math.max(0, c.t - (CORPSE_LIFE - 1.5)), c.y)
     }
-    this.corpses = still
+    this.corpses.length = keep
     // 빈 것(0 마리)은 숨긴다 (2026-10-22 최적화): three 는 count 0 인 InstancedMesh 도 화면 · 그림자 패스마다 셰이더 고르기 ·
     // 유니폼 올리기를 한다 — 종류 × 부품이라 150개 넘게 헛돌았다. compile() 은 숨긴 것도 컴파일하니 처음 나올 때 멈칫하지 않는다
     this.blob.count = this.blobN
@@ -1548,11 +1575,20 @@ export class MonsterView {
       this.rankN++
     }
     // 뿌리: 위치 · 방향 (정면 +z 가 조준 방향이 되도록 — character3d 와 같은 규칙) · 크기 · 시체면 넘어짐·가라앉음
-    this.o.position.set(x, lift - Math.max(0, corpseT - 0.5) * 0.9, z)
+    this.o.position.set(0, 0, 0)
     this.o.rotation.set(0, Math.PI / 2 - yaw, 0)
     this.o.scale.setScalar(size)
     this.o.updateMatrix()
     this.root.copy(this.o.matrix)
+    // 맞으면 밀린 쪽으로 몸이 젖혀졌다 돌아온다 (2026-11-13 2차 — 전에는 선 채로 미끄러지기만 했다). 축 = 위 × 밀린 방향
+    const kx = a.kx ?? 0
+    const kz = a.kz ?? 0
+    const kk = kx * kx + kz * kz
+    if (kk > 1e-5 && a.dead === 0) {
+      const k = Math.sqrt(kk)
+      this.root.premultiply(this.tmp.makeRotationAxis(this.ap.set(kz / k, 0, -kx / k), Math.min(0.34, k * 1.3) * (QUADRUPEDS.has(kind) ? 0.5 : 1)))
+    }
+    this.root.setPosition(x, lift - Math.max(0, corpseT - 0.5) * 0.9, z)
     // 죽음 동작이 있는 실사 모델(해골 궁수)은 그 동작으로 쓰러진다 — 억지로 넘어뜨리지 않는다
     if (a.dead > 0 && !model?.baked.seg.death) {
       // 사람 모양은 뒤로 넘어진다. 네 발 짐승은 뒤로 넘어가면 꼬리로 서 버렸다(2026-09-19) — 늑대 · 여왕은 옆으로 눕고, 거미는 뒤집힌다
@@ -1568,17 +1604,24 @@ export class MonsterView {
     // 번쩍임 색: 보통 빨강, 치명타 금색. 예고 중이면 살이 붉게 달아오른다 (피할 때라는 신호)
     const f = a.flash
     const w = a.wind
-    if (f > 0) this.col.setRGB(1 + f * 1.6, 1 + f * (a.crit ? 1.2 : -0.4), 1 + f * (a.crit ? -0.4 : -0.5))
+    if (f > 0) {
+      // 맞은 첫 순간(0.05초)은 희게 터지고 붉게(치명타는 금빛으로) 식는다 (2026-11-13 2차 — 붉게 물들기만 해서 맞은 순간이 무뎠다)
+      const pop = a.dead > 0 ? 0 : Math.max(0, f - 0.65) * 4
+      this.col.setRGB(1 + f * 1.6 + pop, 1 + f * (a.crit ? 1.2 : -0.4) + pop, 1 + f * (a.crit ? -0.4 : -0.5) + pop)
+    }
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
     // 시체: 정예 금빛 맥박은 끈다(죽어서도 뛰었다) · ☀ 는 산 괴물과 같은 색이라 누운 것이 안 갈렸다 → 빛바랜 색으로 (2026-11-12 검토 — 🌙 는 그대로)
     else if (a.dead > 0) this.col.setScalar(this.bright ? 1 - a.dead * 0.38 : 1)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
     if (this.edgeShade) this.col.multiplyScalar(this.edgeShade(x, z))
+    this.body(a, kind, !!model)
     if (model) {
+      this.local.multiplyMatrices(this.root, this.o.matrix)
       this.putModel(model, i, a)
       return
     }
+    this.root.multiply(this.o.matrix)
     for (const p of this.kinds[kind]) {
       this.o.position.set(0, 0, 0)
       this.o.rotation.set(0, 0, 0)
@@ -1592,7 +1635,102 @@ export class MonsterView {
   }
 
   /**
-   * 실사 모델 한 마리: 동작 상태로 프레임 두 장을 골라 섞고, 뿌리에 예고(몸을 뒤로) · 휘두름(앞으로 내밂) · 움찔을 더한다.
+   * 몸 전체의 동작을 this.o(뿌리에 곱할 로컬 행렬)에 채운다 (2026-11-13 2차 — 그림만 · 판의 틱은 그대로 읽는다).
+   * 숨쉬기 · 걸음의 무게(디딜 때 눌리고 좌우로 실린다) · ☀ 쓰러짐(cutePop)은 모델 · 도형 괴물 모두,
+   * 예고(웅크려 당긴다) · 내지름(뻗으며 늘어난다) · 쏜 반동 · 움찔은 모델만(도형 괴물은 부품마다 제 동작이 있다).
+   * 정예 · 우두머리는 폭이 크고 느리다 · 거대한 막 보스는 몸이 네 배라 폭을 줄인다.
+   */
+  private body(a: Anim, kind: number, model: boolean): void {
+    const quad = QUADRUPEDS.has(kind)
+    const K = a.giant ? 0.6 : a.unique ? 1.4 : a.elite ? 1.2 : 1
+    let px = 0
+    let py = 0
+    let pz = 0
+    let rx = 0
+    let ry = 0
+    let rz = 0
+    let sx = 1
+    let sy = 1
+    let sz = 1
+    if (a.dead === 0) {
+      const br = Math.sin(this.clock * 2.1 * (a.giant ? 0.5 : a.unique ? 0.7 : a.elite ? 0.85 : 1) + (a.ph ?? 0)) * 0.02 * (a.giant ? 1 : K) * (1 - a.move * 0.6)
+      sy += br
+      sx -= br * 0.5
+      sz -= br * 0.5
+      if (a.move > 0.01) {
+        sy -= 0.035 * K * a.move * Math.abs(Math.cos(a.walk))
+        rz += Math.sin(a.walk) * (quad ? 0.02 : 0.045) * K * a.move
+        if (!quad) rx += (this.bright && CUTE_FAM[kind] === 2 ? 0.13 : 0.06) * a.move
+      }
+      if (model) {
+        const e = smooth(a.wind)
+        const s = a.swing
+        const atk = MONSTER_LIST[kind].attack
+        if (atk === 'explode') {
+          // 부푼다 — 터지기 직전에는 떨린다
+          const sw = 0.2 * e + 0.035 * Math.sin(a.wind * 42) * e
+          sx += sw
+          sy += sw
+          sz += sw
+        } else if (atk === 'melee') {
+          // 웅크려 뒤로 당겼다가(끝에서 떨린다) 앞으로 뻗으며 늘어난다 — 네 발 짐승은 덮치듯 뛴다
+          sy -= 0.1 * K * e
+          sx += 0.05 * K * e
+          sz += 0.05 * K * e + 0.12 * K * s
+          rx += -0.17 * K * e + 0.2 * K * s
+          pz += -0.1 * K * e + 0.3 * K * s
+          px += Math.sin(this.clock * 50) * 0.012 * e * e
+          if (quad) py += 0.1 * K * Math.sin(Math.PI * s)
+        } else if (e > 0 || s > 0) {
+          // 쏘는 괴물: 겨누며 조금 낮추고, 쏜 순간 뒤로 밀린다
+          sy -= 0.04 * K * e
+          rx += -0.07 * K * e - 0.12 * K * s
+          pz += -0.03 * K * e - 0.09 * K * s
+        }
+        const q = a.squash * 0.25
+        sx *= 1 + q
+        sy *= 1 - q
+        sz *= 1 + q
+      }
+    } else if (a.pop !== undefined) {
+      const u = a.pop
+      // 퐁: 쓰러지는 순간 부풀었다 돌아온다
+      const puff = u < 0.16 ? 0.2 * Math.sin((Math.PI * u) / 0.16) : 0
+      // 사라짐: 끝 0.3초에 살짝 부풀었다 쏙 줄어든다
+      const out = smooth((u - (POP_LIFE - 0.3)) / 0.3)
+      let w = 1 + puff
+      let h = 1 + puff
+      const fam = CUTE_FAM[kind] ?? 0
+      if (fam === 1) {
+        // 동글이: 철퍼덕 납작한 떡이 되어 출렁인다
+        const flat = smooth((u - 0.45) / 0.25)
+        const jig = flat * Math.sin(u * 14) * 0.05 * Math.max(0, 1.6 - u)
+        w *= 1 + flat * (0.45 + jig)
+        h *= 1 - flat * (0.8 + jig)
+      } else if (fam === 2) {
+        // 날개: 빙글 돌며 떨어져 바람 빠진 풍선처럼 쪼그라든다
+        ry = smooth(u / 0.7) * Math.PI * 4
+        const sag = smooth((u - 0.9) / 0.6)
+        w *= 1 - sag * 0.25
+        h *= 1 - sag * 0.45
+      } else {
+        // 사람 꼴: 넘어진 뒤 한 번 눌렸다 튄다
+        const b = u > 0.8 && u < 1.15 ? Math.sin((Math.PI * (u - 0.8)) / 0.35) : 0
+        w *= 1 + b * 0.2
+        h *= 1 - b * 0.4
+      }
+      const k = (1 + 0.18 * Math.sin(Math.PI * Math.min(1, out * 2))) * (out > 0.5 ? 1 - smooth((out - 0.5) * 2) : 1)
+      sx = sz = w * k
+      sy = h * k
+    }
+    this.o.position.set(px, py, pz)
+    this.o.rotation.set(rx, ry, rz)
+    this.o.scale.set(sx, sy, sz)
+    this.o.updateMatrix()
+  }
+
+  /**
+   * 실사 모델 한 마리: 동작 상태로 프레임 두 장을 골라 섞는다 (뿌리의 예고 · 휘두름 · 움찔은 body).
    * - 예고 wind 0→1 = 공격 클립의 앞부분(windup), 휘두름 swing 1→0 = 뒷부분 — 판정 틱과 보이는 휘두름이 맞는다.
    * - 걷기는 걸음 위상(walk)으로 — 발이 미끄러지지 않게 이동 속도를 따른다.
    */
@@ -1638,12 +1776,7 @@ export class MonsterView {
     }
     const f = fi - i0
     mk.frame.setXYZ(i, seg.start + i0, seg.start + i1, f)
-    // 뿌리: 예고 때 몸을 뒤로 젖히고, 휘두를 때 앞으로 내민다 · 맞으면 움찔(찌그러짐)
-    this.o.position.set(0, 0, a.swing * 0.16 - a.wind * 0.05)
-    this.o.rotation.set(-a.wind * 0.12 + a.swing * 0.1, 0, 0)
-    this.o.scale.set(1 + a.squash * 0.25, 1 - a.squash * 0.25, 1 + a.squash * 0.25)
-    this.o.updateMatrix()
-    this.local.multiplyMatrices(this.root, this.o.matrix)
+    // 뿌리(this.local)는 put 이 몸 동작(body)까지 곱해 두었다
     for (const mesh of mk.meshes) {
       mesh.setMatrixAt(i, this.local)
       mesh.setColorAt(i, this.col)
