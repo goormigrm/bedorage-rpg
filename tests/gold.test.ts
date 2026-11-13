@@ -99,7 +99,7 @@ describe('가방 칸 늘리기 (어디서나)', () => {
     cmd(CMD_BAGUP, 0)
     expect(p.bagMax).toBe(BAG_SIZE + BAG_STEP)
     // 이제 상인에게서 살 자리가 있다
-    cmd(6 /* CMD_BUY */, 0)
+    cmd(6 /* CMD_BUY */, shopUid & 255)
     expect(p.bag.length).toBe(BAG_SIZE + 1)
     expect(p.bag.some((it) => it.uid === shopUid)).toBe(true)
   })

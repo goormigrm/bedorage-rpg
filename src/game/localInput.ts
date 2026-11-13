@@ -114,8 +114,16 @@ export class LocalInput {
   /** 가방·장비 명령 대기열 (한 틱에 하나씩 Input.cmd 로 나간다) */
   private cmds: { cmd: number; arg: number }[] = []
 
-  queueCmd(cmd: number, arg: number): void {
-    if (this.cmds.length < 8) this.cmds.push({ cmd, arg })
+  /** 대기열이 차서(8) 못 실었으면 false */
+  queueCmd(cmd: number, arg: number): boolean {
+    if (this.cmds.length >= 8) return false
+    this.cmds.push({ cmd, arg })
+    return true
+  }
+
+  /** 아직 판에 실리지 않은 명령 수 (틱마다 하나씩 나간다) */
+  get pendingCmds(): number {
+    return this.cmds.length
   }
 
   /** 판에 실리지 못한 명령을 대기열 앞에 되돌린다 (상대 입력을 기다리며 같은 틱을 다시 돌 때 — session.tick) */

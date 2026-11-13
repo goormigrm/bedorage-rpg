@@ -68,7 +68,8 @@ export const CMD_WAYPOINT = 4
 /** CMD_WAYPOINT 의 arg — 방장(파티를 이끄는 사람) 곁으로 (2026-10-26 "방장이 이끈다"). 지역 번호는 255 에 닿지 않는다(시련 지역도 웨이포인트가 아니다) */
 export const WP_TO_LEADER = 255
 /** 마을 NPC (그 NPC 곁에서만 — GUIDE 9장): 상인 팔기(가방 칸) · 사기(진열 칸) · 물약 칸 늘리기 · 대장장이 다시 굴리기(가방 칸) ·
- *  도박(장비 칸 종류) · 보관함 넣기(가방 칸) · 꺼내기(보관함 칸) */
+ *  도박(장비 칸 종류) · 보관함 넣기(가방 칸) · 꺼내기(보관함 칸).
+ *  사기의 arg 는 칸 번호가 아니라 **물건 uid 의 아래 8비트** — 진열은 파티가 같이 써서 칸이 남의 구매로 당겨진다 (2026-11-13) */
 export const CMD_SELL = 5
 export const CMD_BUY = 6
 export const CMD_POTUP = 7
@@ -126,6 +127,27 @@ export const CMD_EQUIP_BEST = 33
 export const CMD_SKIN = 34
 /** 대장장이 **아이템 레벨 올리기**: arg = 가방 칸, 또는 100 + 장비 칸. 지금 난이도에서 내 레벨까지(items.ts relevelTo) — 골드만 든다 (2026-10-24) */
 export const CMD_RELEVEL = 35
+
+/** arg 가 **가방 · 보관함 칸 번호**인 명령 — 앞 명령으로 칸이 당겨지면 다른 물건에 닿는다 (세션 sendUi 가 앞 명령이 닿을 때까지 버린다) */
+export const SLOT_CMDS: ReadonlySet<number> = new Set([CMD_EQUIP, CMD_DROP, CMD_SELL, CMD_STASH_PUT, CMD_STASH_TAKE, CMD_LOCK, CMD_UPGRADE, CMD_RELEVEL])
+/** 칸 번호를 싣지는 않지만 가방 · 보관함 칸을 옮기는 명령 (정렬 · 한꺼번에 팔기 · 좋은 장비 끼기 · 벼리기) */
+export const SHIFT_CMDS: ReadonlySet<number> = new Set([CMD_SORT, CMD_SELL_ALL, CMD_EQUIP_BEST, CMD_FORGE])
+
+/**
+ * 칸 번호 명령 문지기 (세션 sendUi — 2026-11-13): 칸을 옮기는 앞 명령이 판에 닿는 틱 전에는 칸 번호 명령을 받지 않는다.
+ * 내 명령은 대기열에서 틱마다 하나씩 나가고 입력 지연(혼자 0 · 멀티 2 ~ 12틱) 뒤에 판에 닿는다 — 그사이 창은 옛 칸을 보이고 있다
+ */
+export class SlotGate {
+  private until = 0
+  /** 지금(tick = 판의 틱) 보내도 되나 */
+  ok(cmd: number, tick: number): boolean {
+    return !SLOT_CMDS.has(cmd) || tick >= this.until
+  }
+  /** 대기열에 실었다: ahead = 이 명령까지 대기열에 든 수 · delay = 입력 지연 틱 → 판의 틱이 tick + ahead + delay 가 되면 닿아 있다 */
+  sent(cmd: number, tick: number, ahead: number, delay: number): void {
+    if (SLOT_CMDS.has(cmd) || SHIFT_CMDS.has(cmd)) this.until = Math.max(this.until, tick + ahead + delay)
+  }
+}
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, aim: 0, buttons: 0, char: 0, aimDist: 0, cmd: 0, arg: 0 }
 

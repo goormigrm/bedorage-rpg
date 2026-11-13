@@ -29,13 +29,29 @@ export class WaypointPanel {
   toggle(open = !this.open): void {
     this.open = open
     this.el.hidden = !open
+    this.sig = ''
     if (open) this.render()
     this.onToggle(open)
+  }
+
+  /**
+   * 프레임마다: 열어 둔 사이 바뀌었으면 다시 그린다 (2026-11-13 — 열 때 한 번만 그려서, 창을 연 채 방장이 다른 사냥터로 가면
+   * "방장 곁으로" 의 지역 이름 · 갈 수 있는 사냥터 단추가 옛것이었다: 눌러도 판이 거르고 창만 닫혔다)
+   */
+  private sig = ''
+  refresh(): void {
+    if (this.open && this.sigOf() !== this.sig) this.render()
+  }
+  private sigOf(): string {
+    const me = this.me()
+    const ld = this.leader()
+    return `${me.wps}|${me.area}|${me.quests.join('')}|${ld ? `${ld.area}:${ld.alive}:${ld.name}` : ''}`
   }
 
   private render(): void {
     const me = this.me()
     const ld = this.leader()
+    this.sig = this.sigOf()
     const acts = ACTS.map((act, ai) => {
       // 깬 막은 보이지 않는다 — 돌아가지 않는다 (2026-10-22)
       if (actLocked(me.quests, ai)) return ''

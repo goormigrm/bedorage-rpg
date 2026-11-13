@@ -26,7 +26,11 @@ function game(seed = 77, chars: CharacterId[] = ['chim', 'cheolmyeon']) {
     return m
   }
   const s = createState({ seed, chars }, mapOf)
-  const run = (inputs: (i: number) => Input) => step(s, mapOf, chars.map((_, i) => inputs(i)))
+  // 이 시험들은 효과 · 소환을 본다 — 후원 명령을 틱마다 잇달아 넣으므로 연타 막기(DON_GAP — tests/bugs1113.test.ts)는 틱마다 푼다
+  const run = (inputs: (i: number) => Input) => {
+    for (const p of s.players) delete p.donT
+    step(s, mapOf, chars.map((_, i) => inputs(i)))
+  }
   const donate = (arg: number) => run((i) => (i === 0 ? { ...idle(), cmd: CMD_DONATE, arg } : idle()))
   return { s, mapOf, run, donate }
 }

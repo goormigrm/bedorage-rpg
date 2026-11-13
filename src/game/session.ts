@@ -5,8 +5,8 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
-import { DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
+import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input, SlotGate } from '../core/input'
+import { DON_CAP_DEFAULT, DON_GAP, DON_GAP_SLACK, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
 import { Chorus, cleanTomb, DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, Tomb, addJoiner, addTomb, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
@@ -218,6 +218,8 @@ export class Session {
   private nameNextAt = 0
   /** 채팅 합창 (2026-11-12 — stream.ts Chorus): 여러 시청자가 같은 말을 치면 화면의 괴물들이 한꺼번에 외친다 */
   private chorus = new Chorus()
+  /** 다음 후원 명령을 보내도 되는 틱 (pumpStream — donate.ts DON_GAP) */
+  private donTickOk = 0
   /** 시청자 비석 (2026-11-12 — stream.ts Tomb): 지역 → 그 지역에 남은 이름들. 판이 끝날 때까지 */
   private tombs = new Map<number, Tomb[]>()
   /** 이번 판에 괴물이 된 시청자 (닉네임 → 사람을 쓰러뜨렸거나 보물을 들고 달아났나) — 엔딩 크레딧에 오른다. 돈 없이 하는 참여라 수입과 상관없다 */
@@ -428,7 +430,7 @@ export class Session {
     this.waypoints = new WaypointPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -445,7 +447,7 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -455,7 +457,7 @@ export class Session {
     this.skills = new SkillPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -464,7 +466,7 @@ export class Session {
     this.chars = new CharSheet(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -479,7 +481,7 @@ export class Session {
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         // 보관함 · 상인 창과 같이 열리고 닫힐 때는 그 창 소리 하나만
@@ -2270,6 +2272,7 @@ export class Session {
     this.pumpStream(now)
     const view = this.view()
     this.skills.refresh()
+    this.waypoints.refresh()
     this.chars.refresh()
     this.quests.refresh()
     this.syncWinButtons()
@@ -2811,6 +2814,19 @@ export class Session {
     this.bagQuiet = false
   }
 
+  /**
+   * 창(가방 · 마을 · 스킬 · 능력치 · 웨이포인트)이 보내는 명령. **칸 번호를 싣는 명령**(끼기 · 버리기 · 팔기 · 보관 · 꺼내기 · 잠금 · 강화)은
+   * 칸을 옮기는 앞 명령이 판에 닿기 전(대기열 + 입력 지연 — 혼자 2틱 · 멀티 최대 12틱)에는 버린다 (2026-11-13 UI 정독):
+   * 그사이 또 누르면 창은 아직 옛 칸을 보이는데 명령은 당겨진 칸에 닿았다 — 상인 곁에서 희귀 템을 빠르게 두 번 오른클릭하면
+   * 그 뒤 칸의 전설이 "한 번 더" 확인 없이 팔렸다 · 가방을 열자마자(열 때 정렬) 누르면 정렬된 뒤의 다른 물건에 닿았다
+   */
+  private slotGate = new SlotGate()
+  private sendUi(cmd: number, arg: number): void {
+    const t = this.state.tick
+    if (!this.slotGate.ok(cmd, t) || !this.input.queueCmd(cmd, arg)) return
+    this.slotGate.sent(cmd, t, this.input.pendingCmds, this.lockstep?.delay ?? 0)
+  }
+
   private syncUi(): void {
     const was = this.input.uiOpen
     this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.quests?.open || this.waypoints?.open || this.town?.open || this.czClose)
@@ -2860,10 +2876,14 @@ export class Session {
   private pumpStream(now: number): void {
     // 후원: 이름표를 먼저 보내고(번호는 이때 매긴다) 0.3초 뒤에 명령 · 1.5 ~ 3초에 하나
     // 큰 후원은 3초 예고 뒤에 쏜다 — 그사이 쓰러지거나 마을 · 덮개로 가면 쏠 수 있을 때까지 쥐고 있는다 (전에는 sim 이 버려 예고만 나갔다)
-    if (this.donSending && now >= this.donSending.at && this.canDonateNow()) {
+    // 판은 한 사람의 후원 명령을 DON_GAP 틱에 하나만 받는다(손댄 손님의 연타 막기) — 마을 · 덮개에서 쥐고 있다 풀리면 0.3초 만에 다음 것이
+    // 나갈 수 있어, 앞 명령을 보낸 틱에서 넉넉히 띄운다. 명령 대기열이 차 있으면(8) 다음 프레임에 다시
+    if (this.donSending && now >= this.donSending.at && this.canDonateNow() && this.state.tick >= this.donTickOk) {
       const d = this.donSending
-      this.donSending = null
-      this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))
+      if (this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))) {
+        this.donSending = null
+        this.donTickOk = this.state.tick + DON_GAP + DON_GAP_SLACK
+      }
     }
     if (!this.donSending && this.donPending.length > 0 && now >= this.donNextAt && this.canDonateNow()) {
       // 잠깐 멈춤 · 보스전 대기 중에는 방해 이벤트만 기다린다 (응원은 간다 — 2026-09-26 방송 개선 3)

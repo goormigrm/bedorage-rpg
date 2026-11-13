@@ -72,6 +72,13 @@ export const DON_MAX = 120 * TICK_RATE
  * 같은 방해 효과가 이어 붙는 한도(초) — **방송인이 정한다** (2026-09-25 사용자 고른 방송 개선 5: 암흑 · 거꾸로 · 봉인이 몰리면 2분까지 이어 붙었다).
  * 후원을 받은 사람(방송인)의 값으로 파티 모두에게 건다. CMD_DONCAP 의 arg = 초 / 10. 화면 흔들림은 SHAKE_MAX(15초)를 넘지 않는다. 넘는 후원은 버리지 않고 기다린다(effectFits — 2026-09-27)
  */
+/**
+ * 한 사람이 보내는 후원 명령 사이의 가장 짧은 틱 (2026-11-13 — 손댄 손님이 CMD_DONATE 를 틱마다 보내면 효과가 곧장 한도까지 쌓이고
+ * 소환이 상한까지 찼다). 정상 방송은 1.5 ~ 3초에 하나(session.pumpStream) — 세션은 이 값 + 여유(DON_GAP_SLACK)만큼 틱을 띄워 보내므로 걸리지 않는다
+ */
+export const DON_GAP = 45
+/** 세션이 더 두는 여유 틱: 입력 지연이 줄어드는 폭(최대 10) + 명령 대기열(최대 8)에서 앞뒤가 좁혀질 수 있는 만큼 */
+export const DON_GAP_SLACK = 24
 export const DON_CAP_CHOICES = [30, 60, 90, 120]
 export const DON_CAP_DEFAULT = 60
 /** 지옥문의 암흑 */
