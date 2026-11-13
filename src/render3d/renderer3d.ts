@@ -4975,7 +4975,9 @@ export class Renderer3D {
     for (const d of curr.drops) {
       if ((d.owner !== lp && d.owner !== -1) || n > (held ? 60 : 24) || !d.item) continue
       if (Math.hypot(d.x - me.x, d.y - me.y) > (held ? 22 : 10) * 32) continue
-      const s = this.worldToScreen(d.x * U, 0.35, d.y * U)
+      // 이름표는 모형 위에 (2026-11-13 2차): 모형 한가운데(0.35)에 떠서 가까이서 · 3인칭에서 모형을 가렸다 →
+      // 모형 꼭대기(0.8)의 화면 자리에서 이름표 반 높이만큼 더 올린다 (가까울수록 모형이 커지는 만큼 저절로 더 올라간다)
+      const s = this.worldToScreen(d.x * U, 0.8, d.y * U)
       if (s.x < -40 || s.y < -20 || s.x > VIEW_W + 40 || s.y > VIEW_H + 20) continue
       const name = itemName(d.item)
       // 12 → 16px (펼치기 중 17px) · 바탕은 HUD 칸과 같은 결 (dropLabelPanel — 2026-10-17 사용자: "아이템 이름 칸이 퀄리티가 유독 낮다")
@@ -4983,7 +4985,7 @@ export class Renderer3D {
       const w = ctx.measureText(name).width + (held ? 24 : 20)
       const h = held ? 28 : 26
       // 한자리에 여럿 떨어지면 이름이 포개졌다 → 디아블로처럼 위로 쌓는다 (떨어진 차례대로라 쌓인 자리가 바뀌지 않는다)
-      const y = this.placeLabel(s.x, s.y, w, h + (held ? 2 : 0))
+      const y = this.placeLabel(s.x, s.y - h / 2 - 2, w, h + (held ? 2 : 0))
       if (y === null) continue
       const x0 = s.x - w / 2
       const y0 = y - h / 2
