@@ -22,11 +22,13 @@ interface ModelKind {
   /** 마리마다 (프레임 a, 프레임 b, 섞는 비율) — 부품 지오메트리 모두가 같이 쓴다 */
   frame: THREE.InstancedBufferAttribute
   depth: THREE.Material
-  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean; rx?: number }[]
+  extras: { mesh: InstancedMesh; pose: Part['pose']; s: number; dx: number; dy: number; dz: number; anchor?: Float32Array; still: boolean; flat?: boolean; rx?: number; halo?: boolean }[]
   /** 보이게 했나 (처음엔 숨겨 두고 데우기가 끝나거나 괴물이 화면에 나오면 — 2026-09-23) */
   shown: boolean
   /** 비동기 컴파일을 부탁했다 (askShow — 2026-10-08) */
   asked: boolean
+  /** 🌙 눈빛 무리의 색 (THREE.Color 의 r · g · b — 빛나는 눈이 없는 종류 · ☀ 는 null) */
+  halo: THREE.Color | null
 }
 
 /**
@@ -36,13 +38,14 @@ interface ModelKind {
  * at = 붙일 뼈(monsterModels FILE_ANCHORS) — 그 뼈가 첫 장면(대기 첫 장)에서 움직인 만큼 부품도 움직인다(자리 값은 첫 장면 기준).
  * still = 도형 부품 자체의 예고 · 휘두름 움직임을 끈다 (손에 든 것 — 모델의 팔이 대신 휘두른다).
  */
-type Extra = { part: number; s: number; dx?: number; dy: number; dz?: number; at?: AnchorName; still?: boolean; rx?: number }
+type Extra = { part: number; s: number; dx?: number; dy: number; dz?: number; at?: AnchorName; still?: boolean; rx?: number; halo?: number }
 const MODEL_EXTRAS: Record<number, Extra[]> = {
   // 해골 모델 (궁수 · 방패병 · 강령술사 · 그림자 · 관리인): 기준 자세는 UAL 대기 첫 장(곧게 선 자세, 두개골이 맨 위).
   // 자리 값은 굽기가 적어 둔 뼈 자리(anchorRest)에서 계산했다 — 머리 뼈는 두개골 아래끝, 몸이 조금 뒤(-z) · 머리가 조금 오른쪽(-x)
   1: [
     { part: 4, s: 0.88, dx: 0.131, dy: -0.088, dz: -0.255, at: 'handL', still: true }, // 활 (왼손)
-    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
+    // 눈 (2026-11-13 2차: 눈구멍을 덮는 큰 원반이라 0.7 → 0.5 — 가운데 자리는 그대로 · halo = 눈빛 무리 색)
+    { part: 3, s: 0.5, dx: -0.058, dy: 0.52, dz: -0.115, at: 'head', halo: 0xff3b24 },
   ],
   // 방패병 (2026-09-24 제 모델 — Cursed Undead Soldier): 칼은 모델이 들었다 · 방패만 도형으로 몸 앞에 (정면 막기가 보이게)
   9: [
@@ -55,7 +58,7 @@ const MODEL_EXTRAS: Record<number, Extra[]> = {
   16: [
     // 자리 = 손 뼈 첫 자리(-0.184 · 0.674 · -0.15) - 부품 자세(0.12 · 0.84 · 0.22) × s
     { part: 4, s: 0.88, dx: -0.29, dy: -0.065, dz: -0.344, at: 'handR', still: true, rx: Math.PI / 2 }, // 소총
-    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
+    { part: 3, s: 0.5, dx: -0.058, dy: 0.52, dz: -0.115, at: 'head', halo: 0xff3b24 }, // 눈
   ],
   // 구울 손은 쉴 때도 앞으로 들려 있어 총구를 앞으로 둔다(돌리지 않음 — 겨누면 허리에서 앞을 본다)
   17: [{ part: 8, s: 0.8, dx: -0.295, dy: 0.084, dz: -0.062, at: 'handR', still: true }], // 산탄총 (구울 손 -0.199 · 0.756 · 0.114)
@@ -63,7 +66,7 @@ const MODEL_EXTRAS: Record<number, Extra[]> = {
   18: [{ part: 5, s: 0.85, dx: -0.222, dy: -0.094, dz: -0.037, at: 'chest', still: true }], // 오른쪽 허리 앞(-0.12 · 0.62 · 0.15)
   19: [
     { part: 4, s: 0.88, dx: -0.29, dy: -0.065, dz: -0.344, at: 'handR', still: true, rx: Math.PI / 2 }, // 저격총
-    { part: 3, s: 0.7, dx: -0.058, dy: 0.28, dz: -0.149, at: 'head' }, // 눈
+    { part: 3, s: 0.5, dx: -0.058, dy: 0.52, dz: -0.115, at: 'head', halo: 0xffd060 }, // 눈
   ],
 }
 /** 밝은 분위기에서 겹쳐 그리는 부품 — 총잡이 진행요원의 물총만 (다른 귀여운 모델은 제 모습 그대로) */
@@ -287,6 +290,9 @@ function part(geo: THREE.BufferGeometry, mat: THREE.Material, flashes: boolean, 
 }
 
 const sin = Math.sin
+/** 그리기 시계 (MonsterView.update 가 적는다) — 빛나는 눈이 일렁인다 (부품 자세 함수는 시각을 받지 않는다) */
+let NOW = 0
+const flick = (a: Anim): number => 1 + 0.1 * sin(NOW * 7 + (a.ph ?? 0) * 5) + 0.05 * sin(NOW * 17 + (a.ph ?? 0))
 
 /** 구울: 굽은 등, 긴 팔을 늘어뜨리고, 예고 때 두 팔을 치켜든다. 도살자(보스)는 같은 뼈대에 붉은 살 · 붉은 눈 · 앞치마 */
 function ghoulParts(skinColor = 0x7d8479, eyeColor = 0xd6ff5c, darkColor = 0x3d3a36): Part[] {
@@ -371,7 +377,7 @@ function archerParts(boneColor = 0xd9d1bb, clothColor = 0x2e2530, eyeColor = 0xf
     part(mergeGeometries([new THREE.SphereGeometry(0.04, 6, 5).translate(-0.065, 0, 0), new THREE.SphereGeometry(0.04, 6, 5).translate(0.065, 0, 0)])!, eye, false, (a, o) => {
       o.position.set(0, 1.2, 0.17)
       o.rotation.set(-a.wind * 0.15, 0, 0)
-      o.scale.setScalar(1 + a.wind * 0.8)
+      o.scale.setScalar((1 + a.wind * 0.8) * flick(a))
     }, false),
     // 활: 반원 고리를 세워서 앞에 든다. 예고 때 당긴다(앞으로 조금)
     part(new THREE.TorusGeometry(0.34, 0.025, 4, 14, Math.PI), wood, false, (a, o) => {
@@ -625,7 +631,7 @@ function shamanParts(): Part[] {
 function shieldParts(): Part[] {
   const iron = lambert(0x6a6a70)
   const dark = lambert(0x3a3a40)
-  const wood = lambert(0x6a4a2a)
+  const wood = lambert(0x5a3a22)
   const eye = glow(0xffb84a)
   return [
     part(new THREE.CylinderGeometry(0.26, 0.3, 0.62, 10), iron, true, (a, o) => {
@@ -642,14 +648,15 @@ function shieldParts(): Part[] {
       o.position.set(0, 1.1, 0.2)
       o.scale.setScalar(1)
     }, false),
-    // 방패 (몸 앞) — 겉은 나무, 테두리는 쇠
-    part(mergeGeometries([new THREE.BoxGeometry(0.66, 0.86, 0.06), new THREE.BoxGeometry(0.72, 0.08, 0.08).translate(0, 0.41, 0), new THREE.BoxGeometry(0.72, 0.08, 0.08).translate(0, -0.41, 0)])!, wood, true, (a, o) => {
+    // 방패 (몸 앞) — 겉은 나무, 테 · 띠 · 징은 쇠 (heaterSlab)
+    part(heaterSlab(1, 0.05, 0.012), wood, true, (a, o) => {
       o.position.set(0.04, 0.62 - a.wind * 0.05, 0.36 + a.swing * 0.22 - a.wind * 0.06)
       o.rotation.set(-0.05 - a.swing * 0.2, 0, 0)
       o.scale.setScalar(1)
     }),
-    part(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 10).rotateX(Math.PI / 2), iron, false, (a, o) => {
-      o.position.set(0.04, 0.64 - a.wind * 0.05, 0.41 + a.swing * 0.22 - a.wind * 0.06)
+    part(shieldIron(), iron, false, (a, o) => {
+      o.position.set(0.04, 0.62 - a.wind * 0.05, 0.36 + a.swing * 0.22 - a.wind * 0.06)
+      o.rotation.set(-0.05 - a.swing * 0.2, 0, 0)
       o.scale.setScalar(1)
     }),
     ...[-1, 1].map((side) =>
@@ -660,6 +667,61 @@ function shieldParts(): Part[] {
       }),
     ),
   ]
+}
+
+/**
+ * 방패 판 (2026-11-13 2차 — 납작한 갈색 네모 판자라 3인칭에서 문짝을 든 것 같았다): 위는 반듯하고 아래가 뾰족한 방패 · 몸 쪽으로 조금 휜다.
+ * k = 크기 · thick = 두께 · z0 = 앞뒤 자리. 격자(가로 8 · 세로 4)의 앞 · 뒤 면 + 옆 띠
+ */
+function heaterSlab(k: number, thick: number, z0: number): THREE.BufferGeometry {
+  const NX = 8
+  const NY = 4
+  const w = 0.3 * k
+  const top = 0.4 * k
+  const bot = -0.48 * k
+  const pos: number[] = []
+  const idx: number[] = []
+  const at = (i: number, j: number, front: boolean): number => (front ? 0 : (NX + 1) * (NY + 1)) + j * (NX + 1) + i
+  for (const front of [true, false])
+    for (let j = 0; j <= NY; j++)
+      for (let i = 0; i <= NX; i++) {
+        const u = (i / NX) * 2 - 1
+        const yb = bot * (1 - Math.pow(Math.abs(u), 2.2))
+        pos.push(u * w, top + (yb - top) * (j / NY), z0 - u * u * 0.07 * k + (front ? thick / 2 : -thick / 2))
+      }
+  for (let j = 0; j < NY; j++)
+    for (let i = 0; i < NX; i++) {
+      idx.push(at(i, j, true), at(i, j + 1, true), at(i + 1, j, true), at(i + 1, j, true), at(i, j + 1, true), at(i + 1, j + 1, true))
+      idx.push(at(i, j, false), at(i + 1, j, false), at(i, j + 1, false), at(i + 1, j, false), at(i + 1, j + 1, false), at(i, j + 1, false))
+    }
+  // 옆 띠: 테두리를 앞에서 보아 시계 방향으로 돈다 (위 → 오른쪽 → 아래 → 왼쪽)
+  const loop: [number, number][] = []
+  for (let i = 0; i < NX; i++) loop.push([i, 0])
+  for (let j = 0; j < NY; j++) loop.push([NX, j])
+  for (let i = NX; i > 0; i--) loop.push([i, NY])
+  for (let j = NY; j > 0; j--) loop.push([0, j])
+  loop.forEach(([pi, pj], n) => {
+    const [qi, qj] = loop[(n + 1) % loop.length]
+    idx.push(at(pi, pj, true), at(qi, qj, true), at(pi, pj, false), at(qi, qj, true), at(qi, qj, false), at(pi, pj, false))
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+/** 방패의 쇠: 판보다 조금 큰 뒤판(테로 보인다) + 세로 · 가로 띠 + 가운데 징 (판과 같은 자세로 그린다) */
+function shieldIron(): THREE.BufferGeometry {
+  const band = new THREE.BoxGeometry(0.6, 0.05, 0.02, 8, 1, 1).translate(0, 0.14, 0.045)
+  const bp = band.getAttribute('position')
+  for (let i = 0; i < bp.count; i++) bp.setZ(i, bp.getZ(i) - Math.pow(bp.getX(i) / 0.3, 2) * 0.07)
+  return mergeGeometries([
+    heaterSlab(1.09, 0.05, -0.012),
+    new THREE.BoxGeometry(0.05, 0.8, 0.02).translate(0, -0.02, 0.045),
+    band,
+    new THREE.SphereGeometry(0.085, 10, 6).scale(1, 1, 0.55).translate(0, 0.14, 0.05),
+  ])!
 }
 
 /** 강령술사: 긴 보랏빛 두건 옷 · 어둠 속 보랏빛 눈 · 해골 구슬이 달린 지팡이. 일으킬 때 지팡이를 치켜든다 */
@@ -1044,6 +1106,12 @@ export class MonsterView {
   private crown: THREE.InstancedMesh
   private aura: THREE.InstancedMesh
   private rankN = 0
+  /**
+   * 🌙 눈빛 무리 (2026-11-13 2차 — "어둠 속에서 빛나는 눈"): 이번 프레임에 그린 실사 괴물의 눈 자리 · 색 (x · y · z · r · g · b · 크기 — eyeN 개).
+   * 그리기는 renderer3d 가 괴물 탄의 빛점 묶음(Points 하나)에 같이 싣는다 — 그리기 호출이 늘지 않는다
+   */
+  readonly eyes = new Float32Array(96 * 7)
+  eyeN = 0
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
@@ -1269,7 +1337,7 @@ export class MonsterView {
           mesh.frustumCulled = false
           mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
           this.group.add(mesh)
-          return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still, rx: e.rx }
+          return { mesh, pose: src.pose, s: e.s, dx: e.dx ?? 0, dy: e.dy, dz: e.dz ?? 0, anchor: e.at ? baked.anchors[e.at] : undefined, still: !!e.still, rx: e.rx, halo: e.halo !== undefined }
         })
         // 밝은 분위기: 진행요원 머리 위 기호 (♡ · ◇)
         const badge = isBright() ? BRIGHT_BADGE[kind] : undefined
@@ -1281,7 +1349,9 @@ export class MonsterView {
           this.group.add(mesh)
           extras.push({ mesh, pose: () => {}, s: 1, dx: 0, dy: (specOf(kind)?.size ?? 1) + 0.25, dz: 0, still: true, flat: true })
         }
-        const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false, asked: false }
+        // 🌙 눈빛 무리: 모델에 빛나는 눈 재질이 있거나(구울 · 늑대 · 여왕) 눈을 도형으로 겹친 종류(해골)
+        const haloHex = isBright() ? undefined : (MODEL_EXTRAS[kind]?.find((e) => e.halo !== undefined)?.halo ?? (baked.eye ? Object.values(specOf(kind)?.glow ?? {})[0] : undefined))
+        const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false, asked: false, halo: haloHex !== undefined ? new THREE.Color(haloHex) : null }
         this.models[kind] = mk
         // 처음에는 숨겨 둔다: 보이는 순간(괴물 수 0 이어도) 셰이더 컴파일 · 모양 키 텍스처(3~15MB) 만들기가 그 프레임에 몰린다.
         // 마을에서 데우기가 끝나면 보이게 한다. 그 전에 이 괴물이 화면에 나오면(던전) 그때 보이게 한다 (update)
@@ -1393,7 +1463,9 @@ export class MonsterView {
     const counts = this.countsBuf.fill(0)
     this.mcounts.fill(0)
     this.blobN = 0
+    this.eyeN = 0
     this.clock += dt
+    NOW = this.clock
     for (const m of curr.monsters) {
       if (m.hp <= 0) continue
       let v = this.vis.get(m.id)
@@ -1777,6 +1849,15 @@ export class MonsterView {
     const f = fi - i0
     mk.frame.setXYZ(i, seg.start + i0, seg.start + i1, f)
     // 뿌리(this.local)는 put 이 몸 동작(body)까지 곱해 두었다
+    // 눈빛 무리: 모델의 눈 재질 가운데(프레임 두 장을 섞은 자리)를 월드로 — 도형 눈(해골)은 아래 겹쳐 그리는 부품에서
+    const halo = a.dead === 0 ? mk.halo : null
+    if (halo && b.eye) {
+      const E = b.eye
+      const o0 = (seg.start + i0) * 3
+      const o1 = (seg.start + i1) * 3
+      this.ap.set(E[o0] + (E[o1] - E[o0]) * f, E[o0 + 1] + (E[o1 + 1] - E[o0 + 1]) * f, E[o0 + 2] + (E[o1 + 2] - E[o0 + 2]) * f).applyMatrix4(this.local)
+      this.eye(this.ap.x, this.ap.y, this.ap.z, halo, a)
+    }
     for (const mesh of mk.meshes) {
       mesh.setMatrixAt(i, this.local)
       mesh.setColorAt(i, this.col)
@@ -1817,7 +1898,27 @@ export class MonsterView {
         this.tmp.compose(this.fp, this.fq, this.fs)
       }
       ex.mesh.setMatrixAt(i, this.tmp)
+      if (halo && ex.halo) {
+        const e = this.tmp.elements
+        this.eye(e[12], e[13], e[14], halo, a)
+      }
     }
+  }
+
+  /** 눈빛 무리 한 점 (정예 · 우두머리 · 거대한 보스는 크게 · 예고 중에는 밝게 일렁인다) */
+  private eye(x: number, y: number, z: number, c: THREE.Color, a: Anim): void {
+    if (this.eyeN >= 96) return
+    const o = this.eyeN++ * 7
+    const E = this.eyes
+    // 옅고 작게 — 크면 머리에 색 풍선을 단 것 같았다 (눈 둘을 겨우 감싸는 크기)
+    const k = 0.26 + 0.07 * Math.sin(this.clock * 7 + (a.ph ?? 0) * 5) + a.wind * 0.4
+    E[o] = x
+    E[o + 1] = y
+    E[o + 2] = z
+    E[o + 3] = c.r * k
+    E[o + 4] = c.g * k
+    E[o + 5] = c.b * k
+    E[o + 6] = (a.giant ? 0.8 : a.unique ? 0.3 : a.elite ? 0.25 : 0.2) * (1 + a.wind * 0.4)
   }
 
   dispose(): void {

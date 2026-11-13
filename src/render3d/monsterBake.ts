@@ -165,7 +165,23 @@ async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
     else groups.set(key, [i])
   })
   const parts: BakedModel['parts'] = []
+  // 빛나는 눈의 가운데 (프레임마다 — 눈 재질 정점의 평균)
+  let eye: Float32Array | undefined
+  let eyeVerts = 0
   for (const [srcMat, idx] of groups) {
+    if (spec.glow?.[srcMat.name] !== undefined) {
+      eye ??= new Float32Array(frames * 3)
+      for (const i of idx) {
+        eyeVerts += pos[i][0].length / 3
+        pos[i].forEach((f, fi) => {
+          for (let j = 0; j < f.length; j += 3) {
+            eye![fi * 3] += f[j]
+            eye![fi * 3 + 1] += f[j + 1]
+            eye![fi * 3 + 2] += f[j + 2]
+          }
+        })
+      }
+    }
     const geos = idx.map((i) => meshes[i].geometry)
     const counts = geos.map((g) => g.attributes.position.count)
     const total = counts.reduce((a, b) => a + b, 0)
@@ -208,7 +224,8 @@ async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
     geo.computeBoundingSphere()
     parts.push({ geo, mat: toLambert(srcMat as THREE.MeshStandardMaterial, spec) })
   }
-  return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest }
+  if (eye && eyeVerts > 0) for (let i = 0; i < eye.length; i++) eye[i] /= eyeVerts
+  return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest, eye }
 }
 
 /** 한 프레임의 정점 위치 · 노멀 (장면 좌표) */
@@ -299,7 +316,7 @@ function toLambert(src: THREE.MeshStandardMaterial, spec: ModelSpec): THREE.Mate
     normalMap: src.normalMap ?? null,
     color: src.color ? src.color.clone() : new THREE.Color(1, 1, 1),
     side: src.side,
-  }, 0.7, cute ? { rim: 0.75 } : undefined)
+  }, 0.7, cute ? { rim: 0.75 } : { moon: 0.55 })
   if (cute) addBodyShade(mat, CUTE_BOSS.has(spec.file))
   if (spec.tint) mat.color.multiply(new THREE.Color(...spec.tint))
   // 받은 모델의 빛 텍스처 (고블린 · 방패병 · 주술사의 눈 등 — 2026-09-24). 조명과 상관없이 빛난다

@@ -5470,6 +5470,18 @@ export class Renderer3D {
       if (trail) this.quarks.burst('trail', x, 0.9, z, 1, { color })
       n++
     }
+    // 🌙 괴물 눈빛 무리도 같은 빛점 묶음에 (monsters3d eyes — 그리기 호출이 늘지 않는다)
+    const mv = this.monsterView
+    for (let i = 0; i < mv.eyeN && n < this.shotCap; i++, n++) {
+      const o = i * 7
+      this.shotPos[n * 3] = mv.eyes[o]
+      this.shotPos[n * 3 + 1] = mv.eyes[o + 1]
+      this.shotPos[n * 3 + 2] = mv.eyes[o + 2]
+      this.shotCol[n * 3] = mv.eyes[o + 3]
+      this.shotCol[n * 3 + 1] = mv.eyes[o + 4]
+      this.shotCol[n * 3 + 2] = mv.eyes[o + 5]
+      this.shotSize[n] = mv.eyes[o + 6]
+    }
     const g = pts.geometry
     g.setDrawRange(0, n)
     pts.visible = n > 0

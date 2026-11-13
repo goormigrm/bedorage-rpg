@@ -59,9 +59,11 @@ export function toonGradient(): THREE.DataTexture {
  * 먹선에 얹는 것 (2026-11-12 그래픽 최종 — 캐릭터 · 무기 · ☀ 괴물):
  *  rim  = 림 빛 — 화면 위쪽을 보는 가장자리(하늘빛을 받는 쪽)는 먹선 대신 밝은 테. 한 색 덩어리(둥근 몸 · 4배로 커진 ☀ 보스)에 입체가 생긴다
  *  spec = 쇠의 반짝임 — 화면 왼쪽 위를 보는 면에 또렷한 흰 점(툰 재질은 반사광이 없어 총 · 칼이 플라스틱처럼 보였다)
+ *  moon = 달빛 테 (2026-11-13 2차 — 🌙 실사 괴물): 위쪽 가장자리에 차가운 푸른빛을 아주 옅게. 제 색을 밝히는 rim 과 달리 어두운 몸은 어두운 채 윤곽만 선다.
+ *         인스턴스 색(시야 가장자리 어둡게 · monsters3d edgeShade)을 따라 같이 어두워진다
  * 켠 것마다 셰이더가 다르다(프로그램 키) — 새 갈래를 쓰는 물체는 warmKit · queueWarm 을 거친다
  */
-export interface ToonFx { rim?: number; spec?: number }
+export interface ToonFx { rim?: number; spec?: number; moon?: number }
 
 /** Lambert 와 같은 인자로 툰 재질 + 먹선 */
 export function toonMat(p: THREE.MeshToonMaterialParameters = {}, ink = 0.7, fx?: ToonFx): THREE.MeshToonMaterial {
@@ -79,6 +81,7 @@ export function addInk(mat: THREE.Material, strength = 0.7, fx: ToonFx = {}): vo
   mat.userData.ink = strength
   const rim = fx.rim ?? 0
   const spec = fx.spec ?? 0
+  const moon = fx.moon ?? 0
   const prev = mat.onBeforeCompile
   mat.onBeforeCompile = (sh, r) => {
     prev.call(mat, sh, r)
@@ -96,11 +99,16 @@ export function addInk(mat: THREE.Material, strength = 0.7, fx: ToonFx = {}): vo
         gl_FragColor.rgb *= 1.0 - ink * uInk * ( 1.0 - lit );
         gl_FragColor.rgb += ( 1.0 - smoothstep( 0.2, 0.46, nv ) ) * lit * uRim * ( gl_FragColor.rgb * 0.55 + vec3( 0.07 ) );` : 'gl_FragColor.rgb *= 1.0 - ink * uInk;'}
         ${spec > 0 ? 'gl_FragColor.rgb += smoothstep( 0.9, 0.93, dot( nI, vec3( -0.31, 0.78, 0.54 ) ) ) * uSpec * ( gl_FragColor.rgb * 0.6 + vec3( 0.25 ) );' : ''}
+        ${moon > 0 ? `float moonK = ( 1.0 - smoothstep( 0.14, 0.5, nv ) ) * smoothstep( -0.05, 0.6, nI.y ) * ${moon.toFixed(2)};
+        #ifdef USE_COLOR
+          moonK *= min( 1.0, dot( vColor.rgb, vec3( 0.334 ) ) );
+        #endif
+        gl_FragColor.rgb += moonK * vec3( 0.13, 0.2, 0.36 );` : ''}
       }`,
     )
   }
   const key = mat.customProgramCacheKey.bind(mat)
-  mat.customProgramCacheKey = () => `${key()}|ink|pcap${rim > 0 ? '|rim' : ''}${spec > 0 ? '|spec' : ''}`
+  mat.customProgramCacheKey = () => `${key()}|ink|pcap${rim > 0 ? '|rim' : ''}${spec > 0 ? '|spec' : ''}${moon > 0 ? `|moon${moon.toFixed(2)}` : ''}`
 }
 
 /**

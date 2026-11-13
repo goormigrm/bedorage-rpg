@@ -277,6 +277,8 @@ export interface BakedModel {
   anchors: Partial<Record<AnchorName, Float32Array>>
   /** 뼈 자리의 첫 장면 위치 (모델 좌표 — 부품 자리 맞추기용) */
   anchorRest: Partial<Record<AnchorName, [number, number, number]>>
+  /** 빛나는 눈(spec.glow 재질)의 가운데 — 프레임마다 3개씩 (모델 좌표). 🌙 눈빛 무리(monsters3d eyes)가 쓴다 */
+  eye?: Float32Array
 }
 
 /** 종류 하나를 받아 굽는다. 모델이 없는 종류면 null (굽는 코드 · 로더 · 모델 파일을 이때 받는다) */
