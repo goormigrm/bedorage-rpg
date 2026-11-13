@@ -5,9 +5,9 @@ import { ACHIEVEMENTS, achievedIds } from '../core/stats'
 import { BotMemory, Difficulty, DIFFICULTY_LABEL, botInput, makeBot } from '../core/bot'
 import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
-import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
-import { DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
-import { Chorus, DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, Tomb, addJoiner, addTomb, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input, SlotGate } from '../core/input'
+import { DON_CAP_DEFAULT, DON_GAP, DON_GAP_SLACK, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
+import { Chorus, cleanTomb, DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, Tomb, addJoiner, addTomb, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -218,6 +218,8 @@ export class Session {
   private nameNextAt = 0
   /** 채팅 합창 (2026-11-12 — stream.ts Chorus): 여러 시청자가 같은 말을 치면 화면의 괴물들이 한꺼번에 외친다 */
   private chorus = new Chorus()
+  /** 다음 후원 명령을 보내도 되는 틱 (pumpStream — donate.ts DON_GAP) */
+  private donTickOk = 0
   /** 시청자 비석 (2026-11-12 — stream.ts Tomb): 지역 → 그 지역에 남은 이름들. 판이 끝날 때까지 */
   private tombs = new Map<number, Tomb[]>()
   /** 이번 판에 괴물이 된 시청자 (닉네임 → 사람을 쓰러뜨렸거나 보물을 들고 달아났나) — 엔딩 크레딧에 오른다. 돈 없이 하는 참여라 수입과 상관없다 */
@@ -428,7 +430,7 @@ export class Session {
     this.waypoints = new WaypointPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -445,7 +447,7 @@ export class Session {
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -455,7 +457,7 @@ export class Session {
     this.skills = new SkillPanel(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -464,7 +466,7 @@ export class Session {
     this.chars = new CharSheet(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         this.sfx.ui(open)
@@ -479,7 +481,7 @@ export class Session {
     this.inventory = new Inventory(
       this.stage.querySelector('.game-ui') as HTMLElement,
       () => this.state.players[this.cfg.localPlayer],
-      (cmd, arg) => this.input.queueCmd(cmd, arg),
+      (cmd, arg) => this.sendUi(cmd, arg),
       (open: boolean) => {
         this.syncUi()
         // 보관함 · 상인 창과 같이 열리고 닫힐 때는 그 창 소리 하나만
@@ -1084,9 +1086,10 @@ export class Session {
     const lv = Math.max(0, Math.min(steps.length - 1, this.gfx.level))
     this.renderer.setRenderScale(steps[lv])
     // 그림자: 낮게 고정이거나 자동으로 두 단계 내려가면(0.72) 끈다 — 느린 기기(내장 그래픽)는 해상도보다 그림자 맵이 더 무겁다 (2026-09-24)
-    this.renderer.setShadows(!(this.gfx.mode === 'low' || lv >= 2))
-    // 빛 번짐 · 색감(후처리)도 그림자와 같이 끈다 (2026-10-08 퀄리티 2차 2단계)
-    this.renderer.setPost(!(this.gfx.mode === 'low' || lv >= 2))
+    // 빛 번짐 · 색감(후처리)도 그림자와 같이 끈다 (2026-10-08 퀄리티 2차 2단계).
+    // 판 도중이면 새 설정의 셰이더를 먼저 나눠 만들고 바꾼다 (renderer setQuality — 바로 바꾸면 장면 전체를 다시 컴파일하며 1 ~ 2초 멈췄다)
+    const rich = !(this.gfx.mode === 'low' || lv >= 2)
+    this.renderer.setQuality(rich, rich)
     // 소리도 가볍게: 가장 낮은 단계까지 내려간 기기 · 낮게 고정 (2026-09-25 개선 11 — 소리가 늘어 느린 PC 에서 끊길 수 있다)
     if (this.gfx.mode === 'low' || lv >= steps.length - 1) this.sfx.setLite(true)
   }
@@ -1872,8 +1875,26 @@ export class Session {
       }
       case 'mname': {
         if (!this.peerIndex.has(from)) break
-        const nick = maskText(cleanChat(m.nick).slice(0, 20), loadStreamCfg())
-        if (nick && m.m >= 0) this.nameMonster(m.m, nick, m.a, performance.now())
+        const fc = loadStreamCfg()
+        const nick = maskText(cleanChat(m.nick).slice(0, 20), fc)
+        if (nick && m.m >= 0) {
+          this.nameMonster(m.m, nick, m.a, performance.now(), !!m.old)
+          // 난입한 내게 방장이 다시 알려 준 것 — 👑 · 그 시청자가 마지막으로 한 말(비석에 남는다)까지
+          const vn = this.vnames.get(m.m)
+          if (m.old && vn) {
+            vn.crown = !!m.crown
+            const say = maskText(cleanChat(m.say), fc)
+            if (say) vn.say = say
+          }
+        }
+        break
+      }
+      case 'mtomb': {
+        // 방장이 난입한 내게만 보낸다 (tellViewerMarks)
+        if (this.peerIndex.get(from) !== 0) break
+        const fc = loadStreamCfg()
+        const t = cleanTomb(m, (x) => maskText(cleanChat(x), fc))
+        if (t && Number.isInteger(m.a)) this.tomb(m.a, t)
         break
       }
       case 'mchat': {
@@ -2252,6 +2273,7 @@ export class Session {
     this.pumpStream(now)
     const view = this.view()
     this.skills.refresh()
+    this.waypoints.refresh()
     this.chars.refresh()
     this.quests.refresh()
     this.syncWinButtons()
@@ -2598,7 +2620,8 @@ export class Session {
     this.nameNextAt = now + 3000
   }
 
-  private nameMonster(id: number, nick: string, area: number, now: number): void {
+  /** quiet = 난입한 사람이 방장에게 다시 받은 이름 (알림 없이 붙인다) */
+  private nameMonster(id: number, nick: string, area: number, now: number, quiet = false): void {
     // 보물 고블린인지는 판에서 본다 — 방 사람들 화면(mname 으로 받는다)도 같은 답을 낸다
     const m = areaView(this.state, area).monsters.find((q) => q.id === id)
     const gob = !!m && MONSTER_LIST[m.kind].attack === 'flee'
@@ -2608,7 +2631,7 @@ export class Session {
       // 엔딩에 다 올릴 수 없을 만큼은 들고 있지 않는다 (먼저 나온 사람부터 뺀다)
       if (this.castNames.size > 200) this.castNames.delete(this.castNames.keys().next().value as string)
     }
-    if (area !== this.viewArea) return
+    if (area !== this.viewArea || quiet) return
     if (gob) this.renderer.notice(`💰 ${nick} — ${bt('보물 고블린')}! 달아나면 시청자가 이긴다`, '#ffd84a', 3.4, this.renderer.sayScale)
     else this.renderer.notice(`${nick} 등장! — 시청자 이름 괴물`, VIEWER_TAG, 2.6, this.renderer.sayScale)
   }
@@ -2620,6 +2643,17 @@ export class Session {
     this.vnames.delete(id)
     this.tomb(v.area, { x, y, kind: 'rip', nick: v.nick, say: v.say })
     if (v.area === this.viewArea) this.renderer.notice(`${v.nick} 처치!`, VIEWER_TAG, 3, this.renderer.sayScale)
+  }
+
+  /**
+   * 방장: 난입한 사람에게 지금 살아 있는 시청자 이름 괴물 · 이미 선 비석을 알려 준다 (2026-11-13 브라우저 셋으로 확인 — 이름은 붙는 순간에만
+   * 방에 알려서, 늦게 들어온 사람은 그 괴물이 쓰러져도 비석이 안 서고 👑 배너도 안 떴다). 방송하는 사람이 손님이어도 방장은 받은 것을 다 안다
+   */
+  private tellViewerMarks(to: string): void {
+    const link = this.cfg.link
+    if (!link) return
+    for (const [m, v] of this.vnames) link.sendCtl({ t: 'mname', a: v.area, m, nick: v.nick, old: 1, ...(v.crown ? { crown: 1 as const } : {}), ...(v.say ? { say: v.say } : {}) }, to)
+    for (const [a, list] of this.tombs) for (const t of list) link.sendCtl({ t: 'mtomb', a, x: t.x, y: t.y, kind: t.kind, nick: t.nick, ...(t.say ? { say: t.say } : {}), ...(t.who ? { who: t.who } : {}) }, to)
   }
 
   private tomb(area: number, t: Tomb): void {
@@ -2781,6 +2815,19 @@ export class Session {
     this.bagQuiet = false
   }
 
+  /**
+   * 창(가방 · 마을 · 스킬 · 능력치 · 웨이포인트)이 보내는 명령. **칸 번호를 싣는 명령**(끼기 · 버리기 · 팔기 · 보관 · 꺼내기 · 잠금 · 강화)은
+   * 칸을 옮기는 앞 명령이 판에 닿기 전(대기열 + 입력 지연 — 혼자 2틱 · 멀티 최대 12틱)에는 버린다 (2026-11-13 UI 정독):
+   * 그사이 또 누르면 창은 아직 옛 칸을 보이는데 명령은 당겨진 칸에 닿았다 — 상인 곁에서 희귀 템을 빠르게 두 번 오른클릭하면
+   * 그 뒤 칸의 전설이 "한 번 더" 확인 없이 팔렸다 · 가방을 열자마자(열 때 정렬) 누르면 정렬된 뒤의 다른 물건에 닿았다
+   */
+  private slotGate = new SlotGate()
+  private sendUi(cmd: number, arg: number): void {
+    const t = this.state.tick
+    if (!this.slotGate.ok(cmd, t) || !this.input.queueCmd(cmd, arg)) return
+    this.slotGate.sent(cmd, t, this.input.pendingCmds, this.lockstep?.delay ?? 0)
+  }
+
   private syncUi(): void {
     const was = this.input.uiOpen
     this.input.uiOpen = !!(this.inventory?.open || this.skills?.open || this.chars?.open || this.quests?.open || this.waypoints?.open || this.town?.open || this.czClose)
@@ -2830,10 +2877,14 @@ export class Session {
   private pumpStream(now: number): void {
     // 후원: 이름표를 먼저 보내고(번호는 이때 매긴다) 0.3초 뒤에 명령 · 1.5 ~ 3초에 하나
     // 큰 후원은 3초 예고 뒤에 쏜다 — 그사이 쓰러지거나 마을 · 덮개로 가면 쏠 수 있을 때까지 쥐고 있는다 (전에는 sim 이 버려 예고만 나갔다)
-    if (this.donSending && now >= this.donSending.at && this.canDonateNow()) {
+    // 판은 한 사람의 후원 명령을 DON_GAP 틱에 하나만 받는다(손댄 손님의 연타 막기) — 마을 · 덮개에서 쥐고 있다 풀리면 0.3초 만에 다음 것이
+    // 나갈 수 있어, 앞 명령을 보낸 틱에서 넉넉히 띄운다. 명령 대기열이 차 있으면(8) 다음 프레임에 다시
+    if (this.donSending && now >= this.donSending.at && this.canDonateNow() && this.state.tick >= this.donTickOk) {
       const d = this.donSending
-      this.donSending = null
-      this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))
+      if (this.input.queueCmd(d.ev >= 16 ? CMD_DONATE_HI : CMD_DONATE, ((d.ev >= 16 ? d.ev - 16 : d.ev) & 15) | ((d.seq & 15) << 4))) {
+        this.donSending = null
+        this.donTickOk = this.state.tick + DON_GAP + DON_GAP_SLACK
+      }
     }
     if (!this.donSending && this.donPending.length > 0 && now >= this.donNextAt && this.canDonateNow()) {
       // 잠깐 멈춤 · 보스전 대기 중에는 방해 이벤트만 기다린다 (응원은 간다 — 2026-09-26 방송 개선 3)
@@ -3232,6 +3283,7 @@ export class Session {
       const tick = this.state.tick + Session.JOIN_LEAD_TICKS
       const live = { t: 'joinLive' as const, p: r.p, tick, char: r.char, team: r.team, name: r.name, id: r.peerId, sheet: r.sheet }
       this.cfg.link?.sendCtl(live)
+      this.tellViewerMarks(r.peerId)
       this.pendingJoins.push({ p: r.p, tick, char: r.char, team: r.team, name: r.name, sheet: r.sheet })
       this.pendingRejoin = null
       return

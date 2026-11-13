@@ -103,6 +103,12 @@ const NPC_DOT: Record<string, string> = {
  * 준비가 끝날 때까지 쥔다 — 처음 한 번만 길다. 판의 덮임 보호 상한(sim LOADING_MAX)이 이보다 길어야 한다
  */
 const HOLD_MAX = 9000
+/** 빛 단계 컴파일에 프레임마다 쓰는 시간(ms) — 셰이더 하나 만들기가 7ms 안팎이라 새로 만들 것이 있으면 프레임에 하나꼴 (stageReady) */
+const STAGE_MS = 5
+/** 프레임에 나눠 하는 컴파일 줄 (sliceStep): 지역 번호표 · 물체들 · 어디까지 · 이미 본 재질 갈래 · 새로 생긴 셰이더 · 다 넘긴 시각 */
+type SliceJob = { area: number; objs: THREE.Object3D[]; i: number; seen: Set<string>; fresh: SliceProgram[]; doneAt: number; touched: number }
+/** three 의 WebGLProgram 에서 쓰는 것만 (내부 — three 판을 올리면 확인) */
+type SliceProgram = { isReady(): boolean; getUniforms?(): unknown; getAttributes?(): unknown }
 /** 3인칭 · 1인칭 조준이 시선에서 비낄 수 있는 각 (라디안 ≈ 26°) — 그보다 비낀 괴물 · 땅은 겨누지 않는다 (fpsAim) */
 const AIM_CONE = 0.45
 const angDiff = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
@@ -775,7 +781,8 @@ export class Renderer3D {
       })
     // 셰이더 오류 확인은 개발 · 화면 시험(?shot=1 — tools/uitest.mjs 가 빌드한 판에서 콘솔의 셰이더 오류를 잡는다)에서만 (2026-11-12):
     // 켜 두면 처음 쓰는 셰이더마다 컴파일 로그를 동기로 물어 10 ~ 35ms 멈추고, 락스텝이라 모두가 기다린다
-    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1'))
+    // 계측용 `?shot=1&nocheck=1`: 계측 훅(__session)은 쓰되 확인은 배포판처럼 끈다 (2026-11-13 난입 순간 방장 막힘을 빌드한 판에서 다시 잼)
+    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1') && !location.search.includes('nocheck=1'))
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
@@ -1017,6 +1024,7 @@ export class Renderer3D {
     this.scene.remove(this.world.group)
     this.scene.remove(this.vision.group)
     const old = [this.world, this.vision]
+    for (const d of old) this.markGone(d.group)
     this.afterCompiles(() => old.forEach((d) => d.dispose()))
     this.map = map
     // 만들다 만 것이면 남은 걸음을 지금 끝낸다 (한 일은 그대로 쓴다)
@@ -1083,8 +1091,19 @@ export class Renderer3D {
    * 지워 "Cannot read properties of undefined (reading 'isReady')" 가 났다 — 오류 보고 단추가 떴다)
    */
   private afterCompiles(f: () => void): void {
+    // 기다리는 사이 새 컴파일이 시작됐으면 그것도 기다린다 (2026-11-13 난입 계측에서 같은 오류 재현: 준비 줄에 남아 있던 **떠나온 지역**의
+    // 시야 · 세계 데우기가 기다리기 시작한 뒤에 돌기 시작해, 앞 컴파일만 끝나면 그 재질을 지웠다 — 난입 여섯 번에 두 번)
     if (this.compiling.size === 0) f()
-    else void Promise.allSettled([...this.compiling]).then(f)
+    else void Promise.allSettled([...this.compiling]).then(() => this.afterCompiles(f))
+  }
+
+  /** 치울 묶음: 준비 줄(데우기 · 텍스처 올리기)이 건너뛰게 표시한다 — 곧 지울 재질을 컴파일하거나 지운 텍스처를 다시 올리지 않게 */
+  private markGone(g: THREE.Object3D): void {
+    g.traverse((o) => {
+      this.gone.add(o)
+      const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined
+      for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
+    })
   }
 
   /** 지역에 들어선 뒤 셰이더를 비동기로 컴파일하는 중 (그동안 3D 를 그리지 않는다 — 페이드가 덮는다) */
@@ -1167,13 +1186,7 @@ export class Renderer3D {
   }
 
   private dropPrebuilt(p: { world: World3D; vision: Vision }): void {
-    for (const g of [p.world.group, p.vision.group]) {
-      g.traverse((o) => {
-        this.gone.add(o)
-        const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined
-        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
-      })
-    }
+    for (const g of [p.world.group, p.vision.group]) this.markGone(g)
     this.afterCompiles(() => {
       p.world.dispose()
       p.vision.dispose()
@@ -1334,57 +1347,165 @@ export class Renderer3D {
   /** 이번 프레임 빛 수를 맞춘 뒤(padLights)에 할 컴파일 */
   private afterPad: (() => void)[] = []
 
-  /** 빛 단계 n 을 지금 써도 되나 — 처음이면 장면을 그 빛 수로 비동기 컴파일하고(real = 지금 켜진 진짜 빛 수), 다 되면 true */
+  /**
+   * 빛 단계를 프레임에 나눠 컴파일하는 중 (2026-11-13 난입 계측 — 빌드한 판 · 셰이더 확인 끔): 장면 전체를 한 번에 컴파일하면 셰이더 **만들기**
+   * (글 짜기 · 넘기기 — 하나에 7ms 안팎)가 한 프레임에 몰려, 덮개 뒤 데우기가 덜 끝난 PC 에서는 180개 안팎 1.3초를 통째로 멈췄다
+   * (그 사람 입력이 끊겨 락스텝의 모두가 기다렸다 — 난입자의 등불이 빛 단계를 올리는 순간). 재질 갈래마다 하나씩, 프레임에 STAGE_MS 만큼만 한다
+   */
+  private stageJob: (SliceJob & { n: number }) | null = null
+
+  /** 지금 장면의 그릴 것들로 나눠 컴파일할 줄을 만든다 */
+  private sliceJob(): SliceJob {
+    const objs: THREE.Object3D[] = []
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh
+      if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine || (o as THREE.Sprite).isSprite)) objs.push(o)
+    })
+    return { area: this.areaJob, objs, i: 0, seen: new Set(), fresh: [], doneAt: 0, touched: 0 }
+  }
+
+  /**
+   * 줄의 물체를 재질 갈래마다 하나씩, 이번 프레임 몫(STAGE_MS)만큼 컴파일한다 — 부르는 쪽이 그 순간만 빛 수 · 화질 설정을 맞춰 놓고 부른다.
+   * 다 넘겼고 새로 만든 셰이더가 모두 준비됐으면 true (없으면 곧바로 · 병렬 컴파일이 안 되는 브라우저는 isReady 가 늘 거짓일 수 있어 1.5초면 넘어간다).
+   * keepAll = 모든 재질의 "지금 셰이더"를 되돌린다(화질 바꾸기 — 아직 옛 설정으로 그린다) · 아니면 빛을 안 받는 재질만(빛 단계)
+   */
+  private sliceStep(j: SliceJob, keepAll: boolean): boolean {
+    if (j.i < j.objs.length) {
+      const t0 = performance.now()
+      const programs = this.gl.info.programs as SliceProgram[] | null
+      const p0 = programs?.length ?? 0
+      // 실제로 그리는 곳(후처리 장면 그림)을 대상으로 — compileAsync 와 같은 까닭(색공간 · 톤 매핑이 다르면 다른 셰이더)
+      const rt = this.gl.getRenderTarget()
+      this.gl.setRenderTarget(this.post.target)
+      type Props = { currentProgram?: unknown; needsLights?: boolean; uniformsList?: unknown; __version?: number }
+      // 한 프레임에 새 셰이더는 둘까지 — 만들기는 가볍지만 한꺼번에 넘기면 GPU 쪽 컴파일이 몰려 그리기가 같이 밀렸다(계측 170ms)
+      while (j.i < j.objs.length && performance.now() - t0 < STAGE_MS && (programs?.length ?? 0) - p0 < 2) {
+        const o = j.objs[j.i++] as THREE.Mesh
+        if (this.gone.has(o)) continue
+        const mats = Array.isArray(o.material) ? o.material : [o.material]
+        // 같은 재질 · 같은 갈래(인스턴스 · 뼈대 · 도형 속성)는 한 번만 — 셰이더 열쇠가 같다
+        const kind = `${(o as unknown as THREE.InstancedMesh).isInstancedMesh ? 'i' : ''}${(o as unknown as THREE.SkinnedMesh).isSkinnedMesh ? 's' : ''}${o.isMesh ? '' : o.type}${o.receiveShadow ? 'r' : ''}|${o.geometry ? Object.keys(o.geometry.attributes).join() : ''}|${o.geometry?.morphAttributes?.position ? 'm' : ''}`
+        let fresh = false
+        for (const m of mats) {
+          const k = `${m.uuid}|${kind}`
+          if (!j.seen.has(k)) {
+            j.seen.add(k)
+            fresh = true
+          }
+        }
+        if (!fresh) continue
+        // 빛을 안 받는 재질은 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다(three) — compile 이 바꿔 놓은 "지금 셰이더"(아직 링크 중)를 그대로 써서
+        // 다음 그리기가 링크를 기다리며 멈췄다(계측 70ms). 쓰던 것으로 되돌린다
+        const keep: [Props, unknown][] = []
+        // 아직 한 번도 안 그린 재질(숨겨 둔 이펙트 등): 화질 바꾸기에서는 새 설정의 셰이더가 "지금 셰이더"로 남아, 바꾸기 전에 그려지면 옛 설정에
+        // 새 설정 셰이더로 그리며 링크를 기다렸다(계측 100ms) → 다음에 그릴 때 그때의 설정으로 다시 고르게 한다
+        const never: Props[] = []
+        for (const m of mats) {
+          const pr = this.gl.properties.get(m) as Props
+          if (pr.currentProgram && (keepAll || !pr.needsLights)) keep.push([pr, pr.currentProgram])
+          else if (keepAll && !pr.currentProgram) never.push(pr)
+        }
+        // 자식은 빼고 그 물체 하나만 · 숨겨 둔 것도 (queueWarm 의 데우기와 같게)
+        const one = Object.create(o) as THREE.Object3D
+        one.children = []
+        one.visible = true
+        this.gl.compile(one, this.camera, this.scene)
+        for (const [pr, prog] of keep) {
+          if (pr.currentProgram === prog) continue
+          pr.currentProgram = prog
+          pr.uniformsList = null
+        }
+        for (const pr of never) pr.__version = -1
+      }
+      this.gl.setRenderTarget(rt)
+      // three 는 재질의 "지금 셰이더"만 본다 — 그 사이 그리면 옛 셰이더로 돌아가므로, 이번에 새로 생긴 셰이더를 직접 본다
+      if (programs && programs.length > p0) j.fresh.push(...programs.slice(p0))
+      if (j.i < j.objs.length) return false
+      j.doneAt = performance.now()
+    }
+    if (!(j.fresh.every((q) => q.isReady()) || performance.now() - j.doneAt > 1500)) return false
+    // 처음 쓰는 셰이더는 유니폼 · 속성 목록을 GPU 에 묻는다(하나에 10ms 안팎) — 바꾸는 프레임에 몰리지 않게 미리 하나씩 물어 둔다
+    // (계측: 스물넷이 한 프레임에 몰려 320ms). three 내부 메서드라 없으면 건너뛴다
+    const t1 = performance.now()
+    while (j.touched < j.fresh.length && performance.now() - t1 < STAGE_MS) {
+      const q = j.fresh[j.touched++]
+      if (!q.isReady()) continue
+      try {
+        q.getUniforms?.()
+        q.getAttributes?.()
+      } catch {
+        /* 링크 실패한 셰이더 — 그릴 때 three 가 알린다 */
+      }
+    }
+    return j.touched >= j.fresh.length
+  }
+
+  /** 빛 단계 n 을 지금 써도 되나 — 처음이면 장면을 그 빛 수로 나눠 컴파일하고(real = 지금 켜진 진짜 빛 수), 다 되면 true */
   private stageReady(n: number, real: number): boolean {
     const st = this.stageOk.get(n)
-    if (st !== undefined) return st
+    if (st === true) return true
     // 덮개 뒤 · 시작 전에는 기다릴 까닭이 없다 (그 단계로 장면을 컴파일한다 — setMap · prepareStart)
     if (!this.ready || this.covering) {
       this.stageOk.set(n, true)
       return true
     }
+    let j = this.stageJob
+    if (st === undefined || !j || j.n !== n || j.area !== this.areaJob) {
+      // 하다 만 다른 단계는 다음에 처음부터 (만든 셰이더는 남아 있어 금방 지나간다)
+      if (j && j.n !== n && this.stageOk.get(j.n) === false) this.stageOk.delete(j.n)
+      j = this.stageJob = { ...this.sliceJob(), n }
+      this.stageOk.set(n, false)
+    }
     // 빈 빛으로 그 순간만 빛 수를 맞춘다 (compile 은 부르는 동안 동기로 빛 · 재질을 훑는다). 진짜 빛이 더 많으면(오를 때는 없다) 그대로 둔다
     const vis = this.lightPads.map((l) => l.visible)
     this.lightPads.forEach((l, i) => (l.visible = i < n - real))
-    const programs = this.gl.info.programs as { isReady(): boolean }[] | null
-    const p0 = programs?.length ?? 0
-    // 빛을 안 받는 재질은 빛 수가 바뀌어도 셰이더를 다시 고르지 않는다(three) — compile 이 바꿔 놓은 "지금 셰이더"(아직 링크 중)를 그대로 써서
-    // 다음 그리기가 링크를 기다리며 멈췄다(계측 70ms). 쓰던 것으로 되돌린다
-    type Props = { currentProgram?: unknown; needsLights?: boolean; uniformsList?: unknown }
-    const keep: [Props, unknown][] = []
-    this.scene.traverse((o) => {
-      const m = (o as THREE.Mesh).material
-      if (!m) return
-      for (const one of Array.isArray(m) ? m : [m]) {
-        const pr = this.gl.properties.get(one) as Props
-        if (pr.currentProgram && !pr.needsLights) keep.push([pr, pr.currentProgram])
-      }
-    })
-    void this.compileAsync(this.scene, this.scene)
-    for (const [pr, prog] of keep) {
-      if (pr.currentProgram === prog) continue
-      pr.currentProgram = prog
-      pr.uniformsList = null
-    }
+    const ok = this.sliceStep(j, false)
     this.lightPads.forEach((l, i) => (l.visible = vis[i]))
-    // three 의 compileAsync 는 재질의 "지금 셰이더"가 됐는지만 본다 — 그 사이 그리면 옛 단계 셰이더로 돌아가 곧바로 끝난 것처럼 보인다.
-    // 그래서 이번에 새로 생긴 셰이더를 직접 본다 (없으면 모두 데워 둔 것 — 바로 쓴다)
-    const fresh = programs?.slice(p0) ?? []
-    if (fresh.length === 0) {
-      this.stageOk.set(n, true)
-      return true
+    if (!ok) return false
+    this.stageOk.set(n, true)
+    this.stageJob = null
+    return true
+  }
+
+  /**
+   * 화질(그림자 · 후처리)을 판 도중에 바꾼다 — 자동 화질이 두 단계 내려가거나 되올라올 때 (2026-11-13 빌드한 판에서 난입을 다시 잼):
+   * 바로 바꾸면 장면의 모든 재질이 다음 그리기에서 셰이더를 새로 만들고 링크를 기다려(30개 안팎 × 30 ~ 60ms) 1 ~ 2초를 통째로 멈췄다 —
+   * 난입 순간의 "방장 화면 막힘"이 이것이었다(난입의 작은 멈칫 → 자동 화질이 내려감 → 전체 다시 컴파일 · 락스텝이라 모두가 기다린다).
+   * 새 설정으로 먼저 나눠 컴파일해 두고(sliceStep) 다 되면 바꾼다. 덮개 뒤 · 시작 전에는 바로
+   */
+  setQuality(shadows: boolean, post: boolean): void {
+    post = post && this.post.supported
+    if (!this.ready || this.covering) {
+      this.qualityJob = null
+      this.setShadows(shadows)
+      this.setPost(post)
+      return
     }
-    this.stageOk.set(n, false)
-    const job = this.areaJob
-    const t0 = performance.now()
-    const tick = (): void => {
-      if (this.areaJob !== job) return
-      // 병렬 컴파일이 안 되는 브라우저는 isReady 가 늘 거짓일 수 있다 — 1.5초면 그냥 넘어간다
-      if (fresh.every((q) => q.isReady()) || performance.now() - t0 > 1500) this.stageOk.set(n, true)
-      else setTimeout(tick, 16)
-    }
-    setTimeout(tick, 16)
-    return false
+    const cur = this.qualityJob
+    if (cur ? cur.shadows === shadows && cur.post === post : this.gl.shadowMap.enabled === shadows && this.post.enabled === post) return
+    this.qualityJob = this.gl.shadowMap.enabled === shadows && this.post.enabled === post ? null : { ...this.sliceJob(), shadows, post }
+  }
+  private qualityJob: (SliceJob & { shadows: boolean; post: boolean }) | null = null
+  /** 프레임마다 (빛 수를 맞춘 뒤): 바꿀 화질 설정으로 한 몫 컴파일하고, 다 됐으면 바꾼다 */
+  private qualityStep(): void {
+    let j = this.qualityJob
+    if (!j) return
+    // 그사이 지역이 바뀌었으면 새 장면으로 처음부터 (덮개 뒤라면 바로 바꾼다 — 덮개가 컴파일을 가린다)
+    if (this.covering) return this.setQuality(j.shadows, j.post)
+    if (j.area !== this.areaJob) j = this.qualityJob = { ...this.sliceJob(), shadows: j.shadows, post: j.post }
+    const s0 = this.gl.shadowMap.enabled
+    const p0 = this.post.enabled
+    this.gl.shadowMap.enabled = j.shadows
+    this.post.enabled = j.post
+    const ok = this.sliceStep(j, true)
+    this.gl.shadowMap.enabled = s0
+    this.post.enabled = p0
+    if (!ok) return
+    this.qualityJob = null
+    this.setShadows(j.shadows)
+    this.setPost(j.post)
+    // 새 설정의 셰이더는 지금 빛 수로만 만들었다 — 다른 빛 단계는 갈 때 다시 (stageReady)
+    this.stageOk.clear()
   }
 
   /** 켜진 점광원 수를 LIGHT_STEP 의 배수로 맞춘다 — 빛 수가 몇 가지로만 나와 미리 컴파일한 셰이더를 다시 쓴다 */
@@ -1686,7 +1807,32 @@ export class Renderer3D {
       this.rigs[i] = rig
       this.rigChars[i] = chars[i]
       this.vis[i] = newVis()
+      // 판 도중에 새로 온 캐릭터(난입)는 셰이더가 준비될 때까지 숨겨 둔다 (updateRig)
+      if (this.ready && !this.covering) this.rigHold.set(rig, 'new')
     }
+  }
+
+  /**
+   * 판 도중 새로 만든 캐릭터(난입)의 셰이더 준비 (2026-11-13 빌드한 판에서 3 ~ 4인 난입을 다시 잼 — 셰이더 확인을 꺼도 방장 · 먼저 온 사람이
+   * 1.3 ~ 3.1초 통째로 멈췄다): 새 캐릭터 · 무기 · 장식의 재질 갈래(셰이더 30개 안팎)를 처음 그리는 프레임에 컴파일 · 링크를 기다렸다.
+   * 무기 · 장식을 끼운 뒤 숨긴 채 비동기로 컴파일하고, 끝나면 보인다(늦어도 compileAsync 의 6초). 그동안 이름표만 먼저 보인다
+   */
+  private rigHold = new Map<CharacterRig, 'new' | 'busy'>()
+  private holdRig(rig: CharacterRig): boolean {
+    const st = this.rigHold.get(rig)
+    if (!st) return false
+    rig.root.visible = false
+    if (st === 'new') {
+      this.rigHold.set(rig, 'busy')
+      // 빛 수를 맞춘 뒤에 컴파일한다 (afterPad — 괴물 모델과 같은 까닭). 숨긴 물체는 그 순간만 보이게 (compile 은 보이는 빛만 세지만 물체는 다 훑는다)
+      this.afterPad.push(() => {
+        const done = (): void => void this.rigHold.delete(rig)
+        // 이 캐릭터는 지금 빛 수로만 컴파일된다 — 다른 빛 단계는 갈 때 다시 (stageReady)
+        this.stageOk.clear()
+        void this.compileAsync(rig.root, this.scene).then(done, done)
+      })
+    }
+    return true
   }
 
   // ---------- 이벤트 → 이펙트 ----------
@@ -2840,6 +2986,7 @@ export class Renderer3D {
     this.ambient.update(this.t, this.camTarget.x, this.camTarget.z, this.dpr, amb ? 1 : 0)
     this.padLights()
     for (const f of this.afterPad.splice(0)) f()
+    this.qualityStep()
     // 빈 묶음(파편 · 빛 알갱이 · 연기 · 핏자국 0개)은 숨긴다 — three 는 0개여도 패스마다 셰이더 고르기 · 유니폼 올리기를 한다 (괴물 묶음과 같은 규칙 · 2026-11-12)
     this.partMesh.visible = this.partMesh.count > 0
     this.glow.mesh.visible = this.glow.count > 0
@@ -4271,7 +4418,8 @@ export class Renderer3D {
     const root = rig.root
     root.position.set(pos.x, 0, pos.z)
 
-    if (p.left || this.hidden[i]) {
+    // 아직 빈 자리면 기다린다 (앉은 뒤의 무기 · 장식으로 컴파일하게) · 앉았으면 셰이더가 준비될 때까지 숨긴다
+    if (p.left || this.hidden[i] || this.holdRig(rig)) {
       root.visible = false
       return
     }

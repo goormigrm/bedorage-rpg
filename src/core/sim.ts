@@ -27,7 +27,7 @@ import {
 } from './monsters'
 export { nodeSkill, slotNode } from './skills'
 import { affixCount, affixSkip, makeMonster, populate, rollAffixes } from './dungeon'
-import { DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
+import { DON_CAP_CHOICES, DON_CAP_DEFAULT, DON_GAP, DON_DARK, DON_INVERT, DON_MAX, DON_SEAL, DON_SHAKE, DON_SLOTS, DON_TICKS, HELL_DARK_TICKS, RAGE_POW, RAGE_SPEED, RAGE_TICKS, SHAKE_MAX, donateEvent, SUMMON_BOSS_HP } from './donate'
 import { botInput, makeBot } from './bot'
 import { botSheet, botSkillNext, gear as botGear, gearLevelOf } from './botsheet'
 import { ACTS, AREAS, AreaDef, AreaLayout, QUESTS, RIFT_MAX, RIFT_TICKS, WAYPOINTS, actBossQuest, actLocked, actReached, isRift, npcNear, questDiscount, questPoints, areaDef, areaLayout, areaLevel, areaSeed, gateTarget, isTown, riftId, riftOpen, riftScale, safeSpots, townNpcs, wpBit } from './world'
@@ -963,11 +963,14 @@ function townCommand(state: GameState, p: PlayerState, cmd: number, arg: number)
     p.gold += g
     trade('sell', g, it.uid)
   } else if (cmd === CMD_BUY && npc === 'merchant') {
-    const it = state.shop[arg]
+    // arg = 물건 uid 의 아래 8비트 (2026-11-13 — 진열 칸 번호였을 때는 두 사람이 잇달아 사면 뒤 사람은 칸이 당겨져 못 본 다른 물건을 샀다.
+    // 진열 열 가지는 uid 가 이어져 있어 아래 8비트가 겹치지 않는다 · 이미 팔린 물건이면 아무 일도 없다)
+    const k = state.shop.findIndex((q) => (q.uid & 255) === (arg & 255))
+    const it = state.shop[k]
     const g = it ? Math.round(buyPrice(it) * questDiscount(p.quests)) : 0
     if (!it || p.gold < g || p.bag.length >= p.bagMax) return
     p.gold -= g
-    state.shop.splice(arg, 1)
+    state.shop.splice(k, 1)
     p.bag.push({ ...it, aff: [...it.aff] })
     trade('buy', -g, it.uid)
   } else if (cmd === CMD_UPGRADE && npc === 'smith') {
@@ -3760,6 +3763,9 @@ const SUM_GUN = 4
 function donateCommand(state: GameState, map: GameMap, p: PlayerState, id: number, seq: number): void {
   const ev = donateEvent(id)
   if (!ev || state.mode !== 'dungeon' || isTown(p.area) || !p.alive || p.out) return
+  // 한 사람의 후원 명령은 DON_GAP 틱에 하나만 (손댄 손님의 연타 — 세션은 넉넉히 띄워 보낸다)
+  if (p.donT !== undefined && state.tick - p.donT < DON_GAP) return
+  p.donT = state.tick
   // 사람에게 거는 효과(화면 흔들림 · 암흑 · 거꾸로 · 봉인)는 **파티 모두**에게 (2026-09-24 사용자: "후원은 어차피 스트리머 한 명에게만 온다 —
   // 같이 하는 사람들은 후원받지 못하니 효과는 모두에게"). 다른 지역에 있는 파티원도 받는다
   const party = partyOf(state, p)

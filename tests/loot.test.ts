@@ -146,12 +146,12 @@ describe('전리품 · 경제', () => {
     const cmd = (c: number, arg: number) => step(s, map, [{ ...idle(), cmd: c, arg }])
     // 멀리서는 안 된다
     const shop0 = s.shop.length
-    cmd(CMD_BUY, 0)
+    cmd(CMD_BUY, s.shop[0].uid & 255)
     expect(s.shop.length).toBe(shop0)
     // 상인: 사고 → 팔고 → 물약 칸
     at('merchant')
     const price = buyPrice(s.shop[0])
-    cmd(CMD_BUY, 0)
+    cmd(CMD_BUY, s.shop[0].uid & 255)
     expect(s.shop.length).toBe(shop0 - 1)
     expect(p.gold).toBe(5000 - price)
     const it = p.bag[0]

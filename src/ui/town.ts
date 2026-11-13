@@ -284,9 +284,9 @@ export class TownPanel {
       const tabs = `<div class="tp-tabs"><button data-tab="buy" class="${this.tab === 'buy' ? 'on' : ''}">사기</button><button data-tab="sell" class="${this.tab === 'sell' ? 'on' : ''}">팔기</button></div>`
       const list =
         this.tab === 'buy'
-          ? s.shop.map((it, i) => {
+          ? s.shop.map((it) => {
               const price = Math.round(buyPrice(it) * questDiscount(me.quests))
-              return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${i}"`, me.gold < price || me.bag.length >= me.bagMax)
+              return row(it, `${price} 골드`, `data-cmd="${CMD_BUY}" data-arg="${it.uid & 255}"`, me.gold < price || me.bag.length >= me.bagMax)
             }).join('') || '<p class="tp-empty">다 팔렸다. 다음 게임에 새로 들어온다.</p>'
           : me.bag.map((it, i) => row(it, it.lk ? '🔒 잠금' : `+${itemValue(it)} 골드`, it.lk ? '' : `data-cmd="${CMD_SELL}" data-arg="${i}"`, !!it.lk)).join('') || '<p class="tp-empty">가방이 비었다.</p>'
       // 가방이 가득 차면 살 수 없다(sim 이 조용히 거른다) — 까닭을 적는다 (2026-10-08)
@@ -593,8 +593,10 @@ export class TownPanel {
     // 보관함 · 상인은 가방 창이 오른쪽에 같이 열린다 — 이 창은 왼쪽에 붙는다 (디아블로)
     this.el.classList.toggle('docked', npc === 'stash' || npc === 'merchant')
     // 가방에서 끌어다 이 창에 놓으면: 보관함은 보관 · 상인은 팔기
+    // 대장장이 창은 어디에 놓아도 모루로 (가방 · 장비 칸에서 끌어 온다 — dragItem 의 [data-drop])
     if (npc === 'stash') this.el.dataset.drop = 'stash'
     else if (npc === 'merchant') this.el.dataset.drop = 'sell'
+    else if (npc === 'smith') this.el.dataset.drop = 'smith'
     else delete this.el.dataset.drop
     const q2 = this.el.querySelector<HTMLInputElement>('.st-q')
     if (q2) {
@@ -627,9 +629,8 @@ export class TownPanel {
     })
     // 대장장이 강화 목록은 이름 · 옵션 · 값 세 칸이라 조금 넓어야 옵션이 두 줄로 접히지 않는다 (2026-09-20) · 벼리기도 그 폭 그대로
     this.el.classList.toggle('smith', npc === 'smith' || npc === 'forger')
-    // 대장장이 창은 어디에 놓아도 모루로 (가방 · 장비 칸에서 끌어 온다 — dragItem 의 [data-drop])
-    if (npc === 'smith') this.el.dataset.drop = 'smith'
-    else delete this.el.dataset.drop
+    // (놓는 곳 표시는 위에서 한 번에 — 2026-11-13: 여기서 대장장이가 아니면 지워서, 가방에서 상인 창으로 끌어다 놓아 팔기 · 보관함 창의
+    // 칸 밖에 놓아 보관하기가 2026-10-24 부터 먹지 않았다)
     this.el.querySelector<HTMLButtonElement>('[data-x]')!.onclick = () => this.show(null)
     const talk = this.el.querySelector<HTMLElement>('[data-talk]')
     if (talk)

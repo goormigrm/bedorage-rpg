@@ -260,7 +260,12 @@ export type CtlMessage =
   /** 방송 채팅 말풍선: 지역 a 의 괴물 m(없으면 -1 — 채팅 줄로)이 nick 의 글을 말한다. sim 밖 */
   | { t: 'mchat'; a: number; m: number; nick: string; text: string }
   /** 시청자 이름 괴물 (2026-09-25 방송 개선 7): 지역 a 의 괴물 m 에 채팅 "!참여" 한 시청자 nick 의 이름이 붙었다. sim 밖 */
-  | { t: 'mname'; a: number; m: number; nick: string }
+  | { t: 'mname'; a: number; m: number; nick: string; old?: 1; crown?: 1; say?: string }
+  /**
+   * 방장 → 난입한 사람: 그 전에 선 시청자 비석 하나 (2026-11-13 — 이름 · 비석은 생기는 순간에만 방에 알려서, 늦게 들어온 사람 화면에는
+   * 살아 있는 이름 괴물도 비석도 없었다. 살아 있는 이름 괴물은 mname 에 old 를 달아 다시 보낸다 — 알림 없이 · 👑 · 마지막 말까지). sim 밖
+   */
+  | { t: 'mtomb'; a: number; x: number; y: number; kind: string; nick: string; say?: string; who?: string }
   /**
    * 방장이 내보냈다 (2026-09-25 방송 개선 2). 대기실: 그 사람에게만 · 게임: 모두에게(p = 그 자리 — 나머지는 이어 오는 drop 으로 자리를 비운다).
    * 방장(대기실 호스트 · 게임 0번 자리)이 보낸 것만 듣는다

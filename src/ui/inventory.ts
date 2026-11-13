@@ -300,10 +300,20 @@ export class Inventory {
         this.send(CMD_SORT, 0)
         this.lastKey = ''
       }
+    // 그린 뒤 판이 바뀌었는데(정렬 · 줍기 · 앞 명령) 창은 0.2초에 한 번 다시 그린다 — 그사이 누르면 **보이는 물건이 아니라 지금 그 칸의 물건**에
+    // 닿았다 (2026-11-13). 칸마다 그릴 때의 uid 를 쥐고, 달라졌으면 누름을 버리고 다시 그린다
+    const shown = me.bag.map((b) => b.uid)
+    const stale = (i: number): boolean => {
+      if (me.bag[i]?.uid === shown[i]) return false
+      this.tip.hide()
+      this.lastKey = ''
+      this.render()
+      return true
+    }
     this.el.querySelectorAll<HTMLElement>('[data-bag]').forEach((cell) => {
       const i = Number(cell.dataset.bag)
       cell.onclick = (e) => {
-        if (!me.bag[i] || clickSuppressed()) return
+        if (!me.bag[i] || clickSuppressed() || stale(i)) return
         // Shift+클릭 = 잠금 토글 (실수로 팔거나 버리지 않게 — "전부 팔기" 의 짝). 보관함이 열려 있으면 클릭은 보관함으로 · 대장장이면 모루로
         if (this.mode === 'smith' && !(e as MouseEvent).shiftKey) this.onSmith?.(me.bag[i].uid)
         else this.send((e as MouseEvent).shiftKey ? CMD_LOCK : this.mode === 'stash' ? CMD_STASH_PUT : CMD_EQUIP, i)
@@ -314,7 +324,7 @@ export class Inventory {
         e.preventDefault()
         this.tip.hide()
         const it = me.bag[i]
-        if (!it) return
+        if (!it || stale(i)) return
         // 보관함 곁: 보관함으로 · 상인 곁: 팔기 · 그 밖: 버리기 (보관함 · 상인 곁에서는 버리지 않는다)
         if (this.mode === 'stash') return this.send(CMD_STASH_PUT, i)
         if (this.mode === 'sell') {
@@ -331,6 +341,7 @@ export class Inventory {
       // 끌어다 놓기: 보관함 칸 → 보관 · 장비 칸 → 끼기 · 상인 창 → 팔기 · 대장장이 창 → 모루에
       makeDraggable(cell, () => (me.bag[i] ? { from: 'bag', index: i, icon: itemIconUrl(me.bag[i]), slot: me.bag[i].slot } : null), (s, t) => {
         this.tip.hide()
+        if (stale(s.index)) return
         const d = t.dataset.drop
         if (d === 'stash') this.send(CMD_STASH_PUT, s.index)
         else if (d === 'eq') this.send(CMD_EQUIP, s.index)
@@ -342,7 +353,7 @@ export class Inventory {
         }
         this.lastKey = ''
       })
-      cell.onmouseenter = () => this.tip.show(cell, me.bag[i], me, true)
+      cell.onmouseenter = () => !stale(i) && this.tip.show(cell, me.bag[i], me, true)
       cell.onmouseleave = () => this.tip.hide()
     })
     this.el.querySelectorAll<HTMLElement>('[data-eq]').forEach((cell) => {
