@@ -7,7 +7,7 @@ import { botSheet, botSpendCmd, gearLevelOf } from '../core/botsheet'
 import { CHARACTERS, CHARACTER_LIST, CharacterId, displayNames } from '../core/characters'
 import { BTN_LOADING, BTN_SKILL1, BTN_SKILL2, BTN_SKILL3, BTN_SKILL4, CMD_AUTOPICK, CMD_PICK, CMD_DONATE, CMD_DONATE_HI, CMD_DONCAP, CMD_SKIN, Input } from '../core/input'
 import { DON_CAP_DEFAULT, DON_DARK, DON_INVERT, DON_SEAL, DON_SHAKE, MARCH_SIZE, SUMMON_KEYS, donateEvent, effectFits } from '../core/donate'
-import { Chorus, DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, Tomb, addJoiner, addTomb, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
+import { Chorus, cleanTomb, DON_WARN_MS, JOIN_RE, Joiner, StreamChat, StreamDonation, StreamStatus, Tomb, addJoiner, addTomb, bubbleFlow, donTier, drawJoiner, isBigDonation, maskShown, nextDonation, eventForAmount, eventRows, loadStreamCfg, stream, tiedAmounts, won } from './stream'
 import { SpamGuard, maskText, squeezeRepeats } from './chatfilter'
 import { StreamBadge, openStreamPanel } from '../ui/streamPanel'
 import { buildMap } from '../core/map'
@@ -1872,8 +1872,26 @@ export class Session {
       }
       case 'mname': {
         if (!this.peerIndex.has(from)) break
-        const nick = maskText(cleanChat(m.nick).slice(0, 20), loadStreamCfg())
-        if (nick && m.m >= 0) this.nameMonster(m.m, nick, m.a, performance.now())
+        const fc = loadStreamCfg()
+        const nick = maskText(cleanChat(m.nick).slice(0, 20), fc)
+        if (nick && m.m >= 0) {
+          this.nameMonster(m.m, nick, m.a, performance.now(), !!m.old)
+          // 난입한 내게 방장이 다시 알려 준 것 — 👑 · 그 시청자가 마지막으로 한 말(비석에 남는다)까지
+          const vn = this.vnames.get(m.m)
+          if (m.old && vn) {
+            vn.crown = !!m.crown
+            const say = maskText(cleanChat(m.say), fc)
+            if (say) vn.say = say
+          }
+        }
+        break
+      }
+      case 'mtomb': {
+        // 방장이 난입한 내게만 보낸다 (tellViewerMarks)
+        if (this.peerIndex.get(from) !== 0) break
+        const fc = loadStreamCfg()
+        const t = cleanTomb(m, (x) => maskText(cleanChat(x), fc))
+        if (t && Number.isInteger(m.a)) this.tomb(m.a, t)
         break
       }
       case 'mchat': {
@@ -2598,7 +2616,8 @@ export class Session {
     this.nameNextAt = now + 3000
   }
 
-  private nameMonster(id: number, nick: string, area: number, now: number): void {
+  /** quiet = 난입한 사람이 방장에게 다시 받은 이름 (알림 없이 붙인다) */
+  private nameMonster(id: number, nick: string, area: number, now: number, quiet = false): void {
     // 보물 고블린인지는 판에서 본다 — 방 사람들 화면(mname 으로 받는다)도 같은 답을 낸다
     const m = areaView(this.state, area).monsters.find((q) => q.id === id)
     const gob = !!m && MONSTER_LIST[m.kind].attack === 'flee'
@@ -2608,7 +2627,7 @@ export class Session {
       // 엔딩에 다 올릴 수 없을 만큼은 들고 있지 않는다 (먼저 나온 사람부터 뺀다)
       if (this.castNames.size > 200) this.castNames.delete(this.castNames.keys().next().value as string)
     }
-    if (area !== this.viewArea) return
+    if (area !== this.viewArea || quiet) return
     if (gob) this.renderer.notice(`💰 ${nick} — ${bt('보물 고블린')}! 달아나면 시청자가 이긴다`, '#ffd84a', 3.4, this.renderer.sayScale)
     else this.renderer.notice(`${nick} 등장! — 시청자 이름 괴물`, VIEWER_TAG, 2.6, this.renderer.sayScale)
   }
@@ -2620,6 +2639,17 @@ export class Session {
     this.vnames.delete(id)
     this.tomb(v.area, { x, y, kind: 'rip', nick: v.nick, say: v.say })
     if (v.area === this.viewArea) this.renderer.notice(`${v.nick} 처치!`, VIEWER_TAG, 3, this.renderer.sayScale)
+  }
+
+  /**
+   * 방장: 난입한 사람에게 지금 살아 있는 시청자 이름 괴물 · 이미 선 비석을 알려 준다 (2026-11-13 브라우저 셋으로 확인 — 이름은 붙는 순간에만
+   * 방에 알려서, 늦게 들어온 사람은 그 괴물이 쓰러져도 비석이 안 서고 👑 배너도 안 떴다). 방송하는 사람이 손님이어도 방장은 받은 것을 다 안다
+   */
+  private tellViewerMarks(to: string): void {
+    const link = this.cfg.link
+    if (!link) return
+    for (const [m, v] of this.vnames) link.sendCtl({ t: 'mname', a: v.area, m, nick: v.nick, old: 1, ...(v.crown ? { crown: 1 as const } : {}), ...(v.say ? { say: v.say } : {}) }, to)
+    for (const [a, list] of this.tombs) for (const t of list) link.sendCtl({ t: 'mtomb', a, x: t.x, y: t.y, kind: t.kind, nick: t.nick, ...(t.say ? { say: t.say } : {}), ...(t.who ? { who: t.who } : {}) }, to)
   }
 
   private tomb(area: number, t: Tomb): void {
@@ -3232,6 +3262,7 @@ export class Session {
       const tick = this.state.tick + Session.JOIN_LEAD_TICKS
       const live = { t: 'joinLive' as const, p: r.p, tick, char: r.char, team: r.team, name: r.name, id: r.peerId, sheet: r.sheet }
       this.cfg.link?.sendCtl(live)
+      this.tellViewerMarks(r.peerId)
       this.pendingJoins.push({ p: r.p, tick, char: r.char, team: r.team, name: r.name, sheet: r.sheet })
       this.pendingRejoin = null
       return

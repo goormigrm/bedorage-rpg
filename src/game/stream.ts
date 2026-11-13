@@ -352,6 +352,20 @@ export function addTomb(list: Tomb[], t: Tomb): void {
   if (list.length > TOMB_MAX) list.shift()
 }
 
+/** 방 통로로 받은 비석을 다듬는다 (난입한 사람이 방장에게 받는다 — session mtomb): 모양이 틀리면 null · 글은 clean(가릴 말 · 길이)을 거친다 */
+export function cleanTomb(raw: unknown, clean: (s: string) => string): Tomb | null {
+  const r = raw as Partial<Tomb> | null
+  if (!r || typeof r !== 'object' || !Number.isFinite(r.x) || !Number.isFinite(r.y) || (r.kind !== 'rip' && r.kind !== 'win' && r.kind !== 'ran') || typeof r.nick !== 'string') return null
+  const nick = clean(r.nick).slice(0, 20)
+  if (!nick) return null
+  const t: Tomb = { x: r.x as number, y: r.y as number, kind: r.kind, nick }
+  const say = typeof r.say === 'string' ? clean(r.say) : ''
+  const who = typeof r.who === 'string' ? clean(r.who).slice(0, 20) : ''
+  if (say) t.say = say
+  if (who) t.who = who
+  return t
+}
+
 type Fn<T> = (v: T) => void
 
 /**
