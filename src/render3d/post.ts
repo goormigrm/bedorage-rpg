@@ -155,7 +155,7 @@ void main() {
 `
 
 const mat = (frag: string, uniforms: Record<string, THREE.IUniform>, defines?: Record<string, string>) =>
-  new THREE.RawShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms, defines, depthTest: false, depthWrite: false })
+  new THREE.RawShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms, ...(defines ? { defines } : {}), depthTest: false, depthWrite: false })
 
 export class PostFx {
   /** 꺼져 있으면 장면을 화면에 바로 그린다 (자동 화질 낮음 · 오래된 GPU) */
