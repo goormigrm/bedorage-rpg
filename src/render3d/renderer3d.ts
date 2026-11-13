@@ -78,6 +78,8 @@ const FOLLOW_DIST = 18.5
 /** 기준 세로 시야각. 화면이 넓어지면 resize() 가 이 값을 줄여 보이는 면적을 유지한다 */
 const BASE_FOV = 40
 const GUN_H = 0.95
+/** 탄 묶음 칸 수 (탄 한 발 = 셋까지 — 300발) */
+const SHOT_INST = 900
 /**
  * 미니맵 창 한 변(px)과 타일당 px. 회전돼 있어 대각선으로는 더 멀리 보인다.
  * 처음 170/11(한 변 ≈ 15칸)은 "보여 주는 게 너무 적다"(2026-09-05) → 190/7 로 넓혔다 (한 변 ≈ 27칸, 대각선 ≈ 38칸).
@@ -142,6 +144,8 @@ interface Particle {
   max: number
   gravity: number
   spin: number
+  /** 길쭉한 조각(탄피): 폭은 0.6배 · 길이는 이 배율 (없으면 정육면체) */
+  len?: number
 }
 
 interface WorldText {
@@ -390,9 +394,14 @@ export class Renderer3D {
   /** 바닥 전리품 (id → 빛기둥). 내 것과 버려진 것만 보인다 (개인 전리품) */
   private dropMeshes = new Map<number, THREE.Group>()
   private localForDrops = -1
-  private bulletPool: THREE.Group[] = []
+  /**
+   * 탄 묶음 (2026-11-13 2차): 탄 한 발이 빛줄기 판 둘 + 꼬리 하나로 그리기 호출 세 번이었다(넷이 연사하면 100번 넘게) →
+   * 같은 판 · 같은 그림이라 인스턴스 하나에 모으고 무기마다 다른 색은 인스턴스 색으로 (탄이 없으면 숨긴다)
+   */
+  private shotInst!: THREE.InstancedMesh
+  private readonly shotObj = new THREE.Object3D()
+  private readonly bulletPrev = new Map<number, { x: number; y: number }>()
   /** 탄 꼬리 (덕코프식 트레이서 — 총구에서 탄까지 가늘고 긴 빛줄): 탄마다 바닥과 나란한 판 하나 */
-  private tracerPool: THREE.Mesh[] = []
   /** 명중·벽 섬광 (카메라를 보는 스프라이트, 커지며 사라진다) */
   private impacts: { sprite: THREE.Sprite; life: number; max: number; size: number }[] = []
   private particles: Particle[] = []
@@ -702,19 +711,23 @@ export class Renderer3D {
    */
   private streakGeo = new THREE.PlaneGeometry(1, 1)
   private streakTex = makeStreakTexture()
+  private slashTex = makeSlashTexture(true)
+  private trailTex = makeSlashTexture(false)
   private glowTex = makeGlowTexture()
   // ☀ 밝은 바닥에서는 더하기 빛이 하얗게 묻힌다 → 보통 섞기 + 진한 색 (2026-11-12 — 꼬리만 그랬고 탄 머리는 그대로 묻혔다).
   // 무기마다 탄이 다르게: 레일건 = 푸른 빛줄 · 석궁 = 짧은 나무 화살 · 유탄 = 굵은 덩이 · 화염 = 붉은 불길
-  private streakMats = isBright()
+  // 꼬리(tracer): 🌙 는 더하기 빛이라 옅기(0.55)를 색에 곱해 둔다
+  private streakCols = isBright()
     ? {
-        default: this.streakMat(0xff8a1a, true), sniper: this.streakMat(0xe8452a, true), shotgun: this.streakMat(0xff6a2a, true),
-        rail: this.streakMat(0x1aa8ff, true), bolt: this.streakMat(0x7a4a20, true), boom: this.streakMat(0x3a6a1a, true), flame: this.streakMat(0xff5a1a, true),
+        default: new THREE.Color(0xff8a1a), sniper: new THREE.Color(0xe8452a), shotgun: new THREE.Color(0xff6a2a),
+        rail: new THREE.Color(0x1aa8ff), bolt: new THREE.Color(0x7a4a20), boom: new THREE.Color(0x3a6a1a), flame: new THREE.Color(0xff5a1a),
+        tracer: null,
       }
     : {
-        default: this.streakMat(0xffe28a), sniper: this.streakMat(0xffffff), shotgun: this.streakMat(0xffb060),
-        rail: this.streakMat(0x6adcff), bolt: this.streakMat(0xe8d8b0), boom: this.streakMat(0xb8e060), flame: this.streakMat(0xff8a3a),
+        default: new THREE.Color(0xffe28a), sniper: new THREE.Color(0xffffff), shotgun: new THREE.Color(0xffb060),
+        rail: new THREE.Color(0x6adcff), bolt: new THREE.Color(0xe8d8b0), boom: new THREE.Color(0xb8e060), flame: new THREE.Color(0xff8a3a),
+        tracer: new THREE.Color(0xffc070).multiplyScalar(0.55),
       }
-  private tracerMat = this.streakMat(0xffc070)
   private particleGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1)
   private raycaster = new THREE.Raycaster()
   private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -810,6 +823,17 @@ export class Renderer3D {
     this.partMesh.count = 0
     this.partMesh.frustumCulled = false
     this.scene.add(this.partMesh)
+    // ☀ 밝은 바닥에서는 더하기 빛이 하얗게 묻힌다 → 보통 섞기 + 진한 색 (streakCols)
+    this.shotInst = new THREE.InstancedMesh(this.streakGeo, this.streakMat(0xffffff, isBright()), SHOT_INST)
+    this.shotInst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SHOT_INST * 3), 3)
+    this.shotInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    this.shotInst.count = 0
+    this.shotInst.visible = false
+    this.shotInst.frustumCulled = false
+    // 연기 · 빛 알갱이(5 · 6)보다는 먼저 — 묶음은 깊이 정렬이 원점 기준이라 순서를 못박는다
+    this.shotInst.renderOrder = 4
+    this.shotObj.rotation.order = 'YXZ'
+    this.scene.add(this.shotInst)
     this.glow = new SpriteFx(900, true)
     this.puff = new SpriteFx(360, false)
     this.scene.add(this.puff.mesh, this.glow.mesh)
@@ -1722,7 +1746,8 @@ export class Renderer3D {
               tip.x - Math.cos(rad) * 0.25, tip.y + 0.05, tip.z - Math.sin(rad) * 0.25,
               Math.cos(side) * sp - Math.cos(rad) * 0.01, 0.07 + Math.random() * 0.04, Math.sin(side) * sp - Math.sin(rad) * 0.01,
               // 크기는 조각 상자(0.1 칸)의 배율 — 예전 0.085 는 1px 도 안 돼 안 보였다(2026-10-17). 바닥에 조금 더 오래 남는다
-              2.4, shell ? 0xc8402a : 0xe0b850, shell ? 0.75 : 0.55,
+              // 길쭉한 통 모양으로 (2026-11-13 2차 — 정육면체라 금빛 모래알 같았다)
+              2.4, shell ? 0xc8402a : 0xe0b850, shell ? 0.7 : 0.5, shell ? 2 : 2.2,
             )
           }
           break
@@ -2426,16 +2451,6 @@ export class Renderer3D {
     })
   }
 
-  /** 빛줄기 하나: 바닥과 나란한 판 + 세로 판. 길이는 x, 폭은 y·z 스케일 */
-  private makeStreak(): THREE.Group {
-    const g = new THREE.Group()
-    const flat = new THREE.Mesh(this.streakGeo, this.streakMats.default)
-    flat.rotation.x = -Math.PI / 2
-    const up = new THREE.Mesh(this.streakGeo, this.streakMats.default)
-    g.add(flat, up)
-    return g
-  }
-
   /** 탄이 막힌 자리의 겉: 그 칸(지금 바닥이면 탄이 가던 쪽으로 몇 px 더 · 방금 부서진 모래주머니 · 구조물 자리도) */
   private surfaceAt(px: number, py: number, rad: number): number {
     const m = this.map
@@ -2531,13 +2546,13 @@ export class Renderer3D {
     this.puff.spawn(x, y, z, vx, vy, vz, life, color, size, { alpha })
   }
 
-  private spawnParticle(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number): void {
+  private spawnParticle(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, color: number, size: number, len?: number): void {
     // 넘치면 가장 오래된 것 자리에 (배열 앞쪽이 대체로 오래됐다)
     if (this.particles.length >= PART_MAX) this.particles.shift()
     const c = this.tmpColor.setHex(color)
     this.particles.push({
       x, y, z, rx: Math.random() * 3, rz: Math.random() * 3, size, r: c.r, g: c.g, b: c.b,
-      vx, vy, vz, life, max: life, gravity: 0.35, spin: (Math.random() - 0.5) * 8,
+      vx, vy, vz, life, max: life, gravity: 0.35, spin: (Math.random() - 0.5) * 8, len,
     })
   }
 
@@ -2569,10 +2584,20 @@ export class Renderer3D {
     if (!mesh) {
       const g = new THREE.BufferGeometry()
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((TRAIL_N + 1) * 2 * 3), 3))
+      // 그림 좌표(꼬리 0 → 머리 1 · 안 0 → 밖 1)와 법선 — 법선이 있어야 데우기 견본(warmKit 의 그림 있는 양면 투명)과 같은 셰이더를 쓴다
+      const uv = new Float32Array((TRAIL_N + 1) * 2 * 2)
+      const nor = new Float32Array((TRAIL_N + 1) * 2 * 3)
+      for (let i = 0; i <= TRAIL_N; i++) {
+        uv[i * 4] = uv[i * 4 + 2] = i / TRAIL_N
+        uv[i * 4 + 3] = 1
+        nor[i * 6 + 1] = nor[i * 6 + 4] = 1
+      }
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+      g.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
       const idx: number[] = []
       for (let i = 0; i < TRAIL_N; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2)
       g.setIndex(idx)
-      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
+      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: this.trailTex, transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false }))
       mesh.frustumCulled = false
     }
     const mat = mesh.material as THREE.MeshBasicMaterial
@@ -2582,7 +2607,7 @@ export class Renderer3D {
     mat.opacity = 0
     mesh.position.set(x, 0.5, z)
     this.scene.add(mesh)
-    this.trails.push({ mesh, t: 0, sweep: thrust ? 0.07 : 0.1, fade: 0.16, a0: aim + half, span: -2 * half, rIn: range * (thrust ? 0.8 : 0.6), rOut: range * 0.98, peak: bright ? 0.85 : 0.7 })
+    this.trails.push({ mesh, t: 0, sweep: thrust ? 0.07 : 0.1, fade: 0.16, a0: aim + half, span: -2 * half, rIn: range * (thrust ? 0.8 : 0.6), rOut: range * 0.98, peak: bright ? 1 : 0.95 })
   }
 
   /** 궤적 띠 한 장을 지금 모양으로 (머리 = 지금 칼끝 · 꼬리는 호의 0.55 뒤 — 다 쓴 뒤엔 꼬리가 머리로 따라붙으며 사라진다 · 폭은 초승달) */
@@ -2615,11 +2640,11 @@ export class Renderer3D {
         const key = `${w.id}|${j}`
         let g = this.slashGeo.get(key)
         if (!g) {
-          g = new THREE.RingGeometry(range * 0.38, range, 10, 1, -half + (j * 2 * half) / 3, (2 * half) / 3 + 0.02)
+          g = arcUv(new THREE.RingGeometry(range * 0.38, range, 10, 1, -half + (j * 2 * half) / 3, (2 * half) / 3 + 0.02), 10)
           g.rotateX(-Math.PI / 2)
           this.slashGeo.set(key, g)
         }
-        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
+        const mesh = this.slashPool.pop() ?? new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: this.slashTex, transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
         mesh.geometry = g
         const mat = mesh.material as THREE.MeshBasicMaterial
         // ☀ 밝은 바닥 · 벽 위에서는 더하기 빛 부채꼴이 흰 판으로 날아갔다 → 궤적 띠처럼 보통 섞기 + 진한 장난감 색 (2026-11-12)
@@ -2632,7 +2657,7 @@ export class Renderer3D {
         mesh.rotation.y = -aim
         mesh.visible = false
         this.scene.add(mesh)
-        this.slashes.push({ mesh, life: 0.17, max: 0.17, delay: j * 0.045, peak: bright ? 0.45 : 0.75 })
+        this.slashes.push({ mesh, life: 0.17, max: 0.17, delay: j * 0.045, peak: bright ? 0.8 : 1 })
       }
       return
     }
@@ -2642,20 +2667,20 @@ export class Renderer3D {
       const half = ((w.meleeArc ?? 150) / 1024) * Math.PI * 2
       // 휘두르기는 바깥쪽 얇은 호(칼끝이 지나간 자리), 장검은 찌르는 쐐기
       const inner = range * (w.family === 'rapier' ? 0.3 : 0.74)
-      geo = new THREE.RingGeometry(inner, range, 20, 1, -half, half * 2)
+      geo = arcUv(new THREE.RingGeometry(inner, range, 20, 1, -half, half * 2), 20)
       geo.rotateX(-Math.PI / 2)
       this.slashGeo.set(w.id, geo)
     }
     const color = w.family === 'rapier' ? 0xeaf4ff : 0xffe2a0
     // 재질은 모아 두었다가 다시 쓴다 (2026-09-23): 휘두를 때마다 만들고 0.14초 뒤 해제했더니, 그 셰이더를 쓰는 재질이
     // 하나도 안 남는 순간 three 가 셰이더 프로그램까지 지워 다음 휘두르기에서 다시 컴파일했다(한 번에 100~150ms 멈춤)
-    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
+    const mesh = this.slashPool.pop() ?? new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.slashTex, transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending }))
     mesh.geometry = geo
     const mat = mesh.material as THREE.MeshBasicMaterial
     const bright = isBright()
     mat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
     mat.color.setHex(bright ? (w.family === 'rapier' ? 0x3fc8ff : 0xffb21f) : color)
-    mat.opacity = bright ? 0.45 : 0.6
+    mat.opacity = bright ? 0.8 : 0.9
     mesh.scale.setScalar(1)
     mesh.position.set(x, 0.45, z)
     // 링 조각은 +x 가 가운데, 바닥에 눕히면 각이 -z 쪽으로 돈다 → y 축으로 -aim 만큼 돌리면 조준 방향
@@ -6271,65 +6296,72 @@ export class Renderer3D {
   }
 
   private updateBullets(prev: GameState, curr: GameState, alpha: number): void {
-    const prevById = new Map<number, { x: number; y: number }>()
-    for (const b of prev.bullets) prevById.set(b.id, { x: b.x, y: b.y })
+    // 지난 틱 자리는 탄 객체를 그대로 가리킨다 (프레임마다 탄 수만큼 새 객체를 만들지 않는다)
+    const prevById = this.bulletPrev
+    prevById.clear()
+    for (const b of prev.bullets) prevById.set(b.id, b)
+    const inst = this.shotInst
+    const o = this.shotObj
+    const C = this.streakCols
     let n = 0
     for (const b of curr.bullets) {
-      const pb = prevById.get(b.id) ?? { x: b.px, y: b.py }
-      const x = (pb.x + (b.x - pb.x) * alpha) * U
-      const z = (pb.y + (b.y - pb.y) * alpha) * U
-      let streak = this.bulletPool[n]
-      if (!streak) {
-        streak = this.makeStreak()
-        this.bulletPool[n] = streak
-        this.scene.add(streak)
-      }
-      streak.visible = true
+      if (n + 3 > SHOT_INST) break
+      const pb = prevById.get(b.id)
+      const x = ((pb ? pb.x : b.px) + (b.x - (pb ? pb.x : b.px)) * alpha) * U
+      const z = ((pb ? pb.y : b.py) + (b.y - (pb ? pb.y : b.py)) * alpha) * U
       const speed = Math.hypot(b.vx, b.vy)
       const dx = speed > 0 ? b.vx / speed : 1
       const dz = speed > 0 ? b.vy / speed : 0
-      // 무기마다 줄기 길이·색이 다르다: 저격은 길고 하얗게, 산탄은 짧고 주황
+      // 무기마다 줄기 길이·색이 다르다: 저격은 길고 하얗게, 산탄은 짧고 주황 · 레일건 푸른 빛줄 · 석궁 짧은 나무 화살 · 유탄 굵은 덩이 · 화염 붉은 불길
       const w = WEAPONS[b.weapon]
       const sn = w.family === 'sniper'
-      const M = this.streakMats
       const rail = w.id === 'railgun'
       const bolt = w.id === 'crossbow'
-      const mat = rail ? M.rail : bolt ? M.bolt : w.boom ? M.boom : w.id === 'flamer' ? M.flame : sn ? M.sniper : w.pellets > 1 ? M.shotgun : M.default
-      for (const child of streak.children) (child as THREE.Mesh).material = mat
+      const col = rail ? C.rail : bolt ? C.bolt : w.boom ? C.boom : w.id === 'flamer' ? C.flame : sn ? C.sniper : w.pellets > 1 ? C.shotgun : C.default
       const len = bolt ? 0.95 : w.boom ? 0.45 : speed * U * (rail ? 4.6 : sn ? 3.4 : w.pellets > 1 ? 1.3 : 2.1)
       const wid = rail ? 0.2 : bolt ? 0.07 : sn ? 0.14 : w.boom ? 0.34 : w.id === 'flamer' ? 0.3 : 0.1
-      // 머리(밝은 끝)가 탄 위치, 꼬리는 뒤로
-      streak.position.set(x - dx * len * 0.5, GUN_H, z - dz * len * 0.5)
-      streak.rotation.y = -Math.atan2(dz, dx)
-      streak.scale.set(len, wid, wid)
-      // 꼬리: 총구에서 날아온 만큼(저격 9칸 · 산탄 1.2칸 · 나머지 4.5칸까지) 가늘고 옅은 빛줄 — 머리 쪽이 진하다
-      let tr = this.tracerPool[n]
-      if (!tr) {
-        tr = new THREE.Mesh(this.streakGeo, this.tracerMat)
-        tr.rotation.order = 'YXZ'
-        this.tracerPool[n] = tr
-        this.scene.add(tr)
-      }
+      const ry = -Math.atan2(dz, dx)
       const flown = Math.hypot(x - b.ox * U, z - b.oy * U)
+      // 꼬리: 총구에서 날아온 만큼(저격 9칸 · 산탄 1.2칸 · 나머지 4.5칸까지) 가늘고 옅은 빛줄 — 머리 쪽이 진하다
       let tl = Math.min(flown, sn ? 9 : w.pellets > 1 ? 1.2 : 4.5)
       // 1인칭(정조준): 내 총알의 눈앞 1.5칸은 비운다 — 눈 바로 아래 높이의 띠가 화면 구석에서 길게 뻗어 보였다 (2026-10-24 패치 영상)
-      if (this.fpsFirst && b.owner === this.fpsPlayer) {
-        tl = Math.min(tl, flown - 1.5)
-        streak.visible = flown > 1.5
+      const mine = this.fpsFirst && b.owner === this.fpsPlayer
+      if (mine) tl = Math.min(tl, flown - 1.5)
+      // ☀ 는 보통 섞기라 나중에 적은 것이 위에 온다 — 꼬리를 먼저, 머리를 나중에. 다른 탄의 꼬리가 머리를 덮어도 티가 안 나게 ☀ 꼬리는 그 탄의 색
+      if (tl > len && !bolt) {
+        o.position.set(x - dx * tl * 0.5, GUN_H - 0.01, z - dz * tl * 0.5)
+        o.scale.set(tl, sn ? 0.055 : 0.04, 1)
+        o.rotation.set(-Math.PI / 2, ry, 0)
+        o.updateMatrix()
+        inst.setMatrixAt(n, o.matrix)
+        inst.setColorAt(n++, C.tracer ?? col)
       }
-      tr.visible = tl > len && !bolt
-      tr.position.set(x - dx * tl * 0.5, GUN_H - 0.01, z - dz * tl * 0.5)
-      tr.rotation.set(-Math.PI / 2, -Math.atan2(dz, dx), 0)
-      tr.scale.set(tl, sn ? 0.055 : 0.04, 1)
-      n++
+      if (!mine || flown > 1.5) {
+        // 머리(밝은 끝)가 탄 위치, 꼬리는 뒤로. 바닥과 나란한 판 + 세로 판을 겹쳐 어느 각도에서도 보인다
+        o.position.set(x - dx * len * 0.5, GUN_H, z - dz * len * 0.5)
+        o.scale.set(len, wid, wid)
+        o.rotation.set(-Math.PI / 2, ry, 0)
+        o.updateMatrix()
+        inst.setMatrixAt(n, o.matrix)
+        inst.setColorAt(n++, col)
+        o.rotation.set(0, ry, 0)
+        o.updateMatrix()
+        inst.setMatrixAt(n, o.matrix)
+        inst.setColorAt(n++, col)
+      }
     }
-    for (let i = n; i < this.bulletPool.length; i++) this.bulletPool[i].visible = false
-    for (let i = n; i < this.tracerPool.length; i++) this.tracerPool[i].visible = false
-    // ☀ 밝은 바닥에서는 더하기 빛이 하얗게 묻힌다 → 보통 섞기 + 진한 주황
-    const bright = isBright()
-    this.tracerMat.blending = bright ? THREE.NormalBlending : THREE.AdditiveBlending
-    this.tracerMat.color.setHex(bright ? 0xff7a2a : 0xffc070)
-    this.tracerMat.opacity = bright ? 0.85 : 0.55
+    inst.count = n
+    inst.visible = n > 0
+    if (n > 0) {
+      const m = inst.instanceMatrix
+      m.clearUpdateRanges()
+      m.addUpdateRange(0, n * 16)
+      m.needsUpdate = true
+      const c = inst.instanceColor!
+      c.clearUpdateRanges()
+      c.addUpdateRange(0, n * 3)
+      c.needsUpdate = true
+    }
   }
 
   private updateEffects(dt: number): void {
@@ -6364,7 +6396,9 @@ export class Renderer3D {
       d.position.set(q.x, q.y, q.z)
       d.rotation.set(q.rx, 0, q.rz)
       // 끝날 때 툭 사라지지 않고 작아지며 사라진다 (마지막 0.25초)
-      d.scale.setScalar(q.size * Math.min(1, q.life / Math.min(0.25, q.max * 0.5)))
+      const ps = q.size * Math.min(1, q.life / Math.min(0.25, q.max * 0.5))
+      if (q.len) d.scale.set(ps * 0.6, ps * q.len, ps * 0.6)
+      else d.scale.setScalar(ps)
       d.updateMatrix()
       pm.setMatrixAt(live, d.matrix)
       pc.setXYZ(live, q.r, q.g, q.b)
@@ -6429,7 +6463,7 @@ export class Renderer3D {
       const k = 1 - sl.life / sl.max
       // 조각 궤적(바이올린)은 크기를 키우지 않는다 — 실제 범위 그대로
       if (sl.peak === undefined) sl.mesh.scale.setScalar(0.85 + 0.25 * k)
-      ;(sl.mesh.material as THREE.MeshBasicMaterial).opacity = (sl.peak ?? 0.6) * (1 - k)
+      ;(sl.mesh.material as THREE.MeshBasicMaterial).opacity = (sl.peak ?? (isBright() ? 0.8 : 0.9)) * (1 - k)
     }
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]
@@ -6851,6 +6885,45 @@ const SKILL_COLOR: Record<string, number> = {
 }
 
 /** 빛줄기 텍스처: 머리(u=1)는 밝고 꼬리(u=0)로 갈수록 사라진다. 위아래 가장자리도 부드럽게 */
+/**
+ * 근접 궤적 그림 (2026-11-13 2차): 칼끝이 지나간 바깥 호(v = 1)가 밝고 안쪽으로 스러진다 — 한 색 판이라 3인칭에서 종이 부채처럼 보였다.
+ * sym = 양 끝이 스러지는 부채꼴 조각 · 아니면 머리(u = 1)가 밝고 꼬리로 사라지는 궤적 띠. 색은 재질이 곱한다(흰 그림 + 알파)
+ */
+function makeSlashTexture(sym: boolean): THREE.CanvasTexture {
+  const W = 64
+  const H = 32
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const g = c.getContext('2d')!
+  const img = g.createImageData(W, H)
+  const sm = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t))
+  for (let y = 0; y < H; y++) {
+    const v = 1 - y / (H - 1)
+    const rim = (0.16 * v + 0.84 * v * v * v) * sm((1 - v) / 0.07)
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1)
+      const ends = sym ? sm(u / 0.2) * sm((1 - u) / 0.2) : Math.pow(u, 1.25) * sm((1 - u) / 0.05)
+      const i = (y * W + x) * 4
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255
+      img.data[i + 3] = Math.round(255 * Math.min(1, rim * 1.15) * ends)
+    }
+  }
+  g.putImageData(img, 0, 0)
+  const t = new THREE.CanvasTexture(c)
+  t.minFilter = THREE.LinearFilter
+  t.magFilter = THREE.LinearFilter
+  t.generateMipmaps = false
+  return t
+}
+
+/** 고리 조각의 그림 좌표를 (호를 따라 u · 안 → 밖 v)로 — RingGeometry 는 평면 좌표라 궤적 그림을 못 쓴다 */
+function arcUv(g: THREE.RingGeometry, seg: number): THREE.RingGeometry {
+  const uv = g.getAttribute('uv') as THREE.BufferAttribute
+  for (let j = 0; j <= 1; j++) for (let i = 0; i <= seg; i++) uv.setXY(j * (seg + 1) + i, i / seg, j)
+  return g
+}
+
 function makeStreakTexture(): THREE.CanvasTexture {
   const c = document.createElement('canvas')
   c.width = 128
