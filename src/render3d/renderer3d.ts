@@ -758,7 +758,8 @@ export class Renderer3D {
       })
     // 셰이더 오류 확인은 개발 · 화면 시험(?shot=1 — tools/uitest.mjs 가 빌드한 판에서 콘솔의 셰이더 오류를 잡는다)에서만 (2026-11-12):
     // 켜 두면 처음 쓰는 셰이더마다 컴파일 로그를 동기로 물어 10 ~ 35ms 멈추고, 락스텝이라 모두가 기다린다
-    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1'))
+    // 계측용 `?shot=1&nocheck=1`: 계측 훅(__session)은 쓰되 확인은 배포판처럼 끈다 (2026-11-13 난입 순간 방장 막힘을 빌드한 판에서 다시 잼)
+    this.gl.debug.checkShaderErrors = import.meta.env.DEV || (typeof location !== 'undefined' && location.search.includes('shot=1') && !location.search.includes('nocheck=1'))
     this.gl.shadowMap.enabled = true
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
@@ -979,6 +980,7 @@ export class Renderer3D {
     this.scene.remove(this.world.group)
     this.scene.remove(this.vision.group)
     const old = [this.world, this.vision]
+    for (const d of old) this.markGone(d.group)
     this.afterCompiles(() => old.forEach((d) => d.dispose()))
     this.map = map
     // 만들다 만 것이면 남은 걸음을 지금 끝낸다 (한 일은 그대로 쓴다)
@@ -1045,8 +1047,19 @@ export class Renderer3D {
    * 지워 "Cannot read properties of undefined (reading 'isReady')" 가 났다 — 오류 보고 단추가 떴다)
    */
   private afterCompiles(f: () => void): void {
+    // 기다리는 사이 새 컴파일이 시작됐으면 그것도 기다린다 (2026-11-13 난입 계측에서 같은 오류 재현: 준비 줄에 남아 있던 **떠나온 지역**의
+    // 시야 · 세계 데우기가 기다리기 시작한 뒤에 돌기 시작해, 앞 컴파일만 끝나면 그 재질을 지웠다 — 난입 여섯 번에 두 번)
     if (this.compiling.size === 0) f()
-    else void Promise.allSettled([...this.compiling]).then(f)
+    else void Promise.allSettled([...this.compiling]).then(() => this.afterCompiles(f))
+  }
+
+  /** 치울 묶음: 준비 줄(데우기 · 텍스처 올리기)이 건너뛰게 표시한다 — 곧 지울 재질을 컴파일하거나 지운 텍스처를 다시 올리지 않게 */
+  private markGone(g: THREE.Object3D): void {
+    g.traverse((o) => {
+      this.gone.add(o)
+      const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined
+      for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
+    })
   }
 
   /** 지역에 들어선 뒤 셰이더를 비동기로 컴파일하는 중 (그동안 3D 를 그리지 않는다 — 페이드가 덮는다) */
@@ -1129,13 +1142,7 @@ export class Renderer3D {
   }
 
   private dropPrebuilt(p: { world: World3D; vision: Vision }): void {
-    for (const g of [p.world.group, p.vision.group]) {
-      g.traverse((o) => {
-        this.gone.add(o)
-        const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined
-        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) if (m.map) this.gone.add(m.map)
-      })
-    }
+    for (const g of [p.world.group, p.vision.group]) this.markGone(g)
     this.afterCompiles(() => {
       p.world.dispose()
       p.vision.dispose()
