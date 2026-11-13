@@ -414,7 +414,7 @@ export class BonfireScene {
       const hover = s.id === this.hovered
       // 눈 깜빡임 (사람마다 다른 박자)
       seatN++
-      s.rig.setBlink((t + seatN * 1.3) % (3.3 + seatN * 0.37) < 0.12)
+      s.rig.setFace((t + seatN * 1.3) % (3.3 + seatN * 0.37) < 0.12 ? 'blink' : 'normal')
       s.k += ((chosen ? 1 : 0) - s.k) * Math.min(1, dt * 3)
       const p = s.rig.root.position
       p.lerpVectors(s.home, s.front, s.k)

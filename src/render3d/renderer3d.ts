@@ -51,7 +51,8 @@ import { BASE_H, BASE_W, GL_PIXELS, Hud, RenderOptions, STAGE_SCALE, ScreenText,
 import { dropLabelPanel } from '../render/d4hud'
 import { renderMapTiles } from '../render/minimap'
 import { PITCH, YAW, worldDirToScreen } from './camera'
-import { CharacterRig, blinkTexture, buildCharacter, buildGun, enableXray, setRigDisposer, setRigOpacity, makeShield } from './character3d'
+import { CharacterRig, buildCharacter, buildGun, enableXray, facesOf, setRigDisposer, setRigOpacity, makeShield } from './character3d'
+import { Face, bodyTexture } from './faceTexture'
 import { gunMat } from './weapon3d'
 import { Bake } from './bake'
 import { VIEW_RADIUS_TILES, Viewer, Vision, canSee, fogStructures, setNearFade } from './vision'
@@ -187,6 +188,9 @@ interface DuckVis {
   reloadSwing: number
   /** 쏜 직후 총의 반동 (1 → 0 · 팔이 뒤로 밀리고 총구가 들린다 — 2026-11-12) */
   gunKick: number
+  /** 표정: 쏜 뒤 찌푸린 얼굴이 남는 시간 · 기쁜 얼굴이 남는 시간 (초) */
+  fireT: number
+  joyT: number
   /** 움직이는 쪽으로 기우는 몸 (조준 방향 기준 앞 · 옆 — 부드럽게 따라간다) */
   leanF: number
   leanS: number
@@ -1631,10 +1635,17 @@ export class Renderer3D {
     return (this.rigs[i]?.height ?? 1.6) + 0.75
   }
 
-  /** 눈 감은 얼굴 그림을 미리 올려 둔다 — 첫 깜빡임에 그림을 만들고 올리느라 멈칫하지 않게 */
+  /**
+   * 표정 그림을 미리 굽고 올려 둔다 — 처음 그 표정이 될 때 그림을 만들고 올리느라 멈칫하지 않게.
+   * 한 프레임에 한 장씩(warmFaceStep — 캐릭터마다 다섯 장이라 한꺼번에 하면 난입 순간이 길게 멈춘다) · 그 전에는 평소 얼굴
+   */
+  private faceJobs: { c: keyof typeof CHARACTERS; f: Face }[] = []
   private warmBlink(c: keyof typeof CHARACTERS): void {
-    const t = blinkTexture(CHARACTERS[c])
-    if (t) this.gl.initTexture(t)
+    for (const f of facesOf(CHARACTERS[c])) this.faceJobs.push({ c, f })
+  }
+  private warmFaceStep(): void {
+    const j = this.faceJobs.shift()
+    if (j) this.gl.initTexture(bodyTexture(CHARACTERS[j.c], j.f))
   }
 
   private ensureRigs(state: GameState): void {
@@ -1686,6 +1697,7 @@ export class Renderer3D {
           const w = WEAPONS[e.weapon]
           const rig = this.rigs[e.p]
           const v = this.vis[e.p]
+          v.fireT = 0.35
           if (w.melee) {
             // 근접: 휘두르는 몸짓 + 베기 궤적 (바이올린 = 넓고 붉은 호 · 장검 = 가늘고 긴 흰 쐐기 · 후라이팬 = 누런 호)
             v.swing = 1
@@ -2022,6 +2034,7 @@ export class Renderer3D {
         case 'levelup': {
           const p = state.players[e.p]
           if (!p) break
+          if (this.vis[e.p]) this.vis[e.p].joyT = 1.8
           if (e.p === localPlayer) this.hud.notice(`레벨 ${e.level} — 능력치 포인트 +3 · 스킬 포인트 +1 (C · K)`, '#ffd86a')
           this.spawnRing(p.x * U, p.y * U, 0.3, 3, 0.8, 0xffd86a)
           this.spawnImpact(p.x * U, 1.2, p.y * U, 0xffd86a, 4)
@@ -2180,6 +2193,7 @@ export class Renderer3D {
           }
           if (rank >= 3) {
             // 막 보스 쓰러짐 (2026-10-08 퀄리티 5단계): 1.2초 느린 화면 + 금화 · 별 분수가 솟아 사방에 떨어진다
+            for (const pv of this.vis) pv.joyT = 3
             this.slowMo = 1.2
             this.punch = Math.max(this.punch, 1)
             for (let k = 0; k < 48; k++) {
@@ -2781,6 +2795,7 @@ export class Renderer3D {
       return this.cullFrustum.intersectsSphere(sph)
     })
     this.updateBullets(prev, curr, alpha)
+    this.warmFaceStep()
     this.updateShots(prev, curr, alpha)
     this.updateGlobes(curr)
     this.updateDrops(curr, opts.localPlayer)
@@ -4312,8 +4327,10 @@ export class Renderer3D {
     v.sy = Math.max(0.62, Math.min(1.5, v.sy + v.vsy * dt))
     v.flash = Math.max(0, v.flash - dt)
     rig.setFlash(v.flash > 0 ? Math.min(1, v.flash * 8) : 0, v.flashColor)
-    // 눈 깜빡임 (사람마다 다른 박자) · 맞으면 질끈 감는다
-    rig.setBlink(v.flash > 0 || (this.t + i * 1.7) % (3.1 + i * 0.6) < 0.12)
+    // 표정: 쓰러짐 > 맞음 > 기쁨(레벨업 · 보스 처치) > 쏘는 중 > 눈 깜빡임(사람마다 다른 박자)
+    v.fireT = Math.max(0, v.fireT - dt)
+    v.joyT = Math.max(0, v.joyT - dt)
+    rig.setFace(p.downed || !p.alive ? 'down' : v.flash > 0 ? 'hurt' : v.joyT > 0 ? 'joy' : v.fireT > 0 ? 'fire' : (this.t + i * 1.7) % (3.1 + i * 0.6) < 0.12 ? 'blink' : 'normal')
 
     // 걷기: 다리 스윙 + 달걀 몸 뒤뚱(좌우 기울기) + 통통 튀기
     if (p.moving) v.walk += dt * (p.sprinting ? 17 : 13) // 달리면 다리도 빨리 움직인다
@@ -6859,7 +6876,7 @@ export class Renderer3D {
 }
 
 function newVis(): DuckVis {
-  return { sx: 1, sy: 1, vsx: 0, vsy: 0, walk: 0, flash: 0, flashColor: 0xffffff, deadT: -1, fall: 0, hitCd: 0, swing: 0, reloadSwing: 0, gunKick: 0, leanF: 0, leanS: 0, px: NaN, pz: NaN }
+  return { sx: 1, sy: 1, vsx: 0, vsy: 0, walk: 0, flash: 0, flashColor: 0xffffff, deadT: -1, fall: 0, hitCd: 0, swing: 0, reloadSwing: 0, gunKick: 0, fireT: 0, joyT: 0, leanF: 0, leanS: 0, px: NaN, pz: NaN }
 }
 
 export { hex, PLAYER_RADIUS }

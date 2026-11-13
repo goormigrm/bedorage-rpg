@@ -869,6 +869,22 @@ function drawEyes(
       }
       break
     }
+    case 'dizzy': {
+      // X 자 눈 — 쓰러진 얼굴 (2026-11-13)
+      ctx.strokeStyle = OUTLINE
+      ctx.lineWidth = 2.2
+      const d = R * 0.15
+      for (const s of [-1, 1]) {
+        const cx = fx + s * eyeDx
+        ctx.beginPath()
+        ctx.moveTo(cx - d, eyeY - d)
+        ctx.lineTo(cx + d, eyeY + d)
+        ctx.moveTo(cx + d, eyeY - d)
+        ctx.lineTo(cx - d, eyeY + d)
+        ctx.stroke()
+      }
+      break
+    }
   }
 }
 

@@ -49,3 +49,32 @@ describe('캐릭터 · 무기 메시 수', () => {
     }
   })
 })
+
+// 표정 (2026-11-13 2차): 미리 구운 얼굴 그림을 바꿔 끼운다 — 같은 눈 · 입이 되는 표정은 한 장을 같이 쓰고, 안 구워진 표정은 평소 얼굴
+describe('캐릭터 표정', () => {
+  it('표정마다 그림이 다르고(쓰러짐은 누구나) · 같은 얼굴이 되는 표정은 한 장 · 안 구운 표정은 평소 얼굴', async () => {
+    const { bodyTexture, peekBodyTexture } = await import('../src/render3d/faceTexture')
+    for (const def of Object.values(CHARACTERS)) {
+      const normal = bodyTexture(def)
+      const rig = buildCharacter(def)
+      const body = meshes(rig.root).find((m) => (m.material as THREE.MeshToonMaterial).map === normal)!
+      expect(body, def.id).toBeTruthy()
+      const map = () => (body.material as THREE.MeshToonMaterial).map
+      // 아직 안 구웠다 → 평소 얼굴 그대로 (그 자리에서 굽느라 멈칫하지 않는다)
+      if (!peekBodyTexture(def, 'down')) {
+        rig.setFace('down')
+        expect(map(), def.id).toBe(normal)
+      }
+      const down = bodyTexture(def, 'down')
+      expect(down, def.id).not.toBe(normal)
+      const rig2 = buildCharacter(def)
+      const body2 = meshes(rig2.root).find((m) => (m.material as THREE.MeshToonMaterial).map === normal)!
+      rig2.setFace('down')
+      expect((body2.material as THREE.MeshToonMaterial).map, def.id).toBe(down)
+      rig2.setFace('normal')
+      expect((body2.material as THREE.MeshToonMaterial).map, def.id).toBe(normal)
+      // 웃는 눈 + 활짝 웃는 입인 캐릭터의 기쁜 얼굴은 평소 얼굴과 같은 그림
+      if (def.look.eyes === 'happy' && def.look.mouth === 'grin') expect(bodyTexture(def, 'joy'), def.id).toBe(normal)
+    }
+  })
+})

@@ -23,7 +23,8 @@ export interface Look {
   capText?: string
   /** 입술 색 (mouth: 'thick' 일 때) */
   lipColor?: number
-  eyes: 'normal' | 'calm' | 'squint' | 'angry' | 'happy' | 'sharp' | 'lidded'
+  /** 'dizzy'(X 자 눈)는 쓰러진 표정 전용 (render3d/faceTexture — 캐릭터 기본 눈으로는 쓰지 않는다) */
+  eyes: 'normal' | 'calm' | 'squint' | 'angry' | 'happy' | 'sharp' | 'lidded' | 'dizzy'
   brows: 'normal' | 'thick' | 'none' | 'arched'
   mouth: 'flat' | 'smile' | 'thick' | 'grin' | 'frown' | 'sing' | 'pout' | 'shout'
   /** 귀 크기 배율 (기본 1) */

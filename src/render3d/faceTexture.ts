@@ -49,12 +49,44 @@ function clothPath(ctx: CanvasRenderingContext2D): void {
   ctx.closePath()
 }
 
-/** blink = 눈을 감은 얼굴 (깜빡임 — 2026-11-12 · 같은 그림에 눈만 실눈으로) */
-export function bodyTexture(def0: CharacterDef, blink = false): THREE.CanvasTexture {
-  const key = `body:${def0.id}${blink ? ':blink' : ''}`
+/**
+ * 표정 (2026-11-13 2차 — 1차는 깜빡임뿐이었다): 같은 몸 그림에 눈 · 입만 바꾼 그림을 미리 구워 두고 바꿔 끼운다(프레임마다 다시 그리지 않는다).
+ * blink 눈 감음 · fire 쏘는 중(가늘게 노려보고 입을 다문다) · hurt 맞음(질끈 감고 입을 벌린다) · down 쓰러짐(X 자 눈) · joy 레벨업 · 보스 처치(웃는 눈 · 활짝 웃는 입)
+ */
+export type Face = 'normal' | 'blink' | 'fire' | 'hurt' | 'down' | 'joy'
+export const FACES: Face[] = ['blink', 'fire', 'hurt', 'down', 'joy']
+type Look = CharacterDef['look']
+/** 캐릭터답게: 늘 감은 눈(웃는 눈 · 실눈)은 쏠 때도 그대로 · 노래하는 입 · 외치는 입 · 도톰한 입술 · 삐죽 입은 쏠 때도 제 입 */
+function faceLook(L: Look, face: Face): Look {
+  switch (face) {
+    case 'blink':
+      return { ...L, eyes: 'squint' }
+    case 'fire':
+      // 눈은 가늘게 노려본다('angry' 는 동그랗게 뜬 눈이라 놀란 얼굴이 됐다)
+      return { ...L, eyes: L.eyes === 'happy' || L.eyes === 'squint' ? L.eyes : 'sharp', mouth: L.mouth === 'smile' || L.mouth === 'grin' || L.mouth === 'frown' ? 'flat' : L.mouth }
+    case 'hurt':
+      return { ...L, eyes: 'squint', mouth: 'shout' }
+    case 'down':
+      return { ...L, eyes: 'dizzy', mouth: 'frown' }
+    case 'joy':
+      return { ...L, eyes: 'happy', mouth: 'grin' }
+    default:
+      return L
+  }
+}
+const faceKey = (def: CharacterDef, L: Look): string => `body:${def.id}:${L.eyes}|${L.mouth}`
+/** 이미 구운 표정 그림 (없으면 null — 굽기는 렌더러가 한 프레임에 하나씩) */
+export function peekBodyTexture(def: CharacterDef, face: Face): THREE.CanvasTexture | null {
+  return cache.get(faceKey(def, faceLook(def.look, face))) ?? null
+}
+
+/** 같은 눈 · 입이 되는 표정끼리는 한 장을 같이 쓴다 (웃는 캐릭터의 joy = 평소 얼굴) */
+export function bodyTexture(def0: CharacterDef, face: Face = 'normal'): THREE.CanvasTexture {
+  const look = faceLook(def0.look, face)
+  const key = faceKey(def0, look)
   const hit = cache.get(key)
   if (hit) return hit
-  const def: CharacterDef = blink ? { ...def0, look: { ...def0.look, eyes: 'squint' } } : def0
+  const def: CharacterDef = face === 'normal' ? def0 : { ...def0, look }
   const L = def.look
   const c = document.createElement('canvas')
   c.width = W

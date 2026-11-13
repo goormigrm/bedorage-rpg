@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { CharacterDef, Look } from '../core/characters'
 import { WEAPONS, WeaponDef } from '../core/weapons'
-import { bodyTexture, labelTexture } from './faceTexture'
+import { FACES, Face, bodyTexture, labelTexture, peekBodyTexture } from './faceTexture'
 import { ToonFx, toonMat } from './toon'
 import { Bake, Tint, V3, at, ball, hoop, limb } from './bake'
 import { buildGun } from './weapon3d'
@@ -89,8 +89,8 @@ export interface CharacterRig {
   rarity: number
   /** 투구 · 갑옷 등급을 겉모습에 (2026-11-12): 투구 = 머리띠와 보석 · 갑옷 = 어깨 보호대. 0 이면 없음 */
   setGear(helm: number, armor: number): void
-  /** 눈 깜빡임 (감은 얼굴 그림으로 잠깐 바꾼다 — 뜬 눈인 캐릭터만) */
-  setBlink(on: boolean): void
+  /** 표정 (미리 구운 얼굴 그림으로 바꿔 끼운다 — 아직 안 구워진 표정이면 평소 얼굴 · 깜빡임은 뜬 눈인 캐릭터만) */
+  setFace(face: Face): void
 }
 
 /**
@@ -298,7 +298,7 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
   // ---- 투구 · 갑옷 등급 장식 (끼면 겉모습에 드러난다) ----
   let gear: THREE.Group | null = null
   let gearKey = 0
-  let blinkTex: THREE.Texture | null = null
+  const faceTex: Partial<Record<Face, THREE.Texture>> = { normal: bodyTexture(def) }
 
   body.scale.set(wide, tall, wide)
   const height = (centerY + R * EGG_Y + R * 0.35) * tall
@@ -359,9 +359,10 @@ export function buildCharacter(def: CharacterDef): CharacterRig {
       if (xray.visible) markStencil(gear)
       if (rigM.opacity < 1) setRigOpacity(rig, rigM.opacity)
     },
-    setBlink(on: boolean) {
-      if (!canBlink(def)) return
-      const want = on ? (blinkTex ??= bodyTexture(def, true)) : bodyTexture(def)
+    setFace(face: Face) {
+      if (face === 'blink' && !canBlink(def)) face = 'normal'
+      // 깜빡임은 그 자리에서 굽는다(로비 — 전부터 그랬다) · 나머지는 렌더러가 구워 둔 것만
+      const want = (faceTex[face] ??= (face === 'blink' ? bodyTexture(def, face) : peekBodyTexture(def, face)) ?? undefined) ?? faceTex.normal!
       if (bodyM.map !== want) bodyM.map = want
     },
   }
@@ -430,9 +431,9 @@ function buildGear(L: Look, R: number, helm: number, armor: number, rigM: THREE.
   return g
 }
 
-/** 눈 감은 얼굴 그림 (깜빡이는 캐릭터만 — 렌더러가 미리 올려 둔다) */
-export function blinkTexture(def: CharacterDef): THREE.Texture | null {
-  return canBlink(def) ? bodyTexture(def, true) : null
+/** 이 캐릭터가 쓰는 표정들 (렌더러가 한 프레임에 하나씩 구워 미리 올려 둔다 — 깜빡임은 뜬 눈인 캐릭터만) */
+export function facesOf(def: CharacterDef): Face[] {
+  return canBlink(def) ? FACES : FACES.filter((f) => f !== 'blink')
 }
 
 /** 뜬 눈으로 그려진 캐릭터만 깜빡인다 (웃는 눈 · 실눈은 늘 감은 모양) */
