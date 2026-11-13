@@ -225,7 +225,7 @@ async function bake(gltf: GLTF, spec: ModelSpec): Promise<BakedModel> {
     parts.push({ geo, mat: toLambert(srcMat as THREE.MeshStandardMaterial, spec) })
   }
   if (eye && eyeVerts > 0) for (let i = 0; i < eye.length; i++) eye[i] /= eyeVerts
-  return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest, eye }
+  return { parts, frames, seg, windup: spec.windup ?? 0.5, anchors, anchorRest, eye, height: sz.y * scale }
 }
 
 /** 한 프레임의 정점 위치 · 노멀 (장면 좌표) */

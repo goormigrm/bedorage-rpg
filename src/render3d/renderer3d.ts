@@ -79,6 +79,8 @@ const FOLLOW_DIST = 18.5
 /** 기준 세로 시야각. 화면이 넓어지면 resize() 가 이 값을 줄여 보이는 면적을 유지한다 */
 const BASE_FOV = 40
 const GUN_H = 0.95
+/** 조준: 보이는 몸(발 ~ 머리 꼭대기)의 위 이만큼이 머리 — 여기를 겨누면 치명타 (쿼터뷰 · 3인칭 같은 값) */
+const HEAD_ZONE = 0.34
 /** 탄 묶음 칸 수 (탄 한 발 = 셋까지 — 300발) */
 const SHOT_INST = 900
 /**
@@ -1734,11 +1736,12 @@ export class Renderer3D {
         const at = this.monsterView.shown.get(m.id)
         if (!at) continue
         const foot = this.worldToScreen(at.x, 0, at.z)
-        const top = this.worldToScreen(at.x, monsterTop(m), at.z)
+        // 보이는 몸의 키로 (이름표 높이 monsterTop 은 머리 위 여유가 있어 머리 구역이 몸 위 허공이었다 — 2026-11-13)
+        const top = this.worldToScreen(at.x, isGiant(m) ? monsterTop(m) : this.monsterView.bodyTop(m), at.z)
         const h = foot.y - top.y
-        if (h <= 0 || cy < top.y || cy > foot.y || Math.abs(cx - foot.x) > h * (isQuadruped(m.kind) ? 0.62 : 0.35)) continue
+        if (h <= 0 || cy < top.y - h * 0.06 || cy > foot.y || Math.abs(cx - foot.x) > h * (isQuadruped(m.kind) ? 0.62 : 0.35)) continue
         bd = d
-        if (cy < top.y + h * 0.3) best = { x: m.x, y: m.y }
+        if (cy < top.y + h * HEAD_ZONE) best = { x: m.x, y: m.y }
         else {
           const k = Math.min(bodyR(m) * 0.7, d * 0.5)
           best = { x: m.x + (dx / d) * k, y: m.y + (dy / d) * k }
@@ -6086,29 +6089,34 @@ export class Renderer3D {
   }
 
   /**
-   * 조준점 (sim px): 보통은 커서 아래 바닥. 커서가 **거대한 보스의 몸** 위면 그 보스를 겨눈다 (2026-09-24 — 보스가 네 배로 커져
-   * 몸 위쪽을 누르면 바닥 자리가 보스 한참 뒤였다). 머리 쪽(위 30%)이면 가운데 — 약점(치명타), 아니면 몸 앞쪽(치명타 아님)
+   * 조준점 (sim px): 보통은 커서 아래 바닥. 커서가 **괴물의 보이는 몸** 위면 그 괴물을 겨눈다 — 머리 쪽(위 HEAD_ZONE)이면 가운데(약점 · 치명타),
+   * 아니면 몸 앞쪽(치명타 아님). 처음에는 거대한 보스만 그랬고(2026-09-24) 나머지는 커서를 총 높이(0.95칸) 바닥 자리로만 바꿔,
+   * 키가 0.9칸인 ☀ 슬라임은 머리 위 허공을 · 키 큰 해골은 가슴을 겨눠야 치명타였다 (2026-11-13 사용자: "몬스터에 에임을 두고 쏴도 안 되고 조금 더 위에 쏴야")
    */
   aimPoint(sx: number, sy: number, state?: GameState, me?: { x: number; y: number }): { x: number; y: number } {
     const w = this.screenToWorld(sx, sy)
     state ??= this.lastCurr ?? undefined
     if (!state) return w
     let best: { x: number; y: number } | null = null
-    let bestD = Infinity
+    let bestY = -Infinity
+    // 커서 아래 바닥 자리 둘레의 것만 화면에 비춰 본다 (괴물 수백 마리를 프레임 · 틱마다 두 번씩 비추지 않게) — 거대한 보스는 몸이 커 늘 본다
+    const near = 5 * TILE
     for (const m of state.monsters) {
-      if (m.hp <= 0 || !isGiant(m) || this.hiddenM.has(m.id)) continue
+      if (m.hp <= 0 || this.hiddenM.has(m.id)) continue
+      const giant = isGiant(m)
+      if (!giant && (Math.abs(m.x - w.x) > near || Math.abs(m.y - w.y) > near)) continue
       const at = this.monsterView.shown.get(m.id)
       if (!at) continue
       const foot = this.worldToScreen(at.x, 0, at.z)
-      const top = this.worldToScreen(at.x, monsterTop(m), at.z)
+      const top = this.worldToScreen(at.x, giant ? monsterTop(m) : this.monsterView.bodyTop(m), at.z)
       const h = foot.y - top.y
       if (h <= 0) continue
-      const half = h * (isQuadruped(m.kind) ? 0.62 : 0.3)
-      if (sy < top.y || sy > foot.y + h * 0.08 || Math.abs(sx - foot.x) > half) continue
-      const d = Math.abs(sx - foot.x)
-      if (d >= bestD) continue
-      bestD = d
-      const head = sy < top.y + h * 0.3
+      const half = h * (isQuadruped(m.kind) ? 0.62 : giant ? 0.3 : 0.36)
+      if (sy < top.y - (giant ? 0 : h * 0.06) || sy > foot.y + h * 0.08 || Math.abs(sx - foot.x) > half) continue
+      // 겹쳐 보이면 화면에서 앞에 선 것(발이 더 아래)
+      if (foot.y <= bestY) continue
+      bestY = foot.y
+      const head = sy < top.y + h * (giant ? 0.3 : HEAD_ZONE)
       if (head || !me) best = { x: m.x, y: m.y }
       else {
         // 몸 앞쪽: 가운데에서 나를 향해 몸 반지름의 0.7 (약점 반경 0.5 밖)

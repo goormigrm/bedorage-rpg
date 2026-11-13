@@ -1068,6 +1068,16 @@ export const MONSTER_TOP = [1.05, 1.45, 1.4, 0.8, 0.85, 0.8, 0.8, 1.2, 0.8, 1.3,
 
 export class MonsterView {
   readonly group = new THREE.Group()
+  /**
+   * 보이는 몸의 키 (월드 단위) — 조준의 머리 판정용 (2026-11-13 사용자: "3인칭에서는 보이는 캐릭터보다 위에 쏴야 헤드샷 · 쿼터뷰도 조금 더 위에").
+   * 이름표 높이(monsterTop)는 머리 위 여유가 있고 🌙 실사 모델 기준이라, ☀ 귀여운 모델(슬라임 0.7 · 선인장 1.0)은 머리 구역(위 30%)이
+   * 통째로 몸 위 허공이었다. 모델이 떠 있으면 구운 모델의 키, 아니면(도형 괴물) 이름표 높이에서 여유를 뺀 값
+   */
+  bodyTop(m: { kind: number; sum?: number; elite?: number }): number {
+    const mk = this.real ? this.models[m.kind] : undefined
+    if (mk && typeof mk !== 'string' && mk.shown) return mk.baked.height * (MONSTER_LIST[m.kind].r / 13) * viewScale(isGiant(m), m.kind, m.elite ?? 0)
+    return monsterTop(m) * 0.88
+  }
   private kinds: Part[][]
   private vis = new Map<number, MVis>()
   private corpses: Corpse[] = []

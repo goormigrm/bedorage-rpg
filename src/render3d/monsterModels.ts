@@ -279,6 +279,8 @@ export interface BakedModel {
   anchorRest: Partial<Record<AnchorName, [number, number, number]>>
   /** 빛나는 눈(spec.glow 재질)의 가운데 — 프레임마다 3개씩 (모델 좌표). 🌙 눈빛 무리(monsters3d eyes)가 쓴다 */
   eye?: Float32Array
+  /** 첫 장면의 키 (크기 1 일 때 · 타일 단위 — fit='length' 모델은 size 와 다르다). 조준의 머리 판정(MonsterView.bodyTop)이 쓴다 */
+  height: number
 }
 
 /** 종류 하나를 받아 굽는다. 모델이 없는 종류면 null (굽는 코드 · 로더 · 모델 파일을 이때 받는다) */
