@@ -29,6 +29,8 @@ interface ModelKind {
   asked: boolean
   /** 🌙 눈빛 무리의 색 (THREE.Color 의 r · g · b — 빛나는 눈이 없는 종류 · ☀ 는 null) */
   halo: THREE.Color | null
+  /** 눈 재질이 없는 막 보스(도살자 · 관리인)의 눈 자리: 머리 뼈의 첫 장면 자리 + BOSS_EYE (모델 좌표) · 그 뼈의 프레임별 움직임 */
+  eyeAt?: { x: number; y: number; z: number; anchor: Float32Array }
 }
 
 /**
@@ -68,6 +70,14 @@ const MODEL_EXTRAS: Record<number, Extra[]> = {
     { part: 4, s: 0.88, dx: -0.29, dy: -0.065, dz: -0.344, at: 'handR', still: true, rx: Math.PI / 2 }, // 저격총
     { part: 3, s: 0.5, dx: -0.058, dy: 0.52, dz: -0.115, at: 'head', halo: 0xffd060 }, // 눈
   ],
+}
+/**
+ * 🌙 막 보스의 눈빛 (2026-11-13 2차 — 모델에 빛나는 눈 재질이 없는 둘): 머리 뼈에서 위 · 앞으로 이만큼(모델 좌표)에 눈빛 무리.
+ * 여왕은 모델의 눈 재질(spec.glow)로 · 군주는 뼈 자리가 없어 뺀다
+ */
+const BOSS_EYE: Record<number, { c: number; y: number; z: number }> = {
+  3: { c: 0xff4a2a, y: 0.07, z: 0.1 },
+  12: { c: 0xff7a2a, y: 0.06, z: 0.1 },
 }
 /** 밝은 분위기에서 겹쳐 그리는 부품 — 총잡이 진행요원의 물총만 (다른 귀여운 모델은 제 모습 그대로) */
 // 진행요원 손(가운뎃손가락 뿌리 -0.431 · 0.232 · -0.231)은 쉴 때 낮게 늘어져 있고 'Weapon' 동작도 팔을 높이 들지 않는다 → 총구를 앞으로 둔 채 손에
@@ -193,6 +203,8 @@ interface Anim {
   kz?: number
   /** ☀ 쓰러진 뒤 지난 시간(초) — 퐁 터지고 납작해졌다 사라진다 (cutePop). 없으면 예전 시체 */
   pop?: number
+  /** 막 보스의 분노 단계 (판의 Monster.stage — 0 이면 평소): 몸이 붉게 달아오르고 숨이 거칠어진다 · 눈빛이 커진다 */
+  rage?: number
 }
 
 interface Part {
@@ -230,6 +242,8 @@ interface MVis extends Anim {
   kz: number
   /** 지난 프레임의 판 상태 (예고 → 쉼으로 넘어간 순간 = 쏜 순간) */
   pst: number
+  /** 거대한 보스의 걸음 수 (디딜 때마다 먼지 — onStep) */
+  stepN?: number
 }
 
 const CAP = 220
@@ -1112,6 +1126,8 @@ export class MonsterView {
    */
   readonly eyes = new Float32Array(96 * 7)
   eyeN = 0
+  /** 거대한 막 보스가 한 걸음 디뎠다 (자리 · 몸 크기 · 걸음 번호 — 렌더러가 발밑 먼지를 뿌린다) */
+  onStep: ((x: number, z: number, size: number, n: number) => void) | null = null
 
   constructor() {
     this.kinds = BUILDERS.map((b) => b())
@@ -1352,6 +1368,12 @@ export class MonsterView {
         // 🌙 눈빛 무리: 모델에 빛나는 눈 재질이 있거나(구울 · 늑대 · 여왕) 눈을 도형으로 겹친 종류(해골)
         const haloHex = isBright() ? undefined : (MODEL_EXTRAS[kind]?.find((e) => e.halo !== undefined)?.halo ?? (baked.eye ? Object.values(specOf(kind)?.glow ?? {})[0] : undefined))
         const mk: ModelKind = { baked, meshes, frame, depth, extras, shown: false, asked: false, halo: haloHex !== undefined ? new THREE.Color(haloHex) : null }
+        const be = isBright() ? undefined : BOSS_EYE[kind]
+        const hr = baked.anchorRest.head
+        if (be && hr && baked.anchors.head) {
+          mk.halo = new THREE.Color(be.c)
+          mk.eyeAt = { x: hr[0], y: hr[1] + be.y, z: hr[2] + be.z, anchor: baked.anchors.head }
+        }
         this.models[kind] = mk
         // 처음에는 숨겨 둔다: 보이는 순간(괴물 수 0 이어도) 셰이더 컴파일 · 모양 키 텍스처(3~15MB) 만들기가 그 프레임에 몰린다.
         // 마을에서 데우기가 끝나면 보이게 한다. 그 전에 이 괴물이 화면에 나오면(던전) 그때 보이게 한다 (update)
@@ -1512,8 +1534,17 @@ export class MonsterView {
       v.elite = m.elite > 0
       v.unique = (m.elite & 64) !== 0
       v.boss = !!def.boss
+      v.rage = def.boss !== undefined ? m.stage : 0
       this.want(m.kind)
       if (hidden(m) || !inView(x, z, v.giant ? 9 : 2.5)) continue
+      // 거대한 보스가 디딜 때마다 발밑 먼지 (걸음 위상의 반 바퀴 = 한 걸음)
+      if (v.giant && this.onStep) {
+        const st = Math.floor(v.walk / Math.PI)
+        if (st !== v.stepN) {
+          if (v.stepN !== undefined && v.move > 0.2) this.onStep(x, z, (def.r / 13) * GIANT_VIEW, st)
+          v.stepN = st
+        }
+      }
       this.put(m.kind, counts, x, z, v.yaw, v, 0)
     }
     // 이번 프레임에 안 나온 괴물(쓰러짐 · 지역 옮김)의 동작 · 자리는 지운다 — 산 괴물은 위에서 자리(shown)에 이번 도장을 찍었다
@@ -1684,6 +1715,8 @@ export class MonsterView {
     else if (w > 0) this.col.setRGB(1 + w * 0.9 + (kind === 2 ? sin(w * 30) * 0.5 * w : 0), 1 - w * 0.35, 1 - w * 0.4)
     // 시체: 정예 금빛 맥박은 끈다(죽어서도 뛰었다) · ☀ 는 산 괴물과 같은 색이라 누운 것이 안 갈렸다 → 빛바랜 색으로 (2026-11-12 검토 — 🌙 는 그대로)
     else if (a.dead > 0) this.col.setScalar(this.bright ? 1 - a.dead * 0.38 : 1)
+    // 분노한 막 보스: 몸이 붉게 달아올라 숨결처럼 일렁인다 (2026-11-13 2차 — 단계가 올라도 겉모습이 그대로였다)
+    else if (a.rage) this.col.setRGB(1.3 + a.rage * 0.14 + 0.14 * Math.sin(this.clock * (3 + a.rage * 2)), 0.88 - a.rage * 0.08, 0.82 - a.rage * 0.09)
     else if (a.elite) this.col.setRGB(1.25 + 0.1 * Math.sin(Date.now() / 200), 1.1, 0.75)
     else this.col.setRGB(1, 1, 1)
     if (this.edgeShade) this.col.multiplyScalar(this.edgeShade(x, z))
@@ -1725,7 +1758,8 @@ export class MonsterView {
     let sy = 1
     let sz = 1
     if (a.dead === 0) {
-      const br = Math.sin(this.clock * 2.1 * (a.giant ? 0.5 : a.unique ? 0.7 : a.elite ? 0.85 : 1) + (a.ph ?? 0)) * 0.02 * (a.giant ? 1 : K) * (1 - a.move * 0.6)
+      const rage = a.rage ?? 0
+      const br = Math.sin(this.clock * 2.1 * (a.giant ? 0.5 : a.unique ? 0.7 : a.elite ? 0.85 : 1) * (1 + rage * 0.6) + (a.ph ?? 0)) * 0.02 * (a.giant ? 1 : K) * (1 + rage * 0.45) * (1 - a.move * 0.6)
       sy += br
       sx -= br * 0.5
       sz -= br * 0.5
@@ -1857,6 +1891,16 @@ export class MonsterView {
       const o1 = (seg.start + i1) * 3
       this.ap.set(E[o0] + (E[o1] - E[o0]) * f, E[o0 + 1] + (E[o1 + 1] - E[o0 + 1]) * f, E[o0 + 2] + (E[o1 + 2] - E[o0 + 2]) * f).applyMatrix4(this.local)
       this.eye(this.ap.x, this.ap.y, this.ap.z, halo, a)
+    } else if (halo && mk.eyeAt) {
+      const A = mk.eyeAt.anchor
+      const o0 = (seg.start + i0) * 7
+      const o1 = (seg.start + i1) * 7
+      const Aa = A as unknown as number[]
+      THREE.Quaternion.slerpFlat(this.aqa, 0, Aa, o0 + 3, Aa, o1 + 3, f)
+      this.aq.fromArray(this.aqa)
+      this.fp.set(A[o0] + (A[o1] - A[o0]) * f, A[o0 + 1] + (A[o1 + 1] - A[o0 + 1]) * f, A[o0 + 2] + (A[o1 + 2] - A[o0 + 2]) * f)
+      this.ap.set(mk.eyeAt.x, mk.eyeAt.y, mk.eyeAt.z).applyQuaternion(this.aq).add(this.fp).applyMatrix4(this.local)
+      this.eye(this.ap.x, this.ap.y, this.ap.z, halo, a)
     }
     for (const mesh of mk.meshes) {
       mesh.setMatrixAt(i, this.local)
@@ -1911,14 +1955,14 @@ export class MonsterView {
     const o = this.eyeN++ * 7
     const E = this.eyes
     // 옅고 작게 — 크면 머리에 색 풍선을 단 것 같았다 (눈 둘을 겨우 감싸는 크기)
-    const k = 0.26 + 0.07 * Math.sin(this.clock * 7 + (a.ph ?? 0) * 5) + a.wind * 0.4
+    const k = 0.26 + 0.07 * Math.sin(this.clock * 7 + (a.ph ?? 0) * 5) + a.wind * 0.4 + (a.rage ?? 0) * 0.14
     E[o] = x
     E[o + 1] = y
     E[o + 2] = z
     E[o + 3] = c.r * k
     E[o + 4] = c.g * k
     E[o + 5] = c.b * k
-    E[o + 6] = (a.giant ? 0.8 : a.unique ? 0.3 : a.elite ? 0.25 : 0.2) * (1 + a.wind * 0.4)
+    E[o + 6] = (a.giant ? 0.8 : a.unique ? 0.3 : a.elite ? 0.25 : 0.2) * (1 + a.wind * 0.4 + (a.rage ?? 0) * 0.25)
   }
 
   dispose(): void {

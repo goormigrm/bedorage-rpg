@@ -799,6 +799,16 @@ export class Renderer3D {
     this.vision = new Vision(map)
     this.scene.add(this.vision.group)
     this.scene.add(this.monsterView.group)
+    // 거대한 막 보스의 걸음마다 발밑 먼지 (2026-11-13 2차 — 4배 몸이 소리 없이 미끄러지듯 걸었다 · 연기 묶음이라 그리기 호출은 그대로)
+    this.monsterView.onStep = (x, z, size, n) => {
+      const side = n % 2 === 0 ? 1 : -1
+      const col = isBright() ? 0xf4e6c8 : 0x5a5248
+      for (let k = 0; k < 5; k++) {
+        const a = Math.random() * Math.PI * 2
+        const r = size * (0.12 + Math.random() * 0.1)
+        this.spawnPuff(x + Math.cos(a) * r + side * size * 0.08, 0.15, z + Math.sin(a) * r, Math.cos(a) * 0.012, 0.008 + Math.random() * 0.006, Math.sin(a) * 0.012, 0.7 + Math.random() * 0.3, col, size * 0.22, isBright() ? 0.4 : 0.3)
+      }
+    }
     // 구운 실사 모델: 텍스처 올리기 · 셰이더 컴파일을 줄 세우고, 다 되면 보이게 한다(show — 그때 모양 키 텍스처를 만든다).
     // 마을이 아니면 줄이 돌지 않지만, 그 괴물이 화면에 나오면 monsters3d 가 바로 보이게 한다 (2026-09-20 · 09-23)
     this.monsterView.setWarm(
